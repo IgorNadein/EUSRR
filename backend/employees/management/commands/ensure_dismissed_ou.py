@@ -71,7 +71,8 @@ class Command(BaseCommand):
                     if not force:
                         self.stdout.write(
                             self.style.SUCCESS(
-                                f"✓ OU=Dismissed уже существует: {dismissed_base}"
+                                "✓ OU=Dismissed уже существует: "
+                                f"{dismissed_base}"
                             )
                         )
                         entry = conn.entries[0]
@@ -104,8 +105,9 @@ class Command(BaseCommand):
                         )
                         if check and len(conn.entries) > 1:
                             raise CommandError(
-                                f"OU содержит {len(conn.entries) - 1} объектов. "
-                                "Удалите их вручную или используйте другой метод."
+                                f"OU содержит {len(conn.entries) - 1} "
+                                "объектов. Удалите их вручную "
+                                "или используйте другой метод."
                             )
 
                         ok = conn.delete(dismissed_base)
@@ -125,9 +127,7 @@ class Command(BaseCommand):
                     {"description": description},
                 )
                 if not ok:
-                    raise CommandError(
-                        f"Не удалось создать OU: {conn.result}"
-                    )
+                    raise CommandError(f"Не удалось создать OU: {conn.result}")
 
                 self.stdout.write(
                     self.style.SUCCESS(

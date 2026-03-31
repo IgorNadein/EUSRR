@@ -1,6 +1,7 @@
 """
 Celery задачи для отправки email уведомлений
 """
+
 from .base import BaseNotificationTask
 from notifications import config
 
@@ -52,9 +53,11 @@ class DigestEmailTask(BaseNotificationTask):
     task_name = "notifications.send_digest_email"
     max_retries = 2
     retry_delay = 600  # 10 минут между попытками
-    rate_limit = '5/h'  # Не более 5 дайджестов в час
+    rate_limit = "5/h"  # Не более 5 дайджестов в час
 
-    def execute(self, celery_task, user_id: int, frequency: str = 'daily', **kwargs):
+    def execute(
+        self, celery_task, user_id: int, frequency: str = "daily", **kwargs
+    ):
         """Переопределяем execute для работы с user_id вместо notification_id"""
         try:
             from django.contrib.auth import get_user_model
@@ -67,7 +70,7 @@ class DigestEmailTask(BaseNotificationTask):
             user = User.objects.get(id=user_id)
 
             # Определяем период для дайджеста
-            if frequency == 'weekly':
+            if frequency == "weekly":
                 cutoff = timezone.now() - timedelta(days=7)
             else:  # daily
                 cutoff = timezone.now() - timedelta(days=1)
@@ -78,16 +81,20 @@ class DigestEmailTask(BaseNotificationTask):
                 unread=True,
                 emailed=False,  # Еще не отправлены по email
                 timestamp__gte=cutoff,
-            ).order_by('-timestamp')[:50]  # Максимум 50 в дайджесте
+            ).order_by("-timestamp")[:50]  # Максимум 50 в дайджесте
 
             if not notifications.exists():
                 self.logger.info(
-                    f"📭 No notifications for digest: user={user_id}, frequency={frequency}")
+                    "📭 No notifications for digest: "
+                    f"user={user_id}, frequency={frequency}"
+                )
                 return False
 
             # Отправляем дайджест
             sender = EmailNotificationSender()
-            success = sender.send_digest(user, list(notifications), frequency=frequency)
+            success = sender.send_digest(
+                user, list(notifications), frequency=frequency
+            )
 
             if success:
                 self.logger.info(
@@ -96,13 +103,15 @@ class DigestEmailTask(BaseNotificationTask):
                 )
             else:
                 self.logger.warning(
-                    f"⚠️ Digest failed: user={user_id}, frequency={frequency}")
+                    f"⚠️ Digest failed: user={user_id}, frequency={frequency}"
+                )
 
             return success
 
         except Exception as exc:
             self.logger.exception(
-                f"❌ Digest task error: user={user_id}, frequency={frequency}")
+                f"❌ Digest task error: user={user_id}, frequency={frequency}"
+            )
             raise celery_task.retry(exc=exc)
 
     def send_notification(self, notification, **kwargs) -> bool:

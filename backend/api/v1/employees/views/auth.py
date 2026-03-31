@@ -9,7 +9,11 @@ import logging
 from datetime import timedelta
 
 from common.emails import send_templated_mail
-from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiResponse,
+    extend_schema,
+    inline_serializer,
+)
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
@@ -22,8 +26,11 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ..serializers import (EmailSerializer, EmailVerifySerializer,
-                           RegisterSerializer)
+from ..serializers import (
+    EmailSerializer,
+    EmailVerifySerializer,
+    RegisterSerializer,
+)
 from ._helpers import Employee
 from .mixins import LdapUserCreationMixin
 
@@ -36,7 +43,9 @@ class AnonymousAPIView(APIView):
     Все auth-related views наследуются от этого класса для DRY.
     Используется только JWT (без SessionAuthentication) → CSRF не требуется.
     """
-    authentication_classes = []  # Отключаем SessionAuthentication для публичных endpoints
+
+    # Отключаем SessionAuthentication для публичных endpoints.
+    authentication_classes = []
     throttle_scope = "anon"
     permission_classes = [AllowAny]
 
@@ -64,9 +73,13 @@ class ResendEmailAPIView(AnonymousAPIView):
 
         user = Employee.objects.filter(email__iexact=email).first()
         if not user:
-            return Response({"ok": False, "error": "user_not_found"}, status=404)
+            return Response(
+                {"ok": False, "error": "user_not_found"}, status=404
+            )
         if user.email_verified:
-            return Response({"ok": False, "error": "already_verified"}, status=400)
+            return Response(
+                {"ok": False, "error": "already_verified"}, status=400
+            )
 
         user.email_activation_code = get_random_string(6, "0123456789")
         user.save(update_fields=["email_activation_code"])
@@ -109,7 +122,9 @@ class VerifyEmailAPIView(AnonymousAPIView):
 
         user = Employee.objects.filter(email__iexact=email).first()
         if not user:
-            return Response({"ok": False, "error": "user_not_found"}, status=404)
+            return Response(
+                {"ok": False, "error": "user_not_found"}, status=404
+            )
         if not code:
             return Response({"ok": False, "error": "empty_code"}, status=400)
 
@@ -134,31 +149,42 @@ class VerifyEmailAPIView(AnonymousAPIView):
 
 
 class RegisterAPIView(LdapUserCreationMixin, AnonymousAPIView):
-    """Регистрация: создаём учётку в LDAP (disabled) с паролем, в БД — set_unusable_password.
+    """Регистрация: создаём учётку в LDAP (disabled) с паролем.
+
+    В БД используется set_unusable_password.
 
     Использует LdapUserCreationMixin для вынесения LDAP-специфичной логики.
     """
+
     parser_classes = (JSONParser, FormParser, MultiPartParser)
 
-    @extend_schema(tags=["Auth"],
-                   summary="Зарегистрировать нового пользователя",
-                   request=RegisterSerializer,
-                   responses={201: inline_serializer("RegisterResponse",
-                                                     {"id": serializers.IntegerField(),
-                                                      "email": serializers.EmailField(),
-                                                      "email_verified": serializers.BooleanField(),
-                                                      "is_active": serializers.BooleanField(),
-                                                      },
-                                                     ),
-                              200: inline_serializer("RegisterPendingVerificationResponse",
-                                                     {"ok": serializers.BooleanField(),
-                                                      "pending_verification": serializers.BooleanField(),
-                                                      "user_id": serializers.IntegerField(),
-                                                      },
-                                                     ),
-                              400: OpenApiResponse(description="Ошибка валидации или занятый email/телефон."),
-                              },
-                   )
+    @extend_schema(
+        tags=["Auth"],
+        summary="Зарегистрировать нового пользователя",
+        request=RegisterSerializer,
+        responses={
+            201: inline_serializer(
+                "RegisterResponse",
+                {
+                    "id": serializers.IntegerField(),
+                    "email": serializers.EmailField(),
+                    "email_verified": serializers.BooleanField(),
+                    "is_active": serializers.BooleanField(),
+                },
+            ),
+            200: inline_serializer(
+                "RegisterPendingVerificationResponse",
+                {
+                    "ok": serializers.BooleanField(),
+                    "pending_verification": serializers.BooleanField(),
+                    "user_id": serializers.IntegerField(),
+                },
+            ),
+            400: OpenApiResponse(
+                description="Ошибка валидации или занятый email/телефон."
+            ),
+        },
+    )
     @transaction.atomic
     def post(self, request):
         # Логируем входящие данные для диагностики
@@ -178,15 +204,20 @@ class RegisterAPIView(LdapUserCreationMixin, AnonymousAPIView):
         )
         logger.warning(
             f"[REGISTER] Phone normalization: input={
-                v.get('phone_number')}, normalized={phone_norm}")
+                v.get('phone_number')
+            }, normalized={phone_norm}"
+        )
         if not phone_norm:
             logger.error(
                 f"[REGISTER] Phone normalization FAILED for: {
-                    v.get('phone_number')}")
+                    v.get('phone_number')
+                }"
+            )
             return Response({"ok": False, "error": "invalid_phone"}, status=400)
 
         existing_phone = Employee.objects.filter(
-            phone_number=phone_norm).first()
+            phone_number=phone_norm
+        ).first()
         if existing_phone:
             logger.warning(
                 "[REGISTER] Phone %s already used by user id=%s",
@@ -197,8 +228,11 @@ class RegisterAPIView(LdapUserCreationMixin, AnonymousAPIView):
                 {
                     "ok": False,
                     "error": "phone_taken",
-                    "detail": "Номер телефона уже зарегистрирован."
-                    " Войдите в существующий аккаунт или используйте другой номер.",
+                    "detail": (
+                        "Номер телефона уже зарегистрирован. "
+                        "Войдите в существующий аккаунт "
+                        "или используйте другой номер."
+                    ),
                     "phone_number": [
                         "Этот номер телефона уже привязан к другому аккаунту."
                     ],
@@ -210,20 +244,31 @@ class RegisterAPIView(LdapUserCreationMixin, AnonymousAPIView):
         if user:
             logger.warning(
                 f"[REGISTER] User exists: email={email}, verified={
-                    user.email_verified}")
+                    user.email_verified
+                }"
+            )
             if user.email_verified:
                 # Email уже верифицирован - нельзя регистрироваться
-                logger.error(f"[REGISTER] Email already taken and verified: {email}")
-                return Response({"ok": False, "error": "email_taken"}, status=400)
+                logger.error(
+                    f"[REGISTER] Email already taken and verified: {email}"
+                )
+                return Response(
+                    {"ok": False, "error": "email_taken"}, status=400
+                )
             else:
                 # Есть неверифицированный пользователь - повторная отправка кода
                 return Response(
-                    {"ok": True, "pending_verification": True, "user_id": user.id},
+                    {
+                        "ok": True,
+                        "pending_verification": True,
+                        "user_id": user.id,
+                    },
                     status=200,
                 )
 
-        avatar_file = v.get("avatar") or getattr(
-            request, "FILES", {}).get("avatar")
+        avatar_file = v.get("avatar") or getattr(request, "FILES", {}).get(
+            "avatar"
+        )
         avatar_bytes = None
         avatar_name = None
         if avatar_file:
@@ -231,8 +276,7 @@ class RegisterAPIView(LdapUserCreationMixin, AnonymousAPIView):
                 avatar_bytes = (
                     avatar_file.read() if hasattr(avatar_file, "read") else None
                 )
-                avatar_name = getattr(
-                    avatar_file, "name", None) or "avatar.jpg"
+                avatar_name = getattr(avatar_file, "name", None) or "avatar.jpg"
             except Exception:
                 avatar_bytes = None
                 avatar_name = None
@@ -253,8 +297,9 @@ class RegisterAPIView(LdapUserCreationMixin, AnonymousAPIView):
         # 2) Заполняем доп.поля БД
         if avatar_bytes:
             try:
-                emp.avatar.save(avatar_name, ContentFile(
-                    avatar_bytes), save=False)
+                emp.avatar.save(
+                    avatar_name, ContentFile(avatar_bytes), save=False
+                )
             except Exception:
                 pass
 

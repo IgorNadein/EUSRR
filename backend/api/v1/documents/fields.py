@@ -46,7 +46,7 @@ class FilerFileField(serializers.Field):
                 return None
 
             # Получаем request из контекста для построения абсолютного URL
-            request = self.context.get('request')
+            request = self.context.get("request")
             if request:
                 return request.build_absolute_uri(value.url)
 
@@ -72,9 +72,7 @@ class FilerFileField(serializers.Field):
             return None
 
         if not isinstance(data, UploadedFile):
-            raise serializers.ValidationError(
-                "Ожидается файл для загрузки."
-            )
+            raise serializers.ValidationError("Ожидается файл для загрузки.")
 
         # Проверка размера файла
         from django.conf import settings
@@ -94,8 +92,8 @@ class FilerFileField(serializers.Field):
                 )
 
         # Получаем пользователя из контекста
-        request = self.context.get('request')
-        owner = getattr(request, 'user', None) if request else None
+        request = self.context.get("request")
+        owner = getattr(request, "user", None) if request else None
 
         try:
             # Создаем filer.File объект
@@ -105,12 +103,14 @@ class FilerFileField(serializers.Field):
                 original_filename=data.name,
                 name=data.name,
                 owner=owner,
-                is_public=True  # Делаем файл публичным для доступа с frontend
+                is_public=True,  # Делаем файл публичным для доступа с frontend
             )
 
             logger.info(
                 f"[FilerFileField] Created filer.File id={filer_file.id} "
-                f"name={data.name} owner={owner.id if owner else None} is_public=True"
+                f"name={data.name} owner={
+                    owner.id if owner else None
+                } is_public=True"
             )
 
             return filer_file
@@ -118,7 +118,7 @@ class FilerFileField(serializers.Field):
         except Exception as e:
             logger.error(
                 f"[FilerFileField] Error creating filer.File: {e}",
-                exc_info=True
+                exc_info=True,
             )
             raise serializers.ValidationError(
                 f"Ошибка при создании файла: {str(e)}"

@@ -57,7 +57,9 @@ class NotificationService:
     def create_notification(*args, **kwargs):
         raise NotImplementedError(
             "NotificationService.create_notification() удален. "
-            "Используйте: notify.send(sender=actor, recipient=user, verb='...', description='...')")
+            "Используйте: notify.send(sender=actor, recipient=user, "
+            "verb='...', description='...')"
+        )
 
     @staticmethod
     def create_notification_async(*args, **kwargs):
@@ -85,4 +87,6 @@ class NotificationService:
     def get_user_settings(*args, **kwargs):
         raise NotImplementedError(
             "NotificationService.get_user_settings() удален. "
-            "Используйте: user.channel_preferences или UserChannelPreferences.objects.get(user=user)")
+            "Используйте: user.channel_preferences или "
+            "UserChannelPreferences.objects.get(user=user)"
+        )

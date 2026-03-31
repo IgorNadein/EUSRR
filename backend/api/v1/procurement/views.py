@@ -9,7 +9,11 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from employees.models import Department
-from procurement.constants import ApprovalStatus, ProcurementStatus, EquipmentStatus
+from procurement.constants import (
+    ApprovalStatus,
+    ProcurementStatus,
+    EquipmentStatus,
+)
 from procurement.models import (
     Approval,
     Budget,
@@ -51,32 +55,37 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
     """ViewSet для заявок на закупку."""
 
     queryset = ProcurementRequest.objects.select_related(
-        'department', 'requestor', 'executor'
-    ).prefetch_related('items', 'approvals')
+        "department", "requestor", "executor"
+    ).prefetch_related("items", "approvals")
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
         filters.OrderingFilter,
     ]
-    filterset_fields = ['status', 'urgency', 'department', 'executor']
-    search_fields = ['title', 'description']
-    ordering_fields = ['created_at', 'status']
-    ordering = ['-created_at']
+    filterset_fields = ["status", "urgency", "department", "executor"]
+    search_fields = ["title", "description"]
+    ordering_fields = ["created_at", "status"]
+    ordering = ["-created_at"]
 
     def get_serializer_class(self):
         """Выбрать сериализатор в зависимости от действия."""
-        if self.action == 'create':
+        if self.action == "create":
             return ProcurementRequestCreateSerializer
         elif self.action in [
-            'retrieve', 'submit', 'approve', 'reject',
-            'start_work', 'complete', 'cancel'
+            "retrieve",
+            "submit",
+            "approve",
+            "reject",
+            "start_work",
+            "complete",
+            "cancel",
         ]:
             return ProcurementRequestDetailSerializer
         return ProcurementRequestListSerializer
 
     def get_permissions(self):
         """Выбрать права доступа в зависимости от действия."""
-        if self.action in ['approve', 'reject']:
+        if self.action in ["approve", "reject"]:
             permission_classes = [CanApproveProcurementRequest]
         else:
             # Для create, update, delete и остальных действий
@@ -90,23 +99,23 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 
         queryset = super().get_queryset()
         user = self.request.user
-        scope = self.request.query_params.get('scope', None)
-        period = self.request.query_params.get('period', None)
+        scope = self.request.query_params.get("scope", None)
+        period = self.request.query_params.get("period", None)
 
         # Обработка scope параметра
-        if scope == 'mine':
+        if scope == "mine":
             # Только мои заявки (где я автор)
             queryset = queryset.filter(requestor=user)
-        elif scope == 'department':
+        elif scope == "department":
             # Заявки моего отдела
             queryset = queryset.filter(department__in=user.departments.all())
-        elif scope == 'my_work':
+        elif scope == "my_work":
             # Заявки, которые я взял в работу (где я исполнитель)
             queryset = queryset.filter(executor=user)
-        elif scope == 'available':
+        elif scope == "available":
             # Доступные заявки - со статусом "Согласовано"
-            queryset = queryset.filter(status='approved')
-        elif scope == 'all':
+            queryset = queryset.filter(status="approved")
+        elif scope == "all":
             # Все заявки - применяем стандартную логику прав
             pass
         else:
@@ -115,37 +124,41 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             if user.is_superuser or user.is_staff:
                 pass
             # Пользователи с любыми модельными правами на заявки видят все
-            elif (user.has_perm('procurement.view_procurementrequest') or
-                  user.has_perm('procurement.change_procurementrequest') or
-                  user.has_perm('procurement.delete_procurementrequest')):
+            elif (
+                user.has_perm("procurement.view_procurementrequest")
+                or user.has_perm("procurement.change_procurementrequest")
+                or user.has_perm("procurement.delete_procurementrequest")
+            ):
                 pass
             else:
                 # Показываем: свои заявки + заявки отдела + где я approver
                 queryset = queryset.filter(
-                    Q(requestor=user) |
-                    Q(department__in=user.departments.all()) |
-                    Q(approvals__approver=user)
+                    Q(requestor=user)
+                    | Q(department__in=user.departments.all())
+                    | Q(approvals__approver=user)
                 )
 
         # Фильтрация по периоду
         if period:
             now = timezone.now()
-            if period == 'today':
-                start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            if period == "today":
+                start_date = now.replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
                 queryset = queryset.filter(created_at__gte=start_date)
-            elif period == 'week':
+            elif period == "week":
                 start_date = now - timedelta(days=7)
                 queryset = queryset.filter(created_at__gte=start_date)
-            elif period == 'month':
+            elif period == "month":
                 start_date = now - timedelta(days=30)
                 queryset = queryset.filter(created_at__gte=start_date)
-            elif period == 'quarter':
+            elif period == "quarter":
                 start_date = now - timedelta(days=90)
                 queryset = queryset.filter(created_at__gte=start_date)
 
         return queryset.distinct()
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def submit(self, request, pk=None):
         """Отправить заявку на согласование."""
         from django.db import transaction
@@ -155,20 +168,20 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         # Проверки
         if procurement_request.requestor != request.user:
             return Response(
-                {'error': 'Вы не можете отправить чужую заявку'},
-                status=status.HTTP_403_FORBIDDEN
+                {"error": "Вы не можете отправить чужую заявку"},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         if not procurement_request.is_editable:
             return Response(
-                {'error': 'Заявка уже отправлена на согласование'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Заявка уже отправлена на согласование"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         if procurement_request.items.count() == 0:
             return Response(
-                {'error': 'Добавьте хотя бы одну позицию в заявку'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Добавьте хотя бы одну позицию в заявку"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         required_priorities = (
@@ -177,9 +190,9 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         if not required_priorities:
             return Response(
                 {
-                    'error': (
-                        'Для этой суммы заявки не настроены '
-                        'маршруты согласования'
+                    "error": (
+                        "Для этой суммы заявки не настроены "
+                        "маршруты согласования"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -193,8 +206,8 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         if missing_priorities:
             return Response(
                 {
-                    'error': 'Не настроены согласующие для обязательных этапов',
-                    'missing_priorities': missing_priorities,
+                    "error": "Не настроены согласующие для обязательных этапов",
+                    "missing_priorities": missing_priorities,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -203,7 +216,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             procurement_request.status = ProcurementStatus.PENDING
             procurement_request.submitted_at = timezone.now()
             procurement_request.save(
-                update_fields=['status', 'submitted_at', 'updated_at']
+                update_fields=["status", "submitted_at", "updated_at"]
             )
 
             for priority, approver, step_name in resolved_approvals:
@@ -212,17 +225,18 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                     approver=approver,
                     priority=priority,
                     step_name=step_name,
-                    status=ApprovalStatus.PENDING
+                    status=ApprovalStatus.PENDING,
                 )
 
             procurement_request.refresh_from_db()
 
-        # Уведомления согласующим отправит сигнал post_save(Approval, created=True)
+        # Уведомления согласующим отправит сигнал post_save(Approval,
+        # created=True)
 
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
         """Одобрить заявку."""
         procurement_request = self.get_object()
@@ -238,13 +252,13 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 
         if not approval:
             return Response(
-                {'error': 'У вас нет прав на согласование этой заявки'},
-                status=status.HTTP_403_FORBIDDEN
+                {"error": "У вас нет прав на согласование этой заявки"},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         # Одобряем
         approval.status = ApprovalStatus.APPROVED
-        approval.comment = request.data.get('comment', '')
+        approval.comment = request.data.get("comment", "")
         approval.save()  # Сигнал post_save(Approval) отправит уведомление
 
         # Проверяем, все ли одобрили
@@ -254,7 +268,8 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 
         if pending_approvals == 0:
             # Все одобрили - меняем статус заявки
-            # Сигнал post_save(ProcurementRequest) отправит уведомление requestor'у
+            # Сигнал post_save(ProcurementRequest) отправит уведомление
+            # requestor'у
             procurement_request.status = ProcurementStatus.APPROVED
             procurement_request.save()
 
@@ -263,7 +278,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def reject(self, request, pk=None):
         """Отклонить заявку."""
         procurement_request = self.get_object()
@@ -279,13 +294,13 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 
         if not approval:
             return Response(
-                {'error': 'У вас нет прав на согласование этой заявки'},
-                status=status.HTTP_403_FORBIDDEN
+                {"error": "У вас нет прав на согласование этой заявки"},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         # Отклоняем
         approval.status = ApprovalStatus.REJECTED
-        approval.comment = request.data.get('comment', '')
+        approval.comment = request.data.get("comment", "")
         approval.save()  # Сигнал post_save(Approval) отправит уведомление
 
         # Меняем статус заявки; сигнал post_save(ProcurementRequest) уведомит
@@ -298,7 +313,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=["get"])
     def my_requests(self, request):
         """Получить заявки текущего пользователя."""
         queryset = self.get_queryset().filter(requestor=request.user)
@@ -309,18 +324,24 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=["get"])
     def pending_approvals(self, request):
         """Получить заявки, ожидающие согласования текущим польз."""
         # Находим заявки где есть pending approval для текущего юзера
-        base_queryset = self.get_queryset().filter(
-            approvals__approver=request.user,
-            approvals__status=ApprovalStatus.PENDING
-        ).distinct()
+        base_queryset = (
+            self.get_queryset()
+            .filter(
+                approvals__approver=request.user,
+                approvals__status=ApprovalStatus.PENDING,
+            )
+            .distinct()
+        )
         available_ids = [
             request_obj.id
             for request_obj in base_queryset
-            if ProcurementApprovalResolver.user_can_approve(request.user, request_obj)
+            if ProcurementApprovalResolver.user_can_approve(
+                request.user, request_obj
+            )
         ]
         queryset = base_queryset.filter(id__in=available_ids)
         page = self.paginate_queryset(queryset)
@@ -330,7 +351,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=["get"])
     def my_work(self, request):
         """Получить заявки, взятые текущим пользователем в работу."""
         queryset = self.filter_queryset(
@@ -345,13 +366,12 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         serializer = ProcurementRequestListSerializer(queryset, many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=["get"])
     def available(self, request):
         """Получить одобренные заявки, доступные для взятия в работу."""
         queryset = self.filter_queryset(
             self.get_queryset().filter(
-                status=ProcurementStatus.APPROVED,
-                executor__isnull=True
+                status=ProcurementStatus.APPROVED, executor__isnull=True
             )
         )
 
@@ -363,7 +383,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         serializer = ProcurementRequestListSerializer(queryset, many=True)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def start_work(self, request, pk=None):
         """Начать работу над заявкой (перевод в статус IN_PROGRESS).
 
@@ -375,24 +395,25 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         # Проверяем текущий статус
         if procurement_request.status != ProcurementStatus.APPROVED:
             return Response(
-                {'error': 'Только одобренные заявки можно взять в работу'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Только одобренные заявки можно взять в работу"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Проверяем, что заявка ещё не взята кем-то
         if procurement_request.executor:
             return Response(
                 {
-                    'error': (
-                        f'Заявка уже взята в работу пользователем '
-                        f'{procurement_request.executor.get_full_name()}'
+                    "error": (
+                        f"Заявка уже взята в работу пользователем "
+                        f"{procurement_request.executor.get_full_name()}"
                     )
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Назначаем исполнителя и меняем статус
-        # Сигнал post_save(ProcurementRequest) с IN_PROGRESS отправит уведомления
+        # Сигнал post_save(ProcurementRequest) с IN_PROGRESS отправит
+        # уведомления
         procurement_request.executor = request.user
         procurement_request.started_at = timezone.now()
         procurement_request.status = ProcurementStatus.IN_PROGRESS
@@ -401,7 +422,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def complete(self, request, pk=None):
         """Завершить заявку (перевод в статус COMPLETED)."""
         procurement_request = self.get_object()
@@ -409,15 +430,15 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         # Только исполнитель может завершить заявку
         if procurement_request.executor != request.user:
             return Response(
-                {'error': 'Только исполнитель заявки может завершить её'},
-                status=status.HTTP_403_FORBIDDEN
+                {"error": "Только исполнитель заявки может завершить её"},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         # Проверяем текущий статус
         if procurement_request.status != ProcurementStatus.IN_PROGRESS:
             return Response(
-                {'error': 'Только заявки в работе можно завершить'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Только заявки в работе можно завершить"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Меняем статус
@@ -430,7 +451,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
         """Отменить заявку."""
         procurement_request = self.get_object()
@@ -438,8 +459,8 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         # Только автор заявки может отменить её
         if procurement_request.requestor != request.user:
             return Response(
-                {'error': 'Только автор заявки может отменить её'},
-                status=status.HTTP_403_FORBIDDEN
+                {"error": "Только автор заявки может отменить её"},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         # Нельзя отменить уже завершённую или отменённую заявку
@@ -448,14 +469,14 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             ProcurementStatus.CANCELLED,
         ]:
             return Response(
-                {'error': 'Эту заявку нельзя отменить'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Эту заявку нельзя отменить"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        reason = request.data.get('reason', '')
+        reason = request.data.get("reason", "")
 
         # Сохраняем причину на экземпляре, чтобы сигнал мог её использовать
-        procurement_request.cancellation_reason = reason or 'не указана'
+        procurement_request.cancellation_reason = reason or "не указана"
 
         # Меняем статус; сигнал post_save(ProcurementRequest) с CANCELLED
         # уведомит согласующих с указанием причины
@@ -469,17 +490,21 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 class ProcurementItemViewSet(viewsets.ModelViewSet):
     """ViewSet для позиций заявок."""
 
-    queryset = ProcurementItem.objects.select_related('request')
+    queryset = ProcurementItem.objects.select_related("request")
     serializer_class = ProcurementItemSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ['request']
-    search_fields = ['name', 'description']
+    filterset_fields = ["request"]
+    search_fields = ["name", "description"]
 
     def get_permissions(self):
         """Только создатель заявки может редактировать позиции."""
         if self.action in [
-            'create', 'update', 'partial_update', 'destroy',
-            'create_equipment', 'link_equipment'
+            "create",
+            "update",
+            "partial_update",
+            "destroy",
+            "create_equipment",
+            "link_equipment",
         ]:
             permission_classes = [permissions.IsAuthenticated]
         else:
@@ -497,7 +522,7 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         """
         from rest_framework.exceptions import PermissionDenied
 
-        procurement_request = serializer.validated_data.get('request')
+        procurement_request = serializer.validated_data.get("request")
         user = self.request.user
 
         # Проверяем, что заявка в DRAFT
@@ -514,7 +539,7 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
             return
 
         # Модельные права
-        if user.has_perm('procurement.change_procurementrequest'):
+        if user.has_perm("procurement.change_procurementrequest"):
             serializer.save()
             return
 
@@ -529,9 +554,7 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
             return
 
         # Нет прав
-        raise PermissionDenied(
-            "Вы не можете добавлять позиции в эту заявку"
-        )
+        raise PermissionDenied("Вы не можете добавлять позиции в эту заявку")
 
     def _check_item_edit_permission(self, item):
         """Проверка прав на редактирование позиции.
@@ -556,7 +579,7 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
             return True
 
         # Модельные права
-        if user.has_perm('procurement.change_procurementrequest'):
+        if user.has_perm("procurement.change_procurementrequest"):
             return True
 
         # Автор заявки
@@ -568,9 +591,7 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
             return True
 
         # Нет прав
-        raise PermissionDenied(
-            "Вы не можете изменять позиции в этой заявке"
-        )
+        raise PermissionDenied("Вы не можете изменять позиции в этой заявке")
 
     def perform_update(self, serializer):
         """Проверяем права при обновлении позиции."""
@@ -583,7 +604,7 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         self._check_item_edit_permission(instance)
         instance.delete()
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def create_equipment(self, request, pk=None):
         """Создать оборудование из позиции закупки.
 
@@ -596,44 +617,45 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         # Проверяем, что заявка завершена
         if item.request.status != ProcurementStatus.COMPLETED:
             return Response(
-                {'error': 'Оборудование можно создать только из '
-                          'завершённой заявки'},
-                status=status.HTTP_400_BAD_REQUEST
+                {
+                    "error": "Оборудование можно создать только из "
+                    "завершённой заявки"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Проверяем, что оборудование еще не создано
         if item.equipment is not None:
             return Response(
-                {'error': 'Оборудование для этой позиции уже создано'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Оборудование для этой позиции уже создано"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Получаем данные из запроса
-        inventory_number = request.data.get('inventory_number')
-        category_id = request.data.get('category')
-        department_id = request.data.get('department')
-        serial_number = request.data.get('serial_number', '')
-        location = request.data.get('location', '')
-        warranty_until = request.data.get('warranty_until')
-        responsible_person_id = request.data.get('responsible_person')
+        inventory_number = request.data.get("inventory_number")
+        category_id = request.data.get("category")
+        department_id = request.data.get("department")
+        serial_number = request.data.get("serial_number", "")
+        location = request.data.get("location", "")
+        warranty_until = request.data.get("warranty_until")
+        responsible_person_id = request.data.get("responsible_person")
 
         # Валидация обязательных полей
         if not inventory_number:
             return Response(
-                {'error': 'Укажите инвентарный номер'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Укажите инвентарный номер"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         if not category_id:
             return Response(
-                {'error': 'Укажите категорию оборудования'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Укажите категорию оборудования"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         if not department_id:
             return Response(
-                {'error': 'Укажите отдел'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Укажите отдел"}, status=status.HTTP_400_BAD_REQUEST
             )
 
         # Проверяем уникальность инвентарного номера
@@ -642,13 +664,16 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         ).exists()
         if exists:
             return Response(
-                {'error': f'Инвентарный номер "{inventory_number}" '
-                 'уже используется'},
-                status=status.HTTP_400_BAD_REQUEST
+                {
+                    "error": f'Инвентарный номер "{inventory_number}" '
+                    "уже используется"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Создаем оборудование
         from django.utils import timezone
+
         try:
             equipment = Equipment.objects.create(
                 name=item.name,
@@ -666,24 +691,27 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
             )
         except Exception as e:
             return Response(
-                {'error': f'Ошибка создания оборудования: {str(e)}'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": f"Ошибка создания оборудования: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Связываем оборудование с позицией закупки
         item.equipment = equipment
         item.save()
 
-        return Response({
-            'message': 'Оборудование успешно создано',
-            'equipment': {
-                'id': equipment.id,
-                'name': equipment.name,
-                'inventory_number': equipment.inventory_number,
-            }
-        }, status=status.HTTP_201_CREATED)
+        return Response(
+            {
+                "message": "Оборудование успешно создано",
+                "equipment": {
+                    "id": equipment.id,
+                    "name": equipment.name,
+                    "inventory_number": equipment.inventory_number,
+                },
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def link_equipment(self, request, pk=None):
         """Связать существующее оборудование с позицией закупки.
 
@@ -695,23 +723,25 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         # Проверяем, что заявка завершена
         if item.request.status != ProcurementStatus.COMPLETED:
             return Response(
-                {'error': 'Связывать оборудование можно только '
-                          'с позициями завершённых заявок'},
-                status=status.HTTP_400_BAD_REQUEST
+                {
+                    "error": "Связывать оборудование можно только "
+                    "с позициями завершённых заявок"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Проверяем, что оборудование ещё не связано
         if item.equipment is not None:
             return Response(
-                {'error': 'Оборудование для этой позиции уже связано'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Оборудование для этой позиции уже связано"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        equipment_id = request.data.get('equipment_id')
+        equipment_id = request.data.get("equipment_id")
         if not equipment_id:
             return Response(
-                {'error': 'Укажите ID оборудования'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Укажите ID оборудования"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Находим оборудование
@@ -719,54 +749,58 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
             equipment = Equipment.objects.get(pk=equipment_id)
         except Equipment.DoesNotExist:
             return Response(
-                {'error': 'Оборудование не найдено'},
-                status=status.HTTP_404_NOT_FOUND
+                {"error": "Оборудование не найдено"},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         # Проверяем, что оборудование ещё не привязано к другой позиции
-        if hasattr(equipment, 'procurement_item') and equipment.procurement_item:
+        if (
+            hasattr(equipment, "procurement_item")
+            and equipment.procurement_item
+        ):
             return Response(
-                {'error': 'Это оборудование уже связано с другой позицией'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Это оборудование уже связано с другой позицией"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Связываем
         item.equipment = equipment
         item.save()
 
-        return Response({
-            'message': 'Оборудование успешно связано с позицией',
-            'equipment': {
-                'id': equipment.id,
-                'name': equipment.name,
-                'inventory_number': equipment.inventory_number,
-            }
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "message": "Оборудование успешно связано с позицией",
+                "equipment": {
+                    "id": equipment.id,
+                    "name": equipment.name,
+                    "inventory_number": equipment.inventory_number,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class EquipmentCategoryViewSet(viewsets.ModelViewSet):
     """ViewSet для категорий оборудования."""
 
-    queryset = EquipmentCategory.objects.prefetch_related('children')
+    queryset = EquipmentCategory.objects.prefetch_related("children")
     serializer_class = EquipmentCategorySerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['name', 'description']
-    ordering = ['name']
+    search_fields = ["name", "description"]
+    ordering = ["name"]
 
     def get_permissions(self):
         """Чтение доступно всем сотрудникам, изменение только уполномоченным."""
         return [CanManageEquipmentCategory()]
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=["get"])
     def children(self, request, pk=None):
         """Получить подкатегории."""
         category = self.get_object()
-        serializer = self.get_serializer(
-            category.children.all(), many=True
-        )
+        serializer = self.get_serializer(category.children.all(), many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=["get"])
     def tree(self, request):
         """Получить дерево категорий."""
         # Получаем только корневые категории
@@ -779,7 +813,7 @@ class EquipmentViewSet(viewsets.ModelViewSet):
     """ViewSet для оборудования."""
 
     queryset = Equipment.objects.select_related(
-        'category', 'department', 'responsible_person'
+        "category", "department", "responsible_person"
     )
     filter_backends = [
         DjangoFilterBackend,
@@ -787,20 +821,20 @@ class EquipmentViewSet(viewsets.ModelViewSet):
         filters.OrderingFilter,
     ]
     filterset_fields = {
-        'status': ['exact'],
-        'category': ['exact'],
-        'department': ['exact'],
-        'responsible_person': ['exact'],
-        'purchase_date': ['gte', 'lte'],
+        "status": ["exact"],
+        "category": ["exact"],
+        "department": ["exact"],
+        "responsible_person": ["exact"],
+        "purchase_date": ["gte", "lte"],
     }
     search_fields = [
-        'name',
-        'inventory_number',
-        'serial_number',
-        'location',
+        "name",
+        "inventory_number",
+        "serial_number",
+        "location",
     ]
-    ordering_fields = ['purchase_date', 'name', 'created_at']
-    ordering = ['-created_at']
+    ordering_fields = ["purchase_date", "name", "created_at"]
+    ordering = ["-created_at"]
 
     def get_queryset(self):
         """Annotate comments_count."""
@@ -813,20 +847,26 @@ class EquipmentViewSet(viewsets.ModelViewSet):
 
         comments_sub = (
             Chat.objects.filter(
-                type='comments',
+                type="comments",
                 context_content_type=ct,
-                context_object_id=OuterRef('pk'),
+                context_object_id=OuterRef("pk"),
             )
-            .annotate(msg_count=Count('messages', filter=Q(messages__is_deleted=False)))
-            .values('msg_count')[:1]
+            .annotate(
+                msg_count=Count(
+                    "messages", filter=Q(messages__is_deleted=False)
+                )
+            )
+            .values("msg_count")[:1]
         )
         return qs.annotate(
-            comments_count=Subquery(comments_sub, output_field=IntegerField(default=0))
+            comments_count=Subquery(
+                comments_sub, output_field=IntegerField(default=0)
+            )
         )
 
     def get_serializer_class(self):
         """Выбрать сериализатор."""
-        if self.action == 'retrieve':
+        if self.action == "retrieve":
             return EquipmentDetailSerializer
         return EquipmentListSerializer
 
@@ -842,7 +882,7 @@ class EquipmentViewSet(viewsets.ModelViewSet):
         с автоматически сгенерированными инвентарными номерами.
         """
         try:
-            quantity = int(request.data.get('quantity', 1))
+            quantity = int(request.data.get("quantity", 1))
         except (ValueError, TypeError):
             quantity = 1
         quantity = max(1, min(quantity, 100))  # Ограничение от 1 до 100
@@ -861,32 +901,27 @@ class EquipmentViewSet(viewsets.ModelViewSet):
                 self.perform_create(serializer)
                 created_equipment.append(serializer.data)
             else:
-                errors.append({'index': i, 'errors': serializer.errors})
+                errors.append({"index": i, "errors": serializer.errors})
 
         if errors and not created_equipment:
             return Response(
-                {
-                    'detail': 'Не удалось создать оборудование',
-                    'errors': errors
-                },
-                status=status.HTTP_400_BAD_REQUEST
+                {"detail": "Не удалось создать оборудование", "errors": errors},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         return Response(
             {
-                'created_count': len(created_equipment),
-                'equipment': created_equipment,
-                'errors': errors if errors else None
+                "created_count": len(created_equipment),
+                "equipment": created_equipment,
+                "errors": errors if errors else None,
             },
-            status=status.HTTP_201_CREATED
+            status=status.HTTP_201_CREATED,
         )
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=["get"])
     def my_equipment(self, request):
         """Оборудование, за которое отвечает текущий пользователь."""
-        queryset = self.get_queryset().filter(
-            responsible_person=request.user
-        )
+        queryset = self.get_queryset().filter(responsible_person=request.user)
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
@@ -894,28 +929,28 @@ class EquipmentViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=["get"])
     def warranty_expiring(self, request):
         """Оборудование с истекающей гарантией (< 30 дней)."""
         from datetime import date, timedelta
+
         threshold = date.today() + timedelta(days=30)
 
         queryset = self.get_queryset().filter(
-            warranty_until__lte=threshold,
-            warranty_until__gte=date.today()
+            warranty_until__lte=threshold, warranty_until__gte=date.today()
         )
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'], url_path='generate-inventory-number')
+    @action(detail=False, methods=["get"], url_path="generate-inventory-number")
     def generate_inventory_number(self, request):
         """Генерация уникального инвентарного номера."""
         from procurement.services import InventoryNumberGenerator
 
         inventory_number = InventoryNumberGenerator.generate()
-        return Response({'inventory_number': inventory_number})
+        return Response({"inventory_number": inventory_number})
 
-    @action(detail=False, methods=['get'], url_path='create-options')
+    @action(detail=False, methods=["get"], url_path="create-options")
     def create_options(self, request):
         """Возвращает доступные опции для создания оборудования.
 
@@ -933,17 +968,16 @@ class EquipmentViewSet(viewsets.ModelViewSet):
 
         # Определяем уровень прав
         if user.is_staff or user.is_superuser:
-            perm_level = 'full'
-        elif user.has_perm('procurement.add_equipment'):
-            perm_level = 'full'
+            perm_level = "full"
+        elif user.has_perm("procurement.add_equipment"):
+            perm_level = "full"
         elif Department.objects.filter(head_id=user.id).exists():
-            perm_level = 'dept_head'
+            perm_level = "dept_head"
         else:
             # Проверяем скоуп-право
             user_dept_links = EmployeeDepartment.objects.filter(
-                employee_id=user.id,
-                is_active=True
-            ).select_related('department')
+                employee_id=user.id, is_active=True
+            ).select_related("department")
 
             has_scoped = False
             for link in user_dept_links:
@@ -953,90 +987,97 @@ class EquipmentViewSet(viewsets.ModelViewSet):
                     has_scoped = True
                     break
 
-            perm_level = 'scoped' if has_scoped else None
+            perm_level = "scoped" if has_scoped else None
 
         # Формируем ответ в зависимости от уровня прав
-        if perm_level == 'full':
+        if perm_level == "full":
             # Полный доступ — все отделы
-            departments = Department.objects.all().values('id', 'name')
-            return Response({
-                'allowed_departments': list(departments),
-                'can_choose_department': True,
-                'can_choose_responsible': True,
-                'default_responsible': None,
-                'permission_level': 'full',
-            })
+            departments = Department.objects.all().values("id", "name")
+            return Response(
+                {
+                    "allowed_departments": list(departments),
+                    "can_choose_department": True,
+                    "can_choose_responsible": True,
+                    "default_responsible": None,
+                    "permission_level": "full",
+                }
+            )
 
-        elif perm_level == 'dept_head':
+        elif perm_level == "dept_head":
             # Начальник — только свои отделы
-            departments = Department.objects.filter(
-                head_id=user.id
-            ).values('id', 'name')
-            return Response({
-                'allowed_departments': list(departments),
-                'can_choose_department': False,
-                'can_choose_responsible': True,
-                'default_responsible': {
-                    'id': user.id,
-                    'name': user.get_full_name(),
-                },
-                'permission_level': 'dept_head',
-            })
+            departments = Department.objects.filter(head_id=user.id).values(
+                "id", "name"
+            )
+            return Response(
+                {
+                    "allowed_departments": list(departments),
+                    "can_choose_department": False,
+                    "can_choose_responsible": True,
+                    "default_responsible": {
+                        "id": user.id,
+                        "name": user.get_full_name(),
+                    },
+                    "permission_level": "dept_head",
+                }
+            )
 
-        elif perm_level == 'scoped':
+        elif perm_level == "scoped":
             # Скоуп-право — отделы с правом, ответственный = начальник
             allowed_depts = []
             default_responsible = None
 
             user_dept_links = EmployeeDepartment.objects.filter(
-                employee_id=user.id,
-                is_active=True
-            ).select_related('department', 'department__head')
+                employee_id=user.id, is_active=True
+            ).select_related("department", "department__head")
 
             for link in user_dept_links:
                 if has_dept_perm(
                     user, link.department_id, DeptPerm.MANAGE_EQUIPMENT
                 ):
                     dept = link.department
-                    allowed_depts.append({'id': dept.id, 'name': dept.name})
+                    allowed_depts.append({"id": dept.id, "name": dept.name})
                     if default_responsible is None and dept.head:
                         default_responsible = {
-                            'id': dept.head.id,
-                            'name': dept.head.get_full_name(),
+                            "id": dept.head.id,
+                            "name": dept.head.get_full_name(),
                         }
 
-            return Response({
-                'allowed_departments': allowed_depts,
-                'can_choose_department': False,
-                'can_choose_responsible': False,
-                'default_responsible': default_responsible,
-                'permission_level': 'scoped',
-            })
+            return Response(
+                {
+                    "allowed_departments": allowed_depts,
+                    "can_choose_department": False,
+                    "can_choose_responsible": False,
+                    "default_responsible": default_responsible,
+                    "permission_level": "scoped",
+                }
+            )
 
         else:
             # Нет прав
-            return Response({
-                'allowed_departments': [],
-                'can_choose_department': False,
-                'can_choose_responsible': False,
-                'default_responsible': None,
-                'permission_level': None,
-            })
+            return Response(
+                {
+                    "allowed_departments": [],
+                    "can_choose_department": False,
+                    "can_choose_responsible": False,
+                    "default_responsible": None,
+                    "permission_level": None,
+                }
+            )
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def transfer(self, request, pk=None):
         """Перевод оборудования в другой отдел или другому пользователю."""
         equipment = self.get_object()
 
-        to_department_id = request.data.get('to_department')
-        to_person_id = request.data.get('to_person')
-        to_location = request.data.get('to_location')
-        reason = request.data.get('reason', '')
+        to_department_id = request.data.get("to_department")
+        to_person_id = request.data.get("to_person")
+        to_location = request.data.get("to_location")
+        reason = request.data.get("reason", "")
 
         if not to_department_id and not to_person_id:
             return Response(
-                {'error': 'Укажите отдел или ответственного'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Укажите отдел или ответственного"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Сохраняем старые значения
@@ -1050,22 +1091,23 @@ class EquipmentViewSet(viewsets.ModelViewSet):
                 equipment.department = to_department
             except Department.DoesNotExist:
                 return Response(
-                    {'error': 'Отдел не найден'},
-                    status=status.HTTP_404_NOT_FOUND
+                    {"error": "Отдел не найден"},
+                    status=status.HTTP_404_NOT_FOUND,
                 )
         else:
             to_department = from_department
 
         if to_person_id:
             from django.contrib.auth import get_user_model
+
             User = get_user_model()
             try:
                 to_person = User.objects.get(pk=to_person_id)
                 equipment.responsible_person = to_person
             except User.DoesNotExist:
                 return Response(
-                    {'error': 'Пользователь не найден'},
-                    status=status.HTTP_404_NOT_FOUND
+                    {"error": "Пользователь не найден"},
+                    status=status.HTTP_404_NOT_FOUND,
                 )
         else:
             to_person = from_person
@@ -1082,49 +1124,49 @@ class EquipmentViewSet(viewsets.ModelViewSet):
             to_department=to_department,
             from_person=from_person,
             to_person=to_person,
-            to_location=to_location or '',
+            to_location=to_location or "",
             reason=reason,
-            created_by=request.user
+            created_by=request.user,
         )
 
-        return Response({
-            'status': 'transferred',
-            'equipment_id': equipment.id,
-            'from_department': str(from_department),
-            'to_department': str(to_department)
-        })
+        return Response(
+            {
+                "status": "transferred",
+                "equipment_id": equipment.id,
+                "from_department": str(from_department),
+                "to_department": str(to_department),
+            }
+        )
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def write_off(self, request, pk=None):
         """Списание оборудования."""
         equipment = self.get_object()
-        reason = request.data.get('reason', '')
+        reason = request.data.get("reason", "")
 
         if equipment.status == EquipmentStatus.RETIRED:
             return Response(
-                {'error': 'Оборудование уже списано'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Оборудование уже списано"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         equipment.status = EquipmentStatus.RETIRED
-        equipment.notes = (equipment.notes or '') + f'\n\nСписано: {reason}'
+        equipment.notes = (equipment.notes or "") + f"\n\nСписано: {reason}"
         equipment.save()
 
-        return Response({
-            'status': 'written_off',
-            'equipment_id': equipment.id
-        })
+        return Response({"status": "written_off", "equipment_id": equipment.id})
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def add_maintenance(self, request, pk=None):
         """Добавить запись об обслуживании."""
         from datetime import date
+
         equipment = self.get_object()
 
-        maintenance_type = request.data.get('type', 'repair')
-        description = request.data.get('description', '')
-        cost = request.data.get('cost')
-        maintenance_date = request.data.get('date', date.today())
+        maintenance_type = request.data.get("type", "repair")
+        description = request.data.get("description", "")
+        cost = request.data.get("cost")
+        maintenance_date = request.data.get("date", date.today())
 
         record = MaintenanceRecord.objects.create(
             equipment=equipment,
@@ -1132,16 +1174,19 @@ class EquipmentViewSet(viewsets.ModelViewSet):
             description=description,
             cost=cost,
             date=maintenance_date,
-            performed_by=request.user
+            performed_by=request.user,
         )
 
-        return Response({
-            'status': 'created',
-            'maintenance_id': record.id,
-            'equipment_id': equipment.id
-        }, status=status.HTTP_201_CREATED)
+        return Response(
+            {
+                "status": "created",
+                "maintenance_id": record.id,
+                "equipment_id": equipment.id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=["get"])
     def qr_code(self, request, pk=None):
         """Получить QR-код для оборудования."""
         equipment = self.get_object()
@@ -1149,42 +1194,41 @@ class EquipmentViewSet(viewsets.ModelViewSet):
         qr_file = QRCodeGenerator.generate_for_equipment(equipment)
 
         from django.http import HttpResponse
-        response = HttpResponse(qr_file.read(), content_type='image/png')
-        response['Content-Disposition'] = (
+
+        response = HttpResponse(qr_file.read(), content_type="image/png")
+        response["Content-Disposition"] = (
             f'inline; filename="equipment_{equipment.id}_qr.png"'
         )
         return response
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=["get"])
     def transfer_history(self, request, pk=None):
         """История переводов оборудования."""
         equipment = self.get_object()
 
         logs = EquipmentTransferLog.objects.filter(
             equipment=equipment
-        ).order_by('-created_at')
+        ).order_by("-created_at")
 
         data = [
             {
-                'id': log.id,
-                'from_department': str(log.from_department),
-                'to_department': str(log.to_department),
-                'from_person': (
+                "id": log.id,
+                "from_department": str(log.from_department),
+                "to_department": str(log.to_department),
+                "from_person": (
                     str(log.from_person) if log.from_person else None
                 ),
-                'to_person': (
-                    str(log.to_person) if log.to_person else None
-                ),
-                'reason': log.reason,
-                'created_by': str(log.created_by) if log.created_by else None,
-                'date': log.created_at.isoformat()
+                "to_person": (str(log.to_person) if log.to_person else None),
+                "reason": log.reason,
+                "created_by": str(log.created_by) if log.created_by else None,
+                "date": log.created_at.isoformat(),
             }
             for log in logs
         ]
 
         return Response(data)
 
-    @action(detail=True, methods=['get', 'post'])
+    @action(detail=True, methods=["get", "post"])
     def comments(self, request, pk=None):
         """Список/создание комментариев для оборудования."""
         from api.v1.employees.serializers.employee import (
@@ -1193,24 +1237,26 @@ class EquipmentViewSet(viewsets.ModelViewSet):
 
         equipment = self.get_object()
 
-        if request.method in ('GET', 'HEAD'):
+        if request.method in ("GET", "HEAD"):
             messages = comments_helpers.get_comments(equipment)
             comments_data = []
             for msg in messages:
                 author_ser = EmployeeBriefSerializer(msg.author)
-                comments_data.append({
-                    'id': msg.id,
-                    'equipment': equipment.id,
-                    'author': author_ser.data,
-                    'text': msg.content,
-                    'created_at': msg.created_at,
-                })
+                comments_data.append(
+                    {
+                        "id": msg.id,
+                        "equipment": equipment.id,
+                        "author": author_ser.data,
+                        "text": msg.content,
+                        "created_at": msg.created_at,
+                    }
+                )
             return Response(comments_data)
 
-        text = request.data.get('text', '').strip()
+        text = request.data.get("text", "").strip()
         if not text:
             return Response(
-                {'text': ['Это поле не может быть пустым.']},
+                {"text": ["Это поле не может быть пустым."]},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1222,11 +1268,11 @@ class EquipmentViewSet(viewsets.ModelViewSet):
         author_ser = EmployeeBriefSerializer(message.author)
         return Response(
             {
-                'id': message.id,
-                'equipment': equipment.id,
-                'author': author_ser.data,
-                'text': message.content,
-                'created_at': message.created_at,
+                "id": message.id,
+                "equipment": equipment.id,
+                "author": author_ser.data,
+                "text": message.content,
+                "created_at": message.created_at,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -1234,17 +1280,17 @@ class EquipmentViewSet(viewsets.ModelViewSet):
     @extend_schema(
         parameters=[
             OpenApiParameter(
-                name='comment_id',
+                name="comment_id",
                 type=int,
                 location=OpenApiParameter.PATH,
-                description='ID комментария в чате комментариев оборудования.',
+                description="ID комментария в чате комментариев оборудования.",
             )
         ]
     )
     @action(
         detail=True,
-        methods=['delete'],
-        url_path='comments/(?P<comment_id>[^/.]+)',
+        methods=["delete"],
+        url_path="comments/(?P<comment_id>[^/.]+)",
     )
     def delete_comment(self, request, pk=None, comment_id=None):
         """Удаление комментария к оборудованию."""
@@ -1257,13 +1303,13 @@ class EquipmentViewSet(viewsets.ModelViewSet):
             message = Message.objects.get(id=comment_id, chat=chat)
         except Message.DoesNotExist:
             return Response(
-                {'detail': 'Комментарий не найден'},
+                {"detail": "Комментарий не найден"},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
         if not (request.user.is_staff or message.author == request.user):
             return Response(
-                {'detail': 'Нет прав на удаление'},
+                {"detail": "Нет прав на удаление"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -1279,16 +1325,16 @@ class MaintenanceRecordViewSet(viewsets.ModelViewSet):
     """ViewSet для записей обслуживания."""
 
     queryset = MaintenanceRecord.objects.select_related(
-        'equipment', 'performed_by'
+        "equipment", "performed_by"
     )
     serializer_class = MaintenanceRecordSerializer
     filter_backends = [
         DjangoFilterBackend,
         filters.OrderingFilter,
     ]
-    filterset_fields = ['equipment', 'type', 'performed_by']
-    ordering_fields = ['date']
-    ordering = ['-date']
+    filterset_fields = ["equipment", "type", "performed_by"]
+    ordering_fields = ["date"]
+    ordering = ["-date"]
 
     def perform_create(self, serializer):
         """При создании записи устанавливаем performed_by."""
@@ -1305,23 +1351,24 @@ class SupplierViewSet(viewsets.ModelViewSet):
         filters.SearchFilter,
         filters.OrderingFilter,
     ]
-    filterset_fields = ['is_active']
-    search_fields = ['name', 'contact_person', 'inn']
-    ordering_fields = ['name', 'rating']
-    ordering = ['name']
+    filterset_fields = ["is_active"]
+    search_fields = ["name", "contact_person", "inn"]
+    ordering_fields = ["name", "rating"]
+    ordering = ["name"]
 
     def get_permissions(self):
         """Права доступа."""
         permission_classes = [CanManageSupplier]
         return [permission() for permission in permission_classes]
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=["get"])
     def top_rated(self, request):
         """Получить поставщиков с лучшим рейтингом."""
-        queryset = self.get_queryset().filter(
-            is_active=True,
-            rating__gte=4.0
-        ).order_by('-rating')[:10]
+        queryset = (
+            self.get_queryset()
+            .filter(is_active=True, rating__gte=4.0)
+            .order_by("-rating")[:10]
+        )
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
@@ -1336,7 +1383,7 @@ class ProcurementStatsViewSet(viewsets.ViewSet):
         summary="Получить общую статистику закупок",
         responses=ProcurementOverviewStatsSerializer,
     )
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=["get"])
     def overview(self, request):
         """Общая статистика закупок."""
         from django.db.models import Sum, Count
@@ -1353,58 +1400,59 @@ class ProcurementStatsViewSet(viewsets.ViewSet):
             base_qs = ProcurementRequest.objects.all()
         else:
             base_qs = ProcurementRequest.objects.filter(
-                Q(requestor=user) |
-                Q(department__in=user.departments.all())
+                Q(requestor=user) | Q(department__in=user.departments.all())
             )
 
         # Подсчёт по статусам
         by_status = dict(
-            base_qs.values('status').annotate(
-                count=Count('id')
-            ).values_list('status', 'count')
+            base_qs.values("status")
+            .annotate(count=Count("id"))
+            .values_list("status", "count")
         )
 
         # Подсчёт по срочности
         by_urgency = dict(
-            base_qs.values('urgency').annotate(
-                count=Count('id')
-            ).values_list('urgency', 'count')
+            base_qs.values("urgency")
+            .annotate(count=Count("id"))
+            .values_list("urgency", "count")
         )
 
         # Общие метрики
         total = base_qs.count()
         pending = base_qs.filter(status=ProcurementStatus.PENDING).count()
         approved_month = base_qs.filter(
-            status=ProcurementStatus.APPROVED,
-            updated_at__gte=month_start
+            status=ProcurementStatus.APPROVED, updated_at__gte=month_start
         ).count()
         completed_month = base_qs.filter(
-            status=ProcurementStatus.COMPLETED,
-            completed_at__gte=month_start
+            status=ProcurementStatus.COMPLETED, completed_at__gte=month_start
         ).count()
 
         # Сумма потраченного за год
-        spent_year = base_qs.filter(
-            status=ProcurementStatus.COMPLETED,
-            completed_at__gte=year_start
-        ).aggregate(total=Sum('actual_cost'))['total'] or 0
+        spent_year = (
+            base_qs.filter(
+                status=ProcurementStatus.COMPLETED, completed_at__gte=year_start
+            ).aggregate(total=Sum("actual_cost"))["total"]
+            or 0
+        )
 
-        return Response({
-            'total_requests': total,
-            'pending_requests': pending,
-            'approved_this_month': approved_month,
-            'completed_this_month': completed_month,
-            'total_spent_this_year': str(spent_year),
-            'by_status': by_status,
-            'by_urgency': by_urgency,
-        })
+        return Response(
+            {
+                "total_requests": total,
+                "pending_requests": pending,
+                "approved_this_month": approved_month,
+                "completed_this_month": completed_month,
+                "total_spent_this_year": str(spent_year),
+                "by_status": by_status,
+                "by_urgency": by_urgency,
+            }
+        )
 
     @extend_schema(
         tags=["Procurement"],
         summary="Получить статистику закупок по отделам",
         responses=ProcurementDepartmentStatsSerializer(many=True),
     )
-    @action(detail=False, methods=['get'], url_path='by-department')
+    @action(detail=False, methods=["get"], url_path="by-department")
     def by_department(self, request):
         """Статистика по отделам."""
         from django.db.models import Sum
@@ -1415,8 +1463,8 @@ class ProcurementStatsViewSet(viewsets.ViewSet):
         if not (user.is_superuser or user.is_staff):
             if not user.headed_departments.exists():
                 return Response(
-                    {'detail': 'Нет доступа к статистике по отделам.'},
-                    status=status.HTTP_403_FORBIDDEN
+                    {"detail": "Нет доступа к статистике по отделам."},
+                    status=status.HTTP_403_FORBIDDEN,
                 )
             departments = user.headed_departments.all()
         else:
@@ -1426,15 +1474,20 @@ class ProcurementStatsViewSet(viewsets.ViewSet):
         for dept in departments:
             requests = ProcurementRequest.objects.filter(department=dept)
             total = requests.count()
-            spent = requests.filter(
-                status=ProcurementStatus.COMPLETED
-            ).aggregate(total=Sum('actual_cost'))['total'] or 0
+            spent = (
+                requests.filter(status=ProcurementStatus.COMPLETED).aggregate(
+                    total=Sum("actual_cost")
+                )["total"]
+                or 0
+            )
 
-            result.append({
-                'department': {'id': dept.id, 'name': dept.name},
-                'total_requests': total,
-                'total_spent': str(spent),
-            })
+            result.append(
+                {
+                    "department": {"id": dept.id, "name": dept.name},
+                    "total_requests": total,
+                    "total_spent": str(spent),
+                }
+            )
 
         return Response(result)
 
@@ -1442,11 +1495,11 @@ class ProcurementStatsViewSet(viewsets.ViewSet):
 class BudgetViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet для просмотра бюджетов отдела."""
 
-    queryset = Budget.objects.select_related('department')
+    queryset = Budget.objects.select_related("department")
     serializer_class = BudgetSerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['department', 'year', 'quarter']
-    ordering = ['-year', '-quarter', 'department__name']
+    filterset_fields = ["department", "year", "quarter"]
+    ordering = ["-year", "-quarter", "department__name"]
 
     def get_permissions(self):
         return [permissions.IsAuthenticated()]
@@ -1462,41 +1515,49 @@ class BudgetViewSet(viewsets.ReadOnlyModelViewSet):
         if headed_departments.exists():
             return queryset.filter(department__in=headed_departments)
 
-        if self.action == 'my_department':
+        if self.action == "my_department":
             return queryset
 
         return queryset.none()
 
     def list(self, request, *args, **kwargs):
         user = request.user
-        if not (user.is_superuser or user.is_staff or user.headed_departments.exists()):
+        if not (
+            user.is_superuser
+            or user.is_staff
+            or user.headed_departments.exists()
+        ):
             return Response(
-                {'detail': 'Нет доступа к бюджетам отделов.'},
+                {"detail": "Нет доступа к бюджетам отделов."},
                 status=status.HTTP_403_FORBIDDEN,
             )
         return super().list(request, *args, **kwargs)
 
-    @action(detail=False, methods=['get'], url_path='my-department')
+    @action(detail=False, methods=["get"], url_path="my-department")
     def my_department(self, request):
         """Бюджет текущего отдела пользователя на текущий квартал."""
         user_departments = request.user.departments.all()
         department = user_departments.first()
         if department is None:
             return Response(
-                {'detail': 'Пользователь не состоит ни в одном отделе.'},
+                {"detail": "Пользователь не состоит ни в одном отделе."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
         now = timezone.now()
         quarter = (now.month - 1) // 3 + 1
-        budget = self.get_queryset().filter(
-            department=department,
-            year=now.year,
-            quarter=quarter,
-        ).first()
+        budget = (
+            self.get_queryset()
+            .filter(
+                department=department,
+                year=now.year,
+                quarter=quarter,
+            )
+            .first()
+        )
         if budget is None:
             return Response(
-                {'detail': 'Бюджет на текущий квартал не найден.'},
+                {"detail": "Бюджет на текущий квартал не найден."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 

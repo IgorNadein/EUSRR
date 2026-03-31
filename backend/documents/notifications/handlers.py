@@ -47,13 +47,17 @@ def notify_document_ready(document, recipient):
         recipient=recipient,
         verb=NotificationVerbs.DOCUMENT_READY,
         action_object=document,
-        description=MessageTemplates.document_ready(uploader_name, document.title),
+        description=MessageTemplates.document_ready(
+            uploader_name, document.title
+        ),
         action_url=ActionURLs.DOCUMENTS,
         data={
-            'title': MessageTemplates.document_ready_title(),
-            'document_id': document.id,
-            'uploaded_by_id': document.uploaded_by.id if document.uploaded_by else None,
-            'sent_to_all': document.sent_to_all,
+            "title": MessageTemplates.document_ready_title(),
+            "document_id": document.id,
+            "uploaded_by_id": document.uploaded_by.id
+            if document.uploaded_by
+            else None,
+            "sent_to_all": document.sent_to_all,
         },
     )
 
@@ -65,9 +69,7 @@ def notify_all_employees(document):
     Args:
         document: Объект Document
     """
-    logger.info(
-        f"[handlers] notify_all_employees doc={document.id}"
-    )
+    logger.info(f"[handlers] notify_all_employees doc={document.id}")
 
     active_employees = Employee.objects.filter(is_active=True)
 
@@ -93,21 +95,26 @@ def notify_all_employees(document):
                 verb=NotificationVerbs.DOCUMENT_READY,
                 action_object=document,
                 description=MessageTemplates.document_ready(
-                    uploader_name,
-                    document.title),
+                    uploader_name, document.title
+                ),
                 action_url=ActionURLs.DOCUMENTS,
                 data={
-                    'title': MessageTemplates.document_ready_title(),
-                    'document_id': document.id,
-                    'uploaded_by_id': (
-                        document.uploaded_by.id if document.uploaded_by else None),
-                    'sent_to_all': document.sent_to_all,
+                    "title": MessageTemplates.document_ready_title(),
+                    "document_id": document.id,
+                    "uploaded_by_id": (
+                        document.uploaded_by.id
+                        if document.uploaded_by
+                        else None
+                    ),
+                    "sent_to_all": document.sent_to_all,
                 },
             )
             created_count += 1
         except Exception as e:
             logger.error(
-                f"[handlers] Error creating notification for user {employee.id}: {e}"
+                f"[handlers] Error creating notification for user {
+                    employee.id
+                }: {e}"
             )
 
     logger.info(
@@ -122,7 +129,7 @@ def notify_all_employees(document):
 
         def send_pending():
             try:
-                call_command('send_pending_notifications', '--batch-size=100')
+                call_command("send_pending_notifications", "--batch-size=100")
             except Exception as e:
                 logger.error(f"[handlers] Error in background send: {e}")
 
@@ -143,9 +150,7 @@ def notify_specific_users(document, user_ids):
         user_ids: Набор ID пользователей
     """
     recipient_count = len(user_ids or [])
-    logger.info(
-        f"[handlers] Processing {recipient_count} specific recipients"
-    )
+    logger.info(f"[handlers] Processing {recipient_count} specific recipients")
 
     # Определяем, это массовая рассылка или нет
     is_bulk = recipient_count >= get_bulk_threshold()
@@ -163,24 +168,25 @@ def notify_specific_users(document, user_ids):
     for user_id in user_ids:
         try:
             user = Employee.objects.get(id=user_id)
-            logger.debug(
-                f"[handlers] Creating notification for user={user_id}"
-            )
+            logger.debug(f"[handlers] Creating notification for user={user_id}")
             notify.send(
                 sender=document.uploaded_by,
                 recipient=user,
                 verb=NotificationVerbs.DOCUMENT_READY,
                 action_object=document,
                 description=MessageTemplates.document_ready(
-                    uploader_name,
-                    document.title),
+                    uploader_name, document.title
+                ),
                 action_url=ActionURLs.DOCUMENTS,
                 data={
-                    'title': MessageTemplates.document_ready_title(),
-                    'document_id': document.id,
-                    'uploaded_by_id': (
-                        document.uploaded_by.id if document.uploaded_by else None),
-                    'sent_to_all': document.sent_to_all,
+                    "title": MessageTemplates.document_ready_title(),
+                    "document_id": document.id,
+                    "uploaded_by_id": (
+                        document.uploaded_by.id
+                        if document.uploaded_by
+                        else None
+                    ),
+                    "sent_to_all": document.sent_to_all,
                 },
             )
             created_count += 1
@@ -188,7 +194,9 @@ def notify_specific_users(document, user_ids):
             logger.warning(f"[handlers] User {user_id} not found, skipping")
         except Exception as e:
             logger.error(
-                f"[handlers] Error creating notification for user {user_id}: {e}")
+                "[handlers] Error creating notification for user "
+                f"{user_id}: {e}"
+            )
 
     logger.info(f"[handlers] Created {created_count} notifications")
 
@@ -201,9 +209,7 @@ def notify_department_employees(document, department_ids):
         document: Объект Document
         department_ids: Набор ID отделов
     """
-    logger.info(
-        f"[handlers] Processing {len(department_ids)} departments"
-    )
+    logger.info(f"[handlers] Processing {len(department_ids)} departments")
 
     if not department_ids:
         logger.warning("[handlers] No departments provided")
@@ -228,9 +234,7 @@ def notify_department_employees(document, department_ids):
                 f"{[e.id for e in all_employees]}"
             )
         except Department.DoesNotExist:
-            logger.warning(
-                f"[handlers] Department {dept_id} not found"
-            )
+            logger.warning(f"[handlers] Department {dept_id} not found")
             continue
 
     # Исключаем загрузившего
@@ -264,22 +268,27 @@ def notify_department_employees(document, department_ids):
                 verb=NotificationVerbs.DOCUMENT_READY,
                 action_object=document,
                 description=MessageTemplates.document_ready(
-                    uploader_name,
-                    document.title),
+                    uploader_name, document.title
+                ),
                 action_url=ActionURLs.DOCUMENTS,
                 data={
-                    'title': MessageTemplates.document_ready_title(),
-                    'document_id': document.id,
-                    'uploaded_by_id': (
-                        document.uploaded_by.id if document.uploaded_by else None),
-                    'sent_to_all': document.sent_to_all,
+                    "title": MessageTemplates.document_ready_title(),
+                    "document_id": document.id,
+                    "uploaded_by_id": (
+                        document.uploaded_by.id
+                        if document.uploaded_by
+                        else None
+                    ),
+                    "sent_to_all": document.sent_to_all,
                 },
             )
             created_count += 1
         except Exception as e:
             logger.error(
                 f"[handlers] Error creating notification for employee {
-                    employee.id}: {e}")
+                    employee.id
+                }: {e}"
+            )
 
     logger.info(f"[handlers] Created {created_count} notifications")
 
@@ -295,7 +304,8 @@ def notify_all_acknowledged(document, total_recipients, acknowledged_count):
     """
     if not document.uploaded_by:
         logger.info(
-            "[handlers] Document has no uploader, skipping acknowledgement notification"
+            "[handlers] Document has no uploader, "
+            "skipping acknowledgement notification"
         )
         return
 
@@ -312,9 +322,9 @@ def notify_all_acknowledged(document, total_recipients, acknowledged_count):
         description=MessageTemplates.all_acknowledged(document.title),
         action_url=ActionURLs.DOCUMENTS,
         data={
-            'title': MessageTemplates.all_acknowledged_title(),
-            'document_id': document.id,
-            'total_recipients': total_recipients,
-            'acknowledged_count': acknowledged_count,
-        }
+            "title": MessageTemplates.all_acknowledged_title(),
+            "document_id": document.id,
+            "total_recipients": total_recipients,
+            "acknowledged_count": acknowledged_count,
+        },
     )

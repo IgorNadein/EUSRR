@@ -28,7 +28,8 @@ def create_request_notifications(sender, instance, created, **kwargs):
     Создает уведомления при создании или изменении заявления.
 
     Обрабатывает:
-    1. Новое заявление - помечаем для отправки уведомлений после установки recipients
+     1. Новое заявление - помечаем для отправки уведомлений
+         после установки recipients
     2. Изменение статуса - уведомление автору
     """
     try:
@@ -42,7 +43,8 @@ def create_request_notifications(sender, instance, created, **kwargs):
 
         if created and request_obj.status != "draft":
             # Помечаем заявление как ожидающее отправки уведомлений
-            # Уведомления будут отправлены после установки recipients через m2m_changed
+            # Уведомления будут отправлены после установки recipients через
+            # m2m_changed
             logger.debug(
                 f"[SIGNAL] Помечаем заявление #{request_obj.id} для отправки "
                 f"уведомлений после установки recipients"
@@ -57,10 +59,12 @@ def create_request_notifications(sender, instance, created, **kwargs):
 
                 if old_status != new_status:
                     logger.info(
-                        f"[SIGNAL] Статус изменен для заявления #{request_obj.id}: "
-                        f"{old_status} → {new_status}"
+                        f"[SIGNAL] Статус изменен для заявления #{
+                            request_obj.id
+                        }: {old_status} → {new_status}"
                     )
-                    # Отправляем уведомления напрямую - channels.py автоматически
+                    # Отправляем уведомления напрямую.
+                    # channels.py автоматически
                     # сделает асинхронную отправку через Celery
                     notify_status_change(request_obj, old_status, new_status)
 
@@ -92,7 +96,9 @@ def notify_on_recipients_changed(sender, instance, action, **kwargs):
         # Проверяем что это завершение операции установки recipients
         if action == "post_add" and instance.id in _pending_new_requests:
             logger.info(
-                f"[M2M_SIGNAL] Recipients установлены для заявления #{instance.id}, "
+                f"[M2M_SIGNAL] Recipients установлены для заявления #{
+                    instance.id
+                }, "
                 f"отправляем уведомления"
             )
             _pending_new_requests.discard(instance.id)
@@ -117,10 +123,13 @@ def notify_on_cc_users_changed(sender, instance, action, **kwargs):
         # Если это завершение добавления cc_users И заявление все еще ожидает
         # уведомлений
         if action == "post_add" and instance.id in _pending_new_requests:
-            # Проверяем что recipients пусты (значит уведомления еще не отправлены)
+            # Проверяем что recipients пусты (значит уведомления еще не
+            # отправлены)
             if instance.recipients.count() == 0:
                 logger.info(
-                    f"[M2M_SIGNAL] CC users установлены для заявления #{instance.id} "
+                    f"[M2M_SIGNAL] CC users установлены для заявления #{
+                        instance.id
+                    } "
                     f"(без recipients), отправляем уведомления"
                 )
                 _pending_new_requests.discard(instance.id)

@@ -120,7 +120,8 @@ class RequestAdmin(admin.ModelAdmin):
 
         super().save_model(request, obj, form, change)
 
-    # Массовые действия работают через методы модели (ставят approver и decided_at)
+    # Массовые действия работают через методы модели (ставят approver и
+    # decided_at)
     @admin.action(description=_("Одобрить выбранные"))
     def action_approve(self, request, queryset):
         updated = 0

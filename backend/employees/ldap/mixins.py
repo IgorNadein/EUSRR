@@ -38,13 +38,13 @@ class ModifyDnMixin:
         """Инициализация миксина с сохранением оригинального base_dn."""
         super().__init__(*args, **kwargs)
         # Сохраняем оригинальный base_dn для отслеживания изменений
-        self._original_base_dn = getattr(self, 'base_dn', None)
+        self._original_base_dn = getattr(self, "base_dn", None)
         # Сохраняем оригинальное значение RDN-атрибута (cn/ou)
         self._original_rdn_value = self._get_rdn_value()
 
     def _get_rdn_value(self):
         """Возвращает текущее значение RDN-атрибута (cn или ou)."""
-        rdn_attrs = getattr(self, 'rdn_attributes', [])
+        rdn_attrs = getattr(self, "rdn_attributes", [])
         for field in self._meta.fields:
             if field.db_column and field.db_column in rdn_attrs:
                 return getattr(self, field.name, None)
@@ -52,7 +52,7 @@ class ModifyDnMixin:
 
     def _set_rdn_value(self, value):
         """Устанавливает значение RDN-атрибута."""
-        rdn_attrs = getattr(self, 'rdn_attributes', [])
+        rdn_attrs = getattr(self, "rdn_attributes", [])
         for field in self._meta.fields:
             if field.db_column and field.db_column in rdn_attrs:
                 setattr(self, field.name, value)
@@ -69,11 +69,11 @@ class ModifyDnMixin:
         для новых — строим из rdn_attributes.
         """
         # Существующий объект — извлекаем RDN из DN (сохраняет регистр CN/OU)
-        if self.dn and ',' in self.dn:
-            return self.dn.split(',', 1)[0]
+        if self.dn and "," in self.dn:
+            return self.dn.split(",", 1)[0]
 
         # Новый объект — строим из rdn_attributes
-        rdn_attrs = getattr(self, 'rdn_attributes', [])
+        rdn_attrs = getattr(self, "rdn_attributes", [])
         for field in self._meta.fields:
             if field.db_column and field.db_column in rdn_attrs:
                 value = getattr(self, field.name)
@@ -93,17 +93,15 @@ class ModifyDnMixin:
         """
         from .infrastructure.connections import _ldap
 
-        is_existing = (
-            hasattr(self, '_saved_dn') and self._saved_dn
-        )
+        is_existing = hasattr(self, "_saved_dn") and self._saved_dn
 
         # --- 1) Перемещение между OU (base_dn изменился) ---
-        current_base_dn = getattr(self, 'base_dn', None)
+        current_base_dn = getattr(self, "base_dn", None)
         needs_move = (
-            is_existing and
-            self._original_base_dn and
-            current_base_dn and
-            current_base_dn != self._original_base_dn
+            is_existing
+            and self._original_base_dn
+            and current_base_dn
+            and current_base_dn != self._original_base_dn
         )
 
         if needs_move:
@@ -111,12 +109,12 @@ class ModifyDnMixin:
 
         # --- 2) RDN-атрибут (cn/ou) изменился ---
         new_rdn_value = self._get_rdn_value()
-        old_rdn_value = getattr(self, '_original_rdn_value', None)
+        old_rdn_value = getattr(self, "_original_rdn_value", None)
         needs_rename = (
-            is_existing and
-            old_rdn_value and
-            new_rdn_value and
-            new_rdn_value != old_rdn_value
+            is_existing
+            and old_rdn_value
+            and new_rdn_value
+            and new_rdn_value != old_rdn_value
         )
 
         if needs_rename:
@@ -130,7 +128,8 @@ class ModifyDnMixin:
         # --- 4) Выполняем rename если RDN изменился ---
         if needs_rename:
             from .utils.text_utils import esc_rdn
-            rdn_attrs = getattr(self, 'rdn_attributes', ['cn'])
+
+            rdn_attrs = getattr(self, "rdn_attributes", ["cn"])
             rdn_attr_name = rdn_attrs[0]  # 'cn' или 'ou'
             new_rdn = f"{rdn_attr_name.upper()}={esc_rdn(new_rdn_value)}"
 
@@ -146,9 +145,7 @@ class ModifyDnMixin:
                     self._saved_dn = new_dn
                     self._set_rdn_value(new_rdn_value)
                     self._original_rdn_value = new_rdn_value
-                    logger.info(
-                        f"ModifyDnMixin: Renamed {old_dn} → {new_dn}"
-                    )
+                    logger.info(f"ModifyDnMixin: Renamed {old_dn} → {new_dn}")
                 else:
                     logger.warning(
                         f"ModifyDnMixin: Failed to rename "
@@ -176,8 +173,10 @@ class ModifyDnMixin:
         """
         from .infrastructure.connections import _ldap
 
-        if not hasattr(self, '_saved_dn') or not self._saved_dn:
-            raise ValueError("Cannot move an object that hasn't been saved to LDAP yet")
+        if not hasattr(self, "_saved_dn") or not self._saved_dn:
+            raise ValueError(
+                "Cannot move an object that hasn't been saved to LDAP yet"
+            )
 
         old_dn = self._saved_dn
         new_rdn = self.build_rdn()
@@ -185,7 +184,8 @@ class ModifyDnMixin:
 
         with _ldap() as conn:
             success = conn.modify_dn(
-                old_dn, new_rdn,
+                old_dn,
+                new_rdn,
                 new_superior=new_base_dn,
             )
             if not success:
@@ -199,9 +199,9 @@ class ModifyDnMixin:
 
     @classmethod
     def from_db(cls, db, field_names, values):
-        """Переопределяем from_db для сохранения оригинальных значений при загрузке."""
+        """Сохраняет оригинальные значения при загрузке объекта из БД."""
         instance = super().from_db(db, field_names, values)
-        instance._original_base_dn = getattr(instance, 'base_dn', None)
+        instance._original_base_dn = getattr(instance, "base_dn", None)
         instance._original_rdn_value = instance._get_rdn_value()
         return instance
 
@@ -265,13 +265,12 @@ class LdapSyncStateMixin:
 
         # Обновляем состояние
         state, created = LdapSyncState.objects.get_or_create(
-            model=self._sync_model_name,
-            object_pk=str(django_pk)
+            model=self._sync_model_name, object_pk=str(django_pk)
         )
 
         state.touch(
             ldap_dn=str(self.dn),
-            sync_dir='ldap',
+            sync_dir="ldap",
             last_ldap_modify_ts=timezone.now(),
         )
 
@@ -290,8 +289,7 @@ class LdapSyncStateMixin:
             return
 
         deleted_count, _ = LdapSyncState.objects.filter(
-            model=self._sync_model_name,
-            object_pk=str(django_pk)
+            model=self._sync_model_name, object_pk=str(django_pk)
         ).delete()
 
         if deleted_count:
@@ -302,6 +300,6 @@ class LdapSyncStateMixin:
 
 
 __all__ = [
-    'ModifyDnMixin',
-    'LdapSyncStateMixin',
+    "ModifyDnMixin",
+    "LdapSyncStateMixin",
 ]

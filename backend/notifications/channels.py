@@ -21,7 +21,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@receiver(post_save, sender='notifications.Notification')
+@receiver(post_save, sender="notifications.Notification")
 def route_notification_to_channels(sender, instance, created, **kwargs):
     """
     Главный роутер уведомлений по каналам.
@@ -41,7 +41,9 @@ def route_notification_to_channels(sender, instance, created, **kwargs):
     # Проверяем что получатель указан
     if not user:
         logger.warning(
-            f'⚠️ Notification {notification.id} has no recipient, skipping delivery'
+            f"⚠️ Notification {
+                notification.id
+            } has no recipient, skipping delivery"
         )
         return
 
@@ -51,14 +53,16 @@ def route_notification_to_channels(sender, instance, created, **kwargs):
     except Exception:
         # Если настроек нет - создаем с дефолтными значениями
         from .models import UserChannelPreferences
+
         prefs = UserChannelPreferences.objects.create(user=user)
 
     # Проверяем, не отключен ли этот тип уведомлений
     if not prefs.is_verb_enabled(notification.verb):
         logger.debug(
-            f'Notification verb "{
-                notification.verb}" disabled for user {
-                user.id}')
+            f'Notification verb "{notification.verb}" disabled for user {
+                user.id
+            }'
+        )
         return
 
     # Импортируем задачи
@@ -79,8 +83,10 @@ def route_notification_to_channels(sender, instance, created, **kwargs):
         """Отправка по каналам после успешного коммита транзакции"""
         if is_dnd:
             logger.debug(
-                f'User {
-                    user.id} is in DND period, only web notifications (silent)')
+                f"User {
+                    user.id
+                } is in DND period, only web notifications (silent)"
+            )
             if prefs.web_enabled:
                 send_websocket_notification.delay(notification.id, silent=True)
             return
@@ -89,7 +95,7 @@ def route_notification_to_channels(sender, instance, created, **kwargs):
         if prefs.web_enabled:
             send_websocket_notification.delay(notification.id, silent=False)
 
-        if prefs.email_enabled and prefs.email_frequency == 'instant':
+        if prefs.email_enabled and prefs.email_frequency == "instant":
             send_email_notification.delay(notification.id)
 
         if prefs.push_enabled:
@@ -100,7 +106,8 @@ def route_notification_to_channels(sender, instance, created, **kwargs):
 
 # === Digest Email (для email_frequency = daily/weekly) ===
 
-def send_email_digest(user, frequency='daily'):
+
+def send_email_digest(user, frequency="daily"):
     """
     Отправка дайджеста уведомлений
 
@@ -114,12 +121,12 @@ def send_email_digest(user, frequency='daily'):
         from .models import Notification
 
         # Определяем период
-        if frequency == 'daily':
+        if frequency == "daily":
             since = timezone.now() - timedelta(days=1)
-        elif frequency == 'weekly':
+        elif frequency == "weekly":
             since = timezone.now() - timedelta(weeks=1)
         else:
-            raise ValueError(f'Invalid frequency: {frequency}')
+            raise ValueError(f"Invalid frequency: {frequency}")
 
         # Получаем неотправленные уведомления
         notifications = Notification.objects.filter(
@@ -127,10 +134,10 @@ def send_email_digest(user, frequency='daily'):
             timestamp__gte=since,
             emailed=False,
             deleted=False,
-        ).order_by('-timestamp')
+        ).order_by("-timestamp")
 
         if not notifications.exists():
-            logger.debug(f'No notifications to digest for user {user.id}')
+            logger.debug(f"No notifications to digest for user {user.id}")
             return
 
         # Используем EmailNotificationSender для отправки дайджеста
@@ -141,9 +148,9 @@ def send_email_digest(user, frequency='daily'):
 
         if success:
             logger.info(
-                f'Email digest ({frequency}) sent to {user.email} '
-                f'with {notifications.count()} notifications'
+                f"Email digest ({frequency}) sent to {user.email} "
+                f"with {notifications.count()} notifications"
             )
 
     except Exception as e:
-        logger.error(f'Failed to send email digest: {e}', exc_info=True)
+        logger.error(f"Failed to send email digest: {e}", exc_info=True)

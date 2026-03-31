@@ -50,13 +50,16 @@ class UserMapperService(BaseService):
         if not all(isinstance(x, str) for x in (sam, upn, cn)):
             raise TypeError("sam, upn и cn должны быть строками")
 
-        self._logger.debug(f"Building creation attributes for CN={cn}")
+        self._logger.debug(
+            f"Building creation attributes for CN={cn}"
+        )
 
         attrs: Dict[str, Any] = {
             "cn": cn,
             "sAMAccountName": sam,
             "userPrincipalName": upn,
-            "userAccountControl": UserAccountControl.DISABLED,  # Создаем отключенным
+            # Создаем пользователя отключенным.
+            "userAccountControl": UserAccountControl.DISABLED,
             "givenName": dto.first_name or None,
             "sn": dto.last_name or ".",  # sn обязателен, минимум точка
             "displayName": cn or None,
@@ -127,7 +130,8 @@ class UserMapperService(BaseService):
         if include_uac and "is_active" in changes:
             is_active = changes["is_active"]
             ldap_attrs["userAccountControl"] = (
-                UserAccountControl.ENABLED if is_active
+                UserAccountControl.ENABLED
+                if is_active
                 else UserAccountControl.DISABLED
             )
 
@@ -157,9 +161,7 @@ class UserMapperService(BaseService):
 
         try:
             processed = normalize_avatar_to_jpeg(
-                avatar_bytes,
-                size_px=size_px,
-                max_kb=max_kb
+                avatar_bytes, size_px=size_px, max_kb=max_kb
             )
 
             if processed:
@@ -211,7 +213,9 @@ class UserMapperService(BaseService):
 
         if changed:
             ldap_user.save()
-            self._logger.debug(f"Updated LDAP user attributes for DN={ldap_user.dn}")
+            self._logger.debug(
+                f"Updated LDAP user attributes for DN={ldap_user.dn}"
+            )
 
         return changed
 
@@ -228,9 +232,7 @@ class UserMapperService(BaseService):
 
         # Fallback из списка допустимых атрибутов
         candidates = getattr(
-            settings,
-            "LDAP_PHONE_ATTRS",
-            ("mobile", "telephoneNumber")
+            settings, "LDAP_PHONE_ATTRS", ("mobile", "telephoneNumber")
         )
 
         return candidates[0] if candidates else "telephoneNumber"

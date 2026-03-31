@@ -1,14 +1,21 @@
 """
 Serializers for Communications API
 """
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from ..models import (
-    Chat, Message, MessageAttachment,
-    MessageReaction, Poll, PollOption, ChatMembership, ChatUserSettings
+    Chat,
+    Message,
+    MessageAttachment,
+    MessageReaction,
+    Poll,
+    PollOption,
+    ChatMembership,
+    ChatUserSettings,
 )
 from ..serialization import serialize_message
 
@@ -39,27 +46,40 @@ class ChatUserSettingsSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ChatUserSettings
-        fields = ['is_pinned', 'notifications_enabled']
+        fields = ["is_pinned", "notifications_enabled"]
 
 
 class ChatMembershipSerializer(serializers.ModelSerializer):
     """Членство в чате"""
-    user_name = serializers.CharField(source='user.get_full_name', read_only=True)
+
+    user_name = serializers.CharField(
+        source="user.get_full_name", read_only=True
+    )
     can_manage_members = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = ChatMembership
         fields = [
-            'id', 'user', 'user_name', 'role',
-            'joined_at', 'invited_by', 'is_active', 'left_at',
-            'can_send_messages', 'can_add_members', 'can_remove_members',
-            'can_pin_messages', 'can_manage_members'
+            "id",
+            "user",
+            "user_name",
+            "role",
+            "joined_at",
+            "invited_by",
+            "is_active",
+            "left_at",
+            "can_send_messages",
+            "can_add_members",
+            "can_remove_members",
+            "can_pin_messages",
+            "can_manage_members",
         ]
-        read_only_fields = ['joined_at', 'left_at']
+        read_only_fields = ["joined_at", "left_at"]
 
 
 class ChatListSerializer(serializers.ModelSerializer):
     """Сериализатор для списка чатов (облегченный)"""
+
     last_message = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
     participant_names = serializers.SerializerMethodField()
@@ -70,20 +90,34 @@ class ChatListSerializer(serializers.ModelSerializer):
 
     # NEW: context info
     context_type = serializers.CharField(
-        source='context_content_type.model', read_only=True)
+        source="context_content_type.model", read_only=True
+    )
 
     class Meta:
         model = Chat
         fields = [
-            'id', 'type', 'name', 'description', 'avatar',
-            'created_at',
+            "id",
+            "type",
+            "name",
+            "description",
+            "avatar",
+            "created_at",
             # NEW: universal fields
-            'context_object_id', 'context_type', 'flags', 'extra_data', 'include_all_users',
+            "context_object_id",
+            "context_type",
+            "flags",
+            "extra_data",
+            "include_all_users",
             # DEPRECATED: для обратной совместимости
-            'is_main',
+            "is_main",
             # Messages & status
-            'last_message', 'unread_count', 'participant_names', 'member_ids',
-            'is_pinned', 'notifications_enabled', 'last_read_message_id'
+            "last_message",
+            "unread_count",
+            "participant_names",
+            "member_ids",
+            "is_pinned",
+            "notifications_enabled",
+            "last_read_message_id",
         ]
 
     @extend_schema_field(serializers.IntegerField())
@@ -91,67 +125,81 @@ class ChatListSerializer(serializers.ModelSerializer):
         """
         Количество непрочитанных из денормализованного поля.
 
-        ОПТИМИЗИРОВАНО: Использует prefetch'нутый my_read_state вместо подзапроса.
+        ОПТИМИЗИРОВАНО: Использует prefetch'нутый my_read_state
+        вместо подзапроса.
         """
-        if hasattr(obj, 'my_read_state') and obj.my_read_state:
+        if hasattr(obj, "my_read_state") and obj.my_read_state:
             return obj.my_read_state[0].unread_count
         return 0
 
     @extend_schema_field(ChatLastMessageSerializer)
     def get_last_message(self, obj):
         """Последнее сообщение в чате"""
-        last_msg = obj.messages.filter(is_deleted=False).order_by('-created_at').first()
+        last_msg = (
+            obj.messages.filter(is_deleted=False)
+            .order_by("-created_at")
+            .first()
+        )
         if last_msg:
             return {
-                'id': last_msg.id,
-                'content': last_msg.content[:100],
-                'author_name': last_msg.author.get_full_name() if last_msg.author else 'Unknown',
-                'created_at': last_msg.created_at.isoformat(),
+                "id": last_msg.id,
+                "content": last_msg.content[:100],
+                "author_name": last_msg.author.get_full_name()
+                if last_msg.author
+                else "Unknown",
+                "created_at": last_msg.created_at.isoformat(),
             }
         return None
 
     @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_participant_names(self, obj):
         """Имена участников (для приватных чатов)"""
-        if obj.type == 'private':
+        if obj.type == "private":
             active_members = obj.memberships.filter(
-                is_active=True).select_related('user')[:5]
+                is_active=True
+            ).select_related("user")[:5]
             return [m.user.get_full_name() for m in active_members]
         return []
 
-    @extend_schema_field(serializers.ListField(child=serializers.IntegerField()))
+    @extend_schema_field(
+        serializers.ListField(child=serializers.IntegerField())
+    )
     def get_member_ids(self, obj):
         """ID участников (из prefetch, для поиска существующего чата)"""
         return list(
-            obj.memberships.filter(is_active=True).values_list('user_id', flat=True)
+            obj.memberships.filter(is_active=True).values_list(
+                "user_id", flat=True
+            )
         )
 
     @extend_schema_field(serializers.BooleanField())
     def get_is_pinned(self, obj):
         """Закреплен ли чат для текущего пользователя (из prefetch)"""
-        if hasattr(obj, 'my_settings') and obj.my_settings:
+        if hasattr(obj, "my_settings") and obj.my_settings:
             return obj.my_settings[0].is_pinned
         return False
 
     @extend_schema_field(serializers.BooleanField())
     def get_notifications_enabled(self, obj):
         """Включены ли уведомления (из prefetch)"""
-        if hasattr(obj, 'my_settings') and obj.my_settings:
+        if hasattr(obj, "my_settings") and obj.my_settings:
             return obj.my_settings[0].notifications_enabled
         return True
 
     @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_last_read_message_id(self, obj):
         """ID последнего прочитанного сообщения (из prefetch)"""
-        if hasattr(obj, 'my_read_state') and obj.my_read_state:
+        if hasattr(obj, "my_read_state") and obj.my_read_state:
             return obj.my_read_state[0].last_read_message_id
         return None
 
 
 class ChatDetailSerializer(serializers.ModelSerializer):
-    """Детальный сериализатор чата
-    MIGRATION: Убрали participants, используем только memberships
+    """Детальный сериализатор чата.
+
+    MIGRATION: Убрали participants, используем только memberships.
     """
+
     participant_details = serializers.SerializerMethodField()
     memberships = ChatMembershipSerializer(many=True, read_only=True)
     user_settings = serializers.SerializerMethodField()
@@ -164,46 +212,69 @@ class ChatDetailSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
-    include_all_employees = serializers.BooleanField(write_only=True, required=False)
+    include_all_employees = serializers.BooleanField(
+        write_only=True, required=False
+    )
 
     # NEW: context info
     context_type = serializers.CharField(
-        source='context_content_type.model',
-        read_only=True,
-        allow_null=True)
+        source="context_content_type.model", read_only=True, allow_null=True
+    )
     context_app = serializers.CharField(
-        source='context_content_type.app_label',
-        read_only=True,
-        allow_null=True)
+        source="context_content_type.app_label", read_only=True, allow_null=True
+    )
 
     class Meta:
         model = Chat
         fields = [
-            'id', 'type', 'name', 'description', 'avatar',
-            'created_by', 'created_at',
+            "id",
+            "type",
+            "name",
+            "description",
+            "avatar",
+            "created_by",
+            "created_at",
             # NEW: universal fields
-            'context_content_type', 'context_object_id', 'context_type', 'context_app', 'flags', 'extra_data',
-            'include_all_users', 'include_all_employees',
-            # DEPRECATED: для обратной совместимости (не удалять до полной миграции
-            # клиента)
-            'is_main',
+            "context_content_type",
+            "context_object_id",
+            "context_type",
+            "context_app",
+            "flags",
+            "extra_data",
+            "include_all_users",
+            "include_all_employees",
+            # DEPRECATED: для обратной совместимости
+            # (не удалять до полной миграции клиента)
+            "is_main",
             # MIGRATION: Убрали 'participants', используем только memberships
-            'participant_details',
-            'memberships', 'user_settings', 'is_pinned',
-            'notifications_enabled', 'last_read_message_id'
+            "participant_details",
+            "memberships",
+            "user_settings",
+            "is_pinned",
+            "notifications_enabled",
+            "last_read_message_id",
         ]
-        read_only_fields = ['created_at', 'created_by', 'context_type', 'context_app']
+        read_only_fields = [
+            "created_at",
+            "created_by",
+            "context_type",
+            "context_app",
+        ]
 
     def create(self, validated_data):
-        include_all_employees = validated_data.pop('include_all_employees', None)
+        include_all_employees = validated_data.pop(
+            "include_all_employees", None
+        )
         if include_all_employees is not None:
-            validated_data['include_all_users'] = include_all_employees
+            validated_data["include_all_users"] = include_all_employees
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        include_all_employees = validated_data.pop('include_all_employees', None)
+        include_all_employees = validated_data.pop(
+            "include_all_employees", None
+        )
         if include_all_employees is not None:
-            validated_data['include_all_users'] = include_all_employees
+            validated_data["include_all_users"] = include_all_employees
         return super().update(instance, validated_data)
 
     @extend_schema_field(ChatParticipantPreviewSerializer(many=True))
@@ -213,39 +284,43 @@ class ChatDetailSerializer(serializers.ModelSerializer):
         """
         # Получаем активных участников через memberships
         active_memberships = obj.memberships.filter(
-            is_active=True).select_related('user')[:20]
+            is_active=True
+        ).select_related("user")[:20]
 
-        return [{
-            'id': m.user.id,
-            'name': m.user.get_full_name(),
-            'avatar': m.user.avatar.url if m.user.avatar else None
-        } for m in active_memberships]
+        return [
+            {
+                "id": m.user.id,
+                "name": m.user.get_full_name(),
+                "avatar": m.user.avatar.url if m.user.avatar else None,
+            }
+            for m in active_memberships
+        ]
 
     @extend_schema_field(ChatUserSettingsSerializer)
     def get_user_settings(self, obj):
         """Настройки текущего пользователя для чата (из prefetch)"""
-        if hasattr(obj, 'my_settings') and obj.my_settings:
+        if hasattr(obj, "my_settings") and obj.my_settings:
             return ChatUserSettingsSerializer(obj.my_settings[0]).data
-        return {'is_pinned': False, 'notifications_enabled': True}
+        return {"is_pinned": False, "notifications_enabled": True}
 
     @extend_schema_field(serializers.BooleanField())
     def get_is_pinned(self, obj):
         """Закреплен ли чат для текущего пользователя (из prefetch)"""
-        if hasattr(obj, 'my_settings') and obj.my_settings:
+        if hasattr(obj, "my_settings") and obj.my_settings:
             return obj.my_settings[0].is_pinned
         return False
 
     @extend_schema_field(serializers.BooleanField())
     def get_notifications_enabled(self, obj):
         """Включены ли уведомления для текущего пользователя (из prefetch)"""
-        if hasattr(obj, 'my_settings') and obj.my_settings:
+        if hasattr(obj, "my_settings") and obj.my_settings:
             return obj.my_settings[0].notifications_enabled
         return True
 
     @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_last_read_message_id(self, obj):
         """ID последнего прочитанного сообщения (из prefetch)"""
-        if hasattr(obj, 'my_read_state') and obj.my_read_state:
+        if hasattr(obj, "my_read_state") and obj.my_read_state:
             return obj.my_read_state[0].last_read_message_id
         return None
 
@@ -256,31 +331,49 @@ class MessageAttachmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = MessageAttachment
         fields = [
-            'id', 'file_name', 'file_type', 'file_size',
-            'mime_type', 'file', 'thumbnail', 'uploaded_at',
-            'width', 'height'
+            "id",
+            "file_name",
+            "file_type",
+            "file_size",
+            "mime_type",
+            "file",
+            "thumbnail",
+            "uploaded_at",
+            "width",
+            "height",
         ]
-        read_only_fields = ['uploaded_at', 'width', 'height']
+        read_only_fields = ["uploaded_at", "width", "height"]
 
 
 class MessageReactionSerializer(serializers.ModelSerializer):
     """Реакция на сообщение"""
-    user_name = serializers.CharField(source='user.get_full_name', read_only=True)
+
+    user_name = serializers.CharField(
+        source="user.get_full_name", read_only=True
+    )
 
     class Meta:
         model = MessageReaction
-        fields = ['id', 'emoji', 'user', 'user_name', 'created_at']
-        read_only_fields = ['created_at']
+        fields = ["id", "emoji", "user", "user_name", "created_at"]
+        read_only_fields = ["created_at"]
 
 
 class PollOptionSerializer(serializers.ModelSerializer):
     """Опция голосования"""
+
     percentage = serializers.SerializerMethodField()
     voters = serializers.SerializerMethodField()
 
     class Meta:
         model = PollOption
-        fields = ['id', 'text', 'position', 'vote_count', 'percentage', 'voters']
+        fields = [
+            "id",
+            "text",
+            "position",
+            "vote_count",
+            "percentage",
+            "voters",
+        ]
 
     @extend_schema_field(serializers.FloatField())
     def get_percentage(self, obj):
@@ -296,12 +389,12 @@ class PollOptionSerializer(serializers.ModelSerializer):
             return []
 
         # Возвращаем список с именами
-        votes = obj.votes.select_related('voter').all()
+        votes = obj.votes.select_related("voter").all()
         return [
             {
-                'voter__first_name': vote.voter.first_name,
-                'voter__last_name': vote.voter.last_name,
-                'voter__id': vote.voter.id
+                "voter__first_name": vote.voter.first_name,
+                "voter__last_name": vote.voter.last_name,
+                "voter__id": vote.voter.id,
             }
             for vote in votes
         ]
@@ -309,6 +402,7 @@ class PollOptionSerializer(serializers.ModelSerializer):
 
 class PollSerializer(serializers.ModelSerializer):
     """Голосование"""
+
     options = PollOptionSerializer(many=True, read_only=True)
     user_voted_option_ids = serializers.SerializerMethodField()
 
@@ -317,29 +411,45 @@ class PollSerializer(serializers.ModelSerializer):
         child=serializers.CharField(max_length=200),
         write_only=True,
         required=False,
-        help_text="Список вариантов ответов (строки)"
+        help_text="Список вариантов ответов (строки)",
     )
     chat_id = serializers.IntegerField(write_only=True, required=True)
     correct_option_index = serializers.IntegerField(
-        write_only=True, required=False, allow_null=True)
+        write_only=True, required=False, allow_null=True
+    )
     closes_in_minutes = serializers.IntegerField(
-        write_only=True, required=False, allow_null=True)
+        write_only=True, required=False, allow_null=True
+    )
 
     class Meta:
         model = Poll
         fields = [
-            'id', 'message', 'question', 'is_anonymous', 'is_multiple_choice',
-            'is_quiz', 'is_closed', 'closes_at', 'allows_custom_answers',
-            'total_voters', 'options', 'user_voted_option_ids',
+            "id",
+            "message",
+            "question",
+            "is_anonymous",
+            "is_multiple_choice",
+            "is_quiz",
+            "is_closed",
+            "closes_at",
+            "allows_custom_answers",
+            "total_voters",
+            "options",
+            "user_voted_option_ids",
             # write_only поля
-            'options_data', 'chat_id', 'correct_option_index', 'closes_in_minutes'
+            "options_data",
+            "chat_id",
+            "correct_option_index",
+            "closes_in_minutes",
         ]
-        read_only_fields = ['id', 'message', 'is_closed', 'total_voters']
+        read_only_fields = ["id", "message", "is_closed", "total_voters"]
 
-    @extend_schema_field(serializers.ListField(child=serializers.IntegerField()))
+    @extend_schema_field(
+        serializers.ListField(child=serializers.IntegerField())
+    )
     def get_user_voted_option_ids(self, obj):
         """ID опций за которые проголосовал текущий пользователь"""
-        request = self.context.get('request')
+        request = self.context.get("request")
         if request and request.user.is_authenticated:
             votes = obj.votes.filter(voter=request.user)
             return [v.option_id for v in votes]
@@ -356,51 +466,56 @@ class PollSerializer(serializers.ModelSerializer):
         logger.info(f"[PollSerializer.create] validated_data: {validated_data}")
 
         # Извлекаем данные для создания
-        options_data = validated_data.pop('options_data', [])
-        chat_id = validated_data.pop('chat_id')
-        correct_option_index = validated_data.pop('correct_option_index', None)
-        closes_in_minutes = validated_data.pop('closes_in_minutes', None)
+        options_data = validated_data.pop("options_data", [])
+        chat_id = validated_data.pop("chat_id")
+        correct_option_index = validated_data.pop("correct_option_index", None)
+        closes_in_minutes = validated_data.pop("closes_in_minutes", None)
 
         logger.info(
-            f"[PollSerializer.create] options_data: {options_data}, chat_id: {chat_id}")
+            f"[PollSerializer.create] options_data: {options_data}, "
+            f"chat_id: {chat_id}"
+        )
 
-        # Получаем автора (может быть передан через perform_create или взять из запроса)
-        author = validated_data.pop('author', None) or self.context.get('request').user
+        # Получаем автора (может быть передан через perform_create или взять из
+        # запроса)
+        author = (
+            validated_data.pop("author", None)
+            or self.context.get("request").user
+        )
 
         # Создаем сообщение в чате
         try:
             chat = Chat.objects.get(id=chat_id)
         except Chat.DoesNotExist:
             logger.error(f"[PollSerializer.create] Chat {chat_id} not found")
-            raise serializers.ValidationError({'chat_id': 'Chat not found'})
+            raise serializers.ValidationError({"chat_id": "Chat not found"})
 
         message = Message.objects.create(
             chat=chat,
             author=author,
             content=f"📊 {validated_data['question']}",
-            is_system=False
+            is_system=False,
         )
 
         # Устанавливаем closes_at если указано
         if closes_in_minutes and closes_in_minutes > 0:
-            validated_data['closes_at'] = timezone.now(
-            ) + timedelta(minutes=closes_in_minutes)
+            validated_data["closes_at"] = timezone.now() + timedelta(
+                minutes=closes_in_minutes
+            )
 
         # Создаем голосование
         poll = Poll.objects.create(
-            message=message,
-            author=author,
-            **validated_data
+            message=message, author=author, **validated_data
         )
 
         # Создаем опции
         for index, option_text in enumerate(options_data):
-            is_correct = (correct_option_index is not None and index ==
-                          correct_option_index)
+            is_correct = (
+                correct_option_index is not None
+                and index == correct_option_index
+            )
             poll.options.create(
-                text=option_text,
-                position=index,
-                is_correct=is_correct
+                text=option_text, position=index, is_correct=is_correct
             )
 
         # Отправляем WebSocket уведомление о новом сообщении
@@ -414,33 +529,46 @@ class PollSerializer(serializers.ModelSerializer):
 
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
-            f'chat_{chat.id}',
+            f"chat_{chat.id}",
             {
-                'type': 'chat_message',
-                'chat_id': chat.id,
-                'payload': message_data
-            }
+                "type": "chat_message",
+                "chat_id": chat.id,
+                "payload": message_data,
+            },
         )
 
         logger.info(
-            f"[PollSerializer.create] WebSocket notification sent for message {
-                message.id}")
+            "[PollSerializer.create] WebSocket notification sent "
+            f"for message {message.id}"
+        )
 
         return poll
 
 
 class MessageListSerializer(serializers.ModelSerializer):
     """Облегченный сериализатор для списка сообщений"""
-    author_name = serializers.CharField(source='author.get_full_name', read_only=True)
+
+    author_name = serializers.CharField(
+        source="author.get_full_name", read_only=True
+    )
     author_avatar = serializers.SerializerMethodField()
     reactions_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
         fields = [
-            'id', 'content', 'author', 'author_name', 'author_avatar',
-            'created_at', 'is_edited', 'edited_at', 'is_deleted',
-            'is_pinned', 'has_attachments', 'reactions_summary'
+            "id",
+            "content",
+            "author",
+            "author_name",
+            "author_avatar",
+            "created_at",
+            "is_edited",
+            "edited_at",
+            "is_deleted",
+            "is_pinned",
+            "has_attachments",
+            "reactions_summary",
         ]
 
     @extend_schema_field(serializers.CharField(allow_null=True))
@@ -456,19 +584,22 @@ class MessageListSerializer(serializers.ModelSerializer):
         for reaction in obj.reactions.all():
             emoji = reaction.emoji
             if emoji not in reactions:
-                reactions[emoji] = {'count': 0, 'users': [], 'user_names': []}
-            reactions[emoji]['count'] += 1
-            reactions[emoji]['users'].append(reaction.user_id)
-            reactions[emoji]['user_names'].append(reaction.user.get_full_name())
+                reactions[emoji] = {"count": 0, "users": [], "user_names": []}
+            reactions[emoji]["count"] += 1
+            reactions[emoji]["users"].append(reaction.user_id)
+            reactions[emoji]["user_names"].append(reaction.user.get_full_name())
         return reactions
 
 
 class MessageDetailSerializer(serializers.ModelSerializer):
-    """Детальный сериализатор сообщения (использует функцию serialize_message)"""
+    """Детальный сериализатор сообщения.
+
+    Использует функцию serialize_message.
+    """
 
     class Meta:
         model = Message
-        fields = '__all__'
+        fields = "__all__"
 
     def to_representation(self, instance):
         """Используем существующую функцию сериализации"""
@@ -480,9 +611,7 @@ class MessageCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = [
-            'content', 'chat', 'reply_to', 'is_forwarded'
-        ]
+        fields = ["content", "chat", "reply_to", "is_forwarded"]
 
     def validate(self, attrs):
         """Валидация: сообщение должно иметь либо текст, либо вложения"""
@@ -491,37 +620,37 @@ class MessageCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         """Создание сообщения с автором"""
-        validated_data['author'] = self.context['request'].user
+        validated_data["author"] = self.context["request"].user
         return super().create(validated_data)
 
 
 class MessageEditSerializer(serializers.Serializer):
     """Сериализатор для редактирования сообщения"""
+
     content = serializers.CharField(required=False, allow_blank=True)
     existing_attachment_ids = serializers.ListField(
-        child=serializers.IntegerField(),
-        required=False,
-        allow_empty=True
+        child=serializers.IntegerField(), required=False, allow_empty=True
     )
 
 
 class ReactionSerializer(serializers.Serializer):
     """Сериализатор для добавления/удаления реакции"""
+
     emoji = serializers.CharField(max_length=10)
 
 
 class ForwardMessageSerializer(serializers.Serializer):
     """Сериализатор для пересылки сообщений"""
+
     message_ids = serializers.ListField(
-        child=serializers.IntegerField(),
-        min_length=1
+        child=serializers.IntegerField(), min_length=1
     )
     target_chat_id = serializers.IntegerField()
 
 
 class BulkDeleteSerializer(serializers.Serializer):
     """Сериализатор для массового удаления"""
+
     message_ids = serializers.ListField(
-        child=serializers.IntegerField(),
-        min_length=1
+        child=serializers.IntegerField(), min_length=1
     )

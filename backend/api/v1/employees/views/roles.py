@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 from django.shortcuts import get_object_or_404
-from employees.models import (Department, DepartmentPermission, DepartmentRole,
-                              DeptPerm, RoleAssignment)
+from employees.models import (
+    Department,
+    DepartmentPermission,
+    DepartmentRole,
+    DeptPerm,
+    RoleAssignment,
+)
 from employees.utils import _ensure_department_permissions
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -147,14 +152,16 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
             qs = DepartmentPermission.objects.filter(id__in=ids_int)
             if qs.count() != len(ids_int):
                 return Response(
-                    {"detail": "Некоторые permission_ids не найдены."}, status=400
+                    {"detail": "Некоторые permission_ids не найдены."},
+                    status=400,
                 )
         elif isinstance(codes, list) and codes:
             codes_set = set(codes)
             qs = DepartmentPermission.objects.filter(code__in=codes_set)
             if qs.count() != len(codes_set):
                 return Response(
-                    {"detail": "Некоторые permission_codes не найдены."}, status=400
+                    {"detail": "Некоторые permission_codes не найдены."},
+                    status=400,
                 )
         else:
             qs = DepartmentPermission.objects.none()
@@ -182,9 +189,13 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
                 "id": a.id,
                 "employee_id": a.employee_id,
                 "employee_name": str(a.employee) if a.employee else None,
-                "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
+                "assigned_at": a.assigned_at.isoformat()
+                if a.assigned_at
+                else None,
                 "assigned_by_id": a.assigned_by_id,
-                "assigned_by_name": str(a.assigned_by) if a.assigned_by else None,
+                "assigned_by_name": str(a.assigned_by)
+                if a.assigned_by
+                else None,
                 "is_active": a.is_active,
             }
             for a in qs.order_by("-assigned_at")
@@ -193,7 +204,10 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def assign(self, request, pk=None):
-        """Назначает роль сотруднику. Синхронизация LDAP требует реализации сигналов."""
+        """Назначает роль сотруднику.
+
+        Синхронизация LDAP требует реализации сигналов.
+        """
         role = self.get_object()
         employee_id = request.data.get("employee_id")
 
@@ -230,7 +244,10 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def revoke(self, request, pk=None):
-        """Отзывает роль у сотрудника. Синхронизация LDAP требует реализации сигналов."""
+        """Отзывает роль у сотрудника.
+
+        Синхронизация LDAP требует реализации сигналов.
+        """
         role = self.get_object()
         employee_id = request.data.get("employee_id")
 

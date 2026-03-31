@@ -1,8 +1,9 @@
 """
 Сервис для работы с должностями (Position) в Active Directory.
 
-Обрабатывает создание, обновление, удаление POS-групп (агрегаторных групп должностей),
-управление участниками (сотрудники с должностью), вложение POS-групп в целевые группы.
+Обрабатывает создание, обновление, удаление POS-групп
+(агрегаторных групп должностей), управление участниками
+(сотрудники с должностью), вложение POS-групп в целевые группы.
 
 Рефакторенная версия с улучшениями:
 - Наследуется от BaseService (логирование, _touch_state)
@@ -35,7 +36,8 @@ class PositionService(BaseService):
     - Синхронизацию состава участников POS-группы
 
     Зависимости (через Dependency Injection):
-    - GroupService: для операций с группами (add_members, remove_members, replace_members)
+        - GroupService: для операций с группами
+            (add_members, remove_members, replace_members)
     - UserService: для получения DN сотрудника
     """
 
@@ -44,7 +46,8 @@ class PositionService(BaseService):
         Инициализация PositionService.
 
         Args:
-            group_service: Сервис для работы с группами (для управления членством)
+            group_service: Сервис для работы с группами
+            (для управления членством)
             user_service: Сервис для работы с пользователями (для получения DN)
         """
         super().__init__()
@@ -79,7 +82,8 @@ class PositionService(BaseService):
 
     def assign_position(self, employee: Employee, position: Position) -> None:
         """
-        Добавляет сотрудника в POS-группу должности и убеждается, что вложения POS в целевые группы актуальны.
+        Добавляет сотрудника в POS-группу должности
+        и убеждается, что вложения POS в целевые группы актуальны.
 
         Args:
             employee: Сотрудник
@@ -205,11 +209,13 @@ class PositionService(BaseService):
 
     def _ensure_position_group(self, conn: Connection, pos: Position) -> str:
         """
-        Гарантирует наличие агрегаторной группы должности: CN=POS_<name>,OU=Positions,...
+          Гарантирует наличие агрегаторной группы должности:
+          CN=POS_<name>,OU=Positions,...
         Обновляет pos.ldap_group_dn при необходимости и возвращает DN.
 
         Логика:
-        1. Если pos.ldap_group_dn существует - проверить существование и актуальность CN
+          1. Если pos.ldap_group_dn существует - проверить существование
+              и актуальность CN
         2. Если нет - искать по CN=POS_<name> в OU=Positions
         3. Если не найдено - создать новую POS-группу
         4. Обновить pos.ldap_group_dn в БД при изменениях
@@ -253,7 +259,9 @@ class PositionService(BaseService):
                 else:
                     new_dn = saved_dn
                 if new_dn != pos.ldap_group_dn:
-                    Position.objects.filter(pk=pos.pk).update(ldap_group_dn=new_dn)
+                    Position.objects.filter(pk=pos.pk).update(
+                        ldap_group_dn=new_dn
+                    )
                     pos.ldap_group_dn = new_dn
                 return new_dn
 
@@ -286,13 +294,17 @@ class PositionService(BaseService):
         pos.ldap_group_dn = dn
         return dn
 
-    def _reconcile_position_nesting(self, conn: Connection, position: Position) -> str:
+    def _reconcile_position_nesting(
+        self, conn: Connection, position: Position
+    ) -> str:
         """
-        Делает так, чтобы POS-группа должности была участником ровно тех AD-групп,
+        Делает так, чтобы POS-группа должности была участником
+        ровно тех AD-групп,
         что привязаны к Position.groups.
 
         Логика:
-        1. Получить список целевых групп из position.groups (Django Group -> DN в AD)
+          1. Получить список целевых групп из position.groups
+              (Django Group -> DN в AD)
         2. Получить список текущих групп, где POS-группа уже состоит
         3. Добавить POS-группу в недостающие целевые группы
         4. Удалить POS-группу из лишних групп
@@ -373,9 +385,9 @@ class PositionService(BaseService):
 
         # 3) участники POS_* = сотрудники с этой позицией
         emp_ids = list(
-            Employee.objects.filter(position_id=pos.id, is_active=True).values_list(
-                "id", flat=True
-            )
+            Employee.objects.filter(
+                position_id=pos.id, is_active=True
+            ).values_list("id", flat=True)
         )
         dn_map = dict(
             LdapSyncState.objects.filter(

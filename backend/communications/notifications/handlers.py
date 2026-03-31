@@ -179,7 +179,8 @@ def notify_new_message(message):
         if chat.type == 'private':
             title = MessageTemplates.private_message(author_name)
         else:
-            title = MessageTemplates.group_message(author_name, get_chat_name(chat))
+            title = MessageTemplates.group_message(
+                author_name, get_chat_name(chat))
         max_length = 100
         is_announcement = False
 
@@ -308,7 +309,8 @@ def notify_chat_added(chat, new_users, added_by=None):
         added_by: Пользователь, который добавил (опционально)
     """
     # ОПТИМИЗАЦИЯ: Загружаем настройки одним запросом
-    notification_settings = get_users_with_notifications_enabled(chat, new_users)
+    notification_settings = get_users_with_notifications_enabled(
+        chat, new_users)
 
     # Создаем уведомления для новых участников
     for user in new_users:

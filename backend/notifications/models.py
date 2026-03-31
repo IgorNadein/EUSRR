@@ -41,10 +41,7 @@ class NotificationQuerySet(QuerySet):
         if recipient:
             qs = qs.filter(recipient=recipient)
 
-        return qs.update(
-            unread=False,
-            timestamp_read=timezone.now()
-        )
+        return qs.update(unread=False, timestamp_read=timezone.now())
 
     def mark_all_as_unread(self, recipient=None):
         """Отметить все как непрочитанные"""
@@ -52,10 +49,7 @@ class NotificationQuerySet(QuerySet):
         if recipient:
             qs = qs.filter(recipient=recipient)
 
-        return qs.update(
-            unread=True,
-            timestamp_read=None
-        )
+        return qs.update(unread=True, timestamp_read=None)
 
     def deleted(self):
         """Удаленные уведомления"""
@@ -92,81 +86,77 @@ class Notification(models.Model):
     recipient = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='notifications',
-        verbose_name='Получатель',
-        help_text='Кому адресовано уведомление'
+        related_name="notifications",
+        verbose_name="Получатель",
+        help_text="Кому адресовано уведомление",
     )
 
     # Кто совершил действие (GenericForeignKey)
     actor_content_type = models.ForeignKey(
         ContentType,
-        related_name='notify_actor',
+        related_name="notify_actor",
         on_delete=models.CASCADE,
         null=True,
         blank=True,
-        verbose_name='Тип актора'
+        verbose_name="Тип актора",
     )
     actor_object_id = models.CharField(
-        max_length=255,
-        null=True,
-        blank=True,
-        verbose_name='ID актора'
+        max_length=255, null=True, blank=True, verbose_name="ID актора"
     )
-    actor = GenericForeignKey('actor_content_type', 'actor_object_id')
+    actor = GenericForeignKey("actor_content_type", "actor_object_id")
 
     # Что произошло
     verb = models.CharField(
         max_length=255,
-        default='notification',
-        verbose_name='Действие',
-        help_text='Например: liked, commented, approved, mentioned',
-        db_index=True
+        default="notification",
+        verbose_name="Действие",
+        help_text="Например: liked, commented, approved, mentioned",
+        db_index=True,
     )
 
     # Объект действия (GenericForeignKey) - опционально
     action_object_content_type = models.ForeignKey(
         ContentType,
-        related_name='notify_action_object',
+        related_name="notify_action_object",
         on_delete=models.CASCADE,
         null=True,
         blank=True,
-        verbose_name='Тип объекта действия'
+        verbose_name="Тип объекта действия",
     )
     action_object_object_id = models.CharField(
         max_length=255,
         null=True,
         blank=True,
-        verbose_name='ID объекта действия'
+        verbose_name="ID объекта действия",
     )
     action_object = GenericForeignKey(
-        'action_object_content_type',
-        'action_object_object_id'
+        "action_object_content_type", "action_object_object_id"
     )
 
     # Целевой объект (GenericForeignKey) - опционально
     target_content_type = models.ForeignKey(
         ContentType,
-        related_name='notify_target',
+        related_name="notify_target",
         on_delete=models.CASCADE,
         null=True,
         blank=True,
-        verbose_name='Тип целевого объекта'
+        verbose_name="Тип целевого объекта",
     )
     target_object_id = models.CharField(
         max_length=255,
         null=True,
         blank=True,
-        verbose_name='ID целевого объекта'
+        verbose_name="ID целевого объекта",
     )
-    target = GenericForeignKey('target_content_type', 'target_object_id')
+    target = GenericForeignKey("target_content_type", "target_object_id")
 
     # === Контент ===
 
     description = models.TextField(
         blank=True,
         null=True,
-        verbose_name='Описание',
-        help_text='Человекочитаемое описание уведомления'
+        verbose_name="Описание",
+        help_text="Человекочитаемое описание уведомления",
     )
 
     # URL для перехода
@@ -174,58 +164,50 @@ class Notification(models.Model):
         max_length=500,
         blank=True,
         null=True,
-        verbose_name='URL действия',
-        help_text='Куда перейти при клике на уведомление'
+        verbose_name="URL действия",
+        help_text="Куда перейти при клике на уведомление",
     )
 
     # Дополнительные данные (JSON)
     data = models.JSONField(
         default=dict,
         blank=True,
-        verbose_name='Дополнительные данные',
-        help_text='Любые метаданные для рендеринга или логики'
+        verbose_name="Дополнительные данные",
+        help_text="Любые метаданные для рендеринга или логики",
     )
 
     # === Статусы ===
 
     unread = models.BooleanField(
-        default=True,
-        db_index=True,
-        verbose_name='Непрочитано'
+        default=True, db_index=True, verbose_name="Непрочитано"
     )
 
     timestamp_read = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name='Время прочтения'
+        null=True, blank=True, verbose_name="Время прочтения"
     )
 
     public = models.BooleanField(
         default=True,
         db_index=True,
-        verbose_name='Публичное',
-        help_text='Можно показывать другим пользователям'
+        verbose_name="Публичное",
+        help_text="Можно показывать другим пользователям",
     )
 
     deleted = models.BooleanField(
         default=False,
         db_index=True,
-        verbose_name='Удалено',
-        help_text='Мягкое удаление'
+        verbose_name="Удалено",
+        help_text="Мягкое удаление",
     )
 
     emailed = models.BooleanField(
-        default=False,
-        db_index=True,
-        verbose_name='Отправлено на email'
+        default=False, db_index=True, verbose_name="Отправлено на email"
     )
 
     # === Временные метки ===
 
     timestamp = models.DateTimeField(
-        default=timezone.now,
-        db_index=True,
-        verbose_name='Создано'
+        default=timezone.now, db_index=True, verbose_name="Создано"
     )
 
     # === Manager ===
@@ -233,21 +215,21 @@ class Notification(models.Model):
     objects = NotificationQuerySet.as_manager()
 
     class Meta:
-        ordering = ['-timestamp']
+        ordering = ["-timestamp"]
         indexes = [
-            models.Index(fields=['recipient', '-timestamp']),
-            models.Index(fields=['recipient', 'unread', '-timestamp']),
-            models.Index(fields=['verb', '-timestamp']),
-            models.Index(fields=['-timestamp']),
+            models.Index(fields=["recipient", "-timestamp"]),
+            models.Index(fields=["recipient", "unread", "-timestamp"]),
+            models.Index(fields=["verb", "-timestamp"]),
+            models.Index(fields=["-timestamp"]),
         ]
-        verbose_name = 'Уведомление'
-        verbose_name_plural = 'Уведомления'
-        db_table = 'notifications_notification_v2'  # Новая таблица для миграции
+        verbose_name = "Уведомление"
+        verbose_name_plural = "Уведомления"
+        db_table = "notifications_notification_v2"  # Новая таблица для миграции
 
     def __str__(self):
-        actor_str = str(self.actor) if self.actor else 'Система'
-        target_str = f' → {self.target}' if self.target else ''
-        return f'{actor_str} {self.verb}{target_str}'
+        actor_str = str(self.actor) if self.actor else "Система"
+        target_str = f" → {self.target}" if self.target else ""
+        return f"{actor_str} {self.verb}{target_str}"
 
     # === Методы ===
 
@@ -256,14 +238,14 @@ class Notification(models.Model):
         if self.unread:
             self.unread = False
             self.timestamp_read = timezone.now()
-            self.save(update_fields=['unread', 'timestamp_read'])
+            self.save(update_fields=["unread", "timestamp_read"])
 
     def mark_as_unread(self):
         """Отметить уведомление как непрочитанное"""
         if not self.unread:
             self.unread = True
             self.timestamp_read = None
-            self.save(update_fields=['unread', 'timestamp_read'])
+            self.save(update_fields=["unread", "timestamp_read"])
 
     @property
     def timesince(self, now=None):
@@ -272,6 +254,7 @@ class Notification(models.Model):
         Например: "5 минут назад", "2 часа назад"
         """
         from django.utils.timesince import timesince as timesince_
+
         return timesince_(self.timestamp, now)
 
     @property
@@ -294,43 +277,42 @@ class UserChannelPreferences(models.Model):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='channel_preferences',
-        verbose_name='Пользователь'
+        related_name="channel_preferences",
+        verbose_name="Пользователь",
     )
 
     # === Каналы доставки ===
 
     web_enabled = models.BooleanField(
         default=True,
-        verbose_name='Веб уведомления',
-        help_text='Показывать в интерфейсе сайта'
+        verbose_name="Веб уведомления",
+        help_text="Показывать в интерфейсе сайта",
     )
 
     email_enabled = models.BooleanField(
-        default=False,
-        verbose_name='Email уведомления'
+        default=False, verbose_name="Email уведомления"
     )
 
     push_enabled = models.BooleanField(
         default=False,
-        verbose_name='Push уведомления',
-        help_text='Web Push для браузера'
+        verbose_name="Push уведомления",
+        help_text="Web Push для браузера",
     )
 
     # === Email настройки ===
 
     EMAIL_FREQUENCY_CHOICES = [
-        ('instant', 'Мгновенно'),
-        ('daily', 'Ежедневный дайджест'),
-        ('weekly', 'Еженедельный дайджест'),
-        ('never', 'Никогда'),
+        ("instant", "Мгновенно"),
+        ("daily", "Ежедневный дайджест"),
+        ("weekly", "Еженедельный дайджест"),
+        ("never", "Никогда"),
     ]
 
     email_frequency = models.CharField(
         max_length=20,
         choices=EMAIL_FREQUENCY_CHOICES,
-        default='instant',
-        verbose_name='Частота email'
+        default="instant",
+        verbose_name="Частота email",
     )
 
     # === Тихий режим (Do Not Disturb) ===
@@ -338,21 +320,21 @@ class UserChannelPreferences(models.Model):
     dnd_enabled = models.BooleanField(
         default=False,
         verbose_name='Режим "Не беспокоить"',
-        help_text='Отключить все уведомления в определенное время'
+        help_text="Отключить все уведомления в определенное время",
     )
 
     dnd_start_time = models.TimeField(
         null=True,
         blank=True,
-        verbose_name='Начало тихого режима',
-        help_text='Например, 22:00'
+        verbose_name="Начало тихого режима",
+        help_text="Например, 22:00",
     )
 
     dnd_end_time = models.TimeField(
         null=True,
         blank=True,
-        verbose_name='Конец тихого режима',
-        help_text='Например, 08:00'
+        verbose_name="Конец тихого режима",
+        help_text="Например, 08:00",
     )
 
     # === Фильтры по типам (verb) ===
@@ -360,17 +342,20 @@ class UserChannelPreferences(models.Model):
     disabled_verbs = models.JSONField(
         default=list,
         blank=True,
-        verbose_name='Отключенные типы',
-        help_text='Список verb для которых не показывать уведомления. Например: ["liked", "followed"]'
+        verbose_name="Отключенные типы",
+        help_text=(
+            'Список verb для которых не показывать уведомления. '
+            'Например: ["liked", "followed"]'
+        ),
     )
 
     class Meta:
-        verbose_name = 'Настройки каналов пользователя'
-        verbose_name_plural = 'Настройки каналов пользователей'
-        db_table = 'notifications_userchannelpreferences'
+        verbose_name = "Настройки каналов пользователя"
+        verbose_name_plural = "Настройки каналов пользователей"
+        db_table = "notifications_userchannelpreferences"
 
     def __str__(self):
-        return f'{self.user.get_short_name()} - настройки каналов'
+        return f"{self.user.get_short_name()} - настройки каналов"
 
     def is_verb_enabled(self, verb):
         """Проверить, включен ли этот тип уведомлений"""
@@ -380,17 +365,21 @@ class UserChannelPreferences(models.Model):
         """Отключить определенный тип уведомлений"""
         if verb not in self.disabled_verbs:
             self.disabled_verbs.append(verb)
-            self.save(update_fields=['disabled_verbs'])
+            self.save(update_fields=["disabled_verbs"])
 
     def enable_verb(self, verb):
         """Включить определенный тип уведомлений"""
         if verb in self.disabled_verbs:
             self.disabled_verbs.remove(verb)
-            self.save(update_fields=['disabled_verbs'])
+            self.save(update_fields=["disabled_verbs"])
 
     def is_in_dnd_period(self):
         """Проверить, находимся ли в режиме "Не беспокоить"""
-        if not self.dnd_enabled or not self.dnd_start_time or not self.dnd_end_time:
+        if (
+            not self.dnd_enabled
+            or not self.dnd_start_time
+            or not self.dnd_end_time
+        ):
             return False
 
         now = timezone.now().time()

@@ -1,4 +1,6 @@
-"""Сервис для генерации и управления логинами пользователей (sAMAccountName, UPN).
+"""Сервис для генерации и управления логинами пользователей.
+
+Поддерживает sAMAccountName и UPN.
 
 Выделен из UserService для упрощения и следования SRP.
 Отвечает за:
@@ -60,7 +62,8 @@ class UserLoginService(BaseService):
 
         if not upn_suffix:
             raise ValueError(
-                "Не задан UPN-суффикс (LDAP_UPN_SUFFIX) и его нельзя вывести из email"
+                "Не задан UPN-суффикс (LDAP_UPN_SUFFIX) "
+                "и его нельзя вывести из email"
             )
 
         self._logger.debug(
@@ -83,9 +86,7 @@ class UserLoginService(BaseService):
                 "Не удалось сгенерировать уникальные sAMAccountName/UPN"
             )
 
-        self._logger.info(
-            f"Generated logins: sAMAccountName={sam}, UPN={upn}"
-        )
+        self._logger.info(f"Generated logins: sAMAccountName={sam}, UPN={upn}")
 
         return sam, upn
 
@@ -111,9 +112,7 @@ class UserLoginService(BaseService):
         Returns:
             True если UPN уже используется, False если свободен
         """
-        return LdapUser.objects.filter(
-            user_principal_name=upn
-        ).exists()
+        return LdapUser.objects.filter(user_principal_name=upn).exists()
 
     def validate_sam_account_name(self, sam: str) -> Tuple[bool, Optional[str]]:
         """Проверяет корректность sAMAccountName по правилам AD.
@@ -136,11 +135,15 @@ class UserLoginService(BaseService):
             return False, "sAMAccountName не может быть длиннее 20 символов"
 
         if sam.startswith(".") or sam.endswith("."):
-            return False, "sAMAccountName не может начинаться или заканчиваться точкой"
+            return (
+                False,
+                "sAMAccountName не может начинаться или заканчиваться точкой",
+            )
 
         # Проверка допустимых символов
         allowed_chars = set(
-            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_")
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_"
+        )
         if not all(c in allowed_chars for c in sam):
             return False, (
                 "sAMAccountName может содержать только буквы, цифры, "

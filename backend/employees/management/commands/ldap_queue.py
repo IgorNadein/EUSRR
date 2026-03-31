@@ -28,16 +28,26 @@ class Command(BaseCommand):
 
         subparsers.add_parser("status", help="Показать статистику очереди")
 
-        retry_parser = subparsers.add_parser("retry", help="Запустить повтор операций")
+        retry_parser = subparsers.add_parser(
+            "retry", help="Запустить повтор операций"
+        )
         retry_parser.add_argument(
-            "--failed", action="store_true",
+            "--failed",
+            action="store_true",
             help="Включить failed-записи (сбросить счётчик попыток)",
         )
 
-        cleanup_parser = subparsers.add_parser("cleanup", help="Очистить старые записи")
+        cleanup_parser = subparsers.add_parser(
+            "cleanup", help="Очистить старые записи"
+        )
         cleanup_parser.add_argument(
-            "--days", type=int, default=30,
-            help="Удалять completed/failed записи старше N дней (по умолчанию 30)",
+            "--days",
+            type=int,
+            default=30,
+            help=(
+                "Удалять completed/failed записи старше N дней "
+                "(по умолчанию 30)"
+            ),
         )
 
     def handle(self, *args, **options):
@@ -72,8 +82,10 @@ class Command(BaseCommand):
             self.stdout.write("\nПоследние ошибки:")
             for item in failed:
                 self.stdout.write(
-                    f"  [{item.pk}] {item.operation} {item.model_name}:{item.object_pk} "
-                    f"попыток: {item.attempts}/{item.max_attempts} — {item.last_error[:100]}"
+                    f"  [{item.pk}] {item.operation} "
+                    f"{item.model_name}:{item.object_pk} "
+                    f"попыток: {item.attempts}/{item.max_attempts} "
+                    f"— {item.last_error[:100]}"
                 )
 
     def _retry(self, include_failed: bool):
@@ -83,7 +95,9 @@ class Command(BaseCommand):
         qs = LdapSyncQueue.objects.filter(status=LdapSyncQueue.Status.PENDING)
 
         if include_failed:
-            failed_qs = LdapSyncQueue.objects.filter(status=LdapSyncQueue.Status.FAILED)
+            failed_qs = LdapSyncQueue.objects.filter(
+                status=LdapSyncQueue.Status.FAILED
+            )
             reset_count = failed_qs.count()
             # Сбрасываем failed → pending
             failed_qs.update(
@@ -91,21 +105,32 @@ class Command(BaseCommand):
                 attempts=0,
                 next_retry_at=None,
             )
-            self.stdout.write(f"Сброшено {reset_count} failed-записей → pending")
-            qs = LdapSyncQueue.objects.filter(status=LdapSyncQueue.Status.PENDING)
+            self.stdout.write(
+                f"Сброшено {reset_count} failed-записей → pending"
+            )
+            qs = LdapSyncQueue.objects.filter(
+                status=LdapSyncQueue.Status.PENDING
+            )
 
         pks = list(qs.values_list("pk", flat=True))
         for pk in pks:
             process_ldap_queue_item.delay(pk)
 
-        self.stdout.write(self.style.SUCCESS(f"Запущено {len(pks)} задач в Celery"))
+        self.stdout.write(
+            self.style.SUCCESS(f"Запущено {len(pks)} задач в Celery")
+        )
 
     def _cleanup(self, days: int):
         from employees.models import LdapSyncQueue
 
         cutoff = timezone.now() - timedelta(days=days)
         deleted, _ = LdapSyncQueue.objects.filter(
-            status__in=[LdapSyncQueue.Status.COMPLETED, LdapSyncQueue.Status.FAILED],
+            status__in=[
+                LdapSyncQueue.Status.COMPLETED,
+                LdapSyncQueue.Status.FAILED,
+            ],
             updated_at__lt=cutoff,
         ).delete()
-        self.stdout.write(self.style.SUCCESS(f"Удалено {deleted} старых записей"))
+        self.stdout.write(
+            self.style.SUCCESS(f"Удалено {deleted} старых записей")
+        )

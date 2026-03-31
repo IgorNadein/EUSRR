@@ -41,17 +41,24 @@ router = DefaultRouter()
 router.register(
     r"schedule/calendars",
     ScheduleCalendarViewSet,
-    basename="schedule-calendars")
-router.register(r"schedule/events", ScheduleEventViewSet, basename="schedule-events")
-router.register(r"schedule/rules", ScheduleRuleViewSet, basename="schedule-rules")
+    basename="schedule-calendars",
+)
+router.register(
+    r"schedule/events", ScheduleEventViewSet, basename="schedule-events"
+)
+router.register(
+    r"schedule/rules", ScheduleRuleViewSet, basename="schedule-rules"
+)
 router.register(
     r"schedule/occurrences",
     ScheduleOccurrenceViewSet,
-    basename="schedule-occurrences")
+    basename="schedule-occurrences",
+)
 router.register(
     r"schedule/relations",
     ScheduleEventRelationViewSet,
-    basename="schedule-relations")
+    basename="schedule-relations",
+)
 
 router.register(r"documents", DocumentViewSet, basename="documents")
 router.register(r"folders", FolderViewSet, basename="folders")

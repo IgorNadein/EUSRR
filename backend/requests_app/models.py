@@ -39,7 +39,8 @@ def attachment_mime_validator(value):
         import magic  # type: ignore
     except ImportError:
         logger.warning(
-            "python-magic не установлен, проверка MIME-типов вложений отключена. "
+            "python-magic не установлен, "
+            "проверка MIME-типов вложений отключена. "
             "Это может снизить безопасность обработки файлов."
         )
         return
@@ -55,7 +56,8 @@ def attachment_mime_validator(value):
     mime = magic.Magic(mime=True).from_buffer(head)
     if not mime or mime not in SAFE_MIME_TYPES:
         raise ValidationError(
-            _("Недопустимый тип файла: %(mime)s."), params={"mime": mime or "unknown"}
+            _("Недопустимый тип файла: %(mime)s."),
+            params={"mime": mime or "unknown"},
         )
 
 
@@ -93,7 +95,9 @@ class Request(models.Model):
         verbose_name=_("Отделы-получатели"),
         blank=True,
         related_name="received_requests",
-        help_text=_("Заявка будет видна всем уполномоченным сотрудникам этих отделов")
+        help_text=_(
+            "Заявка будет видна всем уполномоченным сотрудникам этих отделов"
+        ),
     )
 
     recipients = models.ManyToManyField(
@@ -101,7 +105,7 @@ class Request(models.Model):
         verbose_name=_("Получатели"),
         blank=True,
         related_name="received_requests",
-        help_text=_("Сотрудники, которым адресована заявка")
+        help_text=_("Сотрудники, которым адресована заявка"),
     )
 
     cc_users = models.ManyToManyField(
@@ -109,13 +113,15 @@ class Request(models.Model):
         verbose_name=_("Копия (CC)"),
         blank=True,
         related_name="requests_cc",
-        help_text=_("Сотрудники в копии (уведомления без обязанности рассмотрения)")
+        help_text=_(
+            "Сотрудники в копии (уведомления без обязанности рассмотрения)"
+        ),
     )
 
     sent_to_all_department = models.BooleanField(
         _("Всем сотрудникам отделов"),
         default=False,
-        help_text=_("Если включено, заявка видна всем в выбранных отделах")
+        help_text=_("Если включено, заявка видна всем в выбранных отделах"),
     )
 
     type = models.CharField(
@@ -126,10 +132,12 @@ class Request(models.Model):
     date_to = models.DateField(_("Дата окончания"), null=True, blank=True)
     comment = models.TextField(_("Комментарий"), blank=True)
 
-    status = models.CharField(_("Статус"),
-                              choices=RequestStatus.choices,
-                              max_length=16,
-                              default=RequestStatus.PENDING)
+    status = models.CharField(
+        _("Статус"),
+        choices=RequestStatus.choices,
+        max_length=16,
+        default=RequestStatus.PENDING,
+    )
 
     attachment = models.FileField(
         _("Вложение"),
@@ -145,7 +153,9 @@ class Request(models.Model):
 
     created_at = models.DateTimeField(_("Создано"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Обновлено"), auto_now=True)
-    decided_at = models.DateTimeField(_("Решение принято"), null=True, blank=True)
+    decided_at = models.DateTimeField(
+        _("Решение принято"), null=True, blank=True
+    )
 
     class Meta:
         permissions = [
@@ -155,7 +165,8 @@ class Request(models.Model):
         verbose_name = _("Заявление")
         verbose_name_plural = _("Заявления")
         ordering = ["-created_at"]
-        # NOTE: проверь через EXPLAIN, не избыточны ли некоторые индексы для твоих
+        # NOTE: проверь через EXPLAIN,
+        # не избыточны ли некоторые индексы для твоих
         # кейсов
         indexes = [
             models.Index(fields=["status", "created_at"]),
@@ -170,23 +181,24 @@ class Request(models.Model):
         constraints = [
             models.CheckConstraint(
                 name="request_date_range_valid",
-                condition=Q(
-                    date_to__isnull=True) | Q(
-                    date_from__isnull=True) | Q(
-                    date_from__lte=F("date_to")),
+                condition=Q(date_to__isnull=True)
+                | Q(date_from__isnull=True)
+                | Q(date_from__lte=F("date_to")),
             ),
             models.CheckConstraint(
                 name="request_approver_required_on_decision",
                 condition=Q(
-                    status__in=[
-                        RequestStatus.APPROVED,
-                        RequestStatus.REJECTED],
-                    approver__isnull=False) | Q(
+                    status__in=[RequestStatus.APPROVED, RequestStatus.REJECTED],
+                    approver__isnull=False,
+                )
+                | Q(
                     status__in=[
                         RequestStatus.DRAFT,
                         RequestStatus.PENDING,
-                        RequestStatus.CANCELLED],
-                    approver__isnull=True),
+                        RequestStatus.CANCELLED,
+                    ],
+                    approver__isnull=True,
+                ),
             ),
         ]
 
@@ -194,16 +206,21 @@ class Request(models.Model):
         if self.type in {RequestType.VACATION, RequestType.SICK_LEAVE} and not (
             self.date_from and self.date_to
         ):
-
             raise ValidationError(
                 _("Для выбранного типа укажите даты начала и окончания.")
             )
-        if self.type in {RequestType.TRANSFER,
-                         RequestType.DISMISSAL} and not self.date_from:
-            raise ValidationError(_("Для перевода/увольнения укажите дату начала."))
+        if (
+            self.type in {RequestType.TRANSFER, RequestType.DISMISSAL}
+            and not self.date_from
+        ):
+            raise ValidationError(
+                _("Для перевода/увольнения укажите дату начала.")
+            )
 
         if self.approver_id and self.approver_id == self.employee_id:
-            raise ValidationError(_("Согласующий не может совпадать с автором заявки."))
+            raise ValidationError(
+                _("Согласующий не может совпадать с автором заявки.")
+            )
 
     @property
     def display_title(self) -> str:
@@ -219,10 +236,11 @@ class Request(models.Model):
         """Все получатели: основные + CC"""
         User = settings.AUTH_USER_MODEL
         from django.apps import apps
+
         UserModel = apps.get_model(User)
 
-        recipient_ids = set(self.recipients.values_list('id', flat=True))
-        cc_ids = set(self.cc_users.values_list('id', flat=True))
+        recipient_ids = set(self.recipients.values_list("id", flat=True))
+        cc_ids = set(self.cc_users.values_list("id", flat=True))
         return UserModel.objects.filter(id__in=recipient_ids | cc_ids)
 
     @property
@@ -242,7 +260,7 @@ class Request(models.Model):
         if self.sent_to_all_department:
             return self.departments.filter(
                 employeedepartment__employee=user,
-                employeedepartment__is_active=True
+                employeedepartment__is_active=True,
             ).exists()
 
         return False
@@ -263,20 +281,26 @@ class Request(models.Model):
         self.status = RequestStatus.APPROVED
         self.approver = by_user
         self.decided_at = timezone.now()
-        self.save(update_fields=["status", "approver", "decided_at", "updated_at"])
+        self.save(
+            update_fields=["status", "approver", "decided_at", "updated_at"]
+        )
 
     def reject(self, by_user):
         self.status = RequestStatus.REJECTED
         self.approver = by_user
         self.decided_at = timezone.now()
-        self.save(update_fields=["status", "approver", "decided_at", "updated_at"])
+        self.save(
+            update_fields=["status", "approver", "decided_at", "updated_at"]
+        )
 
     def cancel(self):
         self.status = RequestStatus.CANCELLED
         if self.approver_id is not None:
             self.approver = None
         self.decided_at = timezone.now()
-        self.save(update_fields=["status", "approver", "decided_at", "updated_at"])
+        self.save(
+            update_fields=["status", "approver", "decided_at", "updated_at"]
+        )
 
     def save(self, *args, **kwargs) -> None:
         """Синхронизация decided_at/approver с текущим статусом.
@@ -286,14 +310,19 @@ class Request(models.Model):
         """
         if self.status in FINAL_STATUS and not self.decided_at:
             self.decided_at = timezone.now()
-        if self.status in {
+        if (
+            self.status
+            in {
                 RequestStatus.DRAFT,
                 RequestStatus.PENDING,
-                RequestStatus.CANCELLED} and self.approver_id:
+                RequestStatus.CANCELLED,
+            }
+            and self.approver_id
+        ):
             self.approver = None
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return (
-            f"{self.get_type_display()} — {self.employee} ({self.get_status_display()})"
-        )
+        return f"{self.get_type_display()} — {self.employee} ({
+            self.get_status_display()
+        })"

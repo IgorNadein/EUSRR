@@ -1,6 +1,7 @@
 """Управление LDAP-соединениями.
 
-Функции для создания и управления подключениями к Active Directory / LDAP серверу.
+Функции для создания и управления подключениями к Active Directory /
+LDAP-серверу.
 """
 
 import ssl
@@ -80,6 +81,7 @@ def _conn(config: Optional[LdapConfig] = None) -> Connection:
 
     # get_info=NONE чтобы избежать recursion error в pyasn1 с Python 3.13
     from ldap3 import NONE
+
     server = Server(
         cfg.uri,
         use_ssl=cfg.uri.lower().startswith("ldaps://"),
@@ -104,9 +106,7 @@ def _conn(config: Optional[LdapConfig] = None) -> Connection:
             f"Не удалось подключиться к {cfg.uri}: {e}"
         ) from e
     except Exception as e:
-        raise DirectoryConnectionError(
-            f"Ошибка подключения к LDAP: {e}"
-        ) from e
+        raise DirectoryConnectionError(f"Ошибка подключения к LDAP: {e}") from e
 
 
 @contextmanager

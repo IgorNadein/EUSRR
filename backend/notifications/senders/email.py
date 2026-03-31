@@ -24,16 +24,16 @@ class EmailNotificationSender(BaseNotificationSender):
 
     # Маппинг verb на эмодзи для email
     VERB_ICONS = {
-        'liked': '❤️',
-        'commented': '💬',
-        'mentioned': '@',
-        'approved': '✅',
-        'rejected': '❌',
-        'created': '📝',
-        'updated': '🔄',
-        'deleted': '🗑️',
-        'shared': '🔗',
-        'followed': '👥',
+        "liked": "❤️",
+        "commented": "💬",
+        "mentioned": "@",
+        "approved": "✅",
+        "rejected": "❌",
+        "created": "📝",
+        "updated": "🔄",
+        "deleted": "🗑️",
+        "shared": "🔗",
+        "followed": "👥",
     }
 
     def can_send(self, notification, user_preferences) -> bool:
@@ -42,10 +42,11 @@ class EmailNotificationSender(BaseNotificationSender):
             self.log_skip(notification, "email_enabled=False")
             return False
 
-        if user_preferences.email_frequency != 'instant':
+        if user_preferences.email_frequency != "instant":
             self.log_skip(
-                notification, f"email_frequency={
-                    user_preferences.email_frequency}")
+                notification,
+                f"email_frequency={user_preferences.email_frequency}",
+            )
             return False
 
         return True
@@ -65,39 +66,45 @@ class EmailNotificationSender(BaseNotificationSender):
         """
         try:
             user = notification.recipient
-            recipient_email = kwargs.get('recipient_email', user.email)
+            recipient_email = kwargs.get("recipient_email", user.email)
 
             if not recipient_email:
                 self.log_skip(notification, "no email address")
                 return False
 
             # Формируем тему письма
-            custom_subject = kwargs.get('custom_subject')
+            custom_subject = kwargs.get("custom_subject")
             if custom_subject:
                 subject = custom_subject
             else:
-                icon = self.VERB_ICONS.get(notification.verb, '🔔')
-                actor_str = str(notification.actor) if notification.actor else 'Система'
+                icon = self.VERB_ICONS.get(notification.verb, "🔔")
+                actor_str = (
+                    str(notification.actor) if notification.actor else "Система"
+                )
                 subject = f"{icon} {actor_str} {notification.verb}"
 
             # Формируем контекст для шаблона
             context = {
-                'notification': notification,
-                'actor': notification.actor,
-                'verb': notification.verb,
-                'description': notification.description,
-                'action_url': self._get_full_url(notification.action_url, notification),
-                'action_text': 'Посмотреть',
-                'site_name': config.site_name(),
-                'site_url': self._get_site_url(notification),
-                'verb_icon': self.VERB_ICONS.get(notification.verb, '🔔'),
+                "notification": notification,
+                "actor": notification.actor,
+                "verb": notification.verb,
+                "description": notification.description,
+                "action_url": self._get_full_url(
+                    notification.action_url, notification
+                ),
+                "action_text": "Посмотреть",
+                "site_name": config.site_name(),
+                "site_url": self._get_site_url(notification),
+                "verb_icon": self.VERB_ICONS.get(notification.verb, "🔔"),
             }
 
             # Рендерим HTML и текстовую версию
             html_message = self._render_template(
-                'notifications/email/notification.html', context)
+                "notifications/email/notification.html", context
+            )
             text_message = self._render_template(
-                'notifications/email/notification.txt', context)
+                "notifications/email/notification.txt", context
+            )
 
             # Отправляем email
             send_mail(
@@ -111,7 +118,7 @@ class EmailNotificationSender(BaseNotificationSender):
 
             # Отмечаем что отправлено
             notification.emailed = True
-            notification.save(update_fields=['emailed'])
+            notification.save(update_fields=["emailed"])
 
             self.log_success(notification, recipient_email)
             return True
@@ -120,7 +127,9 @@ class EmailNotificationSender(BaseNotificationSender):
             self.log_error(notification, e, recipient_email)
             return False
 
-    def send_digest(self, user, notifications: list, frequency: str = 'daily') -> bool:
+    def send_digest(
+        self, user, notifications: list, frequency: str = "daily"
+    ) -> bool:
         """
         Отправляет email дайджест уведомлений.
 
@@ -141,8 +150,12 @@ class EmailNotificationSender(BaseNotificationSender):
                 return False
 
             # Формируем тему
-            digest_name = 'Ежедневный' if frequency == 'daily' else 'Еженедельный'
-            subject = f"📬 {digest_name} дайджест уведомлений ({len(notifications)})"
+            digest_name = (
+                "Ежедневный" if frequency == "daily" else "Еженедельный"
+            )
+            subject = (
+                f"📬 {digest_name} дайджест уведомлений ({len(notifications)})"
+            )
 
             # Группируем по verb
             grouped = {}
@@ -154,23 +167,26 @@ class EmailNotificationSender(BaseNotificationSender):
 
             # Формируем контекст
             context = {
-                'user': user,
-                'notifications': notifications,
-                'grouped_notifications': grouped,
-                'frequency': frequency,
-                'digest_name': digest_name,
-                'total_count': len(notifications),
-                'verb_icons': self.VERB_ICONS,
-                'site_name': config.site_name(),
-                'site_url': self._get_site_url(
-                    notifications[0] if notifications else None),
+                "user": user,
+                "notifications": notifications,
+                "grouped_notifications": grouped,
+                "frequency": frequency,
+                "digest_name": digest_name,
+                "total_count": len(notifications),
+                "verb_icons": self.VERB_ICONS,
+                "site_name": config.site_name(),
+                "site_url": self._get_site_url(
+                    notifications[0] if notifications else None
+                ),
             }
 
             # Рендерим шаблоны
             html_message = self._render_template(
-                'notifications/email/digest.html', context)
+                "notifications/email/digest.html", context
+            )
             text_message = self._render_template(
-                'notifications/email/digest.txt', context)
+                "notifications/email/digest.txt", context
+            )
 
             # Отправляем дайджест
             send_mail(
@@ -200,7 +216,7 @@ class EmailNotificationSender(BaseNotificationSender):
                 f"user={user.id}, "
                 f"frequency={frequency}, "
                 f"error={type(e).__name__}: {e}",
-                exc_info=True
+                exc_info=True,
             )
             return False
 
@@ -210,7 +226,7 @@ class EmailNotificationSender(BaseNotificationSender):
             return render_to_string(template_name, context)
         except Exception:
             # Если шаблон не найден, возвращаем простой текст
-            notif = context.get('notification')
+            notif = context.get("notification")
             if notif:
                 return f"{notif.description}\n\n{context.get('action_url', '')}"
             return ""
@@ -232,25 +248,30 @@ class EmailNotificationSender(BaseNotificationSender):
             Базовый URL сайта (например, 'https://example.com')
         """
         # 1. Проверяем данные уведомления
-        if notification and hasattr(
-                notification, 'data') and isinstance(
-                notification.data, dict):
-            if 'site_url' in notification.data:
-                return notification.data['site_url']
+        if (
+            notification
+            and hasattr(notification, "data")
+            and isinstance(notification.data, dict)
+        ):
+            if "site_url" in notification.data:
+                return notification.data["site_url"]
 
         # 2. Проверяем settings.SITE_URL
-        if hasattr(settings, 'SITE_URL'):
+        if hasattr(settings, "SITE_URL"):
             return settings.SITE_URL
 
         # 3. Автоопределение из ALLOWED_HOSTS
-        if settings.ALLOWED_HOSTS and settings.ALLOWED_HOSTS[0] != '*':
+        if settings.ALLOWED_HOSTS and settings.ALLOWED_HOSTS[0] != "*":
             host = settings.ALLOWED_HOSTS[0]
-            protocol = 'https' if getattr(
-                settings, 'SECURE_SSL_REDIRECT', False) else 'http'
+            protocol = (
+                "https"
+                if getattr(settings, "SECURE_SSL_REDIRECT", False)
+                else "http"
+            )
             return f"{protocol}://{host}"
 
         # 4. Fallback для разработки
-        return 'http://localhost:9000'
+        return "http://localhost:9000"
 
     def _get_full_url(self, path: str, notification=None) -> str:
         """
@@ -264,9 +285,9 @@ class EmailNotificationSender(BaseNotificationSender):
             Абсолютный URL
         """
         if not path:
-            return ''
+            return ""
 
-        if path.startswith('http://') or path.startswith('https://'):
+        if path.startswith("http://") or path.startswith("https://"):
             return path
 
         site_url = self._get_site_url(notification)

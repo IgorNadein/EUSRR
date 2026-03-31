@@ -1,6 +1,7 @@
 """
 Базовый класс для всех отправителей уведомлений
 """
+
 from abc import ABC, abstractmethod
 from typing import Optional
 import logging
@@ -12,7 +13,8 @@ class BaseNotificationSender(ABC):
     """
     Абстрактный базовый класс для отправителей уведомлений.
 
-    Все отправители должны наследоваться от этого класса и реализовать метод send().
+    Все отправители должны наследоваться от этого класса
+    и реализовать метод send().
     """
 
     def __init__(self):
@@ -55,10 +57,8 @@ class BaseNotificationSender(ABC):
         )
 
     def log_error(
-            self,
-            notification,
-            error: Exception,
-            recipient: Optional[str] = None):
+        self, notification, error: Exception, recipient: Optional[str] = None
+    ):
         """Логирует ошибку отправки"""
         self.logger.error(
             f"❌ Ошибка отправки: "
@@ -66,7 +66,7 @@ class BaseNotificationSender(ABC):
             f"recipient={recipient}, "
             f"channel={self.__class__.__name__}, "
             f"error={type(error).__name__}: {error}",
-            exc_info=True
+            exc_info=True,
         )
 
     def log_skip(self, notification, reason: str):

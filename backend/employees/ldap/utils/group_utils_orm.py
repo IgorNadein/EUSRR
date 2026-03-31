@@ -115,7 +115,10 @@ def sync_user_groups_by_cns_orm(
 
 
 def _desired_group_cns_for_employee(emp: "Employee") -> set[str]:
-    """Возвращает целевые CN групп для сотрудника из Django (Position/DeptRole/Direct)."""
+    """Возвращает целевые CN групп для сотрудника из Django.
+
+    Источники: Position, DeptRole и Direct.
+    """
     cns: set[str] = set()
     pos = getattr(emp, "position", None)
     if pos is not None and hasattr(pos, "groups"):
@@ -132,10 +135,10 @@ def _desired_group_cns_for_employee(emp: "Employee") -> set[str]:
 
 
 __all__ = [
-    'read_user_memberof_dns',
-    'group_add_member_orm',
-    'group_remove_member_orm',
-    'resolve_group_dns_by_cn_orm',
-    'sync_user_groups_by_cns_orm',
-    '_desired_group_cns_for_employee',
+    "read_user_memberof_dns",
+    "group_add_member_orm",
+    "group_remove_member_orm",
+    "resolve_group_dns_by_cn_orm",
+    "sync_user_groups_by_cns_orm",
+    "_desired_group_cns_for_employee",
 ]

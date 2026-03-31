@@ -5,7 +5,10 @@ from typing import Any  # было: Any, Dict, List, Type
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Count, OuterRef, Q, QuerySet, Subquery
 from django.shortcuts import get_object_or_404  # раскомментируйте импорт
-from employees.models import Department, EmployeeDepartment  # добавлен Department
+from employees.models import (
+    Department,
+    EmployeeDepartment,
+)  # добавлен Department
 from requests_app.enums import RequestStatus
 from requests_app.models import Request as EmployeeRequest
 from communications import comments_helpers
@@ -48,7 +51,8 @@ class RequestViewSet(viewsets.ModelViewSet):
     """ViewSet для заявок сотрудников.
 
     Админы могут всё. Пользователи с модельными правами действуют по правам.
-    Без прав аутентифицированные пользователи работают только со своими заявками.
+    Без прав аутентифицированные пользователи работают только
+    со своими заявками.
 
     Поддерживаемые экшены:
       - POST /requests/{id}/approve/
@@ -60,12 +64,12 @@ class RequestViewSet(viewsets.ModelViewSet):
         PermissionDenied: При нарушении правил доступа.
     """
 
-    queryset = (
-        EmployeeRequest.objects.select_related("employee", "approver", "department")
-        .order_by("-created_at")
-    )
+    queryset = EmployeeRequest.objects.select_related(
+        "employee", "approver", "department"
+    ).order_by("-created_at")
     parser_classes = (MultiPartParser, FormParser, JSONParser)
-    # Используем глобальную пагинацию из settings (PageNumberPagination, PAGE_SIZE=20)
+    # Используем глобальную пагинацию из settings (PageNumberPagination,
+    # PAGE_SIZE=20)
 
     required_perms_by_action = {
         "comments": {
@@ -73,15 +77,23 @@ class RequestViewSet(viewsets.ModelViewSet):
             "HEAD": "requests_app.view_requestcomment",
             "POST": "requests_app.add_requestcomment",
         },
-        "reject": ["requests_app.can_process_requests", "requests_app.change_request"],
-        "approve": ["requests_app.can_process_requests", "requests_app.change_request"],
+        "reject": [
+            "requests_app.can_process_requests",
+            "requests_app.change_request",
+        ],
+        "approve": [
+            "requests_app.can_process_requests",
+            "requests_app.change_request",
+        ],
     }
 
     def get_permissions(self) -> list[BasePermission]:
         """Подбирает пермишены под текущий action.
 
-        - comments: владелец ИЛИ staff ИЛИ явные модельные права из required_perms_by_action.
-        - approve/reject: аутентификация + явные права из required_perms_by_action.
+                - comments: владелец ИЛИ staff ИЛИ явные модельные права
+                    из required_perms_by_action.
+                - approve/reject: аутентификация + явные права
+                    из required_perms_by_action.
         - cancel: владелец ИЛИ staff.
         - остальное (CRUD): владелец ИЛИ staff ИЛИ модельные права.
         """
@@ -99,18 +111,20 @@ class RequestViewSet(viewsets.ModelViewSet):
         if self.action == "retrieve":
             # Автор, получатель, в копии, по отделу, staff/admin
             return [
-                (
-                    CanViewRequest
-                    | DeptViewRequest
-                    | AdminOrActionOrModelPerms
-                )()
+                (CanViewRequest | DeptViewRequest | AdminOrActionOrModelPerms)()
             ]
         if self.action == "destroy":
             return [
-                (IsSelfOrStaff | AdminOrActionOrModelPerms | DeptChangeRequest)(),
+                (
+                    IsSelfOrStaff
+                    | AdminOrActionOrModelPerms
+                    | DeptChangeRequest
+                )(),
                 NotFinalOrStaff(),
             ]
-        return [(IsSelfOrStaff | AdminOrActionOrModelPerms | DeptChangeRequest)()]
+        return [
+            (IsSelfOrStaff | AdminOrActionOrModelPerms | DeptChangeRequest)()
+        ]
 
     def get_serializer_class(self) -> type[BaseSerializer]:
         """Возвращает сериализатор в зависимости от action."""
@@ -160,7 +174,9 @@ class RequestViewSet(viewsets.ModelViewSet):
                 scope = (
                     Q(recipients=user)
                     | Q(cc_users=user)
-                    | Q(sent_to_all_department=True, departments__in=my_dept_ids)
+                    | Q(
+                        sent_to_all_department=True, departments__in=my_dept_ids
+                    )
                 )
                 qs = qs.filter(scope).distinct()
         else:
@@ -176,7 +192,9 @@ class RequestViewSet(viewsets.ModelViewSet):
             ).values_list("department_id", flat=True)
 
             if my_dept_ids:
-                scope |= Q(sent_to_all_department=True, departments__in=my_dept_ids)
+                scope |= Q(
+                    sent_to_all_department=True, departments__in=my_dept_ids
+                )
 
             # Департаментные права (как было)
             view_dept_ids = (
@@ -197,11 +215,13 @@ class RequestViewSet(viewsets.ModelViewSet):
                 .values_list("department_id", flat=True)
                 .distinct()
             )
-            head_dept_ids = Department.objects.filter(head_id=user.id).values_list(
-                "id", flat=True
-            )
+            head_dept_ids = Department.objects.filter(
+                head_id=user.id
+            ).values_list("id", flat=True)
 
-            combined_ids = set(view_dept_ids) | set(proc_dept_ids) | set(head_dept_ids)
+            combined_ids = (
+                set(view_dept_ids) | set(proc_dept_ids) | set(head_dept_ids)
+            )
 
             if combined_ids:
                 # Заявки этих отделов (новое поле departments)
@@ -224,7 +244,9 @@ class RequestViewSet(viewsets.ModelViewSet):
                 scope = (
                     Q(recipients=user)
                     | Q(cc_users=user)
-                    | Q(sent_to_all_department=True, departments__in=my_dept_ids)
+                    | Q(
+                        sent_to_all_department=True, departments__in=my_dept_ids
+                    )
                 )
             elif want_mine:
                 scope = Q(employee_id=user.id)
@@ -261,7 +283,9 @@ class RequestViewSet(viewsets.ModelViewSet):
             qs = qs.filter(Q(date_to__isnull=True) | Q(date_to__gte=date_from))
         if date_to:
             # Заявки, у которых период не начался после указанной даты
-            qs = qs.filter(Q(date_from__isnull=True) | Q(date_from__lte=date_to))
+            qs = qs.filter(
+                Q(date_from__isnull=True) | Q(date_from__lte=date_to)
+            )
 
         # Аннотируем счётчик комментариев через communications.Chat
         from communications.models import Message
@@ -270,19 +294,23 @@ class RequestViewSet(viewsets.ModelViewSet):
         request_ct = ContentType.objects.get_for_model(EmployeeRequest)
 
         # Подсчёт сообщений в чате комментариев для каждой заявки
-        comments_subquery = Message.objects.filter(
-            chat__type='comments',
-            chat__context_content_type=request_ct,
-            chat__context_object_id=OuterRef('pk')
-        ).values('chat').annotate(count=Count('id')).values('count')
-
-        qs = qs.annotate(
-            comments_count=Subquery(comments_subquery)
+        comments_subquery = (
+            Message.objects.filter(
+                chat__type="comments",
+                chat__context_content_type=request_ct,
+                chat__context_object_id=OuterRef("pk"),
+            )
+            .values("chat")
+            .annotate(count=Count("id"))
+            .values("count")
         )
+
+        qs = qs.annotate(comments_count=Subquery(comments_subquery))
 
         return qs
 
-    # --- ВАЖНО: не ловить 404 на detail-экшенах из-за урезанного get_queryset() ---
+    # --- ВАЖНО: не ловить 404 на detail-экшенах
+    # из-за урезанного get_queryset() ---
 
     def get_object(self) -> EmployeeRequest:
         """Возвращает объект заявки для detail-экшенов.
@@ -326,7 +354,9 @@ class RequestViewSet(viewsets.ModelViewSet):
             raise NotAuthenticated("Authentication required")
         is_power = user.is_staff or user.has_perm("requests_app.add_request")
         extra = {"employee": user} if not is_power else {}
-        save_as = (self.request.query_params.get("save_as") or "").strip().lower()
+        save_as = (
+            (self.request.query_params.get("save_as") or "").strip().lower()
+        )
         if save_as == "draft":
             extra["status"] = (
                 RequestStatus.DRAFT
@@ -338,7 +368,8 @@ class RequestViewSet(viewsets.ModelViewSet):
         """Обновление: владельцу разрешаем до финального статуса.
 
         Raises:
-            PermissionDenied: Если заявка финальная и нет прав, либо правка чужой заявки без прав.
+            PermissionDenied: Если заявка финальная и нет прав,
+                либо правка чужой заявки без прав.
         """
         obj = self.get_object()
         user = self.request.user
@@ -351,7 +382,9 @@ class RequestViewSet(viewsets.ModelViewSet):
         ):
             raise PermissionDenied("Нельзя редактировать чужую заявку.")
         extra: dict[str, Any] = {}
-        save_as = (self.request.query_params.get("save_as") or "").strip().lower()
+        save_as = (
+            (self.request.query_params.get("save_as") or "").strip().lower()
+        )
 
         if save_as == "draft":
             extra["status"] = RequestStatus.DRAFT
@@ -364,22 +397,28 @@ class RequestViewSet(viewsets.ModelViewSet):
     # ---------- Комментарии ----------
 
     @action(detail=True, methods=["get", "post"])
-    def comments(self, request: DRFRequest, pk: int | str | None = None) -> Response:
+    def comments(
+        self, request: DRFRequest, pk: int | str | None = None
+    ) -> Response:
         """Список/создание комментариев для заявки.
 
-        GET: список комментариев (staff, владелец или право view_requestcomment).
-        POST: создание {"text": "..."} (staff, владелец или право add_requestcomment).
+        GET: список комментариев (staff, владелец
+        или право view_requestcomment).
+        POST: создание {"text": "..."} (staff, владелец
+        или право add_requestcomment).
         """
         import logging
         from .serializers import EmployeeBriefSerializer
+
         logger = logging.getLogger(__name__)
 
         req_obj = self.get_object()
         logger.info(
-            f"[RequestViewSet.comments] user={
-                request.user.id}, request_id={
-                req_obj.id}, " f"method={
-                request.method}")
+            f"[RequestViewSet.comments] user={request.user.id}, request_id={
+                req_obj.id
+            }, "
+            f"method={request.method}"
+        )
 
         if request.method in {"GET", "HEAD"}:
             # Используем unified comments system
@@ -389,17 +428,22 @@ class RequestViewSet(viewsets.ModelViewSet):
             comments_data = []
             for msg in messages:
                 author_ser = EmployeeBriefSerializer(msg.author)
-                comments_data.append({
-                    "id": msg.id,
-                    "request": req_obj.id,
-                    "author": author_ser.data,
-                    "text": msg.content,  # content -> text для совместимости
-                    "created_at": msg.created_at,
-                })
+                comments_data.append(
+                    {
+                        "id": msg.id,
+                        "request": req_obj.id,
+                        "author": author_ser.data,
+                        # content -> text для совместимости
+                        "text": msg.content,
+                        "created_at": msg.created_at,
+                    }
+                )
 
             logger.info(
                 f"[RequestViewSet.comments] GET: returning {
-                    len(comments_data)} comments")
+                    len(comments_data)
+                } comments"
+            )
             return Response(comments_data)
 
         # POST - создание комментария
@@ -407,18 +451,17 @@ class RequestViewSet(viewsets.ModelViewSet):
         if not text:
             return Response(
                 {"text": ["Это поле не может быть пустым."]},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         logger.info(
-            f"[RequestViewSet.comments] POST: creating comment with text length={
-                len(text)}")
+            "[RequestViewSet.comments] POST: creating comment "
+            f"with text length={len(text)}"
+        )
 
         # Используем unified comments system
         message = comments_helpers.create_comment(
-            obj=req_obj,
-            author=request.user,
-            content=text
+            obj=req_obj, author=request.user, content=text
         )
 
         # Форматируем ответ
@@ -431,7 +474,9 @@ class RequestViewSet(viewsets.ModelViewSet):
             "created_at": message.created_at,
         }
 
-        logger.info(f"[RequestViewSet.comments] POST: comment created id={message.id}")
+        logger.info(
+            f"[RequestViewSet.comments] POST: comment created id={message.id}"
+        )
         return Response(response_data, status=status.HTTP_201_CREATED)
 
     @extend_schema(
@@ -444,12 +489,17 @@ class RequestViewSet(viewsets.ModelViewSet):
             )
         ]
     )
-    @action(detail=True, methods=["delete"], url_path="comments/(?P<comment_id>[^/.]+)")
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path="comments/(?P<comment_id>[^/.]+)",
+    )
     def delete_comment(
-            self,
-            request: DRFRequest,
-            pk: int | str | None = None,
-            comment_id: int | str | None = None) -> Response:
+        self,
+        request: DRFRequest,
+        pk: int | str | None = None,
+        comment_id: int | str | None = None,
+    ) -> Response:
         """Удаление комментария.
 
         DELETE /api/v1/requests/{pk}/comments/{comment_id}/
@@ -458,6 +508,7 @@ class RequestViewSet(viewsets.ModelViewSet):
         """
         import logging
         from communications.models import Message
+
         logger = logging.getLogger(__name__)
 
         req_obj = self.get_object()
@@ -471,32 +522,34 @@ class RequestViewSet(viewsets.ModelViewSet):
         except Message.DoesNotExist:
             return Response(
                 {"detail": "Comment not found"},
-                status=status.HTTP_404_NOT_FOUND
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         # Проверка прав: только автор или staff
         if not (request.user.is_staff or message.author == request.user):
             return Response(
                 {"detail": "You don't have permission to delete this comment"},
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         # Используем unified comment system (мягкое удаление)
         comments_helpers.delete_comment(
-            message=message,
-            deleted_by=request.user,
-            soft_delete=True
+            message=message, deleted_by=request.user, soft_delete=True
         )
 
         logger.info(
             f"[RequestViewSet.delete_comment] user={
-                request.user.id} deleted comment_id={comment_id}")
+                request.user.id
+            } deleted comment_id={comment_id}"
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     # ---------- Экшены статусов (только бизнес-валидация) ----------
 
     @action(detail=True, methods=["post"])
-    def approve(self, request: DRFRequest, pk: int | str | None = None) -> Response:
+    def approve(
+        self, request: DRFRequest, pk: int | str | None = None
+    ) -> Response:
         """Одобряет заявку.
 
         Raises:
@@ -507,11 +560,15 @@ class RequestViewSet(viewsets.ModelViewSet):
             raise ValidationError("Заявка уже в финальном статусе.")
         obj.approve(by_user=request.user)
         return Response(
-            RequestReadSerializer(obj, context=self.get_serializer_context()).data
+            RequestReadSerializer(
+                obj, context=self.get_serializer_context()
+            ).data
         )
 
     @action(detail=True, methods=["post"])
-    def reject(self, request: DRFRequest, pk: int | str | None = None) -> Response:
+    def reject(
+        self, request: DRFRequest, pk: int | str | None = None
+    ) -> Response:
         """Отклоняет заявку.
 
         Raises:
@@ -522,11 +579,15 @@ class RequestViewSet(viewsets.ModelViewSet):
             raise ValidationError("Заявка уже в финальном статусе.")
         obj.reject(by_user=request.user)
         return Response(
-            RequestReadSerializer(obj, context=self.get_serializer_context()).data
+            RequestReadSerializer(
+                obj, context=self.get_serializer_context()
+            ).data
         )
 
     @action(detail=True, methods=["post"])
-    def cancel(self, request: DRFRequest, pk: int | str | None = None) -> Response:
+    def cancel(
+        self, request: DRFRequest, pk: int | str | None = None
+    ) -> Response:
         """Отменяет заявку (владелец или админ).
 
         Raises:
@@ -534,10 +595,14 @@ class RequestViewSet(viewsets.ModelViewSet):
         """
         obj = self.get_object()
         if getattr(obj, "is_final", False) and not request.user.is_staff:
-            raise PermissionDenied("Финальная заявка уже не может быть отменена.")
+            raise PermissionDenied(
+                "Финальная заявка уже не может быть отменена."
+            )
         obj.cancel()
         return Response(
-            RequestReadSerializer(obj, context=self.get_serializer_context()).data
+            RequestReadSerializer(
+                obj, context=self.get_serializer_context()
+            ).data
         )
 
     def create(self, request, *args, **kwargs):
@@ -553,34 +618,43 @@ class RequestViewSet(viewsets.ModelViewSet):
             f"[RequestViewSet.create] User: {request.user.id}, "
             f"Content-Type: {request.content_type}"
         )
-        logger.info(f"[RequestViewSet.create] POST keys: {list(request.POST.keys())}")
-        logger.info(f"[RequestViewSet.create] FILES keys: {list(request.FILES.keys())}")
-        logger.info(f"[RequestViewSet.create] Data keys: {list(request.data.keys())}")
+        logger.info(
+            f"[RequestViewSet.create] POST keys: {list(request.POST.keys())}"
+        )
+        logger.info(
+            f"[RequestViewSet.create] FILES keys: {list(request.FILES.keys())}"
+        )
+        logger.info(
+            f"[RequestViewSet.create] Data keys: {list(request.data.keys())}"
+        )
 
         # Логируем значения для отладки
         for key in ["type", "title", "date_from", "date_to", "comment"]:
             value = request.data.get(key)
             logger.info(
-                f"[RequestViewSet.create] {key}: {value} (type: {type(value).__name__})"
+                f"[RequestViewSet.create] {key}: {value} (type: {
+                    type(value).__name__
+                })"
             )
 
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
             logger.error(
-                f"[RequestViewSet.create] Validation errors: {serializer.errors}"
+                f"[RequestViewSet.create] Validation errors: {
+                    serializer.errors
+                }"
             )
-            logger.error(f"[RequestViewSet.create] Request data: {request.data}")
+            logger.error(
+                f"[RequestViewSet.create] Request data: {request.data}"
+            )
 
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         instance = serializer.instance
         read = RequestReadSerializer(
-            instance,
-            context=self.get_serializer_context()
+            instance, context=self.get_serializer_context()
         )
         headers = self.get_success_headers(read.data)
         return Response(
-            read.data,
-            status=status.HTTP_201_CREATED,
-            headers=headers
+            read.data, status=status.HTTP_201_CREATED, headers=headers
         )

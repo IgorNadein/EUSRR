@@ -22,9 +22,12 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
     """
     /api/v1/employee-actions/
       - GET list/retrieve  — IsAuthenticated
-      - POST create        — staff/superuser ИЛИ perm employees.add_employeeaction
-      - PATCH/PUT update   — staff/superuser ИЛИ perm employees.change_employeeaction
-      - DELETE destroy     — staff/superuser ИЛИ perm employees.delete_employeeaction
+            - POST create        — staff/superuser ИЛИ
+                perm employees.add_employeeaction
+            - PATCH/PUT update   — staff/superuser ИЛИ
+                perm employees.change_employeeaction
+            - DELETE destroy     — staff/superuser ИЛИ
+                perm employees.delete_employeeaction
 
     Фильтры: ?employee=<id> ?date_from=ISO ?date_to=ISO
     """
@@ -38,8 +41,9 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
     history_diff_fields = ["action", "date", "comment", "extra", "employee_id"]
 
     def get_queryset(self):
-        qs = EmployeeAction.objects.select_related(
-            "employee").order_by(*self.ordering)
+        qs = EmployeeAction.objects.select_related("employee").order_by(
+            *self.ordering
+        )
         qp = self.request.query_params
         emp = qp.get("employee")
         if emp:
@@ -107,23 +111,26 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
                 emp.save(update_fields=["is_active"])
 
             # Деактивируем связи с отделами (сигналы синхронизируют в LDAP)
-            # ВАЖНО: используем save() для каждой записи, чтобы сработали сигналы
+            # ВАЖНО: используем save() для каждой записи, чтобы сработали
+            # сигналы
             today = timezone.now().date()
             for emp_dept in EmployeeDepartment.objects.filter(
-                    employee=emp, is_active=True):
+                employee=emp, is_active=True
+            ):
                 emp_dept.is_active = False
                 emp_dept.date_to = today
                 emp_dept.save(update_fields=["is_active", "date_to"])
         else:
-            # Любое иное событие делает сотрудника активным (сигнал синхронизирует в
-            # LDAP)
+            # Любое иное событие делает сотрудника активным
+            # (сигнал синхронизирует в LDAP)
             if not emp.is_active:
                 emp.is_active = True
                 emp._ldap_changes = {"is_active": True}
                 emp.save(update_fields=["is_active"])
 
         # Гарантируем, что DN в правильном OU (Users или Dismissed)
-        # Покрывает: восстановление, увольнение без отделов, множественные отделы
+        # Покрывает: восстановление, увольнение без отделов, множественные
+        # отделы
         self._ensure_ldap_dn_location(emp)
 
     @staticmethod
@@ -170,8 +177,7 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
                     sync_state.ldap_dn = new_dn
                     sync_state.save(update_fields=["ldap_dn"])
                     logger.info(
-                        f"Moved employee {emp.id} DN: "
-                        f"{current_dn} → {new_dn}"
+                        f"Moved employee {emp.id} DN: {current_dn} → {new_dn}"
                     )
                 else:
                     logger.warning(
@@ -180,8 +186,7 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
                     )
         except Exception as e:
             logger.warning(
-                f"Failed to ensure LDAP DN location for "
-                f"employee {emp.id}: {e}"
+                f"Failed to ensure LDAP DN location for employee {emp.id}: {e}"
             )
 
     @staticmethod

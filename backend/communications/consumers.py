@@ -10,6 +10,7 @@ WebSocket Consumer Mixin для чатов.
 - Создан: 11 марта 2026 (извлечен из realtime/consumers.py)
 - Цель: Сделать приложение communications автономным и переиспользуемым
 """
+
 import logging
 from channels.db import database_sync_to_async
 from django.db.models import Q
@@ -65,7 +66,10 @@ class ChatConsumerMixin:
     # ==================== Управление активным чатом ====================
 
     async def _handle_open_chat(self, content):
-        """Открытие чата - установка активного чата и отправка начальной истории"""
+        """Открытие чата.
+
+        Устанавливает активный чат и отправляет начальную историю.
+        """
         chat_id = content.get("chat_id")
         if not chat_id:
             return
@@ -75,11 +79,13 @@ class ChatConsumerMixin:
         # Проверяем доступ
         chat = await self._get_chat(chat_id)
         if not chat or not await self._user_can_access(chat, self.user):
-            await self.send_json({
-                "type": "error",
-                "error": "Chat not found or access denied",
-                "chat_id": chat_id
-            })
+            await self.send_json(
+                {
+                    "type": "error",
+                    "error": "Chat not found or access denied",
+                    "chat_id": chat_id,
+                }
+            )
             return
 
         # Устанавливаем активный чат
@@ -94,12 +100,11 @@ class ChatConsumerMixin:
         # - GET /messages-around/ → отмечает последнее ЗАГРУЖЕННОЕ
         # - GET /messages/?after_id= → отмечает последнее ЗАГРУЖЕННОЕ
         # - WebSocket new_message → отмечает если внизу
-        # Старый вызов chat.mark_read() отмечал ПОСЛЕДНЕЕ В ЧАТЕ, что неправильно!
+        # Старый вызов chat.mark_read() отмечал последнее в чате,
+        # что
+        # неправильно!
 
-        await self.send_json({
-            "type": "chat_opened",
-            "chat_id": chat_id
-        })
+        await self.send_json({"type": "chat_opened", "chat_id": chat_id})
 
         logger.info(f"[ChatMixin] User {self.user.id} opened chat {chat_id}")
 
@@ -116,14 +121,13 @@ class ChatConsumerMixin:
 
             self.active_chat_id = None
 
-            await self.send_json({
-                "type": "chat_closed",
-                "chat_id": chat_id
-            })
+            await self.send_json({"type": "chat_closed", "chat_id": chat_id})
 
-            logger.info(f"[ChatMixin] User {self.user.id} closed chat {chat_id}")
+            logger.info(
+                f"[ChatMixin] User {self.user.id} closed chat {chat_id}"
+            )
 
-    # ==================== Обработчики событий из channel layer ====================
+    # ==================== Обработчики событий из channel layer ==============
 
     async def chat_message(self, event):
         """
@@ -136,18 +140,14 @@ class ChatConsumerMixin:
 
         # Для активного чата - полное сообщение
         if chat_id == self.active_chat_id:
-            await self.send_json({
-                "type": "new_message",
-                "chat_id": chat_id,
-                "message": payload
-            })
+            await self.send_json(
+                {"type": "new_message", "chat_id": chat_id, "message": payload}
+            )
 
         # Для списка чатов - компактное обновление
-        await self.send_json({
-            "type": "list_update",
-            "chat_id": chat_id,
-            "message": payload
-        })
+        await self.send_json(
+            {"type": "list_update", "chat_id": chat_id, "message": payload}
+        )
 
     async def chat_message_edited(self, event):
         """Сообщение отредактировано"""
@@ -156,18 +156,18 @@ class ChatConsumerMixin:
 
         # Для активного чата - обновляем сообщение
         if chat_id == self.active_chat_id:
-            await self.send_json({
-                "type": "message_updated",
-                "chat_id": chat_id,
-                "message": payload
-            })
+            await self.send_json(
+                {
+                    "type": "message_updated",
+                    "chat_id": chat_id,
+                    "message": payload,
+                }
+            )
 
         # Для списка - обновляем если это последнее сообщение
-        await self.send_json({
-            "type": "message_edited",
-            "chat_id": chat_id,
-            "message": payload
-        })
+        await self.send_json(
+            {"type": "message_edited", "chat_id": chat_id, "message": payload}
+        )
 
     async def chat_message_deleted(self, event):
         """Сообщение удалено"""
@@ -176,23 +176,26 @@ class ChatConsumerMixin:
 
         logger.info(
             "[ChatMixin] Received delete event: chat_id=%s, message_id=%s",
-            chat_id, message_id
+            chat_id,
+            message_id,
         )
         logger.info(
             "[ChatMixin] Active chat: %s, matches=%s",
-            self.active_chat_id, chat_id == self.active_chat_id
+            self.active_chat_id,
+            chat_id == self.active_chat_id,
         )
 
         if chat_id == self.active_chat_id:
             logger.info(
-                "[ChatMixin] Sending to client: message_id=%s",
-                message_id
+                "[ChatMixin] Sending to client: message_id=%s", message_id
             )
-            await self.send_json({
-                "type": "message_deleted",
-                "chat_id": chat_id,
-                "message_id": message_id
-            })
+            await self.send_json(
+                {
+                    "type": "message_deleted",
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                }
+            )
             logger.info("[ChatMixin] Sent to client successfully")
         else:
             logger.info("[ChatMixin] Skipping - not active chat")
@@ -201,21 +204,24 @@ class ChatConsumerMixin:
         """Реакция добавлена"""
         chat_id = event.get("chat_id")
         logger.info(
-            f"[ChatMixin] chat_reaction_added: chat_id={chat_id}, " f"active_chat_id={
-                self.active_chat_id}, message_id={
-                event.get('message_id')}")
+            f"[ChatMixin] chat_reaction_added: chat_id={chat_id}, "
+            f"active_chat_id={self.active_chat_id}, "
+            f"message_id={event.get('message_id')}"
+        )
 
         if chat_id == self.active_chat_id:
             logger.info("[ChatMixin] Sending reaction_added to client")
-            await self.send_json({
-                "type": "reaction_added",
-                "chat_id": chat_id,
-                "message_id": event.get("message_id"),
-                "emoji": event.get("emoji"),
-                "user_id": event.get("user_id"),
-                "user_name": event.get("user_name"),
-                "reactions_summary": event.get("reactions_summary")
-            })
+            await self.send_json(
+                {
+                    "type": "reaction_added",
+                    "chat_id": chat_id,
+                    "message_id": event.get("message_id"),
+                    "emoji": event.get("emoji"),
+                    "user_id": event.get("user_id"),
+                    "user_name": event.get("user_name"),
+                    "reactions_summary": event.get("reactions_summary"),
+                }
+            )
         else:
             logger.info("[ChatMixin] Skipping - not active chat")
 
@@ -223,20 +229,23 @@ class ChatConsumerMixin:
         """Реакция удалена"""
         chat_id = event.get("chat_id")
         logger.info(
-            f"[ChatMixin] chat_reaction_removed: chat_id={chat_id}, " f"active_chat_id={
-                self.active_chat_id}, message_id={
-                event.get('message_id')}")
+            f"[ChatMixin] chat_reaction_removed: chat_id={chat_id}, "
+            f"active_chat_id={self.active_chat_id}, "
+            f"message_id={event.get('message_id')}"
+        )
 
         if chat_id == self.active_chat_id:
             logger.info("[ChatMixin] Sending reaction_removed to client")
-            await self.send_json({
-                "type": "reaction_removed",
-                "chat_id": chat_id,
-                "message_id": event.get("message_id"),
-                "emoji": event.get("emoji"),
-                "user_id": event.get("user_id"),
-                "reactions_summary": event.get("reactions_summary")
-            })
+            await self.send_json(
+                {
+                    "type": "reaction_removed",
+                    "chat_id": chat_id,
+                    "message_id": event.get("message_id"),
+                    "emoji": event.get("emoji"),
+                    "user_id": event.get("user_id"),
+                    "reactions_summary": event.get("reactions_summary"),
+                }
+            )
         else:
             logger.info("[ChatMixin] Skipping - not active chat")
 
@@ -247,12 +256,14 @@ class ChatConsumerMixin:
 
         # Показываем только в активном чате и не показываем свой статус
         if chat_id == self.active_chat_id and user_id != self.user.id:
-            await self.send_json({
-                "type": "typing_start",
-                "chat_id": chat_id,
-                "user_id": user_id,
-                "user_name": event.get("user_name")
-            })
+            await self.send_json(
+                {
+                    "type": "typing_start",
+                    "chat_id": chat_id,
+                    "user_id": user_id,
+                    "user_name": event.get("user_name"),
+                }
+            )
 
     async def chat_user_stopped_typing(self, event):
         """Пользователь перестал печатать"""
@@ -260,11 +271,9 @@ class ChatConsumerMixin:
         user_id = event.get("user_id")
 
         if chat_id == self.active_chat_id and user_id != self.user.id:
-            await self.send_json({
-                "type": "typing_stop",
-                "chat_id": chat_id,
-                "user_id": user_id
-            })
+            await self.send_json(
+                {"type": "typing_stop", "chat_id": chat_id, "user_id": user_id}
+            )
 
     async def chat_poll_update(self, event):
         """Обновление голосования"""
@@ -272,16 +281,21 @@ class ChatConsumerMixin:
         payload = event.get("payload", {})
 
         if chat_id == self.active_chat_id:
-            await self.send_json({
-                "type": "poll_update",
-                "chat_id": chat_id,
-                "poll_id": payload.get("poll_id"),
-                "message_id": payload.get("message_id"),
-                "results": payload.get("results")
-            })
+            await self.send_json(
+                {
+                    "type": "poll_update",
+                    "chat_id": chat_id,
+                    "poll_id": payload.get("poll_id"),
+                    "message_id": payload.get("message_id"),
+                    "results": payload.get("results"),
+                }
+            )
 
     async def chat_marked_read(self, event):
-        """Синхронизация отметки прочитанного между вкладками (Telegram-style)"""
+        """Синхронизация отметки прочитанного между вкладками.
+
+        Telegram-style.
+        """
         chat_id = event.get("chat_id")
         last_read_message_id = event.get("last_read_message_id")
 
@@ -290,21 +304,20 @@ class ChatConsumerMixin:
             f"chat={chat_id}, last_read_message_id={last_read_message_id}"
         )
 
-        await self.send_json({
-            "type": "marked_read",
-            "chat_id": chat_id,
-            "last_read_message_id": last_read_message_id
-        })
+        await self.send_json(
+            {
+                "type": "marked_read",
+                "chat_id": chat_id,
+                "last_read_message_id": last_read_message_id,
+            }
+        )
 
     # ==================== Обработка действий пользователя ====================
 
     async def _handle_send_message(self, content):
         """Отправка нового сообщения"""
         if not self.active_chat_id:
-            await self.send_json({
-                "type": "error",
-                "error": "No active chat"
-            })
+            await self.send_json({"type": "error", "error": "No active chat"})
             return
 
         text = str(content.get("content") or content.get("text") or "").strip()
@@ -317,10 +330,12 @@ class ChatConsumerMixin:
 
         # Проверка прав на отправку
         if chat.type == "announcement" and chat.created_by_id != self.user.id:
-            await self.send_json({
-                "type": "error",
-                "error": "Только автор может публиковать в это объявление"
-            })
+            await self.send_json(
+                {
+                    "type": "error",
+                    "error": "Только автор может публиковать в это объявление",
+                }
+            )
             return
 
         # Создаем сообщение
@@ -335,8 +350,8 @@ class ChatConsumerMixin:
                 {
                     "type": "chat_message",
                     "chat_id": chat.id,
-                    "payload": msg_data
-                }
+                    "payload": msg_data,
+                },
             )
 
     async def _handle_edit_message(self, content):
@@ -365,8 +380,8 @@ class ChatConsumerMixin:
             {
                 "type": "chat_message_edited",
                 "chat_id": msg.chat_id,
-                "payload": msg_data
-            }
+                "payload": msg_data,
+            },
         )
 
     async def _handle_delete_message(self, content):
@@ -392,8 +407,8 @@ class ChatConsumerMixin:
             {
                 "type": "chat_message_deleted",
                 "chat_id": chat_id,
-                "message_id": message_id
-            }
+                "message_id": message_id,
+            },
         )
 
     async def _handle_add_reaction(self, content):
@@ -424,8 +439,8 @@ class ChatConsumerMixin:
                     "message_id": message_id,
                     "emoji": emoji,
                     "user_id": self.user.id,
-                    "user_name": user_name
-                }
+                    "user_name": user_name,
+                },
             )
 
     async def _handle_remove_reaction(self, content):
@@ -451,8 +466,8 @@ class ChatConsumerMixin:
                     "chat_id": msg.chat_id,
                     "message_id": message_id,
                     "emoji": emoji,
-                    "user_id": self.user.id
-                }
+                    "user_id": self.user.id,
+                },
             )
 
     async def _handle_typing(self, content):
@@ -476,8 +491,8 @@ class ChatConsumerMixin:
                 "type": "chat_user_typing",
                 "chat_id": chat.id,
                 "user_id": self.user.id,
-                "user_name": user_name
-            }
+                "user_name": user_name,
+            },
         )
 
     async def _handle_stop_typing(self):
@@ -496,31 +511,35 @@ class ChatConsumerMixin:
             {
                 "type": "chat_user_stopped_typing",
                 "chat_id": chat.id,
-                "user_id": self.user.id
-            }
+                "user_id": self.user.id,
+            },
         )
 
     async def _handle_mark_read(self, content):
         """
         [DEPRECATED] Отметка сообщений как прочитанных через WebSocket.
 
-        Используйте POST /api/v1/communications/chats/{id}/mark-read/ вместо этого.
+        Используйте POST /api/v1/communications/chats/{id}/mark-read/
+        вместо этого.
         Автоотметка происходит автоматически при загрузке сообщений.
         """
         chat_id = content.get("chat_id")
         if not chat_id:
             logger.warning(
-                "[ChatMixin._handle_mark_read] [DEPRECATED] No chat_id provided")
+                "[ChatMixin._handle_mark_read] [DEPRECATED] No chat_id provided"
+            )
             return
 
         logger.warning(
             f"[ChatMixin._handle_mark_read] [DEPRECATED] "
-            f"User {self.user.id} tried to mark chat {chat_id} as read via WebSocket. "
-            f"This is deprecated. Use POST /mark-read/ API endpoint instead."
+            f"User {self.user.id} tried to mark chat {chat_id} "
+            f"as read via WebSocket. This is deprecated. "
+            f"Use POST /mark-read/ API endpoint instead."
         )
 
         # НЕ вызываем _mark_read! Автоотметка происходит автоматически.
-        # Если нужна точная отметка, frontend должен вызвать POST API endpoint.
+        # Если нужна точная отметка,
+        # frontend должен вызвать POST API endpoint.
 
     async def _handle_vote_poll(self, content):
         """Голосование в опросе"""
@@ -533,11 +552,13 @@ class ChatConsumerMixin:
         """Отправка начальной истории сообщений"""
         messages = await self._get_recent_messages(chat_id, limit)
 
-        await self.send_json({
-            "type": "initial_messages",
-            "chat_id": chat_id,
-            "messages": messages
-        })
+        await self.send_json(
+            {
+                "type": "initial_messages",
+                "chat_id": chat_id,
+                "messages": messages,
+            }
+        )
 
     @database_sync_to_async
     def _get_available_chat_ids(self, user):
@@ -545,7 +566,9 @@ class ChatConsumerMixin:
 
         # Получаем ID через membership
         membership_chat_ids = list(
-            ChatMembership.objects.filter(user=user).values_list('chat_id', flat=True)
+            ChatMembership.objects.filter(user=user).values_list(
+                "chat_id", flat=True
+            )
         )
 
         chat_ids = list(
@@ -553,7 +576,9 @@ class ChatConsumerMixin:
                 Q(type="global")
                 | Q(id__in=membership_chat_ids)
                 | Q(include_all_users=True)
-            ).values_list("id", flat=True).distinct()
+            )
+            .values_list("id", flat=True)
+            .distinct()
         )
 
         return chat_ids
@@ -570,7 +595,9 @@ class ChatConsumerMixin:
     def _get_message(self, message_id):
         """Получить сообщение по ID"""
         try:
-            return Message.objects.select_related('author', 'chat').get(pk=message_id)
+            return Message.objects.select_related("author", "chat").get(
+                pk=message_id
+            )
         except Message.DoesNotExist:
             return None
 
@@ -604,9 +631,7 @@ class ChatConsumerMixin:
         """Создать новое сообщение"""
         try:
             msg = Message.objects.create(
-                chat=chat,
-                author=user,
-                content=content
+                chat=chat, author=user, content=content
             )
             return msg
         except Exception as e:
@@ -619,22 +644,20 @@ class ChatConsumerMixin:
         msg.content = new_content
         msg.is_edited = True
         msg.edited_at = timezone.now()
-        msg.save(update_fields=['content', 'is_edited', 'edited_at'])
+        msg.save(update_fields=["content", "is_edited", "edited_at"])
 
     @database_sync_to_async
     def _soft_delete_message(self, msg):
         """Мягкое удаление сообщения"""
         msg.is_deleted = True
         msg.content = "[Сообщение удалено]"
-        msg.save(update_fields=['is_deleted', 'content'])
+        msg.save(update_fields=["is_deleted", "content"])
 
     @database_sync_to_async
     def _add_reaction(self, msg, user, emoji):
         """Добавить реакцию"""
         reaction, created = MessageReaction.objects.get_or_create(
-            message=msg,
-            user=user,
-            emoji=emoji
+            message=msg, user=user, emoji=emoji
         )
         return created
 
@@ -642,9 +665,7 @@ class ChatConsumerMixin:
     def _remove_reaction(self, msg, user, emoji):
         """Удалить реакцию"""
         deleted_count, _ = MessageReaction.objects.filter(
-            message=msg,
-            user=user,
-            emoji=emoji
+            message=msg, user=user, emoji=emoji
         ).delete()
         return deleted_count > 0
 
@@ -667,7 +688,8 @@ class ChatConsumerMixin:
         )
 
         # НЕ вызываем chat.mark_read(user)!
-        # Это отмечало последнее сообщение в чате вместо последнего загруженного.
+        # Это отмечало последнее сообщение в чате вместо последнего
+        # загруженного.
 
     @database_sync_to_async
     def _set_typing_status(self, chat, user, is_typing):
@@ -678,13 +700,12 @@ class ChatConsumerMixin:
     @database_sync_to_async
     def _get_recent_messages(self, chat_id, limit=50):
         """Получить последние сообщения чата"""
-        messages = Message.objects.filter(
-            chat_id=chat_id
-        ).select_related(
-            'author'
-        ).prefetch_related(
-            'attachments', 'reactions'
-        ).order_by('-created_at')[:limit]
+        messages = (
+            Message.objects.filter(chat_id=chat_id)
+            .select_related("author")
+            .prefetch_related("attachments", "reactions")
+            .order_by("-created_at")[:limit]
+        )
 
         # Реверсируем порядок (старые -> новые)
         messages = list(reversed(messages))
@@ -692,4 +713,4 @@ class ChatConsumerMixin:
         return [serialize_message(msg) for msg in messages]
 
 
-__all__ = ['ChatConsumerMixin']
+__all__ = ["ChatConsumerMixin"]

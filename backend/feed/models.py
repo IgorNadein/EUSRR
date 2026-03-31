@@ -7,7 +7,12 @@ from django.db import models, transaction
 from django.db.models import Q
 from django.utils.deconstruct import deconstructible
 
-from .constants import TYPE_CHOICES, TYPE_COMPANY, TYPE_DEPARTMENT, TYPE_EMPLOYEE
+from .constants import (
+    TYPE_CHOICES,
+    TYPE_COMPANY,
+    TYPE_DEPARTMENT,
+    TYPE_EMPLOYEE,
+)
 
 Employee = get_user_model()
 
@@ -52,7 +57,9 @@ class FileSizeValidator:
             raise ValidationError(f"Файл превышает {self.max_mb} MB.")
 
     def __eq__(self, other):
-        return isinstance(other, FileSizeValidator) and self.max_mb == other.max_mb
+        return (
+            isinstance(other, FileSizeValidator) and self.max_mb == other.max_mb
+        )
 
 
 class Post(models.Model):
@@ -69,13 +76,18 @@ class Post(models.Model):
         on_delete=models.CASCADE,
         related_name="posts",
         verbose_name="Отдел",
-        help_text="Для новостей отдела укажите отдел. Для других типов оставьте пустым.",
+        help_text=(
+            "Для новостей отдела укажите отдел. "
+            "Для других типов оставьте пустым."
+        ),
     )
     title = models.CharField("Заголовок", max_length=200)
     body = models.TextField("Текст")
     created_at = models.DateTimeField("Создано", auto_now_add=True)
     pinned = models.BooleanField("Закреплено", default=False)
-    type = models.CharField("Тип публикации", max_length=20, choices=TYPE_CHOICES)
+    type = models.CharField(
+        "Тип публикации", max_length=20, choices=TYPE_CHOICES
+    )
     image = models.ImageField(
         "Изображение",
         upload_to="feed/images/%Y/%m/",
@@ -91,7 +103,6 @@ class Post(models.Model):
     likes_count = models.PositiveIntegerField("Лайки", default=0, db_index=True)
 
     class Meta:
-
         verbose_name = "Публикация"
         verbose_name_plural = "Публикации"
         ordering = ["-pinned", "-created_at"]
@@ -99,9 +110,7 @@ class Post(models.Model):
             models.Index(fields=["type", "created_at"]),
             models.Index(fields=["pinned", "created_at"]),
             models.Index(fields=["created_at"]),
-            models.Index(
-                fields=["department", "-created_at"]
-            ),
+            models.Index(fields=["department", "-created_at"]),
             models.Index(fields=["author", "-created_at"]),
         ]
         constraints = [
@@ -153,9 +162,13 @@ class Post(models.Model):
         old_attach = self.attachment
         super().delete(*args, **kwargs)
         if old_image:
-            transaction.on_commit(lambda: old_image.storage.delete(old_image.name))
+            transaction.on_commit(
+                lambda: old_image.storage.delete(old_image.name)
+            )
         if old_attach:
-            transaction.on_commit(lambda: old_attach.storage.delete(old_attach.name))
+            transaction.on_commit(
+                lambda: old_attach.storage.delete(old_attach.name)
+            )
 
     def save(self, *args, **kwargs):
         skip_validation = kwargs.pop("skip_validation", False)
@@ -181,7 +194,9 @@ class Post(models.Model):
         res = super().save(*args, **kwargs)
 
         if old_image_name:
-            transaction.on_commit(lambda: self.image.storage.delete(old_image_name))
+            transaction.on_commit(
+                lambda: self.image.storage.delete(old_image_name)
+            )
         if old_attach_name:
             transaction.on_commit(
                 lambda: self.attachment.storage.delete(old_attach_name)
@@ -192,7 +207,10 @@ class Post(models.Model):
 
 class PostLike(models.Model):
     post = models.ForeignKey(
-        Post, on_delete=models.CASCADE, related_name="likes", verbose_name="Пост"
+        Post,
+        on_delete=models.CASCADE,
+        related_name="likes",
+        verbose_name="Пост",
     )
     user = models.ForeignKey(
         Employee,

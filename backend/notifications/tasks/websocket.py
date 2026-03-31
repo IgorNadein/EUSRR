@@ -1,6 +1,7 @@
 """
 Celery задачи для отправки WebSocket уведомлений (realtime)
 """
+
 from .base import BaseNotificationTask
 from notifications import config
 
@@ -21,11 +22,8 @@ class WebSocketNotificationTask(BaseNotificationTask):
     rate_limit = None  # Без ограничений для realtime
 
     def execute(
-            self,
-            celery_task,
-            notification_id: int,
-            silent: bool = False,
-            **kwargs):
+        self, celery_task, notification_id: int, silent: bool = False, **kwargs
+    ):
         """Переопределяем для поддержки параметра silent"""
         try:
             notification = self.get_notification(notification_id)
@@ -38,7 +36,9 @@ class WebSocketNotificationTask(BaseNotificationTask):
                 return False
 
             # Отправляем с учетом silent режима
-            success = self.send_notification(notification, silent=silent, **kwargs)
+            success = self.send_notification(
+                notification, silent=silent, **kwargs
+            )
 
             if success:
                 self.log_success(notification)
@@ -51,7 +51,9 @@ class WebSocketNotificationTask(BaseNotificationTask):
             self.log_error(notification_id, exc)
             raise celery_task.retry(exc=exc)
 
-    def send_notification(self, notification, silent: bool = False, **kwargs) -> bool:
+    def send_notification(
+        self, notification, silent: bool = False, **kwargs
+    ) -> bool:
         """
         Отправляет WebSocket через WebSocketNotificationSender.
 

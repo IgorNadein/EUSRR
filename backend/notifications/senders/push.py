@@ -1,6 +1,7 @@
 """
 Web Push отправитель для browser push notifications
 """
+
 import json
 
 from push_notifications.models import WebPushDevice
@@ -37,49 +38,50 @@ class PushNotificationSender(BaseNotificationSender):
             user = notification.recipient
 
             # Получаем активные устройства через django-push-notifications
-            devices = WebPushDevice.objects.filter(
-                user=user,
-                active=True
-            )
+            devices = WebPushDevice.objects.filter(user=user, active=True)
 
             if not devices.exists():
                 self.log_skip(notification, "no active push devices")
                 return False
 
             # Формируем данные для push
-            actor_str = str(notification.actor) if notification.actor else 'Система'
-            title = f'{actor_str} {notification.verb}'
+            actor_str = (
+                str(notification.actor) if notification.actor else "Система"
+            )
+            title = f"{actor_str} {notification.verb}"
 
-            # Ограничиваем длину body (Web Push имеет лимит ~4KB на весь payload)
-            # Оставляем 300 символов для body, чтобы гарантировать что весь message
+            # Ограничиваем длину body.
+            # Web Push имеет лимит ~4KB на весь payload.
+            # Оставляем 300 символов для body, чтобы гарантировать что весь
+            # message
             # поместится
-            body = notification.description or ''
+            body = notification.description or ""
             if len(body) > 300:
-                body = body[:297] + '...'
+                body = body[:297] + "..."
 
             # Получаем иконки из конфигурации (None = browser default)
-            default_icon = get('PUSH_DEFAULT_ICON')
-            default_badge = get('PUSH_DEFAULT_BADGE')
+            default_icon = get("PUSH_DEFAULT_ICON")
+            default_badge = get("PUSH_DEFAULT_BADGE")
 
             # django-push-notifications использует другой формат
             # Формируем данные для Web Push API
             message_data = {
-                'head': title,
-                'body': body,
-                'url': notification.action_url or '/',
-                'tag': f'notification-{notification.id}',
-                'requireInteraction': False,
-                'data': {
-                    'notification_id': notification.id,
-                    'verb': notification.verb,
-                }
+                "head": title,
+                "body": body,
+                "url": notification.action_url or "/",
+                "tag": f"notification-{notification.id}",
+                "requireInteraction": False,
+                "data": {
+                    "notification_id": notification.id,
+                    "verb": notification.verb,
+                },
             }
 
             # Добавляем иконки только если они настроены
             if default_icon:
-                message_data['icon'] = default_icon
+                message_data["icon"] = default_icon
             if default_badge:
-                message_data['badge'] = default_badge
+                message_data["badge"] = default_badge
 
             # Преобразуем в JSON-строку для send_message()
             message = json.dumps(message_data)
@@ -93,18 +95,23 @@ class PushNotificationSender(BaseNotificationSender):
                     device.send_message(message)
                     sent_count += 1
                     self.logger.debug(
-                        f"Push отправлен на device {device.id} ({device.browser})"
+                        f"Push отправлен на device {device.id} ({
+                            device.browser
+                        })"
                     )
                 except Exception as e:
                     failed_count += 1
                     # Вычисляем размер payload для диагностики
-                    message_size = len(message.encode('utf-8'))
+                    message_size = len(message.encode("utf-8"))
                     self.logger.error(
                         f"Ошибка отправки push на device {device.id}: {e} "
                         f"(payload size: {message_size} bytes)"
                     )
                     # Деактивируем устройство если ошибка
-                    if "expired" in str(e).lower() or "unregistered" in str(e).lower():
+                    if (
+                        "expired" in str(e).lower()
+                        or "unregistered" in str(e).lower()
+                    ):
                         device.active = False
                         device.save()
                         self.logger.info(f"Device {device.id} деактивирован")
@@ -118,12 +125,16 @@ class PushNotificationSender(BaseNotificationSender):
                     )
                 return True
             else:
-                self.log_skip(notification,
-                              f"no successful sends ({failed_count} failures)")
+                self.log_skip(
+                    notification,
+                    f"no successful sends ({failed_count} failures)",
+                )
                 return False
 
         except ImportError:
-            self.log_skip(notification, "django-push-notifications not installed")
+            self.log_skip(
+                notification, "django-push-notifications not installed"
+            )
             return False
         except Exception as e:
             self.log_error(notification, e, f"user_{notification.recipient.id}")

@@ -13,7 +13,14 @@ from django.db import transaction
 from django.utils import timezone
 from ldap3 import BASE, Connection
 
-from ...models import Department, DepartmentRole, Employee, EmployeeDepartment, LdapSyncState, RoleAssignment
+from ...models import (
+    Department,
+    DepartmentRole,
+    Employee,
+    EmployeeDepartment,
+    LdapSyncState,
+    RoleAssignment,
+)
 from ..domain.dtos import DirectoryDepartmentDTO
 from ..errors import (
     DirectoryDbError,
@@ -46,7 +53,8 @@ class DepartmentService(BaseService):
 
         Args:
             group_service: Сервис для работы с группами (Dependency Injection)
-            user_service: Сервис для работы с пользователями (Dependency Injection)
+            user_service: Сервис для работы с пользователями
+            (Dependency Injection)
         """
         super().__init__()
         self._group_service = group_service
@@ -65,11 +73,14 @@ class DepartmentService(BaseService):
 
         Raises:
             DirectoryLdapError: Не удалось создать/настроить OU в LDAP.
-            DirectoryDbError: Не удалось создать запись в БД (OU будет удалён).
+            DirectoryDbError: Не удалось создать запись в БД
+            (OU будет удалён).
         """
         # Используем GroupService через Dependency Injection
         if not self._group_service:
-            raise RuntimeError("GroupService not initialized in DepartmentService")
+            raise RuntimeError(
+                "GroupService not initialized in DepartmentService"
+            )
 
         with _ldap() as conn:
             dept_dn: Optional[str] = None
@@ -223,9 +234,9 @@ class DepartmentService(BaseService):
                                     ensured_dn, new_cn=dep_cn
                                 )
                             except Exception:
-                                desc = (
-                                    getattr(conn, "result", {}) or {}
-                                ).get("description", "")
+                                desc = (getattr(conn, "result", {}) or {}).get(
+                                    "description", ""
+                                )
                                 if desc == "entryAlreadyExists":
                                     maybe = self._group_service.find_dn(
                                         dep_cn, bases=[new_dn]
@@ -355,7 +366,9 @@ class DepartmentService(BaseService):
         ).first()
         if existing_link:
             raise DirectoryServiceError(
-                f"Сотрудник уже состоит в отделе: {existing_link.department.name}"
+                f"Сотрудник уже состоит в отделе: {
+                    existing_link.department.name
+                }"
             )
 
         emp_dn = self._user_service._get_employee_dn(employee)
@@ -377,9 +390,7 @@ class DepartmentService(BaseService):
                     )
                 dept_dn = ensured_dn
             except Exception as e:
-                raise DirectoryLdapError(
-                    f"LDAP ensure OU failed: {e}"
-                ) from e
+                raise DirectoryLdapError(f"LDAP ensure OU failed: {e}") from e
 
             _, emp_parent = self._split_rdn_parent(emp_dn)
             if emp_parent != dept_dn:
@@ -422,7 +433,8 @@ class DepartmentService(BaseService):
                 raise DirectoryDbError(str(e)) from e
 
     def remove_member(self, dept: Department, employee: Employee) -> None:
-        """Удаляет сотрудника из отдела: из группы → MOVE в Users OU → удаление линка.
+        """Удаляет сотрудника из отдела:
+        из группы → MOVE в Users OU → удаление линка.
 
         Args:
             dept: Отдел.
@@ -434,9 +446,7 @@ class DepartmentService(BaseService):
             DirectoryDbError: Ошибка при удалении связи в БД.
         """
         if dept.head_id == employee.id:
-            raise DirectoryServiceError(
-                "Нельзя удалить руководителя отдела"
-            )
+            raise DirectoryServiceError("Нельзя удалить руководителя отдела")
 
         try:
             emp_dn = self._user_service._get_employee_dn(employee)
@@ -478,7 +488,9 @@ class DepartmentService(BaseService):
                         sync_dir=SyncDirection.LDAP,
                     )
                 except Exception as e:
-                    target_name = "Dismissed OU" if not employee.is_active else "Users OU"
+                    target_name = (
+                        "Dismissed OU" if not employee.is_active else "Users OU"
+                    )
                     raise DirectoryLdapError(
                         f"LDAP move to {target_name} failed: {e}"
                     ) from e
@@ -491,7 +503,9 @@ class DepartmentService(BaseService):
             except Exception as e:
                 raise DirectoryDbError(str(e)) from e
 
-    def set_head(self, dept: Department, head: Optional[Employee]) -> Department:
+    def set_head(
+        self, dept: Department, head: Optional[Employee]
+    ) -> Department:
         """Назначает/снимает руководителя отдела: LDAP managedBy → DB.head.
 
         Args:
@@ -588,7 +602,8 @@ class DepartmentService(BaseService):
             try:
                 attrs = {
                     "sAMAccountName": cn[:20],
-                    "description": description or f"Role: {name} in {department.name}",
+                    "description": description
+                    or f"Role: {name} in {department.name}",
                     "groupType": group_type("global", security_enabled=True),
                 }
                 ok = conn.add(group_dn, ["top", "group"], attrs)
@@ -600,7 +615,9 @@ class DepartmentService(BaseService):
             except DirectoryLdapError:
                 raise
             except Exception as e:
-                raise DirectoryLdapError(f"LDAP create role group failed: {e}") from e
+                raise DirectoryLdapError(
+                    f"LDAP create role group failed: {e}"
+                ) from e
 
             # 2. Создаём запись в БД
             try:
@@ -631,7 +648,8 @@ class DepartmentService(BaseService):
 
         Args:
             role: Роль для обновления.
-            changes: Словарь изменений (name, scoped_permissions, scoped_permission_codes).
+            changes: Словарь изменений
+            (name, scoped_permissions, scoped_permission_codes).
 
         Returns:
             DepartmentRole: Обновлённая роль.
@@ -676,6 +694,7 @@ class DepartmentService(BaseService):
                     role.scoped_permissions.set(perms)
                 elif codes is not None:
                     from employees.models import DepartmentPermission
+
                     qs = DepartmentPermission.objects.filter(code__in=codes)
                     role.scoped_permissions.set(list(qs))
         except Exception as e:
@@ -783,7 +802,7 @@ class DepartmentService(BaseService):
                     defaults={
                         "is_active": True,
                         "assigned_by": assigned_by,
-                    }
+                    },
                 )
         except Exception as e:
             # Откатываем LDAP — удаляем из группы
@@ -818,10 +837,9 @@ class DepartmentService(BaseService):
             raise DirectoryLdapError(f"LDAP role revoke failed: {e}") from e
 
         # 2. Только при успехе LDAP — деактивируем назначение
-        RoleAssignment.objects.filter(
-            employee=employee,
-            role=role
-        ).update(is_active=False)
+        RoleAssignment.objects.filter(employee=employee, role=role).update(
+            is_active=False
+        )
 
     def _sync_role_membership(
         self,
@@ -849,7 +867,9 @@ class DepartmentService(BaseService):
             if add:
                 self._group_service.add_members(role.ldap_group_dn, [user_dn])
             else:
-                self._group_service.remove_members(role.ldap_group_dn, [user_dn])
+                self._group_service.remove_members(
+                    role.ldap_group_dn, [user_dn]
+                )
 
     def _ensure_role_group(self, role: DepartmentRole) -> str:
         """Гарантирует наличие группы роли ROLE_<Name> в OU отдела.
@@ -903,7 +923,8 @@ class DepartmentService(BaseService):
             # Создаём новую группу
             new_dn = f"{expected_rdn},{dept_dn}"
             attrs = {
-                "sAMAccountName": expected_cn[:20],  # SAM ограничен 20 символами
+                # SAM ограничен 20 символами
+                "sAMAccountName": expected_cn[:20],
                 "description": f"Role: {role.name} in {dept.name}",
                 "groupType": group_type("global", security_enabled=True),
             }
@@ -912,9 +933,13 @@ class DepartmentService(BaseService):
                 if "entryAlreadyExists" in str(conn.result):
                     pass  # Уже существует
                 else:
-                    raise RuntimeError(f"LDAP add role group failed: {conn.result}")
+                    raise RuntimeError(
+                        f"LDAP add role group failed: {conn.result}"
+                    )
 
-            DepartmentRole.objects.filter(pk=role.pk).update(ldap_group_dn=new_dn)
+            DepartmentRole.objects.filter(pk=role.pk).update(
+                ldap_group_dn=new_dn
+            )
             role.ldap_group_dn = new_dn
             return new_dn
 
@@ -937,7 +962,9 @@ class DepartmentService(BaseService):
         new_cn = f"ROLE_{new_role_name}"
 
         with _ldap():
-            new_dn = self._group_service.rename(role.ldap_group_dn, new_cn=new_cn)
+            new_dn = self._group_service.rename(
+                role.ldap_group_dn, new_cn=new_cn
+            )
 
         DepartmentRole.objects.filter(pk=role.pk).update(ldap_group_dn=new_dn)
         role.ldap_group_dn = new_dn
@@ -971,9 +998,10 @@ class DepartmentService(BaseService):
             str: Очищенное имя.
         """
         import re
+
         # Убираем спецсимволы LDAP, заменяем пробелы на _
-        clean = re.sub(r'[,=+<>#;\\"\']', '', name)
-        clean = re.sub(r'\s+', '_', clean)
+        clean = re.sub(r'[,=+<>#;\\"\']', "", name)
+        clean = re.sub(r"\s+", "_", clean)
         return clean[:50]  # Ограничение длины
 
     # ==================== DN/Lookup Methods ==================== #
@@ -1041,7 +1069,8 @@ class DepartmentService(BaseService):
             str: DN созданного/существующего OU.
 
         Raises:
-            RuntimeError: Если не настроен LDAP_DEPARTMENTS_BASE или ошибка создания.
+            RuntimeError: Если не настроен LDAP_DEPARTMENTS_BASE
+            или ошибка создания.
         """
         base = getattr(settings, "LDAP_DEPARTMENTS_BASE", None)
         if not base:
@@ -1055,7 +1084,8 @@ class DepartmentService(BaseService):
         ok = conn.add(dn, ["top", "organizationalUnit"])
         if not ok:
             raise RuntimeError(f"LDAP add OU failed: {conn.result}")
-        # NOTE: OU=Roles больше не создаётся — группы ролей лежат прямо в OU отдела
+        # NOTE: OU=Roles больше не создаётся.
+        # Группы ролей лежат прямо в OU отдела.
         return dn
 
     def _rename_department_ou(
@@ -1063,9 +1093,11 @@ class DepartmentService(BaseService):
     ) -> str:
         """Переименовывает OU отдела и возвращает новый DN.
 
-        NOTE: Используется low-level ldap3 для rename RDN (OU=OldName → OU=NewName).
+        NOTE: Используется low-level ldap3
+        для rename RDN (OU=OldName → OU=NewName).
         ModifyDnMixin покрывает move (смену superior), но НЕ rename RDN.
-        Rename OU — это изменение атрибута ou, что django-ldapdb не поддерживает.
+        Rename OU — это изменение атрибута ou,
+        что django-ldapdb не поддерживает.
 
         Args:
             conn: LDAP соединение.
@@ -1154,9 +1186,9 @@ class DepartmentService(BaseService):
         Raises:
             RuntimeError: Если не настроен LDAP_USERS_BASE.
         """
-        users_base = getattr(
-            settings, "LDAP_USERS_BASE", None
-        ) or getattr(settings, "LDAP_USER_BASE", None)
+        users_base = getattr(settings, "LDAP_USERS_BASE", None) or getattr(
+            settings, "LDAP_USER_BASE", None
+        )
         if not users_base:
             raise RuntimeError("LDAP_USERS_BASE is not configured")
         ok = conn.search(
@@ -1193,9 +1225,11 @@ class DepartmentService(BaseService):
     def _ensure_department_group(
         self, conn: Connection, dept: Department, dept_dn: str
     ) -> str:
-        """Гарантирует наличие группы отдела с CN = 'DEP_<ИмяОтдела>'.
+        """Гарантирует наличие группы отдела
+        с CN = 'DEP_<ИмяОтдела>'.
 
-        При необходимости переименовывает/создаёт и синхронизирует dept.ldap_group_dn.
+        При необходимости переименовывает/создаёт
+        и синхронизирует dept.ldap_group_dn.
 
         Args:
             conn: LDAP соединение.
@@ -1245,7 +1279,10 @@ class DepartmentService(BaseService):
 
         ok = conn.search(
             search_base=dept_dn,
-            search_filter=f"(&(objectClass=group)(cn={esc_filter(expected_cn)}))",
+            search_filter=(
+                f"(&(objectClass=group)"
+                f"(cn={esc_filter(expected_cn)}))"
+            ),
             attributes=["distinguishedName"],
         )
         if ok and conn.entries:
@@ -1262,7 +1299,10 @@ class DepartmentService(BaseService):
                 if old_cn and old_cn != expected_cn:
                     ok = conn.search(
                         search_base=dept_dn,
-                        search_filter=f"(&(objectClass=group)(cn={esc_filter(old_cn)}))",
+                        search_filter=(
+                            f"(&(objectClass=group)"
+                            f"(cn={esc_filter(old_cn)}))"
+                        ),
                         attributes=["distinguishedName"],
                     )
                     if ok and conn.entries:
@@ -1361,7 +1401,8 @@ class DepartmentService(BaseService):
             new_dn: Новый DN OU.
 
         Returns:
-            Tuple[int, int]: (обновлено в модели (всегда 0), обновлено состояний).
+            Tuple[int, int]: (обновлено в модели (всегда 0),
+            обновлено состояний).
         """
         old_suffix = f",{old_dn}".lower()
         new_suffix = f",{new_dn}"

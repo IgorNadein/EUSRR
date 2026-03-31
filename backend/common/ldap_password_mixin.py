@@ -5,7 +5,11 @@ import logging
 from django.conf import settings
 
 from employees.ldap import UserService
-from employees.ldap.errors import DirectoryDbError, DirectoryLdapError, DirectoryServiceError
+from employees.ldap.errors import (
+    DirectoryDbError,
+    DirectoryLdapError,
+    DirectoryServiceError,
+)
 from employees.models import LdapSyncState
 
 logger = logging.getLogger(__name__)
@@ -58,8 +62,7 @@ class LdapPasswordMixin:
 
         # Проверяем наличие LDAP пользователя
         sync_state = LdapSyncState.objects.filter(
-            model='employee',
-            object_pk=str(employee_instance.pk)
+            model="employee", object_pk=str(employee_instance.pk)
         ).first()
 
         if not sync_state or not (sync_state.ldap_dn or sync_state.ldap_guid):
@@ -73,37 +76,47 @@ class LdapPasswordMixin:
             svc = UserService()
             svc.update_user(
                 emp=employee_instance,
-                changes={'password': new_password},
+                changes={"password": new_password},
                 group_cns=None,
                 move_to_department_dn=None,
             )
-            logger.info(f"Password synced to LDAP for Employee {employee_instance.id}")
+            logger.info(
+                f"Password synced to LDAP for Employee {employee_instance.id}"
+            )
             return True, None
 
         except DirectoryLdapError as e:
             logger.error(
                 f"LDAP error during password sync for Employee {
-                    employee_instance.id}: {e}",
-                exc_info=True)
+                    employee_instance.id
+                }: {e}",
+                exc_info=True,
+            )
             return False, f"ldap_error: {str(e)}"
 
         except DirectoryServiceError as e:
             logger.error(
                 f"Service error during password sync for Employee {
-                    employee_instance.id}: {e}",
-                exc_info=True)
+                    employee_instance.id
+                }: {e}",
+                exc_info=True,
+            )
             return False, f"service_error: {str(e)}"
 
         except DirectoryDbError as e:
             logger.error(
                 f"DB error during password sync for Employee {
-                    employee_instance.id}: {e}",
-                exc_info=True)
+                    employee_instance.id
+                }: {e}",
+                exc_info=True,
+            )
             return False, f"db_error: {str(e)}"
 
         except Exception as e:
             logger.error(
                 f"Unexpected error during password sync for Employee {
-                    employee_instance.id}: {e}",
-                exc_info=True)
+                    employee_instance.id
+                }: {e}",
+                exc_info=True,
+            )
             return False, f"unexpected_error: {str(e)}"

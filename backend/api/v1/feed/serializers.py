@@ -31,7 +31,7 @@ class AuthorMiniSerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.URI)
     def get_avatar(self, obj):
         """Возвращает полный URL для аватара"""
-        request = self.context.get('request')
+        request = self.context.get("request")
         return build_media_url(obj.avatar, request)
 
 
@@ -47,7 +47,8 @@ class PostListSerializer(serializers.ModelSerializer):
     # ожидания фронта
     is_liked = serializers.BooleanField(read_only=True, default=False)
     comments_count = serializers.IntegerField(
-        read_only=True, default=0, allow_null=True)
+        read_only=True, default=0, allow_null=True
+    )
     # для ссылок на отдел
     department_id = serializers.IntegerField(read_only=True)
 
@@ -90,39 +91,38 @@ class PostListSerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.URI)
     def get_image(self, obj):
         """Возвращает полный URL для изображения"""
-        request = self.context.get('request')
+        request = self.context.get("request")
         return build_media_url(obj.image, request)
 
     @extend_schema_field(OpenApiTypes.URI)
     def get_attachment(self, obj):
         """Возвращает полный URL для вложения"""
-        request = self.context.get('request')
+        request = self.context.get("request")
         return build_media_url(obj.attachment, request)
 
 
 class PostSerializer(PostListSerializer):
     """Сериализатор для деталей поста"""
+
     user_has_liked = serializers.SerializerMethodField()
 
     class Meta(PostListSerializer.Meta):
-        fields = PostListSerializer.Meta.fields + [
-            "user_has_liked"
-        ]
+        fields = PostListSerializer.Meta.fields + ["user_has_liked"]
 
     @extend_schema_field(serializers.BooleanField())
     def get_user_has_liked(self, obj):
         """Проверяет, лайкнул ли текущий пользователь этот пост"""
         request = self.context.get("request")
         if request and request.user and request.user.is_authenticated:
-            return PostLike.objects.filter(
-                post=obj, user=request.user
-            ).exists()
+            return PostLike.objects.filter(post=obj, user=request.user).exists()
         return False
 
     def validate(self, attrs):
         # значения с учётом partial
         t = attrs.get("type", getattr(self.instance, "type", None))
-        dept = attrs.get("department", getattr(self.instance, "department", None))
+        dept = attrs.get(
+            "department", getattr(self.instance, "department", None)
+        )
 
         # личные посты запрещены
         if t == TYPE_EMPLOYEE:
@@ -137,6 +137,11 @@ class PostSerializer(PostListSerializer):
             )
         if t != TYPE_DEPARTMENT and dept is not None:
             raise serializers.ValidationError(
-                {"department": "Для этого типа публикаций отдел указывать нельзя."}
+                {
+                    "department": (
+                        "Для этого типа публикаций отдел "
+                        "указывать нельзя."
+                    )
+                }
             )
         return attrs

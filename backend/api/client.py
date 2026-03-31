@@ -14,7 +14,8 @@ class ApiConfig:
     token_refresh_path: str = "/auth/token/refresh/"
     timeout: int = 15
     default_headers: Dict[str, str] = None
-    login_url_name: str = "auth_front:login"  # куда редиректить, если токены протухли
+    # куда редиректить, если токены протухли
+    login_url_name: str = "auth_front:login"
 
 
 def load_config(request=None) -> ApiConfig:
@@ -23,13 +24,18 @@ def load_config(request=None) -> ApiConfig:
     Для внутренних запросов (API -> API) используем локальный адрес,
     чтобы избежать проблем с SSL сертификатами.
     """
-    # Всегда используем локальный адрес для внутренних запросов API к самому себе
+    # Всегда используем локальный адрес для внутренних запросов API
+    # к самому себе.
     # Это избегает проблем с SSL и быстрее работает
-    base = getattr(settings, "API_BASE_URL", "http://127.0.0.1:8000/api")
+    base = getattr(
+        settings, "API_BASE_URL", "http://127.0.0.1:8000/api"
+    )
 
     return ApiConfig(
         base_url=base.rstrip("/"),
-        token_obtain_path=getattr(settings, "API_TOKEN_OBTAIN_PATH", "/auth/token/"),
+        token_obtain_path=getattr(
+            settings, "API_TOKEN_OBTAIN_PATH", "/auth/token/"
+        ),
         token_refresh_path=getattr(
             settings, "API_TOKEN_REFRESH_PATH", "/auth/token/refresh/"
         ),
@@ -37,7 +43,9 @@ def load_config(request=None) -> ApiConfig:
         default_headers=getattr(
             settings, "API_DEFAULT_HEADERS", {"Accept": "application/json"}
         ),
-        login_url_name=getattr(settings, "API_LOGIN_URL_NAME", "auth_front:login"),
+        login_url_name=getattr(
+            settings, "API_LOGIN_URL_NAME", "auth_front:login"
+        ),
     )
 
 
@@ -91,13 +99,18 @@ class ApiClient:
     ) -> ApiResponse:
         url = self._make_url(path)
         hdrs = dict(self.cfg.default_headers or {})
-        # Не выставляем Content-Type вручную — requests сделает это сам (особенно
+        # Не выставляем Content-Type вручную — requests сделает это сам
+        # (особенно
         # важно для multipart)
         if headers:
-            # если вдруг передали Content-Type, но у нас files — лучше его удалить
+            # если вдруг передали Content-Type, но у нас files — лучше его
+            # удалить
             if files and "Content-Type" in headers:
-                headers = {k: v for k, v in headers.items() if k.lower() !=
-                           "content-type"}
+                headers = {
+                    k: v
+                    for k, v in headers.items()
+                    if k.lower() != "content-type"
+                }
             hdrs.update(headers)
         hdrs.update(self._auth_headers())
 
@@ -105,14 +118,17 @@ class ApiClient:
             method,
             url,
             params=params,
-            json=None if files or data else json,  # при multipart json не используем
+            json=None
+            if files or data
+            else json,  # при multipart json не используем
             data=data,
             files=files,
             headers=hdrs,
             timeout=self.cfg.timeout,
         )
 
-        # Пробуем refresh при 401 (Unauthorized) или 403 (может быть из-за истёкшего токена)
+        # Пробуем refresh при 401 (Unauthorized) или 403
+        # (может быть из-за истёкшего токена)
         # Проверяем наличие refresh-токена и флаг retry
         if resp.status_code in (401, 403) and retry and self.refresh:
             if self.refresh_tokens():
@@ -135,10 +151,8 @@ class ApiClient:
         except Exception:
             data_json = None
         return ApiResponse(
-            ok=resp.ok,
-            status=resp.status_code,
-            json=data_json,
-            text=resp.text)
+            ok=resp.ok, status=resp.status_code, json=data_json, text=resp.text
+        )
 
     # --- публичные методы HTTP ---
     def get(self, path: str, **kw) -> ApiResponse:
@@ -161,10 +175,9 @@ class ApiClient:
         url = self._make_url(self.cfg.token_obtain_path)
         resp = self.session.post(
             url,
-            json={
-                "email": email,
-                "password": password},
-            timeout=self.cfg.timeout)
+            json={"email": email, "password": password},
+            timeout=self.cfg.timeout,
+        )
         if resp.status_code >= 400:
             return False
         if "application/json" not in (resp.headers.get("Content-Type") or ""):

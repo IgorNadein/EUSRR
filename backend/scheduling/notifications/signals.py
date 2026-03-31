@@ -6,6 +6,7 @@ Django signals для автоматической генерации уведо
 - pre_save для schedule.Event - отслеживание изменений полей
 - pre_delete для schedule.Event - отмена (удаление) события
 """
+
 import logging
 from django.db.models.signals import post_save, pre_delete, pre_save
 from django.dispatch import receiver
@@ -13,7 +14,7 @@ from django.dispatch import receiver
 logger = logging.getLogger(__name__)
 
 
-@receiver(post_save, sender='schedule.Event')
+@receiver(post_save, sender="schedule.Event")
 def create_event_notifications(sender, instance, created, **kwargs):
     """
     Создает уведомления при создании или изменении события.
@@ -27,19 +28,21 @@ def create_event_notifications(sender, instance, created, **kwargs):
     try:
         if created:
             # Получаем создателя события из request (если доступен)
-            creator = getattr(instance, '_creator', None)
+            creator = getattr(instance, "_creator", None)
             notify_event_created(instance, creator)
         else:
             # Проверяем изменения
-            changed_fields = getattr(instance, '_changed_fields', [])
+            changed_fields = getattr(instance, "_changed_fields", [])
             if changed_fields:
-                modifier = getattr(instance, '_modifier', None)
+                modifier = getattr(instance, "_modifier", None)
                 notify_event_changed(instance, changed_fields, modifier)
     except Exception as e:
-        logger.error(f"Ошибка в сигнале create_event_notifications: {e}", exc_info=True)
+        logger.error(
+            f"Ошибка в сигнале create_event_notifications: {e}", exc_info=True
+        )
 
 
-@receiver(pre_save, sender='schedule.Event')
+@receiver(pre_save, sender="schedule.Event")
 def track_event_changes(sender, instance, **kwargs):
     """
     Отслеживает изменения важных полей события для уведомлений.
@@ -52,6 +55,7 @@ def track_event_changes(sender, instance, **kwargs):
     if instance.pk:
         try:
             from schedule.models import Event
+
             old_event = Event.objects.get(pk=instance.pk)
             changed_fields = []
 
@@ -65,14 +69,14 @@ def track_event_changes(sender, instance, **kwargs):
             instance._changed_fields = changed_fields
         except Exception as e:
             logger.error(
-                f"Ошибка при отслеживании изменений события: {e}",
-                exc_info=True)
+                f"Ошибка при отслеживании изменений события: {e}", exc_info=True
+            )
             instance._changed_fields = []
     else:
         instance._changed_fields = []
 
 
-@receiver(pre_delete, sender='schedule.Event')
+@receiver(pre_delete, sender="schedule.Event")
 def notify_event_cancelled_signal(sender, instance, **kwargs):
     """
     Создает уведомления при удалении (отмене) события.
@@ -82,9 +86,10 @@ def notify_event_cancelled_signal(sender, instance, **kwargs):
     from .handlers import notify_event_cancelled
 
     try:
-        canceller = getattr(instance, '_canceller', None)
+        canceller = getattr(instance, "_canceller", None)
         notify_event_cancelled(instance, canceller)
     except Exception as e:
         logger.error(
             f"Ошибка в сигнале notify_event_cancelled_signal: {e}",
-            exc_info=True)
+            exc_info=True,
+        )

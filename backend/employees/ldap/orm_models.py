@@ -109,7 +109,8 @@ from django.conf import settings
 from django.utils import timezone as _dj_tz
 
 # Compatibility: django-ldapdb 1.5.1 uses timezone.utc removed in Django 5.x
-if not hasattr(_dj_tz, 'utc'):
+if not hasattr(_dj_tz, "utc"):
+
     class _UtcCompat(_dt.tzinfo):
         """pytz-compatible UTC wrapper for django-ldapdb.
 
@@ -166,9 +167,9 @@ def get_users_base():
     2. Fallback: OU=company,DC=robotail,DC=local
     """
     return getattr(
-        settings, 'LDAP_USER_BASE',
-        getattr(settings, 'LDAP_USERS_BASE',
-                'OU=company,DC=robotail,DC=local'),
+        settings,
+        "LDAP_USER_BASE",
+        getattr(settings, "LDAP_USERS_BASE", "OU=company,DC=robotail,DC=local"),
     )
 
 
@@ -182,9 +183,9 @@ def get_base_dn():
     2. Fallback: LDAP_USERS_BASE или DC=robotail,DC=local
     """
     return getattr(
-        settings, 'LDAP_BASE_DN',
-        getattr(settings, 'LDAP_USERS_BASE',
-                'DC=robotail,DC=local'),
+        settings,
+        "LDAP_BASE_DN",
+        getattr(settings, "LDAP_USERS_BASE", "DC=robotail,DC=local"),
     )
 
 
@@ -199,8 +200,9 @@ def get_groups_base():
     2. Fallback: OU=Groups,DC=robotail,DC=local
     """
     return getattr(
-        settings, 'LDAP_GROUPS_BASE',
-        'OU=Groups,DC=robotail,DC=local',
+        settings,
+        "LDAP_GROUPS_BASE",
+        "OU=Groups,DC=robotail,DC=local",
     )
 
 
@@ -215,8 +217,9 @@ def get_departments_base():
     2. Fallback: OU=Departments,DC=robotail,DC=local
     """
     return getattr(
-        settings, 'LDAP_DEPARTMENTS_BASE',
-        'OU=Departments,DC=robotail,DC=local',
+        settings,
+        "LDAP_DEPARTMENTS_BASE",
+        "OU=Departments,DC=robotail,DC=local",
     )
 
 
@@ -250,39 +253,39 @@ class LdapUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
     """
 
     # Конфигурация LdapSyncStateMixin
-    _sync_model_name = 'employee'
-    _sync_pk_field = 'employee_number'
+    _sync_model_name = "employee"
+    _sync_pk_field = "employee_number"
 
     # Базовая конфигурация
     # base_dn покрывает все местоположения
     # пользователей для SUBTREE search
     base_dn = get_users_base()
-    object_classes = ['top', 'person', 'organizationalPerson', 'user']
+    object_classes = ["top", "person", "organizationalPerson", "user"]
 
     # RDN атрибут для построения Distinguished Name
     # Пример: cn=Ivan Ivanov → dn=CN=Ivan Ivanov,OU=...,DC=...
-    rdn_attributes = ['cn']
+    rdn_attributes = ["cn"]
 
     # Основные атрибуты
     # dn: ldapdb.models.Model primary_key (DN)
-    cn = CharField(db_column='cn')
+    cn = CharField(db_column="cn")
 
     # Идентификация
-    sam_account_name = CharField(db_column='sAMAccountName')
-    user_principal_name = CharField(db_column='userPrincipalName')
+    sam_account_name = CharField(db_column="sAMAccountName")
+    user_principal_name = CharField(db_column="userPrincipalName")
 
     # Персональные данные
-    given_name = CharField(db_column='givenName')
-    sn = CharField(db_column='sn')  # surname (фамилия)
-    display_name = CharField(db_column='displayName')
-    mail = CharField(db_column='mail')
+    given_name = CharField(db_column="givenName")
+    sn = CharField(db_column="sn")  # surname (фамилия)
+    display_name = CharField(db_column="displayName")
+    mail = CharField(db_column="mail")
 
     # Контакты
-    telephone_number = CharField(db_column='telephoneNumber', blank=True)
-    mobile = CharField(db_column='mobile', blank=True)
+    telephone_number = CharField(db_column="telephoneNumber", blank=True)
+    mobile = CharField(db_column="mobile", blank=True)
 
     # Управление учетной записью
-    user_account_control = IntegerField(db_column='userAccountControl')
+    user_account_control = IntegerField(db_column="userAccountControl")
 
     # Пароль (write-only атрибут AD)
     # ВАЖНО: unicodePwd - специальный атрибут Active Directory
@@ -290,21 +293,21 @@ class LdapUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
     # - Требует SSL/TLS соединения
     # - Требует специальной кодировки: UTF-16-LE с кавычками
     # - Используйте метод set_password() вместо прямой записи
-    unicode_pwd = CharField(db_column='unicodePwd', blank=True)
+    unicode_pwd = CharField(db_column="unicodePwd", blank=True)
 
     # Дополнительная информация
-    description = CharField(db_column='description', blank=True)
-    thumbnail_photo = ImageField(db_column='thumbnailPhoto', blank=True)
+    description = CharField(db_column="description", blank=True)
+    thumbnail_photo = ImageField(db_column="thumbnailPhoto", blank=True)
 
     # ID сотрудника (для связи с Django Employee.pk)
-    employee_number = CharField(db_column='employeeNumber', blank=True)
+    employee_number = CharField(db_column="employeeNumber", blank=True)
 
     # Членство в группах
-    member_of = ListField(db_column='memberOf', blank=True)
+    member_of = ListField(db_column="memberOf", blank=True)
 
     # Временные метки
-    when_created = DateTimeField(db_column='whenCreated')
-    when_changed = DateTimeField(db_column='whenChanged')
+    when_created = DateTimeField(db_column="whenCreated")
+    when_changed = DateTimeField(db_column="whenChanged")
 
     class Meta:
         managed = False  # Django не управляет схемой LDAP
@@ -316,10 +319,13 @@ class LdapUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
         return f"<LdapUser: {self.sam_account_name}>"
 
     def set_password(self, new_password: str) -> None:
-        """Устанавливает новый пароль для пользователя через AD extended operation.
+        """Устанавливает новый пароль для пользователя.
 
-        Использует Microsoft-специфичное расширение modify_password для корректной
-        работы с политиками паролей AD. Это более надежный способ, чем прямая
+        Через AD extended operation.
+
+        Использует Microsoft-специфичное расширение modify_password
+        для корректной работы с политиками паролей AD.
+        Это более надежный способ, чем прямая
         запись в unicodePwd.
 
         Args:
@@ -352,7 +358,8 @@ class LdapUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
 
         Raises:
             ValueError: Если новый пароль не соответствует политике
-            DirectoryLdapError: Если старый пароль неверен или операция не удалась
+            DirectoryLdapError: Если старый пароль неверен
+                или операция не удалась
 
         Example:
             >>> ldap_user = LdapUser.objects.get(dn='CN=...')
@@ -385,43 +392,48 @@ class LdapGroup(ModifyDnMixin, LdapModel):
     Операции через django-ldapdb:
     - CREATE: создание через GroupService.create() (ORM)
     - UPDATE: изменение атрибутов через .save()
-    - MOVE: group.base_dn = new_dn; group.save() (автоматический modify_dn!)
+        - MOVE: group.base_dn = new_dn; group.save()
+            (автоматический modify_dn!)
     - RENAME: переименование через GroupService.rename() (low-level ldap3)
     - DELETE: удаление через .delete() (ORM)
 
     Расположение групп по типам:
-    - Глобальные:  CN=<Name>,OU=Groups,...           ← эта модель
-    - Отделы:      CN=DEP_*,OU=<Dept>,OU=Departments ← LdapOrganizationalUnitGroup
-    - Должности:   CN=POS_*,OU=Positions,...          ← PositionService
-    - Роли:        CN=ROLE_*,OU=<Dept>,OU=Departments ← через GroupService
+        - Глобальные:  CN=<Name>,OU=Groups,...
+            ← эта модель
+        - Отделы:      CN=DEP_*,OU=<Dept>,OU=Departments
+            ← LdapOrganizationalUnitGroup
+        - Должности:   CN=POS_*,OU=Positions,...
+            ← PositionService
+        - Роли:        CN=ROLE_*,OU=<Dept>,OU=Departments
+            ← через GroupService
     """
 
     # Базовая конфигурация: только OU=Groups
     base_dn = get_groups_base()
-    object_classes = ['top', 'group']
+    object_classes = ["top", "group"]
 
     # RDN атрибут для построения Distinguished Name
     # Пример: cn=Developers → dn=CN=Developers,OU=Groups,DC=...
-    rdn_attributes = ['cn']
+    rdn_attributes = ["cn"]
 
     # Основные атрибуты
     # dn: ldapdb.models.Model primary_key (DN)
-    cn = CharField(db_column='cn')
+    cn = CharField(db_column="cn")
 
     # Идентификация
     # objectGUID исключен (проблемы с бинарными данными)
-    sam_account_name = CharField(db_column='sAMAccountName')
+    sam_account_name = CharField(db_column="sAMAccountName")
 
     # Описание
-    description = CharField(db_column='description', blank=True)
+    description = CharField(db_column="description", blank=True)
 
     # Члены группы
-    member = ListField(db_column='member', blank=True)
-    member_of = ListField(db_column='memberOf', blank=True)
+    member = ListField(db_column="member", blank=True)
+    member_of = ListField(db_column="memberOf", blank=True)
 
     # Временные метки
-    when_created = DateTimeField(db_column='whenCreated')
-    when_changed = DateTimeField(db_column='whenChanged')
+    when_created = DateTimeField(db_column="whenCreated")
+    when_changed = DateTimeField(db_column="whenChanged")
 
     class Meta:
         managed = False
@@ -464,22 +476,22 @@ class LdapOrganizationalUnitGroup(ModifyDnMixin, LdapModel):
 
     # Базовая конфигурация: ищем группы внутри OU отделов
     base_dn = get_departments_base()
-    object_classes = ['top', 'group']
+    object_classes = ["top", "group"]
 
-    rdn_attributes = ['cn']
+    rdn_attributes = ["cn"]
 
     # Основные атрибуты
-    cn = CharField(db_column='cn')
-    sam_account_name = CharField(db_column='sAMAccountName')
-    description = CharField(db_column='description', blank=True)
+    cn = CharField(db_column="cn")
+    sam_account_name = CharField(db_column="sAMAccountName")
+    description = CharField(db_column="description", blank=True)
 
     # Члены группы
-    member = ListField(db_column='member', blank=True)
-    member_of = ListField(db_column='memberOf', blank=True)
+    member = ListField(db_column="member", blank=True)
+    member_of = ListField(db_column="memberOf", blank=True)
 
     # Временные метки
-    when_created = DateTimeField(db_column='whenCreated')
-    when_changed = DateTimeField(db_column='whenChanged')
+    when_created = DateTimeField(db_column="whenCreated")
+    when_changed = DateTimeField(db_column="whenChanged")
 
     class Meta:
         managed = False
@@ -513,16 +525,11 @@ class LdapOrganizationalUnitGroup(ModifyDnMixin, LdapModel):
         from ldap3 import MODIFY_ADD
 
         with _ldap() as conn:
-            ok = conn.modify(
-                self.dn,
-                {"member": [(MODIFY_ADD, [member_dn])]}
-            )
+            ok = conn.modify(self.dn, {"member": [(MODIFY_ADD, [member_dn])]})
             if not ok:
                 result_str = str(conn.result)
                 if "attributeOrValueExists" not in result_str:
-                    raise RuntimeError(
-                        f"add_member failed: {conn.result}"
-                    )
+                    raise RuntimeError(f"add_member failed: {conn.result}")
 
     def remove_member(self, member_dn: str) -> None:
         """Удаляет участника из группы отдела.
@@ -538,15 +545,12 @@ class LdapOrganizationalUnitGroup(ModifyDnMixin, LdapModel):
 
         with _ldap() as conn:
             ok = conn.modify(
-                self.dn,
-                {"member": [(MODIFY_DELETE, [member_dn])]}
+                self.dn, {"member": [(MODIFY_DELETE, [member_dn])]}
             )
             if not ok:
                 result_str = str(conn.result)
                 if "noSuchAttribute" not in result_str:
-                    raise RuntimeError(
-                        f"remove_member failed: {conn.result}"
-                    )
+                    raise RuntimeError(f"remove_member failed: {conn.result}")
 
     def sync_members(self, desired_dns: list[str]) -> dict:
         """Синхронизирует состав группы к точному списку.
@@ -571,18 +575,14 @@ class LdapOrganizationalUnitGroup(ModifyDnMixin, LdapModel):
         with _ldap() as conn:
             if to_remove:
                 conn.modify(
-                    self.dn,
-                    {"member": [(MODIFY_DELETE, list(to_remove))]}
+                    self.dn, {"member": [(MODIFY_DELETE, list(to_remove))]}
                 )
             if to_add:
-                conn.modify(
-                    self.dn,
-                    {"member": [(MODIFY_ADD, list(to_add))]}
-                )
+                conn.modify(self.dn, {"member": [(MODIFY_ADD, list(to_add))]})
 
         return {
-            'added': len(to_add),
-            'removed': len(to_remove),
+            "added": len(to_add),
+            "removed": len(to_remove),
         }
 
 
@@ -622,28 +622,28 @@ class LdapOrganizationalUnit(ModifyDnMixin, LdapModel):
 
     # Базовая конфигурация
     base_dn = get_departments_base()
-    object_classes = ['top', 'organizationalUnit']
+    object_classes = ["top", "organizationalUnit"]
 
     # RDN атрибут для построения Distinguished Name
     # Пример: ou=IT → dn=OU=IT,OU=Departments,DC=...
-    rdn_attributes = ['ou']
+    rdn_attributes = ["ou"]
 
     # Основные атрибуты
     # dn: ldapdb.models.Model primary_key (DN)
-    ou = CharField(db_column='ou')
+    ou = CharField(db_column="ou")
 
     # Идентификация
     # objectGUID исключен из-за проблем с декодированием бинарных данных
 
     # Описание
-    description = CharField(db_column='description', blank=True)
+    description = CharField(db_column="description", blank=True)
 
     # Управление (managedBy - DN руководителя)
-    managed_by = CharField(db_column='managedBy', blank=True)
+    managed_by = CharField(db_column="managedBy", blank=True)
 
     # Временные метки
-    when_created = DateTimeField(db_column='whenCreated')
-    when_changed = DateTimeField(db_column='whenChanged')
+    when_created = DateTimeField(db_column="whenCreated")
+    when_changed = DateTimeField(db_column="whenChanged")
 
     class Meta:
         managed = False
@@ -707,25 +707,22 @@ class LdapOrganizationalUnit(ModifyDnMixin, LdapModel):
             attrs = {
                 "sAMAccountName": cn[:20],
                 "description": f"{self.ou} department members",
-                "groupType": group_type(
-                    "global", security_enabled=True
-                ),
+                "groupType": group_type("global", security_enabled=True),
             }
             ok = conn.add(group_dn, ["top", "group"], attrs)
             if not ok:
                 res = str(conn.result)
                 if "entryAlreadyExists" not in res:
                     raise RuntimeError(
-                        f"Failed to create dept group: "
-                        f"{conn.result}"
+                        f"Failed to create dept group: {conn.result}"
                     )
 
         return LdapOrganizationalUnitGroup.objects.get(dn=group_dn)
 
 
 __all__ = [
-    'LdapUser',
-    'LdapGroup',
-    'LdapOrganizationalUnitGroup',
-    'LdapOrganizationalUnit',
+    "LdapUser",
+    "LdapGroup",
+    "LdapOrganizationalUnitGroup",
+    "LdapOrganizationalUnit",
 ]

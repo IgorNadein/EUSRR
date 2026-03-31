@@ -64,7 +64,9 @@ class Command(BaseCommand):
 
         if dry_run:
             self.stdout.write(
-                self.style.WARNING("=== DRY-RUN режим (изменения НЕ применяются) ===")
+                self.style.WARNING(
+                    "=== DRY-RUN режим (изменения НЕ применяются) ==="
+                )
             )
         else:
             self.stdout.write(
@@ -81,10 +83,14 @@ class Command(BaseCommand):
             sync_states = sync_states.filter(object_pk=user_id)
 
         if not sync_states.exists():
-            self.stdout.write(self.style.WARNING("Нет пользователей с LDAP DN."))
+            self.stdout.write(
+                self.style.WARNING("Нет пользователей с LDAP DN.")
+            )
             return
 
-        self.stdout.write(f"Найдено записей LdapSyncState: {sync_states.count()}")
+        self.stdout.write(
+            f"Найдено записей LdapSyncState: {sync_states.count()}"
+        )
 
         updated = 0
         skipped_already_set = 0
@@ -123,7 +129,8 @@ class Command(BaseCommand):
             except Exception as e:
                 self.stdout.write(
                     self.style.ERROR(
-                        f"  [ERROR] pk={pk}, DN={dn}: не удалось прочитать — {e}"
+                        f"  [ERROR] pk={pk}, DN={dn}: "
+                        f"не удалось прочитать — {e}"
                     )
                 )
                 errors += 1
@@ -135,7 +142,10 @@ class Command(BaseCommand):
             if current_value == expected_value:
                 if verbose > 1:
                     self.stdout.write(
-                        f"  [OK] pk={pk}: уже установлено {employee_id_attr}={current_value}")
+                        "  [OK] pk={}".format(pk)
+                        + f": уже установлено {employee_id_attr}="
+                        + f"{current_value}"
+                    )
                 skipped_already_set += 1
                 continue
 
@@ -143,7 +153,8 @@ class Command(BaseCommand):
                 if verbose:
                     self.stdout.write(
                         self.style.WARNING(
-                            f"  [SKIP] pk={pk}: {employee_id_attr}={current_value} "
+                            f"  [SKIP] pk={pk}: "
+                            f"{employee_id_attr}={current_value} "
                             f"(отличается от pk, используйте --force)"
                         )
                     )
@@ -156,7 +167,8 @@ class Command(BaseCommand):
                 email = employee.email or "(no email)"
                 self.stdout.write(
                     f"  [{action}] pk={pk}, email={email}, DN={dn}: "
-                    f"{employee_id_attr}={current_value!r} -> {expected_value!r}"
+                    f"{employee_id_attr}={current_value!r} "
+                    f"-> {expected_value!r}"
                 )
 
             if not dry_run:
@@ -179,21 +191,15 @@ class Command(BaseCommand):
         self.stdout.write("=" * 50)
 
         if dry_run:
-            self.stdout.write(
-                self.style.SUCCESS(f"Будет обновлено: {updated}")
-            )
+            self.stdout.write(self.style.SUCCESS(f"Будет обновлено: {updated}"))
         else:
-            self.stdout.write(
-                self.style.SUCCESS(f"Обновлено: {updated}")
-            )
+            self.stdout.write(self.style.SUCCESS(f"Обновлено: {updated}"))
 
         self.stdout.write(f"Пропущено (уже установлено): {skipped_already_set}")
         self.stdout.write(f"Пропущено (нет Employee): {skipped_no_employee}")
 
         if errors:
-            self.stdout.write(
-                self.style.ERROR(f"Ошибок: {errors}")
-            )
+            self.stdout.write(self.style.ERROR(f"Ошибок: {errors}"))
 
         if dry_run and updated > 0:
             self.stdout.write("")

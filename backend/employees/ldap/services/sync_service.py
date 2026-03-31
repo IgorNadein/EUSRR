@@ -159,7 +159,9 @@ class SyncService(BaseService):
                         dept.head = head_obj
                         if hasattr(dept, "head_appointed_at"):
                             dept.head_appointed_at = timezone.now()
-                            dept.save(update_fields=["head", "head_appointed_at"])
+                            dept.save(
+                                update_fields=["head", "head_appointed_at"]
+                            )
                         else:
                             dept.save(update_fields=["head"])
                     updated += 1
@@ -182,7 +184,9 @@ class SyncService(BaseService):
             to_delete_qs = Department.objects.exclude(name__in=seen_names)
 
             if cfg.show_changes:
-                deleted_names = list(to_delete_qs.values_list("name", flat=True))
+                deleted_names = list(
+                    to_delete_qs.values_list("name", flat=True)
+                )
                 for name in deleted_names:
                     verb = "будет удалён" if cfg.dry_run else "удалён"
                     print(f"[CHG] - Dept: {name} ({verb})")
@@ -202,7 +206,9 @@ class SyncService(BaseService):
 
                 # Очищаем старые sync states
                 LdapSyncState.objects.filter(model="department").exclude(
-                    object_pk__in=Department.objects.values_list("pk", flat=True)
+                    object_pk__in=Department.objects.values_list(
+                        "pk", flat=True
+                    )
                 ).delete()
 
                 deleted = deleted_count
@@ -211,9 +217,7 @@ class SyncService(BaseService):
 
     # ==================== IMPORT: USERS ====================
 
-    def _create_user_from_dto(
-        self, dto: LdapPersonDTO
-    ) -> Optional[Employee]:
+    def _create_user_from_dto(self, dto: LdapPersonDTO) -> Optional[Employee]:
         """Создаёт нового Employee по данным из LDAP.
 
         Args:
@@ -326,7 +330,9 @@ class SyncService(BaseService):
         ).strip()
 
         if not (base_users and base_deps):
-            raise RuntimeError("LDAP_USERS_BASE/LDAP_DEPARTMENTS_BASE не заданы.")
+            raise RuntimeError(
+                "LDAP_USERS_BASE/LDAP_DEPARTMENTS_BASE не заданы."
+            )
 
         created = updated = deleted = 0
         seen_guids: Set[str] = set()
@@ -383,6 +389,7 @@ class SyncService(BaseService):
                 if dto.dn and not cfg.dry_run:
                     try:
                         from ..orm_models import LdapUser
+
                         ldap_user = LdapUser.objects.get(dn=dto.dn)
                         if not ldap_user.employee_number:
                             ldap_user.employee_number = str(user.pk)
@@ -390,7 +397,8 @@ class SyncService(BaseService):
                     except Exception as e:
                         logger.debug(
                             "Could not write employeeNumber for %s: %s",
-                            dto.dn, e
+                            dto.dn,
+                            e,
                         )
                 processed.append((user, dto))
                 updated += 1
@@ -405,13 +413,15 @@ class SyncService(BaseService):
                 if dto.dn and not cfg.dry_run:
                     try:
                         from ..orm_models import LdapUser
+
                         ldap_user = LdapUser.objects.get(dn=dto.dn)
                         ldap_user.employee_number = str(user.pk)
                         ldap_user.save()
                     except Exception as e:
                         logger.debug(
                             "Could not write employeeNumber for %s: %s",
-                            dto.dn, e
+                            dto.dn,
+                            e,
                         )
                 processed.append((user, dto))
                 created += 1

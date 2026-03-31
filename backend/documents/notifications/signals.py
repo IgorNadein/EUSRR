@@ -50,7 +50,9 @@ def create_document_notification(sender, instance, created, **kwargs):
     # channels.py автоматически отправит через Celery
     if document.sent_to_all:
         logger.info(
-            f"[signals] Creating notifications for doc={document.pk} (sent_to_all=True)"
+            f"[signals] Creating notifications for doc={
+                document.pk
+            } (sent_to_all=True)"
         )
         notify_all_employees(document)
     else:
@@ -71,19 +73,15 @@ def notify_specific_recipients(sender, instance, action, pk_set, **kwargs):
         f"action={action} pk_set={pk_set} sent_to_all={instance.sent_to_all}"
     )
 
-    if action != 'post_add':
-        logger.info(
-            f"[signals] Skipping (action={action} != 'post_add')"
-        )
+    if action != "post_add":
+        logger.info(f"[signals] Skipping (action={action} != 'post_add')")
         return
 
     document = instance
 
     # Не отправляем индивидуальные уведомления если документ для всех
     if document.sent_to_all:
-        logger.info(
-            "[signals] Skipping (sent_to_all=True)"
-        )
+        logger.info("[signals] Skipping (sent_to_all=True)")
         return
 
     # Отправляем уведомления через handlers
@@ -91,7 +89,9 @@ def notify_specific_recipients(sender, instance, action, pk_set, **kwargs):
 
 
 @receiver(m2m_changed, sender=Document.departments.through)
-def notify_department_employees_signal(sender, instance, action, pk_set, **kwargs):
+def notify_department_employees_signal(
+    sender, instance, action, pk_set, **kwargs
+):
     """
     Уведомляет всех сотрудников выбранных отделов при добавлении отделов.
     Уведомления получат ВСЕ текущие и будущие сотрудники этих отделов.
@@ -101,19 +101,15 @@ def notify_department_employees_signal(sender, instance, action, pk_set, **kwarg
         f"id={instance.pk} action={action} pk_set={pk_set}"
     )
 
-    if action != 'post_add':
-        logger.info(
-            f"[signals] Skipping (action={action} != 'post_add')"
-        )
+    if action != "post_add":
+        logger.info(f"[signals] Skipping (action={action} != 'post_add')")
         return
 
     document = instance
 
     # Не отправляем если документ для всех
     if document.sent_to_all:
-        logger.info(
-            "[signals] Skipping (sent_to_all=True)"
-        )
+        logger.info("[signals] Skipping (sent_to_all=True)")
         return
 
     # Отправляем уведомления через handlers
@@ -151,8 +147,9 @@ def check_all_acknowledged(sender, instance, created, **kwargs):
     acknowledged_count = document.acknowledgements.count()
 
     # Если все ознакомились - уведомляем загрузившего
-    if (acknowledged_count >= total_recipients and
-        total_recipients > 0 and
-            document.uploaded_by):
-
+    if (
+        acknowledged_count >= total_recipients
+        and total_recipients > 0
+        and document.uploaded_by
+    ):
         notify_all_acknowledged(document, total_recipients, acknowledged_count)

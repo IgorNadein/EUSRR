@@ -4,14 +4,18 @@ from __future__ import annotations
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from employees.ldap.config import SyncConfig
-from employees.ldap.services.sync_service import SyncService
+from employees.ldap.services.sync_service import (
+    SyncService,
+)
 
 
 class Command(BaseCommand):
-    """Зеркальный импорт из LDAP в Django: отделы (OU + managedBy) и пользователи.
+    """Зеркальный импорт из LDAP в Django:
+    отделы (OU + managedBy) и пользователи.
 
     На этой итерации работает только направление LDAP -> Django.
-    По умолчанию выполняется dry-run (ничего не меняет); применить изменения можно флагом --no-dry-run.
+    По умолчанию выполняется dry-run (ничего не меняет);
+    применить изменения можно флагом --no-dry-run.
     """
 
     def add_arguments(self, parser) -> None:
@@ -49,11 +53,17 @@ class Command(BaseCommand):
         parser.add_argument(
             "--show-changes",
             action="store_true",
-            help="Показать подробный список изменений (создание/обновление/удаление).",
+            help=(
+                "Показать подробный список изменений "
+                "(создание/обновление/удаление)."
+            ),
         )
 
     def handle(self, *args, **opts) -> None:
-        """Точка входа команды: выполняет зеркальный импорт LDAP -> Django."""
+        """Точка входа команды.
+
+        Выполняет зеркальный импорт LDAP -> Django.
+        """
         mode: str = opts["mode"]
         scope: str = opts["scope"]
         dry_run: bool = opts["dry_run"]
@@ -70,7 +80,6 @@ class Command(BaseCommand):
         )
 
         if mode == "ldap":
-
             total_changes = 0
             svc = SyncService()
 
@@ -84,37 +93,48 @@ class Command(BaseCommand):
                 deleted_label = "к удалению" if cfg.dry_run else "удалено"
                 self.stdout.write(
                     self.style.SUCCESS(
-                        f"[LDAP] Отделы: создано={created_d}, обновлено={updated_d}, {deleted_label}={deleted_d}"
+                        f"[LDAP] Отделы: создано={created_d}, "
+                        f"обновлено={updated_d}, {deleted_label}={deleted_d}"
                     )
                 )
 
             # Пользователи
             if scope in ("all", "users"):
-                self.stdout.write(self.style.NOTICE("[LDAP] Импорт пользователей..."))
+                self.stdout.write(
+                    self.style.NOTICE("[LDAP] Импорт пользователей...")
+                )
                 created_u, updated_u, deleted_u = svc.import_users(cfg)
                 total_changes += created_u + updated_u + deleted_u
                 deleted_label = "к удалению" if cfg.dry_run else "удалено"
                 self.stdout.write(
                     self.style.SUCCESS(
-                        f"[LDAP] Пользователи: создано={created_u}, обновлено={updated_u}, {deleted_label}={deleted_u}"
+                        f"[LDAP] Пользователи: создано={created_u}, "
+                        f"обновлено={updated_u}, {deleted_label}={deleted_u}"
                     )
                 )
 
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"[LDAP] Завершено. Итого изменений: {total_changes} (dry_run={dry_run})"))
+                    "[LDAP] Завершено. Итого изменений: "
+                    f"{total_changes} (dry_run={dry_run})"
+                )
+            )
         elif mode == "django":
             self.stdout.write(
                 self.style.NOTICE(
-                    "[DJANGO] Write-back пользователей (логины, MOVE, avatar, группы)..."
+                    "[DJANGO] Write-back пользователей "
+                    "(логины, MOVE, avatar, группы)..."
                 )
             )
             svc = SyncService()
-            logins_set, moved, avatars_set, groups_added, groups_removed = svc.export_users(
-                cfg)
+            logins_set, moved, avatars_set, groups_added, groups_removed = (
+                svc.export_users(cfg)
+            )
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"[DJANGO] Выполнено. sAM/UPN={logins_set}, MOVE={moved}, avatar={avatars_set}, "
-                    f"groups +{groups_added}/-{groups_removed} (dry_run={dry_run})"
+                    f"[DJANGO] Выполнено. sAM/UPN={logins_set}, "
+                    f"MOVE={moved}, avatar={avatars_set}, "
+                    f"groups +{groups_added}/-{groups_removed} "
+                    f"(dry_run={dry_run})"
                 )
             )

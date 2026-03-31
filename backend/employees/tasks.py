@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 # Исполнители отложенных LDAP-операций
 # ---------------------------------------------------------------------------
 
+
 def _execute_employee_save(payload: dict) -> None:
     """Повторяет синхронизацию Employee → LDAP."""
     from employees.ldap import UserService
@@ -43,12 +44,14 @@ def _execute_employee_delete(payload: dict) -> None:
     if not sync_state or not sync_state.ldap_dn:
         logger.info(
             "Employee %s already removed from LDAP sync state, skipping",
-            payload["object_pk"])
+            payload["object_pk"],
+        )
         return
 
     svc = UserService()
     # Создаём легковесный объект-заглушку для delete_user
     from types import SimpleNamespace
+
     emp_stub = SimpleNamespace(pk=payload["object_pk"], id=payload["object_pk"])
     svc.delete_user(emp_stub)
 
@@ -92,7 +95,10 @@ def _execute_department_delete(payload: dict) -> None:
         return
 
     from types import SimpleNamespace
-    dept_stub = SimpleNamespace(pk=payload["object_pk"], id=payload["object_pk"])
+
+    dept_stub = SimpleNamespace(
+        pk=payload["object_pk"], id=payload["object_pk"]
+    )
     svc = DepartmentService()
     svc.delete_department(dept_stub)
 
@@ -206,6 +212,7 @@ def _execute_position_delete(payload: dict) -> None:
     from employees.ldap import PositionService
 
     from types import SimpleNamespace
+
     pos_stub = SimpleNamespace(
         pk=payload["object_pk"],
         id=payload["object_pk"],
@@ -234,6 +241,7 @@ _EXECUTORS = {
 # Celery задачи
 # ---------------------------------------------------------------------------
 
+
 @shared_task(bind=True, max_retries=0, ignore_result=True)
 def process_ldap_queue_item(self, queue_id: int):
     """Выполняет одну отложенную LDAP-операцию из очереди.
@@ -253,8 +261,9 @@ def process_ldap_queue_item(self, queue_id: int):
         return
 
     if item.status not in (
-            LdapSyncQueue.Status.PENDING,
-            LdapSyncQueue.Status.IN_PROGRESS):
+        LdapSyncQueue.Status.PENDING,
+        LdapSyncQueue.Status.IN_PROGRESS,
+    ):
         return
 
     executor = _EXECUTORS.get(item.operation)
@@ -273,12 +282,20 @@ def process_ldap_queue_item(self, queue_id: int):
         item.mark_completed()
         logger.info(
             "LDAP queue item %d (%s %s:%s) completed on attempt %d",
-            item.pk, item.operation, item.model_name, item.object_pk, item.attempts + 1,
+            item.pk,
+            item.operation,
+            item.model_name,
+            item.object_pk,
+            item.attempts + 1,
         )
     except Exception as e:
         logger.error(
             "LDAP queue item %d (%s) failed [attempt %d/%d]: %s",
-            item.pk, item.operation, item.attempts + 1, item.max_attempts, e,
+            item.pk,
+            item.operation,
+            item.attempts + 1,
+            item.max_attempts,
+            e,
             exc_info=True,
         )
         item.schedule_retry(str(e))
@@ -286,7 +303,10 @@ def process_ldap_queue_item(self, queue_id: int):
 
 @shared_task(ignore_result=True)
 def process_ldap_queue():
-    """Periodic task: обрабатывает все pending-элементы в очереди, у которых наступил next_retry_at."""
+    """Periodic task для обработки pending-элементов очереди.
+
+    Берет только записи, у которых наступил next_retry_at.
+    """
     from employees.models import LdapSyncQueue
 
     if not getattr(settings, "LDAP_ENABLED", False):

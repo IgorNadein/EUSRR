@@ -11,6 +11,7 @@ WebSocket Consumer для пользователя.
 История:
 - 11 марта 2026: Извлечен ChatConsumerMixin в communications.consumers
 """
+
 import asyncio
 import logging
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
@@ -46,8 +47,11 @@ class UserConsumer(ChatConsumerMixin, AsyncJsonWebsocketConsumer):
         """Подключение пользователя - подписка на все его чаты и каналы"""
         self.user = self.scope.get("user")
 
-        if not self.user or isinstance(self.user,
-                                       AnonymousUser) or not self.user.is_authenticated:
+        if (
+            not self.user
+            or isinstance(self.user, AnonymousUser)
+            or not self.user.is_authenticated
+        ):
             await self.close(code=4401)
             return
 
@@ -66,7 +70,9 @@ class UserConsumer(ChatConsumerMixin, AsyncJsonWebsocketConsumer):
 
         # Подписываемся на канал уведомлений
         notifications_channel = f"notifications_{self.user.id}"
-        await self.channel_layer.group_add(notifications_channel, self.channel_name)
+        await self.channel_layer.group_add(
+            notifications_channel, self.channel_name
+        )
 
         await self.accept()
 
@@ -74,7 +80,10 @@ class UserConsumer(ChatConsumerMixin, AsyncJsonWebsocketConsumer):
         self.ping_task = asyncio.create_task(self._ping_loop())
 
         print(
-            f"[UserWS] User {self.user.id} connected, subscribed to {len(self.subscribed_chats)} chats")
+            f"[UserWS] User {self.user.id} connected, subscribed to {
+                len(self.subscribed_chats)
+            } chats"
+        )
 
     async def disconnect(self, code):
         """Отключение - отписка от всех групп"""
@@ -95,27 +104,36 @@ class UserConsumer(ChatConsumerMixin, AsyncJsonWebsocketConsumer):
         # Отписываемся от всех групп чатов
         for chat_id in self.subscribed_chats:
             group_name = f"chat_{chat_id}"
-            await self.channel_layer.group_discard(group_name, self.channel_name)
+            await self.channel_layer.group_discard(
+                group_name, self.channel_name
+            )
 
         # Отписываемся от личных каналов
         if self.user:
             user_channel = f"user_{self.user.id}"
-            await self.channel_layer.group_discard(user_channel, self.channel_name)
+            await self.channel_layer.group_discard(
+                user_channel, self.channel_name
+            )
 
             notifications_channel = f"notifications_{self.user.id}"
-            await self.channel_layer.group_discard(notifications_channel, self.channel_name)
+            await self.channel_layer.group_discard(
+                notifications_channel, self.channel_name
+            )
 
-        print(f"[UserWS] User {self.user.id if self.user else 'unknown'} disconnected")
+        print(
+            f"[UserWS] User {
+                self.user.id if self.user else 'unknown'
+            } disconnected"
+        )
 
     async def _ping_loop(self):
         """Отправка ping каждые N секунд для keepalive"""
         try:
             while True:
                 await asyncio.sleep(self.ping_interval)
-                await self.send_json({
-                    "type": "ping",
-                    "timestamp": timezone.now().isoformat()
-                })
+                await self.send_json(
+                    {"type": "ping", "timestamp": timezone.now().isoformat()}
+                )
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -130,8 +148,9 @@ class UserConsumer(ChatConsumerMixin, AsyncJsonWebsocketConsumer):
 
         print(
             f"[UserWS] receive_json: action={action}, user={
-                self.user.id}, active_chat={
-                self.active_chat_id}")
+                self.user.id
+            }, active_chat={self.active_chat_id}"
+        )
 
         # Управление активным чатом
         if action == "open_chat":
@@ -174,27 +193,27 @@ class UserConsumer(ChatConsumerMixin, AsyncJsonWebsocketConsumer):
         Новое уведомление от WebSocketNotificationSender.
         Вызывается из notifications/senders/websocket.py
         """
-        await self.send_json({
-            "type": "notification",
-            "notification": event.get("message", {})
-        })
+        await self.send_json(
+            {"type": "notification", "notification": event.get("message", {})}
+        )
 
     async def notification_new(self, event):
         """Новое уведомление (вызывается из notifications/services.py)"""
-        await self.send_json({
-            "type": "notification",
-            "notification": event.get("notification", {})
-        })
+        await self.send_json(
+            {
+                "type": "notification",
+                "notification": event.get("notification", {}),
+            }
+        )
 
     async def notification_count_update(self, event):
         """
         Обновление счетчика уведомлений.
         Вызывается из notifications/services.py
         """
-        await self.send_json({
-            "type": "unread_count",
-            "count": event.get("count", 0)
-        })
+        await self.send_json(
+            {"type": "unread_count", "count": event.get("count", 0)}
+        )
 
     # ==================== Обработка событий закупок ====================
 
@@ -207,8 +226,10 @@ class UserConsumer(ChatConsumerMixin, AsyncJsonWebsocketConsumer):
         Обновление заявки на закупку.
         Вызывается из procurement/signals.py
         """
-        await self.send_json({
-            "type": "procurement_update",
-            "event": event.get("event", "request_updated"),
-            "data": event.get("data", {})
-        })
+        await self.send_json(
+            {
+                "type": "procurement_update",
+                "event": event.get("event", "request_updated"),
+                "data": event.get("data", {}),
+            }
+        )

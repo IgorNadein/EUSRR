@@ -12,7 +12,11 @@ from rest_framework import serializers
 
 from api.v1.serializers import Base64ImageField
 
-from .shared import EmployeeActionSerializer, PositionBriefSerializer, SkillSerializer
+from .shared import (
+    EmployeeActionSerializer,
+    PositionBriefSerializer,
+    SkillSerializer,
+)
 
 Employee = get_user_model()
 
@@ -103,7 +107,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         return data
 
     def validate_avatar(self, value):
-        if value == '':
+        if value == "":
             return None
         return value
 
@@ -155,7 +159,11 @@ class EmployeeSerializer(serializers.ModelSerializer):
                 continue
 
             existing = next(
-                (d for d in out if d["id"] == dept.id and d.get("via_assignment")),
+                (
+                    d
+                    for d in out
+                    if d["id"] == dept.id and d.get("via_assignment")
+                ),
                 None,
             )
             if existing:
@@ -246,7 +254,11 @@ class EmployeeBriefSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.CharField())
     def get_display_name(self, obj) -> str:
-        parts = [obj.last_name or "", obj.first_name or "", obj.patronymic or ""]
+        parts = [
+            obj.last_name or "",
+            obj.first_name or "",
+            obj.patronymic or "",
+        ]
         fio = " ".join(p.strip() for p in parts if p)
         if fio:
             return fio
@@ -309,7 +321,9 @@ class EmployeeListSerializer(serializers.ModelSerializer):
 
         role_names = []
         request = self.context.get("request")
-        dept_id = getattr(request, "_department_filter_id", None) if request else None
+        dept_id = (
+            getattr(request, "_department_filter_id", None) if request else None
+        )
 
         if dept_id and has_role:
             from employees.models import RoleAssignment
@@ -358,7 +372,11 @@ class EmployeeListSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.CharField())
     def get_display_name(self, obj: Employee) -> str:
-        parts = [obj.last_name or "", obj.first_name or "", obj.patronymic or ""]
+        parts = [
+            obj.last_name or "",
+            obj.first_name or "",
+            obj.patronymic or "",
+        ]
         fio = " ".join(p.strip() for p in parts if p).strip()
         if fio:
             return fio
@@ -376,7 +394,9 @@ class ProfilePatchSerializer(serializers.Serializer):
     last_name = serializers.CharField(required=False, allow_blank=True)
 
     _phone_field = DETECTED_PHONE_FIELD or "phone_number"
-    locals()[_phone_field] = serializers.CharField(required=False, allow_blank=True)
+    locals()[_phone_field] = serializers.CharField(
+        required=False, allow_blank=True
+    )
 
     def validate(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
         if not attrs:

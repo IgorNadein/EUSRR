@@ -12,7 +12,8 @@ class ChatPermission(permissions.BasePermission):
     Проверка прав доступа к чатам
 
     Правила:
-    - GET/HEAD/OPTIONS - проверка через user_can_access_chat (учитывает participants)
+        - GET/HEAD/OPTIONS - проверка через user_can_access_chat
+            (учитывает participants)
     - PUT/PATCH - владелец или админ (change_chat через django-rules)
     - DELETE - только владелец (delete_chat через django-rules)
     """
@@ -24,12 +25,19 @@ class ChatPermission(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         """Проверка прав на конкретный объект (чат)"""
         # Custom actions имеют свои проверки прав внутри
-        if hasattr(view, 'action') and view.action in [
-            'add_member', 'remove_member', 'pin', 'notifications',
-            'change_role', 'leave', 'mark_read', 'messages', 'messages_around'
+        if hasattr(view, "action") and view.action in [
+            "add_member",
+            "remove_member",
+            "pin",
+            "notifications",
+            "change_role",
+            "leave",
+            "mark_read",
+            "messages",
+            "messages_around",
         ]:
             # Для mark_read и загрузки сообщений достаточно иметь доступ к чату
-            if view.action in ['mark_read', 'messages', 'messages_around']:
+            if view.action in ["mark_read", "messages", "messages_around"]:
                 return user_can_access_chat(obj, request.user)
             return True
 
@@ -39,15 +47,15 @@ class ChatPermission(permissions.BasePermission):
             return user_can_access_chat(obj, request.user)
 
         # Изменение чата - только владелец или админ
-        if request.method in ['PUT', 'PATCH']:
+        if request.method in ["PUT", "PATCH"]:
             return rules.test_rule(
-                'communications.change_chat', request.user, obj
+                "communications.change_chat", request.user, obj
             )
 
         # Удаление чата - только владелец
-        if request.method == 'DELETE':
+        if request.method == "DELETE":
             return rules.test_rule(
-                'communications.delete_chat', request.user, obj
+                "communications.delete_chat", request.user, obj
             )
 
         return False
@@ -71,12 +79,9 @@ class MessagePermission(permissions.BasePermission):
             return False
 
         # При создании сообщения проверяем права на отправку в чат
-        if request.method == 'POST' and view.action in ['create', 'upload']:
+        if request.method == "POST" and view.action in ["create", "upload"]:
             # Получаем chat_id из данных запроса
-            chat_id = (
-                request.data.get('chat') or
-                request.data.get('chat_id')
-            )
+            chat_id = request.data.get("chat") or request.data.get("chat_id")
 
             if not chat_id:
                 # Если нет chat_id, DRF вернет ошибку валидации позже
@@ -85,13 +90,12 @@ class MessagePermission(permissions.BasePermission):
             # Проверяем права на отправку сообщений
             try:
                 from ..models import Chat
+
                 chat = Chat.objects.get(pk=chat_id)
 
                 # Используем django-rules проверку
                 return rules.test_rule(
-                    'communications.send_message',
-                    request.user,
-                    chat
+                    "communications.send_message", request.user, chat
                 )
             except Chat.DoesNotExist:
                 # Если чат не найден, сам view вернет 404.
@@ -102,25 +106,29 @@ class MessagePermission(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         """Проверка прав на конкретное сообщение"""
         # Custom actions с POST (react, unreact) - доступны всем участникам
-        if hasattr(view, 'action') and view.action in ['react', 'unreact']:
+        if hasattr(view, "action") and view.action in ["react", "unreact"]:
             # Для реакций достаточно быть участником чата
             # (даже гость может ставить реакции)
             return rules.test_rule(
-                'communications.view_message',
-                request.user,
-                obj
+                "communications.view_message", request.user, obj
             )
 
         # Просмотр - доступ к чату
         if request.method in permissions.SAFE_METHODS:
-            return rules.test_rule('communications.view_message', request.user, obj)
+            return rules.test_rule(
+                "communications.view_message", request.user, obj
+            )
 
         # Редактирование - автор
-        if request.method in ['PUT', 'PATCH']:
-            return rules.test_rule('communications.change_message', request.user, obj)
+        if request.method in ["PUT", "PATCH"]:
+            return rules.test_rule(
+                "communications.change_message", request.user, obj
+            )
 
         # Удаление - автор или админ
-        if request.method == 'DELETE':
-            return rules.test_rule('communications.delete_message', request.user, obj)
+        if request.method == "DELETE":
+            return rules.test_rule(
+                "communications.delete_message", request.user, obj
+            )
 
         return False

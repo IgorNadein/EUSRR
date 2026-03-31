@@ -5,6 +5,7 @@
 Этот файл автоматически загружается при запуске Django если следовать
 стандартной структуре watson.
 """
+
 from __future__ import annotations
 
 from watson.search import register
@@ -153,7 +154,7 @@ if Document:
             """Возвращает описание для результатов поиска."""
             # Возвращаем первые 200 символов extracted_text или description
             text = obj.extracted_text if obj.extracted_text else obj.description
-            return text[:200] + '...' if len(text) > 200 else text
+            return text[:200] + "..." if len(text) > 200 else text
 
         def get_url(self, obj):
             """Возвращает URL документа."""
@@ -162,7 +163,8 @@ if Document:
     register(
         Document,
         adapter_cls=DocumentAdapter,
-        fields=("title", "description", "extracted_text"),  # Добавлен extracted_text!
+        fields=("title", "description", "extracted_text"),
+        # Добавлен extracted_text!
         store=("title", "uploaded_at"),
     )
 

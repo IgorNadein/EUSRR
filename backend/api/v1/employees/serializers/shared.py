@@ -123,14 +123,18 @@ class EmployeeActionSerializer(serializers.ModelSerializer):
                 {
                     "history_id": cur.history_id,
                     "history_type": cur.history_type,
-                    "history_type_display": history_type_labels.get(cur.history_type),
+                    "history_type_display": history_type_labels.get(
+                        cur.history_type
+                    ),
                     "history_date": cur.history_date.isoformat(),
                     "history_date_display": cur.history_date.strftime(
                         "%d.%m.%Y %H:%M"
                     ),
                     "history_user": getattr(cur.history_user, "email", None),
                     "action": getattr(cur, "action", None),
-                    "action_display": action_labels.get(getattr(cur, "action", None)),
+                    "action_display": action_labels.get(
+                        getattr(cur, "action", None)
+                    ),
                     "changes": changes,
                 }
             )

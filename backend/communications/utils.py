@@ -116,7 +116,8 @@ def user_can_access_chat(chat: Chat, user) -> bool:
         ).exists() or _has_direct_participation()
 
     if chat.type == "comments":
-        # Чаты-комментарии используют context-based доступ через get_participants()
+        # Чаты-комментарии используют context-based доступ через
+        # get_participants()
         if chat.context_object_id:
             try:
                 participants = chat.get_participants()

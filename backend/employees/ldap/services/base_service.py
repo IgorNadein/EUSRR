@@ -62,8 +62,7 @@ class BaseService:
             Обновленная запись LdapSyncState
         """
         state, created = LdapSyncState.objects.get_or_create(
-            model=model,
-            object_pk=str(object_pk)
+            model=model, object_pk=str(object_pk)
         )
 
         # Логируем изменение DN
@@ -89,7 +88,10 @@ class BaseService:
 
         if created:
             self._logger.debug(
-                f"Created LdapSyncState for {model}#{object_pk} with DN={ldap_dn}"
+                (
+                    f"Created LdapSyncState for {model}#{object_pk} "
+                    f"with DN={ldap_dn}"
+                )
             )
 
         return state
@@ -108,10 +110,7 @@ class BaseService:
             ValueError: Если DN не найден или пустой
         """
         dn = (
-            LdapSyncState.objects.filter(
-                model=model,
-                object_pk=str(object_pk)
-            )
+            LdapSyncState.objects.filter(model=model, object_pk=str(object_pk))
             .values_list("ldap_dn", flat=True)
             .first()
         )

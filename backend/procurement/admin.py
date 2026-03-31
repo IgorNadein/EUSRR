@@ -164,7 +164,13 @@ class ProcurementItemAdmin(admin.ModelAdmin):
 class ApprovalRouteAdmin(admin.ModelAdmin):
     """Маршруты согласования закупок."""
 
-    list_display = ["priority", "min_amount", "name", "resolver_type", "employee"]
+    list_display = [
+        "priority",
+        "min_amount",
+        "name",
+        "resolver_type",
+        "employee",
+    ]
     ordering = ["priority"]
     autocomplete_fields = ["employee"]
 
@@ -392,9 +398,7 @@ class BudgetAdmin(admin.ModelAdmin):
         for dept in departments:
             # Проверяем существует ли уже бюджет
             exists = Budget.objects.filter(
-                department=dept,
-                year=next_year,
-                quarter=next_quarter
+                department=dept, year=next_year, quarter=next_quarter
             ).exists()
 
             if exists:
@@ -404,21 +408,19 @@ class BudgetAdmin(admin.ModelAdmin):
             # Пытаемся скопировать бюджет из текущего квартала
             try:
                 current_budget = Budget.objects.get(
-                    department=dept,
-                    year=now.year,
-                    quarter=current_quarter
+                    department=dept, year=now.year, quarter=current_quarter
                 )
                 allocated = current_budget.allocated_amount
             except Budget.DoesNotExist:
                 # Если нет текущего бюджета - ставим 0
-                allocated = Decimal('0.00')
+                allocated = Decimal("0.00")
 
             Budget.objects.create(
                 department=dept,
                 year=next_year,
                 quarter=next_quarter,
                 allocated_amount=allocated,
-                spent_amount=Decimal('0.00')
+                spent_amount=Decimal("0.00"),
             )
             created_count += 1
 
@@ -426,7 +428,7 @@ class BudgetAdmin(admin.ModelAdmin):
             request,
             f"Создано {created_count} бюджетов на "
             f"{next_year} Q{next_quarter}. "
-            f"Пропущено (уже существуют): {skipped_count}."
+            f"Пропущено (уже существуют): {skipped_count}.",
         )
 
     create_next_quarter_budgets.short_description = (
@@ -456,7 +458,7 @@ class BudgetAdmin(admin.ModelAdmin):
             exists = Budget.objects.filter(
                 department=budget.department,
                 year=next_year,
-                quarter=next_quarter
+                quarter=next_quarter,
             ).exists()
 
             if exists:
@@ -468,7 +470,7 @@ class BudgetAdmin(admin.ModelAdmin):
                 year=next_year,
                 quarter=next_quarter,
                 allocated_amount=budget.allocated_amount,
-                spent_amount=Decimal('0.00')
+                spent_amount=Decimal("0.00"),
             )
             created_count += 1
 
@@ -476,7 +478,7 @@ class BudgetAdmin(admin.ModelAdmin):
             request,
             f"Скопировано {created_count} бюджетов в "
             f"{next_year} Q{next_quarter}. "
-            f"Пропущено (уже существуют): {skipped_count}."
+            f"Пропущено (уже существуют): {skipped_count}.",
         )
 
     copy_selected_budgets.short_description = (
@@ -486,11 +488,13 @@ class BudgetAdmin(admin.ModelAdmin):
     def get_remaining_amount(self, obj):
         """Остаток бюджета (для отображения в админке)."""
         return obj.remaining_amount
+
     get_remaining_amount.short_description = "Остаток"
 
     def get_utilization_percentage(self, obj):
         """Процент использования (для отображения в админке)."""
         return f"{obj.utilization_percentage}%"
+
     get_utilization_percentage.short_description = "Использовано"
 
     def utilization_badge(self, obj):

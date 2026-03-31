@@ -30,26 +30,33 @@ def _looks_like_email(s: str) -> bool:
 
 def _model_has_field(model, field_name: str) -> bool:
     """Проверяет наличие поля модели по имени (по _meta)."""
-    return any(getattr(f, "name", None) == field_name for f in model._meta.get_fields())
+    return any(
+        getattr(f, "name", None) == field_name for f in model._meta.get_fields()
+    )
 
 
 _DEFAULT_PHONE_FIELD = getattr(settings, "AUTH_PHONE_FIELD", "phone_number")
 PHONE_FIELD: Optional[str] = (
-    _DEFAULT_PHONE_FIELD if _model_has_field(UserModel, _DEFAULT_PHONE_FIELD) else None
+    _DEFAULT_PHONE_FIELD
+    if _model_has_field(UserModel, _DEFAULT_PHONE_FIELD)
+    else None
 )
 
 
 class EmailOrPhoneBackend(ModelBackend):
     """
-    Аутентификация по email ИЛИ по телефону (E.164) + стандартная проверка пароля.
-    Пользователь должен быть активен (is_active=True) — активируйте после verify_email().
+    Аутентификация по email ИЛИ по телефону (E.164)
+    + стандартная проверка пароля.
+    Пользователь должен быть активен (is_active=True) —
+    активируйте после verify_email().
     """
 
     def authenticate(self, request, username=None, password=None, **kwargs):
         login = username or kwargs.get("email") or kwargs.get("phone")
         logger.debug(
             "EmailOrPhoneBackend.authenticate: login=%s, password_provided=%s",
-            bool(login), bool(password)
+            bool(login),
+            bool(password),
         )
 
         if not login or not password:
@@ -64,31 +71,39 @@ class EmailOrPhoneBackend(ModelBackend):
             logger.debug(
                 "EmailOrPhoneBackend: email lookup=%s, found=%s",
                 login,
-                bool(user))
+                bool(user),
+            )
         else:
             # 2) Phone
             if PHONE_FIELD:
                 normalized = _normalize_phone(login)
                 # сначала пробуем нормализованный E.164
                 if normalized:
-                    user = Employee.objects.filter(**{PHONE_FIELD: normalized}).first()
-                # если не нашли — пробуем как ввёл пользователь (на случай старых
+                    user = Employee.objects.filter(
+                        **{PHONE_FIELD: normalized}
+                    ).first()
+                # если не нашли — пробуем как ввёл пользователь
+                # (на случай старых
                 # данных)
                 if not user:
                     raw = str(login).strip()
                     user = Employee.objects.filter(**{PHONE_FIELD: raw}).first()
-                logger.debug("EmailOrPhoneBackend: phone lookup, found=%s", bool(user))
+                logger.debug(
+                    "EmailOrPhoneBackend: phone lookup, found=%s", bool(user)
+                )
 
         if not user:
             logger.debug("EmailOrPhoneBackend: user not found")
             return None
 
         logger.debug(
-            "EmailOrPhoneBackend: found user id=%s email=%s is_active=%s has_usable_password=%s",
+            "EmailOrPhoneBackend: found user id=%s email=%s is_active=%s "
+            "has_usable_password=%s",
             user.id,
             user.email,
             user.is_active,
-            user.has_usable_password())
+            user.has_usable_password(),
+        )
 
         # допускаем логин только активных (email подтверждён → is_active=True)
         if not user.is_active:
@@ -105,7 +120,9 @@ class EmailOrPhoneBackend(ModelBackend):
         logger.warning(
             "EmailOrPhoneBackend: password check FAILED for user=%s (id=%s). "
             "Password hash starts with: %s...",
-            user.email, user.id, user.password[:20] if user.password else "NO_PASSWORD"
+            user.email,
+            user.id,
+            user.password[:20] if user.password else "NO_PASSWORD",
         )
         return None
 
@@ -114,13 +131,15 @@ class LDAP3Backend(ModelBackend):
     """LDAP-аутентификация через ldap3 с логином по email/телефону/uid.
 
     Особенности:
-        * Поиск DN сервисной учёткой (service bind), затем проверка пароля user bind.
+                * Поиск DN сервисной учёткой (service bind),
+                    затем проверка пароля user bind.
         * Автосоздание локального пользователя (опционально).
         * Лёгкая синхронизация профиля (имя/фамилия/email/телефон/DN/GUID).
 
     Безопасность:
         * Пароли не логируются.
-        * Рекомендуется LDAPS/StartTLS с проверкой сертификата.
+                * Рекомендуется LDAPS/StartTLS
+                    с проверкой сертификата.
 
     """
 
@@ -135,9 +154,11 @@ class LDAP3Backend(ModelBackend):
 
         Логика:
             1) Валидирует входные данные и настройки.
-            2) Service bind -> поиск записи пользователя (DN) по идентификатору/телефону.
+                2) Service bind -> поиск записи пользователя (DN)
+                    по идентификатору/телефону.
             3) User bind -> проверка пароля.
-            4) Поиск/создание локального пользователя и лёгкая синхронизация профиля.
+                4) Поиск/создание локального пользователя
+                    и лёгкая синхронизация профиля.
 
         Args:
             request: Django HttpRequest или None.
@@ -149,7 +170,8 @@ class LDAP3Backend(ModelBackend):
             User | None: Аутентифицированный пользователь или None при неудаче.
 
         Raises:
-            None: Метод перехватывает ошибки LDAP/сети и возвращает None при сбое.
+            None: Метод перехватывает ошибки LDAP/сети
+            и возвращает None при сбое.
         """
         identifier = (
             (username or "")
@@ -159,13 +181,15 @@ class LDAP3Backend(ModelBackend):
         ).strip()
 
         logger.debug(
-            "LDAP3Backend.authenticate called: identifier_provided=%s, password_provided=%s, LDAP_ENABLED=%s",
+            "LDAP3Backend.authenticate called: identifier_provided=%s, "
+            "password_provided=%s, LDAP_ENABLED=%s",
             bool(identifier),
             bool(password),
             getattr(
                 settings,
                 "LDAP_ENABLED",
-                False),
+                False,
+            ),
         )
 
         if (
@@ -173,7 +197,9 @@ class LDAP3Backend(ModelBackend):
             or not password
             or not getattr(settings, "LDAP_ENABLED", False)
         ):
-            logger.debug("Fast-exit: identifier/password missing or LDAP disabled")
+            logger.debug(
+                "Fast-exit: identifier/password missing or LDAP disabled"
+            )
             return None
 
         uri = getattr(settings, "LDAP_URI", "")
@@ -193,7 +219,9 @@ class LDAP3Backend(ModelBackend):
         )
 
         if not uri or not user_base:
-            logger.warning("Fast-exit: LDAP_URI or LDAP_USERS_AUTH not configured")
+            logger.warning(
+                "Fast-exit: LDAP_URI or LDAP_USERS_AUTH not configured"
+            )
             return None
 
         raw = identifier
@@ -219,7 +247,9 @@ class LDAP3Backend(ModelBackend):
                 )
                 logger.debug("Service bind OK (bind_dn)")
             else:
-                svc_conn = Connection(server, auto_bind=True, receive_timeout=30)
+                svc_conn = Connection(
+                    server, auto_bind=True, receive_timeout=30
+                )
                 logger.debug("Service bind OK (anonymous/simple)")
 
             # Базовый объектный фильтр AD
@@ -234,7 +264,9 @@ class LDAP3Backend(ModelBackend):
                 id_filter = base_tpl.format(username=esc_filter(raw))
                 logger.debug("Using configured ID filter: %s", id_filter)
             else:
-                base_object_filter = base_tpl  # админ дал базовый объектный фильтр
+                base_object_filter = (
+                    base_tpl  # админ дал базовый объектный фильтр
+                )
                 if is_email:
                     id_attrs = getattr(
                         settings,
@@ -248,7 +280,9 @@ class LDAP3Backend(ModelBackend):
                         ("uid", "sAMAccountName"),
                     )
                 id_filter = (
-                    "(|" + "".join(f"({a}={esc_filter(raw)})" for a in id_attrs) + ")"
+                    "(|"
+                    + "".join(f"({a}={esc_filter(raw)})" for a in id_attrs)
+                    + ")"
                 )
                 logger.debug("Built default ID filter: %s", id_filter)
 
@@ -256,14 +290,18 @@ class LDAP3Backend(ModelBackend):
             if e164:
                 phone_filter = (
                     "(|"
-                    + "".join(f"({attr}={esc_filter(e164)})" for attr in phone_attrs)
+                    + "".join(
+                        f"({attr}={esc_filter(e164)})" for attr in phone_attrs
+                    )
                     + ")"
                 )
                 logger.debug("Built phone filter: %s", phone_filter)
 
             # (& base_object (| id_filter phone_filter?))
             if phone_filter:
-                ldap_filter = f"(&{base_object_filter}(|{id_filter}{phone_filter}))"
+                ldap_filter = (
+                    f"(&{base_object_filter}(|{id_filter}{phone_filter}))"
+                )
             else:
                 ldap_filter = f"(&{base_object_filter}{id_filter})"
             logger.debug("FINAL LDAP search filter=%s", ldap_filter)
@@ -298,7 +336,9 @@ class LDAP3Backend(ModelBackend):
             logger.debug("Found DN: %s", user_dn)
 
         except (LDAPSocketOpenError, LDAPBindError) as e:
-            logger.error("Service bind/search LDAP error: %s: %s", type(e).__name__, e)
+            logger.error(
+                "Service bind/search LDAP error: %s: %s", type(e).__name__, e
+            )
             return None
         except Exception as e:
             logger.exception("Service bind/search unexpected error: %s", e)
@@ -333,12 +373,18 @@ class LDAP3Backend(ModelBackend):
         # --- Read attributes ---
         get = self._attr
         first_name = (
-            get(entry, getattr(settings, "LDAP_ATTR_GIVENNAME", "givenName")) or ""
+            get(entry, getattr(settings, "LDAP_ATTR_GIVENNAME", "givenName"))
+            or ""
         )
         last_name = get(entry, getattr(settings, "LDAP_ATTR_SN", "sn")) or ""
-        email = (get(entry, getattr(settings, "LDAP_ATTR_MAIL", "mail")) or "").lower()
+        email = (
+            get(entry, getattr(settings, "LDAP_ATTR_MAIL", "mail")) or ""
+        ).lower()
         logger.debug(
-            "Attrs: first_name=%r last_name=%r email=%r", first_name, last_name, email
+            "Attrs: first_name=%r last_name=%r email=%r",
+            first_name,
+            last_name,
+            email,
         )
 
         phone_e164: Optional[str] = None
@@ -349,7 +395,10 @@ class LDAP3Backend(ModelBackend):
             if val:
                 phone_e164 = _normalize_phone(val)
                 logger.debug(
-                    "Phone candidate attr=%s raw=%r -> norm=%r", attr, val, phone_e164
+                    "Phone candidate attr=%s raw=%r -> norm=%r",
+                    attr,
+                    val,
+                    phone_e164,
                 )
                 if phone_e164:
                     break
@@ -382,7 +431,10 @@ class LDAP3Backend(ModelBackend):
             ):
                 user.first_name = first_name
                 changed.append("first_name")
-            if _model_has_field(UserModel, "last_name") and user.last_name != last_name:
+            if (
+                _model_has_field(UserModel, "last_name")
+                and user.last_name != last_name
+            ):
                 user.last_name = last_name
                 changed.append("last_name")
             if (
@@ -410,7 +462,8 @@ class LDAP3Backend(ModelBackend):
                 and guid
                 and getattr(user, "ldap_guid") != str(guid)
             ):
-                # При необходимости замените str(guid) на корректную конверсию GUID.
+                # При необходимости замените str(guid) на корректную конверсию
+                # GUID.
                 setattr(user, "ldap_guid", str(guid))
                 changed.append("ldap_guid")
 
@@ -426,12 +479,16 @@ class LDAP3Backend(ModelBackend):
 
             if changed:
                 user.save(update_fields=list(set(changed)))
-                logger.debug("Local user updated fields: %s", sorted(set(changed)))
+                logger.debug(
+                    "Local user updated fields: %s", sorted(set(changed))
+                )
             else:
                 logger.debug("Local user has no changes to save")
 
             if not self.user_can_authenticate(user):
-                logger.info("user_can_authenticate=False after sync -> auth denied")
+                logger.info(
+                    "user_can_authenticate=False after sync -> auth denied"
+                )
                 return None
 
             logger.info(
@@ -442,7 +499,8 @@ class LDAP3Backend(ModelBackend):
             return user
 
         logger.info(
-            "AUTH FAILED: no local user (auto_create disabled or constraints not met)"
+            "AUTH FAILED: no local user "
+            "(auto_create disabled or constraints not met)"
         )
         return None
 
@@ -479,8 +537,9 @@ class SuperuserOnlyBackend(ModelBackend):
     Используется как «break-glass» при отказе LDAP. Любые не-суперюзеры
     не проходят локальную аутентификацию, даже при корректном пароле.
 
-    Это устраняет локальный фолбэк для рядовых сотрудников (все они идут через LDAP),
-    не ломая админ-доступ на случай недоступности каталога.
+    Это устраняет локальный фолбэк для рядовых сотрудников
+    (все они идут через LDAP), не ломая админ-доступ
+    на случай недоступности каталога.
     """
 
     def authenticate(
@@ -498,35 +557,45 @@ class SuperuserOnlyBackend(ModelBackend):
             password: Пароль.
 
         Returns:
-            Optional[UserModel]: Пользователь, если это суперюзер и пароль верен; иначе None.
+            Optional[UserModel]: Пользователь, если это суперюзер
+            и пароль верен; иначе None.
 
         Raises:
-            Ничего не выбрасывает наружу — при неуспехе возвращает None.
+            Ничего не выбрасывает наружу —
+            при неуспехе возвращает None.
         """
         logger.debug(
-            "SuperuserOnlyBackend.authenticate: username=%s, password_provided=%s",
-            bool(username), bool(password)
+            "SuperuserOnlyBackend.authenticate: username=%s, "
+            "password_provided=%s",
+            bool(username),
+            bool(password),
         )
 
         user = super().authenticate(
             request, username=username, password=password, **kwargs
         )
 
-        logger.debug("SuperuserOnlyBackend: parent auth returned user=%s", bool(user))
+        logger.debug(
+            "SuperuserOnlyBackend: parent auth returned user=%s", bool(user)
+        )
 
         if user:
             is_super = getattr(user, "is_superuser", False)
             logger.debug(
                 "SuperuserOnlyBackend: user=%s, is_superuser=%s",
-                getattr(user, "email", "?"), is_super
+                getattr(user, "email", "?"),
+                is_super,
             )
             if is_super:
                 logger.info(
                     "SuperuserOnlyBackend: AUTH SUCCESS for superuser %s",
-                    user.email)
+                    user.email,
+                )
                 return user
             else:
-                logger.debug("SuperuserOnlyBackend: user is not superuser, rejecting")
+                logger.debug(
+                    "SuperuserOnlyBackend: user is not superuser, rejecting"
+                )
 
         return None
 
@@ -553,7 +622,9 @@ class PositionRoleBackend(ModelBackend):
                 .select_related("content_type")
                 .distinct()
             )
-            perms |= {f"{p.content_type.app_label}.{p.codename}" for p in pos_perms}
+            perms |= {
+                f"{p.content_type.app_label}.{p.codename}" for p in pos_perms
+            }
 
         # 2) ⚠️ НЕ добавляем сюда пермишены из DepartmentRole.
         # Они должны проверяться только на уровне конкретного Department в

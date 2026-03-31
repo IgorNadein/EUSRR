@@ -1,6 +1,7 @@
 """
 Сервисы для модуля закупок и инвентаря.
 """
+
 import io
 import os
 from typing import Optional
@@ -20,7 +21,7 @@ from procurement.constants import (
 class InventoryNumberGenerator:
     """Генератор инвентарных номеров."""
 
-    PREFIX = 'INV'
+    PREFIX = "INV"
 
     @classmethod
     def generate(cls, year: Optional[int] = None) -> str:
@@ -36,22 +37,24 @@ class InventoryNumberGenerator:
             year = timezone.now().year
 
         # Находим последний номер за этот год
-        prefix = f'{cls.PREFIX}-{year}-'
-        last_equipment = Equipment.objects.filter(
-            inventory_number__startswith=prefix
-        ).order_by('-inventory_number').first()
+        prefix = f"{cls.PREFIX}-{year}-"
+        last_equipment = (
+            Equipment.objects.filter(inventory_number__startswith=prefix)
+            .order_by("-inventory_number")
+            .first()
+        )
 
         if last_equipment:
             # Извлекаем номер из последнего инвентарного номера
             try:
-                last_num = int(last_equipment.inventory_number.split('-')[-1])
+                last_num = int(last_equipment.inventory_number.split("-")[-1])
             except (ValueError, IndexError):
                 last_num = 0
         else:
             last_num = 0
 
         new_num = last_num + 1
-        return f'{cls.PREFIX}-{year}-{new_num:04d}'
+        return f"{cls.PREFIX}-{year}-{new_num:04d}"
 
     @classmethod
     def validate(cls, inventory_number: str) -> bool:
@@ -61,7 +64,7 @@ class InventoryNumberGenerator:
         Returns:
             True если формат верный, False иначе
         """
-        parts = inventory_number.split('-')
+        parts = inventory_number.split("-")
         if len(parts) != 3:
             return False
 
@@ -90,7 +93,7 @@ class InventoryNumberGenerator:
 class QRCodeGenerator:
     """Генератор QR-кодов для оборудования."""
 
-    QR_CODE_DIR = 'qr_codes'
+    QR_CODE_DIR = "qr_codes"
 
     @classmethod
     def generate_for_equipment(cls, equipment) -> ContentFile:
@@ -120,10 +123,10 @@ class QRCodeGenerator:
 
         # Сохраняем в буфер
         buffer = io.BytesIO()
-        img.save(buffer, format='PNG')
+        img.save(buffer, format="PNG")
         buffer.seek(0)
 
-        filename = f'{equipment.inventory_number}.png'
+        filename = f"{equipment.inventory_number}.png"
         return ContentFile(buffer.read(), name=filename)
 
     @classmethod
@@ -134,8 +137,8 @@ class QRCodeGenerator:
         Формат: URL с параметрами для быстрого доступа.
         """
         # Формируем URL на страницу оборудования
-        base_url = getattr(settings, 'SITE_URL', 'http://corp.robotail.pro')
-        equipment_url = f'{base_url}/procurement/equipment/{equipment.id}/'
+        base_url = getattr(settings, "SITE_URL", "http://corp.robotail.pro")
+        equipment_url = f"{base_url}/procurement/equipment/{equipment.id}/"
 
         # Можно также добавить vCard или JSON формат
         # Но URL проще для сканирования
@@ -146,14 +149,15 @@ class QRCodeGenerator:
         """
         Возвращает путь к файлу QR-кода.
         """
-        return os.path.join(cls.QR_CODE_DIR, f'{inventory_number}.png')
+        return os.path.join(cls.QR_CODE_DIR, f"{inventory_number}.png")
 
 
 class ProcurementApprovalResolver:
     """Определяет согласующих для заявки на закупку.
 
     Состав этапов и их порядок берутся из таблицы ApprovalRoute.
-    Для этапа типа department_head согласующий определяется через Department.head.
+    Для этапа типа department_head согласующий определяется
+    через Department.head.
     """
 
     @classmethod
@@ -164,9 +168,13 @@ class ProcurementApprovalResolver:
             return None
 
         if not isinstance(route, ApprovalRoute):
-            route = ApprovalRoute.objects.select_related('employee').filter(
-                priority=route,
-            ).first()
+            route = (
+                ApprovalRoute.objects.select_related("employee")
+                .filter(
+                    priority=route,
+                )
+                .first()
+            )
             if route is None:
                 return None
 
@@ -211,7 +219,7 @@ class ProcurementApprovalResolver:
 
         pending = procurement_request.approvals.filter(
             status=ApprovalStatus.PENDING,
-        ).order_by('priority', 'created_at', 'id')
+        ).order_by("priority", "created_at", "id")
         first_pending = pending.first()
         if first_pending is None:
             return None
@@ -242,7 +250,7 @@ class EquipmentService:
         department,
         purchase_date,
         purchase_cost,
-        **kwargs
+        **kwargs,
     ):
         """
         Создаёт новое оборудование с авто-генерацией инвентарного номера.
@@ -250,8 +258,8 @@ class EquipmentService:
         from .models import Equipment
 
         # Генерируем инвентарный номер если не указан
-        if 'inventory_number' not in kwargs or not kwargs['inventory_number']:
-            kwargs['inventory_number'] = InventoryNumberGenerator.generate()
+        if "inventory_number" not in kwargs or not kwargs["inventory_number"]:
+            kwargs["inventory_number"] = InventoryNumberGenerator.generate()
 
         equipment = Equipment.objects.create(
             name=name,
@@ -259,7 +267,7 @@ class EquipmentService:
             department=department,
             purchase_date=purchase_date,
             purchase_cost=purchase_cost,
-            **kwargs
+            **kwargs,
         )
 
         return equipment
@@ -267,10 +275,7 @@ class EquipmentService:
     @classmethod
     @transaction.atomic
     def assign_to_person(
-        cls,
-        equipment,
-        person,
-        location: Optional[str] = None
+        cls, equipment, person, location: Optional[str] = None
     ):
         """
         Назначает оборудование ответственному лицу.
@@ -294,7 +299,7 @@ class EquipmentService:
             to_person=person,
             from_location=old_location,
             to_location=location or equipment.location,
-            transfer_type='assignment',
+            transfer_type="assignment",
         )
 
         return equipment
@@ -307,7 +312,7 @@ class EquipmentService:
         to_department,
         to_person=None,
         to_location: Optional[str] = None,
-        reason: str = ''
+        reason: str = "",
     ):
         """
         Перемещает оборудование в другой отдел.
@@ -332,8 +337,8 @@ class EquipmentService:
             from_person=old_person,
             to_person=to_person,
             from_location=old_location,
-            to_location=to_location or '',
-            transfer_type='transfer',
+            to_location=to_location or "",
+            transfer_type="transfer",
             reason=reason,
         )
 
@@ -349,8 +354,8 @@ class EquipmentService:
 
         equipment.status = EquipmentStatus.WRITTEN_OFF
         equipment.notes = (
-            f'{equipment.notes}\n\n'
-            f'[{timezone.now().strftime("%Y-%m-%d")}] Списано: {reason}'
+            f"{equipment.notes}\n\n"
+            f"[{timezone.now().strftime('%Y-%m-%d')}] Списано: {reason}"
         ).strip()
         equipment.save()
 
@@ -365,7 +370,7 @@ class EquipmentService:
         description: str,
         performed_by,
         cost=None,
-        date=None
+        date=None,
     ):
         """
         Добавляет запись о техническом обслуживании.
@@ -378,7 +383,7 @@ class EquipmentService:
             date = timezone.now().date()
 
         if cost is None:
-            cost = Decimal('0.00')
+            cost = Decimal("0.00")
 
         record = MaintenanceRecord.objects.create(
             equipment=equipment,
@@ -390,7 +395,7 @@ class EquipmentService:
         )
 
         # Если на ремонте - обновляем статус
-        if maintenance_type == 'repair':
+        if maintenance_type == "repair":
             equipment.status = EquipmentStatus.IN_REPAIR
             equipment.save()
 

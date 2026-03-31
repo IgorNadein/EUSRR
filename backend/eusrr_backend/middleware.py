@@ -21,16 +21,18 @@ class AuthRequiredMiddleware:
     """
 
     EXEMPT_PREFIXES = (
-        "/api/",      # REST API управляет своей аутентификацией
-        "/admin/",    # Django Admin использует встроенную аутентификацию
-        "/static/",   # Статика
-        "/media/",    # Медиа
+        "/api/",  # REST API управляет своей аутентификацией
+        "/admin/",  # Django Admin использует встроенную аутентификацию
+        "/static/",  # Статика
+        "/media/",  # Медиа
     )
 
     def __init__(self, get_response):
         self.get_response = get_response
         self.allowed_prefixes = tuple(
-            getattr(settings, "AUTH_REQUIRED_EXEMPT_PREFIXES", self.EXEMPT_PREFIXES)
+            getattr(
+                settings, "AUTH_REQUIRED_EXEMPT_PREFIXES", self.EXEMPT_PREFIXES
+            )
         )
 
     def __call__(self, request):
@@ -49,10 +51,9 @@ class AuthRequiredMiddleware:
         from django.http import HttpResponseForbidden, JsonResponse
 
         # Для API запросов возвращаем JSON
-        if request.headers.get('Accept', '').startswith('application/json'):
+        if request.headers.get("Accept", "").startswith("application/json"):
             return JsonResponse(
-                {"detail": "Authentication required"},
-                status=403
+                {"detail": "Authentication required"}, status=403
             )
 
         # Для браузерных запросов - HTML 403
@@ -70,10 +71,10 @@ class CacheControlMiddleware:
     """
 
     NO_CACHE_PREFIXES = (
-        "/api/",     # API управляет своим кэшем
-        "/admin/",   # Админка всегда свежая
+        "/api/",  # API управляет своим кэшем
+        "/admin/",  # Админка всегда свежая
         "/static/",  # Обрабатывается веб-сервером
-        "/media/",   # Обрабатывается веб-сервером
+        "/media/",  # Обрабатывается веб-сервером
     )
 
     def __init__(self, get_response):

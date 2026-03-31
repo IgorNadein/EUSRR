@@ -11,7 +11,10 @@ from requests_app.models import Request
 from rest_framework import serializers
 
 from ..employees.serializers import EmployeeBriefSerializer
-from .validators import RequestApproverNotEmployeeValidator, RequestDatesByTypeValidator
+from .validators import (
+    RequestApproverNotEmployeeValidator,
+    RequestDatesByTypeValidator,
+)
 
 User = get_user_model()
 
@@ -175,7 +178,8 @@ class RequestReadSerializer(serializers.ModelSerializer):
 class RequestWriteSerializer(serializers.ModelSerializer):
     """Сериализатор записи заявки.
 
-    Обычным пользователям запрещено передавать `employee`, `status`, `approver` —
+    Обычным пользователям запрещено передавать
+    `employee`, `status`, `approver` —
     они будут проигнорированы. Админы/обладатели прав могут их указывать.
 
     Поле `employee` умышленно НЕ делаем read_only, чтобы админ мог его задать.
@@ -208,7 +212,9 @@ class RequestWriteSerializer(serializers.ModelSerializer):
     )
     recipient_ids = RecipientIDsField(required=False, allow_empty=True)
     cc_user_ids = RecipientIDsField(required=False, allow_empty=True)
-    sent_to_all_department = serializers.BooleanField(required=False, default=False)
+    sent_to_all_department = serializers.BooleanField(
+        required=False, default=False
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -244,7 +250,9 @@ class RequestWriteSerializer(serializers.ModelSerializer):
         ]
 
     def _is_power(self) -> bool:
-        """Определяет, имеет ли пользователь расширенные права на создание/изменение.
+        """Определяет, имеет ли пользователь расширенные права.
+
+        На создание и изменение.
 
         Returns:
             bool: True для staff или имеющих модельные права; иначе False.
@@ -323,7 +331,9 @@ class RequestWriteSerializer(serializers.ModelSerializer):
         # должны быть получатели
         if not sent_to_all and not departments and not recipient_ids:
             raise serializers.ValidationError(
-                {"recipient_ids": "Укажите получателей или отделы"}
+                {
+                    "recipient_ids": "Укажите получателей или отделы"
+                }
             )
 
         # Автор не может быть в получателях
@@ -383,7 +393,10 @@ class RequestWriteSerializer(serializers.ModelSerializer):
 
         # Отладка: проверяем что передается
         print(
-            f"📝 [SERIALIZER] create: recipient_ids={recipient_ids}, cc_user_ids={cc_user_ids}")
+            "📝 [SERIALIZER] create: "
+            f"recipient_ids={recipient_ids}, "
+            f"cc_user_ids={cc_user_ids}"
+        )
 
         if not self._is_power():
             # обычный пользователь: запрещённые поля убираем/переписываем
@@ -402,8 +415,9 @@ class RequestWriteSerializer(serializers.ModelSerializer):
         # Создаем заявку
         request_obj = super().create(validated_data)
         print(
-            f"✅ [SERIALIZER] Заявление #{
-                request_obj.id} создано, устанавливаем recipients...")
+            f"✅ [SERIALIZER] Заявление #{request_obj.id} создано, "
+            "устанавливаем recipients..."
+        )
 
         # Устанавливаем связи ManyToMany
         if departments:
@@ -416,7 +430,8 @@ class RequestWriteSerializer(serializers.ModelSerializer):
         recipients_count = request_obj.recipients.count()
         cc_count = request_obj.cc_users.count()
         print(
-            f"✅ [SERIALIZER] Recipients установлены: {recipients_count} основных, {cc_count} в копии"
+            "✅ [SERIALIZER] Recipients установлены: "
+            f"{recipients_count} основных, {cc_count} в копии"
         )
 
         return request_obj

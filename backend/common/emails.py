@@ -38,9 +38,13 @@ def send_templated_mail(
         html_body = render_to_string(f"{template_base}.html", context)
         logger.info(
             f"[send_templated_mail] ✅ HTML шаблон загружен ({
-                len(html_body)} символов)")
+                len(html_body)
+            } символов)"
+        )
     except Exception as e:
-        logger.error(f"[send_templated_mail] ❌ Ошибка загрузки HTML шаблона: {e}")
+        logger.error(
+            f"[send_templated_mail] ❌ Ошибка загрузки HTML шаблона: {e}"
+        )
         raise
 
     # .txt файл опционален — если его нет, берём strip_tags от html
@@ -48,11 +52,15 @@ def send_templated_mail(
         text_body = render_to_string(f"{template_base}.txt", context)
         logger.info(
             f"[send_templated_mail] ✅ TXT шаблон загружен ({
-                len(text_body)} символов)")
+                len(text_body)
+            } символов)"
+        )
     except Exception:
         text_body = strip_tags(html_body)
         logger.info(
-            "[send_templated_mail] ⚠️ TXT шаблон не найден, используется strip_tags от HTML")
+            "[send_templated_mail] ⚠️ TXT шаблон не найден, "
+            "используется strip_tags от HTML"
+        )
 
     email = EmailMultiAlternatives(
         subject=subject,
@@ -67,18 +75,23 @@ def send_templated_mail(
             email.attach(name, data, mimetype)
             logger.info(
                 f"[send_templated_mail] 📎 Вложение: {name} ({
-                    len(data)} bytes, {mimetype})")
+                    len(data)
+                } bytes, {mimetype})"
+            )
 
     logger.info("[send_templated_mail] ➡️ Вызов email.send()...")
 
     try:
         result = email.send(fail_silently=False)
         logger.info(
-            f"[send_templated_mail] ✅ EMAIL УСПЕШНО ОТПРАВЛЕН (result={result})")
+            f"[send_templated_mail] ✅ EMAIL УСПЕШНО ОТПРАВЛЕН (result={result})"
+        )
         return result
     except Exception as e:
         logger.error(
-            f"[send_templated_mail] ❌ ОШИБКА ОТПРАВКИ EMAIL: {type(e).__name__}: {e}",
-            exc_info=True
+            f"[send_templated_mail] ❌ ОШИБКА ОТПРАВКИ EMAIL: {
+                type(e).__name__
+            }: {e}",
+            exc_info=True,
         )
         raise

@@ -34,7 +34,8 @@ class JWTRefreshMiddleware:
 
             if access_token and refresh_token:
                 try:
-                    # Декодируем токен БЕЗ проверки подписи (только для чтения exp)
+                    # Декодируем токен БЕЗ проверки подписи (только для чтения
+                    # exp)
                     decoded = jwt.decode(
                         access_token,
                         options={"verify_signature": False}

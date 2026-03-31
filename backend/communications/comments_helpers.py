@@ -20,6 +20,7 @@ Helpers для работы с комментариями через Communicati
     - Создан: 11 марта 2026
     - Цель: Унификация системы комментариев для миграции с legacy моделей
 """
+
 from typing import Optional
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import QuerySet
@@ -28,10 +29,7 @@ from .models import Chat, Message, MessageAttachment
 
 
 def get_or_create_comments_chat(
-    obj,
-    created_by=None,
-    name: Optional[str] = None,
-    **extra_flags
+    obj, created_by=None, name: Optional[str] = None, **extra_flags
 ) -> Chat:
     """
     Получить или создать чат комментариев для объекта.
@@ -60,30 +58,30 @@ def get_or_create_comments_chat(
 
     # Базовые флаги для чата комментариев
     default_flags = {
-        'allow_replies': True,
-        'allow_reactions': True,
-        'allow_attachments': True,
-        'allow_editing': True,
+        "allow_replies": True,
+        "allow_reactions": True,
+        "allow_attachments": True,
+        "allow_editing": True,
     }
     default_flags.update(extra_flags)
 
     # Генерация имени если не указано
     if name is None:
         obj_str = str(obj)
-        name = f'Комментарии: {obj_str[:50]}'
+        name = f"Комментарии: {obj_str[:50]}"
         if len(obj_str) > 50:
-            name += '...'
+            name += "..."
 
     chat, created = Chat.objects.get_or_create(
-        type='comments',
+        type="comments",
         context_content_type=ct,
         context_object_id=obj.id,
         defaults={
-            'name': name,
-            'created_by': created_by,
-            'flags': default_flags,
-            'can_reply': True,  # Разрешаем ответы
-        }
+            "name": name,
+            "created_by": created_by,
+            "flags": default_flags,
+            "can_reply": True,  # Разрешаем ответы
+        },
     )
 
     return chat
@@ -95,7 +93,7 @@ def create_comment(
     content: str,
     reply_to: Optional[Message] = None,
     attachments: Optional[list] = None,
-    **system_metadata
+    **system_metadata,
 ) -> Message:
     """
     Создать комментарий к объекту.
@@ -152,35 +150,33 @@ def create_comment(
         reply_to=reply_to,
         thread_root=thread_root,
         has_attachments=bool(attachments),
-        system_metadata=system_metadata
+        system_metadata=system_metadata,
     )
 
     # Добавляем вложения
     if attachments:
         for file in attachments:
             # Определяем тип файла
-            file_type = 'file'
-            if hasattr(file, 'content_type'):
-                if file.content_type.startswith('image/'):
-                    file_type = 'image'
-                elif file.content_type.startswith('video/'):
-                    file_type = 'video'
+            file_type = "file"
+            if hasattr(file, "content_type"):
+                if file.content_type.startswith("image/"):
+                    file_type = "image"
+                elif file.content_type.startswith("video/"):
+                    file_type = "video"
 
             MessageAttachment.objects.create(
                 message=message,
                 file=file,
                 file_type=file_type,
-                file_name=getattr(file, 'name', 'file'),
-                file_size=getattr(file, 'size', 0)
+                file_name=getattr(file, "name", "file"),
+                file_size=getattr(file, "size", 0),
             )
 
     return message
 
 
 def get_comments(
-    obj,
-    include_deleted: bool = False,
-    only_roots: bool = False
+    obj, include_deleted: bool = False, only_roots: bool = False
 ) -> QuerySet:
     """
     Получить все комментарии объекта.
@@ -206,12 +202,10 @@ def get_comments(
     try:
         ct = ContentType.objects.get_for_model(obj)
         chat = Chat.objects.get(
-            type='comments',
-            context_content_type=ct,
-            context_object_id=obj.id
+            type="comments", context_content_type=ct, context_object_id=obj.id
         )
 
-        qs = chat.messages.select_related('author')
+        qs = chat.messages.select_related("author")
 
         if not include_deleted:
             qs = qs.filter(is_deleted=False)
@@ -219,7 +213,7 @@ def get_comments(
         if only_roots:
             qs = qs.filter(reply_to__isnull=True)
 
-        return qs.order_by('created_at')
+        return qs.order_by("created_at")
 
     except Chat.DoesNotExist:
         # Чат не создан - нет комментариев
@@ -251,22 +245,23 @@ def delete_comment(message: Message, deleted_by, soft_delete: bool = True):
 
     Examples:
         >>> delete_comment(comment, user=request.user)  # Мягкое удаление
-        >>> delete_comment(comment, user=request.user, soft_delete=False)  # Жесткое
+        >>> delete_comment(
+        ...     comment, user=request.user, soft_delete=False
+        ... )  # Жесткое
     """
     if soft_delete:
         from django.utils import timezone
+
         message.is_deleted = True
         message.deleted_by = deleted_by
         message.deleted_at = timezone.now()
-        message.save(update_fields=['is_deleted', 'deleted_by', 'deleted_at'])
+        message.save(update_fields=["is_deleted", "deleted_by", "deleted_at"])
     else:
         message.delete()
 
 
 def update_comment(
-    message: Message,
-    new_content: str,
-    mark_edited: bool = True
+    message: Message, new_content: str, mark_edited: bool = True
 ):
     """
     Обновить текст комментария.
@@ -286,9 +281,9 @@ def update_comment(
     if mark_edited:
         message.is_edited = True
         message.edited_at = timezone.now()
-        message.save(update_fields=['content', 'is_edited', 'edited_at'])
+        message.save(update_fields=["content", "is_edited", "edited_at"])
     else:
-        message.save(update_fields=['content'])
+        message.save(update_fields=["content"])
 
 
 def get_comments_chat_if_exists(obj) -> Optional[Chat]:
@@ -304,9 +299,7 @@ def get_comments_chat_if_exists(obj) -> Optional[Chat]:
     try:
         ct = ContentType.objects.get_for_model(obj)
         return Chat.objects.get(
-            type='comments',
-            context_content_type=ct,
-            context_object_id=obj.id
+            type="comments", context_content_type=ct, context_object_id=obj.id
         )
     except Chat.DoesNotExist:
         return None

@@ -44,7 +44,7 @@ class LdapUserCreationMixin:
         password: str,
         avatar_bytes: Optional[bytes] = None,
         is_active: bool = False,
-    ) -> tuple[Optional['Employee'], Optional[Response]]:
+    ) -> tuple[Optional["Employee"], Optional[Response]]:
         """Создаёт пользователя - автоматически выбирает LDAP или БД режим.
 
         View не должен знать о режиме LDAP - вся логика инкапсулирована здесь.
@@ -96,7 +96,7 @@ class LdapUserCreationMixin:
         password: str,
         avatar_bytes: Optional[bytes] = None,
         is_active: bool = False,
-    ) -> tuple[Optional['Employee'], Optional[Response]]:
+    ) -> tuple[Optional["Employee"], Optional[Response]]:
         """Создаёт disabled пользователя в LDAP с паролем.
 
         Args:
@@ -133,13 +133,14 @@ class LdapUserCreationMixin:
             logger.error(f"LDAP user creation failed: {e}", exc_info=True)
             return None, Response(
                 {"ok": False, "error": "ldap_error", "detail": str(e)},
-                status=502
+                status=502,
             )
         except DirectoryDbError as e:
-            logger.error(f"DB error during LDAP user creation: {e}", exc_info=True)
+            logger.error(
+                f"DB error during LDAP user creation: {e}", exc_info=True
+            )
             return None, Response(
-                {"ok": False, "error": "db_error", "detail": str(e)},
-                status=500
+                {"ok": False, "error": "db_error", "detail": str(e)}, status=500
             )
 
     def create_db_user(
@@ -151,7 +152,7 @@ class LdapUserCreationMixin:
         phone_number: str,
         password: str,
         is_active: bool = False,
-    ) -> 'Employee':
+    ) -> "Employee":
         """Создаёт пользователя напрямую в БД (режим без LDAP).
 
         Args:
@@ -177,7 +178,7 @@ class LdapUserCreationMixin:
         )
         # Устанавливаем пароль в БД
         emp.set_password(password)
-        emp.save(update_fields=['password'])
+        emp.save(update_fields=["password"])
 
         return emp
 
@@ -194,7 +195,7 @@ class LdapPasswordMixin:
 
     def update_ldap_password(
         self,
-        employee: 'Employee',
+        employee: "Employee",
         new_password: str,
     ) -> tuple[bool, Optional[Response]]:
         """Обновляет пароль пользователя в LDAP.
@@ -211,7 +212,7 @@ class LdapPasswordMixin:
         if not employee.is_ldap_managed:
             # Не LDAP пользователь - устанавливаем пароль в БД
             employee.set_password(new_password)
-            employee.save(update_fields=['password'])
+            employee.save(update_fields=["password"])
             return True, None
 
         # LDAP пользователь - обновляем через UserService
@@ -219,24 +220,32 @@ class LdapPasswordMixin:
             svc = UserService()
             svc.update_user(
                 emp=employee,
-                changes={'password': new_password},
+                changes={"password": new_password},
                 group_cns=None,
                 move_to_department_dn=None,
             )
             return True, None
         except DirectoryLdapError as e:
             logger.error(
-                f"LDAP password update failed for user {
-                    employee.id}: {e}", exc_info=True)
+                f"LDAP password update failed for user {employee.id}: {e}",
+                exc_info=True,
+            )
             return False, Response(
                 {"ok": False, "error": "ldap_error", "detail": str(e)},
-                status=502
+                status=502,
             )
         except Exception as e:
             logger.error(
                 f"Unexpected error updating LDAP password for user {
-                    employee.id}: {e}", exc_info=True)
+                    employee.id
+                }: {e}",
+                exc_info=True,
+            )
             return False, Response(
-                {"ok": False, "error": "password_update_failed", "detail": str(e)},
-                status=500
+                {
+                    "ok": False,
+                    "error": "password_update_failed",
+                    "detail": str(e),
+                },
+                status=500,
             )

@@ -2,10 +2,12 @@
 django-rules: декларативные правила доступа для django-scheduler
 
 Правила используются для проверки permissions на уровне объектов.
-Интегрируется с CalendarRelation для управления доступом к календарям и событиям.
+Интегрируется с CalendarRelation для управления доступом
+к календарям и событиям.
 
 https://github.com/dfunckt/django-rules
 """
+
 import rules
 from django.contrib.contenttypes.models import ContentType
 
@@ -13,6 +15,7 @@ from django.contrib.contenttypes.models import ContentType
 # -----------------------------------------------------------------------------
 # ПРЕДИКАТЫ (predicates)
 # -----------------------------------------------------------------------------
+
 
 @rules.predicate
 def is_superuser(user):
@@ -31,12 +34,11 @@ def can_view_calendar(user, calendar):
 
     try:
         from schedule.models import CalendarRelation
+
         user_ct = ContentType.objects.get_for_model(user)
 
         return CalendarRelation.objects.filter(
-            calendar=calendar,
-            content_type=user_ct,
-            object_id=user.id
+            calendar=calendar, content_type=user_ct, object_id=user.id
         ).exists()
     except Exception:
         return False
@@ -53,6 +55,7 @@ def can_edit_calendar(user, calendar):
 
     try:
         from schedule.models import CalendarRelation
+
         user_ct = ContentType.objects.get_for_model(user)
 
         # Проверяем что пользователь имеет отношение с правом редактирования
@@ -60,7 +63,7 @@ def can_edit_calendar(user, calendar):
             calendar=calendar,
             content_type=user_ct,
             object_id=user.id,
-            distinction='owner'  # или используйте ваше значение для владельца
+            distinction="owner",  # или используйте ваше значение для владельца
         ).first()
 
         return relation is not None
@@ -99,14 +102,14 @@ def can_edit_event(user, event):
 # -----------------------------------------------------------------------------
 
 # Календари
-rules.add_rule('can_view_calendar', is_superuser | can_view_calendar)
-rules.add_rule('can_edit_calendar', is_superuser | can_edit_calendar)
-rules.add_rule('can_delete_calendar', is_superuser | can_edit_calendar)
+rules.add_rule("can_view_calendar", is_superuser | can_view_calendar)
+rules.add_rule("can_edit_calendar", is_superuser | can_edit_calendar)
+rules.add_rule("can_delete_calendar", is_superuser | can_edit_calendar)
 
 # События
-rules.add_rule('can_view_event', is_superuser | can_view_event)
-rules.add_rule('can_edit_event', is_superuser | can_edit_event)
-rules.add_rule('can_delete_event', is_superuser | can_edit_event)
+rules.add_rule("can_view_event", is_superuser | can_view_event)
+rules.add_rule("can_edit_event", is_superuser | can_edit_event)
+rules.add_rule("can_delete_event", is_superuser | can_edit_event)
 
 # Для использования в DRF permissions или templates:
 # {% if request.user|has_rule:'can_edit_calendar' calendar %}

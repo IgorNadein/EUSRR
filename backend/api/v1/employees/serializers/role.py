@@ -44,7 +44,9 @@ class DepartmentRoleSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ("id",)
 
-    def _apply_codes_if_present(self, instance: DepartmentRole, validated_data: dict):
+    def _apply_codes_if_present(
+        self, instance: DepartmentRole, validated_data: dict
+    ):
         codes = validated_data.pop("scoped_permission_codes", None)
         if codes is not None:
             qs = DepartmentPermission.objects.filter(code__in=codes)
@@ -92,7 +94,9 @@ class DepartmentRoleSerializer(serializers.ModelSerializer):
 
         return role
 
-    @extend_schema_field(serializers.ListField(child=serializers.IntegerField()))
+    @extend_schema_field(
+        serializers.ListField(child=serializers.IntegerField())
+    )
     def get_permissions(self, obj: DepartmentRole):
         return list(obj.scoped_permissions.values_list("id", flat=True))
 

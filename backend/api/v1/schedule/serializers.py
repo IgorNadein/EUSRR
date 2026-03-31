@@ -3,9 +3,17 @@
 Serializers для django-scheduler.
 Чистые, проверенные временем модели.
 """
+
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
-from schedule.models import Calendar, Event, Rule, Occurrence, EventRelation, CalendarRelation
+from schedule.models import (
+    Calendar,
+    Event,
+    Rule,
+    Occurrence,
+    EventRelation,
+    CalendarRelation,
+)
 from django.contrib.contenttypes.models import ContentType
 
 
@@ -32,35 +40,47 @@ class CalendarRelationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CalendarRelation
-        fields = ['id', 'calendar', 'user_id', 'user', 'distinction', 'inheritable']
-        read_only_fields = ['id']
+        fields = [
+            "id",
+            "calendar",
+            "user_id",
+            "user",
+            "distinction",
+            "inheritable",
+        ]
+        read_only_fields = ["id"]
 
     @extend_schema_field(RelatedUserSummarySerializer(allow_null=True))
     def get_user(self, obj):
         """Информация о связанном пользователе."""
         if obj.content_object:
             return {
-                'id': obj.content_object.id, 'username': getattr(
-                    obj.content_object, 'username', str(
-                        obj.content_object)), 'first_name': getattr(
-                    obj.content_object, 'first_name', ''), 'last_name': getattr(
-                    obj.content_object, 'last_name', ''), }
+                "id": obj.content_object.id,
+                "username": getattr(
+                    obj.content_object, "username", str(obj.content_object)
+                ),
+                "first_name": getattr(obj.content_object, "first_name", ""),
+                "last_name": getattr(obj.content_object, "last_name", ""),
+            }
         return None
 
     def create(self, validated_data):
         """Создать связь календаря с пользователем."""
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
 
-        user_id = validated_data.pop('user_id')
-        calendar = validated_data['calendar']
-        distinction = validated_data.get('distinction', 'viewer')
-        inheritable = validated_data.get('inheritable', True)
+        user_id = validated_data.pop("user_id")
+        calendar = validated_data["calendar"]
+        distinction = validated_data.get("distinction", "viewer")
+        inheritable = validated_data.get("inheritable", True)
 
         user = User.objects.get(id=user_id)
 
         # Используем встроенный метод create_relation
-        calendar.create_relation(user, distinction=distinction, inheritable=inheritable)
+        calendar.create_relation(
+            user, distinction=distinction, inheritable=inheritable
+        )
 
         # Возвращаем созданную relation
         ct = ContentType.objects.get_for_model(User)
@@ -68,7 +88,7 @@ class CalendarRelationSerializer(serializers.ModelSerializer):
             calendar=calendar,
             content_type=ct,
             object_id=user_id,
-            distinction=distinction
+            distinction=distinction,
         )
 
 
@@ -76,7 +96,7 @@ class CalendarSerializer(serializers.ModelSerializer):
     """Сериализатор для Calendar (django-scheduler) с совместимостью EUSRR."""
 
     # Совместимость с EUSRR API - принимаем title, конвертируем в name
-    title = serializers.CharField(source='name', required=False)
+    title = serializers.CharField(source="name", required=False)
     events_count = serializers.SerializerMethodField()
     owner = serializers.SerializerMethodField()
     participants = serializers.SerializerMethodField()
@@ -85,17 +105,19 @@ class CalendarSerializer(serializers.ModelSerializer):
     class Meta:
         model = Calendar
         fields = [
-            'id',
-            'name',
-            'title',
-            'slug',
-            'events_count',
-            'owner',
-            'participants',
-            'user_role']
-        read_only_fields = ['id', 'owner', 'participants', 'user_role']
+            "id",
+            "name",
+            "title",
+            "slug",
+            "events_count",
+            "owner",
+            "participants",
+            "user_role",
+        ]
+        read_only_fields = ["id", "owner", "participants", "user_role"]
         extra_kwargs = {
-            'slug': {'required': False},  # Сделаем auto-generated если не указан
+            # Сделаем auto-generated если не указан
+            "slug": {"required": False},
         }
 
     @extend_schema_field(serializers.IntegerField())
@@ -108,21 +130,24 @@ class CalendarSerializer(serializers.ModelSerializer):
         """Получить владельца календаря."""
         try:
             from django.contrib.auth import get_user_model
+
             User = get_user_model()
             ct = ContentType.objects.get_for_model(User)
 
             owner_relation = CalendarRelation.objects.filter(
-                calendar=obj,
-                content_type=ct,
-                distinction='owner'
+                calendar=obj, content_type=ct, distinction="owner"
             ).first()
 
             if owner_relation and owner_relation.content_object:
                 return {
-                    'id': owner_relation.content_object.id, 'username': getattr(
-                        owner_relation.content_object, 'username', str(
-                            owner_relation.content_object)), 'full_name': str(
-                        owner_relation.content_object), }
+                    "id": owner_relation.content_object.id,
+                    "username": getattr(
+                        owner_relation.content_object,
+                        "username",
+                        str(owner_relation.content_object),
+                    ),
+                    "full_name": str(owner_relation.content_object),
+                }
         except Exception:
             pass
         return None
@@ -131,40 +156,45 @@ class CalendarSerializer(serializers.ModelSerializer):
     def get_participants(self, obj):
         """Список всех участников календаря."""
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         ct = ContentType.objects.get_for_model(User)
 
         relations = CalendarRelation.objects.filter(
-            calendar=obj,
-            content_type=ct
-        ).select_related('content_type')
+            calendar=obj, content_type=ct
+        ).select_related("content_type")
 
         participants = []
         for rel in relations:
             if rel.content_object:
-                participants.append({
-                    'id': rel.content_object.id,
-                    'username': getattr(rel.content_object, 'username', str(rel.content_object)),
-                    'full_name': str(rel.content_object),
-                    'role': rel.distinction,
-                })
+                participants.append(
+                    {
+                        "id": rel.content_object.id,
+                        "username": getattr(
+                            rel.content_object,
+                            "username",
+                            str(rel.content_object),
+                        ),
+                        "full_name": str(rel.content_object),
+                        "role": rel.distinction,
+                    }
+                )
         return participants
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_user_role(self, obj):
         """Роль текущего пользователя для этого календаря."""
-        request = self.context.get('request')
+        request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return None
 
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         ct = ContentType.objects.get_for_model(User)
 
         relation = CalendarRelation.objects.filter(
-            calendar=obj,
-            content_type=ct,
-            object_id=request.user.id
+            calendar=obj, content_type=ct, object_id=request.user.id
         ).first()
 
         return relation.distinction if relation else None
@@ -174,11 +204,11 @@ class CalendarSerializer(serializers.ModelSerializer):
         from django.utils.text import slugify
 
         # Если slug не указан - генерируем из name
-        if 'slug' not in validated_data or not validated_data.get('slug'):
-            name = validated_data.get('name', 'calendar')
+        if "slug" not in validated_data or not validated_data.get("slug"):
+            name = validated_data.get("name", "calendar")
             base_slug = slugify(name)
             if not base_slug:
-                base_slug = 'calendar'
+                base_slug = "calendar"
 
             # Проверяем уникальность slug
             slug = base_slug
@@ -187,7 +217,7 @@ class CalendarSerializer(serializers.ModelSerializer):
                 slug = f"{base_slug}-{counter}"
                 counter += 1
 
-            validated_data['slug'] = slug
+            validated_data["slug"] = slug
 
         return super().create(validated_data)
 
@@ -202,27 +232,30 @@ class RuleSerializer(serializers.ModelSerializer):
     """
 
     VALID_FREQUENCIES = [
-        'YEARLY',
-        'MONTHLY',
-        'WEEKLY',
-        'DAILY',
-        'HOURLY',
-        'MINUTELY',
-        'SECONDLY']
+        "YEARLY",
+        "MONTHLY",
+        "WEEKLY",
+        "DAILY",
+        "HOURLY",
+        "MINUTELY",
+        "SECONDLY",
+    ]
 
     frequency_display = serializers.CharField(
-        source='get_frequency_display', read_only=True)
+        source="get_frequency_display", read_only=True
+    )
 
     class Meta:
         model = Rule
         fields = [
-            'id',
-            'name',
-            'description',
-            'frequency',
-            'frequency_display',
-            'params']
-        read_only_fields = ['id', 'frequency_display']
+            "id",
+            "name",
+            "description",
+            "frequency",
+            "frequency_display",
+            "params",
+        ]
+        read_only_fields = ["id", "frequency_display"]
 
     def _dict_to_params_string(self, params_dict):
         """
@@ -307,7 +340,7 @@ class RuleSerializer(serializers.ModelSerializer):
         # Пробуем распарсить как JSON-строку
         if isinstance(params, str):
             # Если начинается с { - это JSON
-            if params.strip().startswith('{'):
+            if params.strip().startswith("{"):
                 try:
                     return json.loads(params)
                 except (json.JSONDecodeError, TypeError):
@@ -319,21 +352,27 @@ class RuleSerializer(serializers.ModelSerializer):
         return {}
 
     def to_representation(self, instance):
-        """Преобразует params из БД (django-scheduler format) в dict для frontend."""
+        """Преобразует params из БД в dict для frontend.
+
+        Исходный формат — django-scheduler format.
+        """
         data = super().to_representation(instance)
-        data['params'] = self._params_string_to_dict(data.get('params', ''))
+        data["params"] = self._params_string_to_dict(data.get("params", ""))
         return data
 
     def to_internal_value(self, data):
-        """Преобразует params от frontend (dict/JSON) в django-scheduler format для БД."""
+        """Преобразует params от frontend в формат для БД.
+
+        Поддерживаются dict/JSON, на выходе — django-scheduler format.
+        """
         # Парсим params в dict из любого формата
-        params_dict = self._parse_params_input(data.get('params'))
+        params_dict = self._parse_params_input(data.get("params"))
 
         # Вызываем родительский метод для валидации остальных полей
         validated_data = super().to_internal_value(data)
 
         # Конвертируем dict в формат django-scheduler для сохранения в БД
-        validated_data['params'] = self._dict_to_params_string(params_dict)
+        validated_data["params"] = self._dict_to_params_string(params_dict)
 
         return validated_data
 
@@ -341,40 +380,44 @@ class RuleSerializer(serializers.ModelSerializer):
         """Валидация поля frequency."""
         if value not in self.VALID_FREQUENCIES:
             raise serializers.ValidationError(
-                f'Invalid frequency. Must be one of: {
-                    ", ".join(
-                        self.VALID_FREQUENCIES)}')
+                f"Invalid frequency. Must be one of: {
+                    ', '.join(self.VALID_FREQUENCIES)
+                }"
+            )
         return value
 
 
 class EventSerializer(serializers.ModelSerializer):
     """Сериализатор для Event (django-scheduler)."""
 
-    calendar_name = serializers.CharField(source='calendar.name', read_only=True)
+    calendar_name = serializers.CharField(
+        source="calendar.name", read_only=True
+    )
     rule_description = serializers.CharField(
-        source='rule.description', read_only=True, allow_null=True)
+        source="rule.description", read_only=True, allow_null=True
+    )
     rule_data = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
         fields = [
-            'id',
-            'title',
-            'description',
-            'start',
-            'end',
-            'calendar',
-            'calendar_name',
-            'rule',
-            'rule_description',
-            'rule_data',
-            'end_recurring_period',
-            'color_event',
-            'creator',
-            'created_on',
-            'updated_on',
+            "id",
+            "title",
+            "description",
+            "start",
+            "end",
+            "calendar",
+            "calendar_name",
+            "rule",
+            "rule_description",
+            "rule_data",
+            "end_recurring_period",
+            "color_event",
+            "creator",
+            "created_on",
+            "updated_on",
         ]
-        read_only_fields = ['id', 'created_on', 'updated_on']
+        read_only_fields = ["id", "created_on", "updated_on"]
 
     @extend_schema_field(EventRuleDataSerializer(allow_null=True))
     def get_rule_data(self, obj):
@@ -386,20 +429,20 @@ class EventSerializer(serializers.ModelSerializer):
         params = rule.get_params()
 
         return {
-            'frequency': rule.frequency,
-            'params': params,
-            'description': rule.description,
+            "frequency": rule.frequency,
+            "params": params,
+            "description": rule.description,
         }
 
     def validate(self, attrs):
         """Валидация start/end."""
-        start = attrs.get('start')
-        end = attrs.get('end')
+        start = attrs.get("start")
+        end = attrs.get("end")
 
         if end and start and end < start:
-            raise serializers.ValidationError({
-                'end': 'Дата окончания не может быть раньше даты начала.'
-            })
+            raise serializers.ValidationError(
+                {"end": "Дата окончания не может быть раньше даты начала."}
+            )
 
         return attrs
 
@@ -409,67 +452,67 @@ class EventListSerializer(EventSerializer):
 
     class Meta(EventSerializer.Meta):
         fields = [
-            'id',
-            'title',
-            'description',
-            'start',
-            'end',
-            'calendar',
-            'calendar_name',
-            'color_event',
-            'rule',
-            'end_recurring_period',
+            "id",
+            "title",
+            "description",
+            "start",
+            "end",
+            "calendar",
+            "calendar_name",
+            "color_event",
+            "rule",
+            "end_recurring_period",
         ]
 
 
 class OccurrenceSerializer(serializers.ModelSerializer):
     """Сериализатор для Occurrence (материализованные вхождения)."""
 
-    event_title = serializers.CharField(source='event.title', read_only=True)
-    event_id = serializers.IntegerField(source='event.id', read_only=True)
+    event_title = serializers.CharField(source="event.title", read_only=True)
+    event_id = serializers.IntegerField(source="event.id", read_only=True)
 
     class Meta:
         model = Occurrence
         fields = [
-            'id',
-            'event',
-            'event_id',
-            'event_title',
-            'title',
-            'description',
-            'start',
-            'end',
-            'cancelled',
-            'original_start',
-            'original_end',
-            'created_on',
-            'updated_on',
+            "id",
+            "event",
+            "event_id",
+            "event_title",
+            "title",
+            "description",
+            "start",
+            "end",
+            "cancelled",
+            "original_start",
+            "original_end",
+            "created_on",
+            "updated_on",
         ]
-        read_only_fields = ['id', 'created_on', 'updated_on']
+        read_only_fields = ["id", "created_on", "updated_on"]
 
 
 class EventRelationSerializer(serializers.ModelSerializer):
     """Сериализатор для EventRelation (участники встреч)."""
 
-    event_title = serializers.CharField(source='event.title', read_only=True)
+    event_title = serializers.CharField(source="event.title", read_only=True)
     user_name = serializers.SerializerMethodField()
     content_type = serializers.PrimaryKeyRelatedField(
         queryset=ContentType.objects.all(),
-        required=False  # Делаем необязательным
+        required=False,  # Делаем необязательным
     )
 
     class Meta:
         model = EventRelation
         fields = [
-            'id',
-            'event',
-            'event_title',
-            'content_type',
-            'object_id',
-            'distinction',
-            'user_name',
+            "id",
+            "event",
+            "event_title",
+            "content_type",
+            "object_id",
+            "distinction",
+            "user_name",
         ]
-        read_only_fields = ['id']
+        read_only_fields = ["id"]
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_user_name(self, obj):
@@ -480,8 +523,11 @@ class EventRelationSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         """Автоматически устанавливает content_type для User."""
-        if 'content_type' not in validated_data:
+        if "content_type" not in validated_data:
             from django.contrib.auth import get_user_model
+
             User = get_user_model()
-            validated_data['content_type'] = ContentType.objects.get_for_model(User)
+            validated_data["content_type"] = ContentType.objects.get_for_model(
+                User
+            )
         return super().create(validated_data)

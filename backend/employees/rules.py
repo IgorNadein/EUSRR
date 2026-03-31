@@ -12,6 +12,7 @@ import rules
 # ПРЕДИКАТЫ (predicates)
 # -----------------------------------------------------------------------------
 
+
 @rules.predicate
 def is_superuser(user):
     """Суперпользователь имеет все права"""
@@ -30,10 +31,10 @@ def is_hr_staff(user):
     HR сотрудник - определяется по должности или группе.
     Адаптируйте под вашу логику: по position, department, группе и т.д.
     """
-    if not hasattr(user, 'position'):
+    if not hasattr(user, "position"):
         return False
-    position_name = getattr(user.position, 'name', '').lower()
-    return 'hr' in position_name or 'кадр' in position_name
+    position_name = getattr(user.position, "name", "").lower()
+    return "hr" in position_name or "кадр" in position_name
 
 
 @rules.predicate
@@ -42,12 +43,19 @@ def is_department_head(user):
     Руководитель отдела - определяется по должности.
     Адаптируйте под вашу логику.
     """
-    if not hasattr(user, 'position'):
+    if not hasattr(user, "position"):
         return False
-    position_name = getattr(user.position, 'name', '').lower()
-    return any(keyword in position_name for keyword in [
-        'руководитель', 'начальник', 'директор', 'заведующий', 'глава'
-    ])
+    position_name = getattr(user.position, "name", "").lower()
+    return any(
+        keyword in position_name
+        for keyword in [
+            "руководитель",
+            "начальник",
+            "директор",
+            "заведующий",
+            "глава",
+        ]
+    )
 
 
 @rules.predicate
@@ -61,9 +69,11 @@ def is_own_profile(user, employee):
 @rules.predicate
 def is_same_department(user, employee):
     """Пользователь и сотрудник в одном отделе"""
-    if employee is None or not hasattr(
-            user, 'department') or not hasattr(
-            employee, 'department'):
+    if (
+        employee is None
+        or not hasattr(user, "department")
+        or not hasattr(employee, "department")
+    ):
         return False
     return user.department == employee.department
 
@@ -74,50 +84,39 @@ def is_same_department(user, employee):
 
 # Просмотр профиля сотрудника
 rules.add_rule(
-    'employees.view_employee',
-    is_superuser | is_staff | is_hr_staff | is_own_profile
+    "employees.view_employee",
+    is_superuser | is_staff | is_hr_staff | is_own_profile,
 )
 
 # Изменение профиля сотрудника
 rules.add_rule(
-    'employees.change_employee',
-    is_superuser | is_hr_staff | (is_own_profile & ~rules.always_deny)
+    "employees.change_employee",
+    is_superuser | is_hr_staff | (is_own_profile & ~rules.always_deny),
 )
 
 # Удаление сотрудника (только HR и superuser)
-rules.add_rule(
-    'employees.delete_employee',
-    is_superuser | is_hr_staff
-)
+rules.add_rule("employees.delete_employee", is_superuser | is_hr_staff)
 
 # Просмотр списка всех сотрудников
 rules.add_rule(
-    'employees.view_all_employees',
-    is_superuser | is_staff | is_hr_staff
+    "employees.view_all_employees", is_superuser | is_staff | is_hr_staff
 )
 
 # Просмотр отчётов по персоналу (только HR и руководители)
 rules.add_rule(
-    'employees.view_reports',
-    is_superuser | is_hr_staff | is_department_head
+    "employees.view_reports", is_superuser | is_hr_staff | is_department_head
 )
 
 # Изменение должности сотрудника (только HR)
-rules.add_rule(
-    'employees.change_position',
-    is_superuser | is_hr_staff
-)
+rules.add_rule("employees.change_position", is_superuser | is_hr_staff)
 
 # Изменение отдела сотрудника (только HR)
-rules.add_rule(
-    'employees.change_department',
-    is_superuser | is_hr_staff
-)
+rules.add_rule("employees.change_department", is_superuser | is_hr_staff)
 
 # Просмотр контактной информации сотрудника
 rules.add_rule(
-    'employees.view_contact_info',
-    is_superuser | is_staff | is_own_profile | is_same_department
+    "employees.view_contact_info",
+    is_superuser | is_staff | is_own_profile | is_same_department,
 )
 
 # -----------------------------------------------------------------------------
@@ -169,11 +168,17 @@ import rules
 class EmployeePermission(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         if request.method in permissions.SAFE_METHODS:
-            return rules.test_rule('employees.view_employee', request.user, obj)
+            return rules.test_rule(
+                'employees.view_employee', request.user, obj
+            )
         elif request.method in ['PUT', 'PATCH']:
-            return rules.test_rule('employees.change_employee', request.user, obj)
+            return rules.test_rule(
+                'employees.change_employee', request.user, obj
+            )
         elif request.method == 'DELETE':
-            return rules.test_rule('employees.delete_employee', request.user, obj)
+            return rules.test_rule(
+                'employees.delete_employee', request.user, obj
+            )
         return False
 
 

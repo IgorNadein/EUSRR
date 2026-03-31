@@ -22,11 +22,14 @@ logger = logging.getLogger(__name__)
 class UserPasswordService(BaseService):
     """Сервис для управления паролями пользователей в AD."""
 
-    def set_password(self, conn: Connection, dn: str, new_password: str) -> None:
-        """Устанавливает новый пароль для пользователя через AD extended operation.
+    def set_password(
+        self, conn: Connection, dn: str, new_password: str
+    ) -> None:
+        """Устанавливает новый пароль для пользователя
+        через AD extended operation.
 
-        Использует Microsoft-специфичное расширение modify_password для корректной
-        работы с политиками паролей AD.
+        Использует Microsoft-специфичное расширение modify_password
+        для корректной работы с политиками паролей AD.
 
         Args:
             conn: Активное LDAP соединение
@@ -51,21 +54,26 @@ class UserPasswordService(BaseService):
             # Проверка на ошибку политики сложности
             if PasswordError.COMPLEXITY_VIOLATION in raw_message:
                 raise ValueError(
-                    "Пароль не соответствует политике сложности Active Directory. "
-                    "Требования: минимальная длина, использование прописных/строчных букв, "
-                    "цифр и специальных символов.")
+                    "Пароль не соответствует политике сложности "
+                    "Active Directory. "
+                    "Требования: минимальная длина, использование "
+                    "прописных/строчных букв, "
+                    "цифр и специальных символов."
+                )
 
             # Проверка на слишком короткий пароль
             if PasswordError.PASSWORD_TOO_SHORT in raw_message:
                 raise ValueError(
-                    "Пароль слишком короткий. Проверьте минимальную длину пароля "
+                    "Пароль слишком короткий. Проверьте минимальную "
+                    "длину пароля "
                     "в политике домена."
                 )
 
             # Проверка на пароль в истории
             if PasswordError.PASSWORD_IN_HISTORY in raw_message:
                 raise ValueError(
-                    "Этот пароль уже использовался ранее. Выберите другой пароль."
+                    "Этот пароль уже использовался ранее. "
+                    "Выберите другой пароль."
                 )
 
             # Общая ошибка
@@ -76,10 +84,13 @@ class UserPasswordService(BaseService):
 
         self._logger.info(f"Password successfully set for DN={dn}")
 
-    def validate_password_strength(self, password: str) -> tuple[bool, Optional[str]]:
+    def validate_password_strength(
+        self, password: str
+    ) -> tuple[bool, Optional[str]]:
         """Проверяет базовую надёжность пароля перед отправкой в AD.
 
-        Это НЕ заменяет проверку AD, а лишь помогает отловить очевидные проблемы.
+        Это НЕ заменяет проверку AD,
+        а лишь помогает отловить очевидные проблемы.
 
         Args:
             password: Пароль для проверки
@@ -112,11 +123,7 @@ class UserPasswordService(BaseService):
         return True, None
 
     def change_password(
-        self,
-        conn: Connection,
-        dn: str,
-        old_password: str,
-        new_password: str
+        self, conn: Connection, dn: str, old_password: str, new_password: str
     ) -> None:
         """Меняет пароль пользователя (требует знания старого пароля).
 
@@ -137,7 +144,9 @@ class UserPasswordService(BaseService):
 
         self._logger.info(f"Changing password for user DN={dn}")
 
-        ok = conn.extend.microsoft.modify_password(dn, new_password, old_password)
+        ok = conn.extend.microsoft.modify_password(
+            dn, new_password, old_password
+        )
 
         if not ok:
             msg = conn.result or {}
