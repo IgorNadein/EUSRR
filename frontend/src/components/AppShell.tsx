@@ -111,7 +111,7 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
   return (
     <header className="sticky top-0 z-[40] border-b border-slate-100 bg-white/90 backdrop-blur">
       <div className="mx-auto max-w-6xl px-4 sm:px-8">
-        <div className="flex h-8 lg:h-14 items-center justify-between gap-3">
+        <div className="flex h-10 lg:h-14 items-center justify-between gap-3">
           <button
             type="button"
             onClick={onOpenLeftNav}

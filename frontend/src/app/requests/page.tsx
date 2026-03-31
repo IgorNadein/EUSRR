@@ -642,7 +642,7 @@ export default function RequestsPage() {
               <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">Заявления</p>
               {(canManage || canProcess) && (
                 <button type="button" onClick={() => setSwipeMode(true)} className="group flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-600 ring-1 ring-amber-100 transition hover:bg-amber-100" title="Тестовый режим быстрого разбора заявлений">
-                  <Zap size={11} className="transition group-hover:text-amber-700" /> Быстрый разбор
+                  <Zap size={11} className="transition group-hover:text-amber-700" /> 
                 </button>
               )}
             </div>
