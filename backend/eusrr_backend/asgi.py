@@ -1,12 +1,20 @@
-from eusrr_backend.channels_jwt import JWTAuthMiddleware
-from realtime.routing import websocket_urlpatterns
-from channels.routing import ProtocolTypeRouter, URLRouter
-from channels.auth import AuthMiddlewareStack
-from django.core.asgi import get_asgi_application
 import os
+from importlib import import_module
+
+from channels.auth import AuthMiddlewareStack
+from channels.routing import ProtocolTypeRouter, URLRouter
+from django.core.asgi import get_asgi_application
+
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "eusrr_backend.settings")
 
 django_asgi_app = get_asgi_application()
+
+JWTAuthMiddleware = import_module(
+    "eusrr_backend.channels_jwt"
+).JWTAuthMiddleware
+websocket_urlpatterns = import_module(
+    "realtime.routing"
+).websocket_urlpatterns
 
 
 application = ProtocolTypeRouter({
