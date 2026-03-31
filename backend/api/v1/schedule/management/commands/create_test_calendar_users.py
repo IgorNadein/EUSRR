@@ -59,9 +59,11 @@ class Command(BaseCommand):
                     f"✅ Создан пользователь: {user.get_full_name()} ({user.username})"
                 ))
             else:
-                self.stdout.write(self.style.WARNING(
-                    f"ℹ️  Пользователь уже существует: {user.get_full_name()} ({user.username})"
-                ))
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"ℹ️  Пользователь уже существует: {
+                            user.get_full_name()} ({
+                            user.username})"))
             created_users.append(user)
 
         # Создание календарей
@@ -97,9 +99,15 @@ class Command(BaseCommand):
                 }
             )
             if created:
-                self.stdout.write(self.style.SUCCESS(f"✅ Создан календарь: {calendar.name}"))
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"✅ Создан календарь: {
+                            calendar.name}"))
             else:
-                self.stdout.write(self.style.WARNING(f"ℹ️  Календарь уже существует: {calendar.name}"))
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"ℹ️  Календарь уже существует: {
+                            calendar.name}"))
             created_calendars.append(calendar)
 
         # Создание событий
@@ -193,9 +201,13 @@ class Command(BaseCommand):
 
         self.stdout.write('\n📅 Создание событий...')
         for event_data in events_data:
-            start = timezone.make_aware(event_data['start']) if timezone.is_naive(event_data['start']) else event_data['start']
-            end = timezone.make_aware(event_data['end']) if timezone.is_naive(event_data['end']) else event_data['end']
-            
+            start = timezone.make_aware(
+                event_data['start']) if timezone.is_naive(
+                event_data['start']) else event_data['start']
+            end = timezone.make_aware(
+                event_data['end']) if timezone.is_naive(
+                event_data['end']) else event_data['end']
+
             event, created = Event.objects.get_or_create(
                 calendar=event_data['calendar'],
                 title=event_data['title'],
@@ -210,12 +222,12 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(f"  ℹ️  Событие уже существует: {event.title}")
 
-        self.stdout.write('\n' + '='*60)
+        self.stdout.write('\n' + '=' * 60)
         self.stdout.write(self.style.SUCCESS('✨ Готово! Создано:'))
         self.stdout.write(f"   👥 Пользователи: {len(created_users)}")
         self.stdout.write(f"   📅 Календари: {len(created_calendars)}")
         self.stdout.write(f"   🎯 События: {len(events_data)}")
-        self.stdout.write('='*60)
+        self.stdout.write('=' * 60)
         self.stdout.write('\n🔑 Учетные данные для входа:')
         for user_data in test_users:
             self.stdout.write(f"   {user_data['username']} / {user_data['password']}")

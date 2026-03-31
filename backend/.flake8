@@ -1,5 +1,5 @@
 [flake8]
-max-line-length = 88
+max-line-length = 120
 exclude =
     .git,
     .venv,
@@ -7,7 +7,10 @@ exclude =
     node_modules,
     staticfiles,
     media,
-    migrations
+    migrations,
+    */tests/*,
+    */tests.py,
+    conftest.py
 extend-ignore =
     W503
 per-file-ignores =

@@ -1,6 +1,7 @@
 from typing import Dict
 from django.conf import settings
 
+
 def branding(_request) -> Dict[str, str]:
     """Пробрасывает параметры бренда в шаблоны.
 

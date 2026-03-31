@@ -41,7 +41,8 @@ class Command(BaseCommand):
         if not src_path.exists():
             raise CommandError(f"Исходный файл не найден: {src_path}")
         if src_path.suffix.lower() != ".png":
-            raise CommandError("Ожидается PNG. При необходимости сконвертируйте логотип в PNG.")
+            raise CommandError(
+                "Ожидается PNG. При необходимости сконвертируйте логотип в PNG.")
 
         sizes: List[Tuple[str, int]] = [
             ("favicon-32.png", 32),
@@ -54,4 +55,5 @@ class Command(BaseCommand):
             for name, sz in sizes:
                 dst = out_dir / name
                 im.resize((sz, sz), Image.LANCZOS).save(dst, format="PNG")
-                self.stdout.write(self.style.SUCCESS(f"✔ {dst.relative_to(static_dir)}"))
+                self.stdout.write(self.style.SUCCESS(
+                    f"✔ {dst.relative_to(static_dir)}"))

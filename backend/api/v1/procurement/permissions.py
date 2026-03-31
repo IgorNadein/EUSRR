@@ -101,19 +101,19 @@ class CanManageProcurementRequest(permissions.BasePermission):
 
     Логика доступа:
     - Просмотр (SAFE_METHODS): любой аутентифицированный (фильтрация в queryset)
-    
+
     - Создание:
         - admin/staff/superuser → любой отдел
         - модельные права (add_procurementrequest) → любой отдел
         - сотрудник отдела → только свой отдел
         - без отдела → запрещено
-    
+
     - Изменение:
         - admin/staff/superuser → любая заявка в DRAFT
         - модельные права (change_procurementrequest) → любая заявка в DRAFT
         - автор заявки → своя заявка в DRAFT
         - начальник отдела → заявки своего отдела в DRAFT
-    
+
     - Удаление:
         - admin/staff/superuser → любая заявка
         - модельные права (delete_procurementrequest) → любая заявка

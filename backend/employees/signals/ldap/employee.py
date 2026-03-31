@@ -32,7 +32,7 @@ def sync_employee_to_ldap_on_save(sender, instance, created, **kwargs):
 
     ВАЖНО: Создание LDAP пользователей происходит в RegisterAPIView.
     Этот сигнал ТОЛЬКО синхронизирует изменения существующих пользователей.
-    
+
     Использует временные атрибуты _ldap_changes, _ldap_avatar для передачи данных.
     """
     if not _is_ldap_enabled():
@@ -73,7 +73,13 @@ def sync_employee_to_ldap_on_save(sender, instance, created, **kwargs):
             except Exception:
                 pass
 
-        for field in ['first_name', 'last_name', 'email', 'phone_number', 'is_active', 'password']:
+        for field in [
+            'first_name',
+            'last_name',
+            'email',
+            'phone_number',
+            'is_active',
+                'password']:
             if field in changes:
                 ldap_changes[field] = changes[field]
 

@@ -9,13 +9,13 @@
 
 class NotificationVerbs:
     """Типы уведомлений для заявлений."""
-    
+
     # Новое заявление (универсальный для всех ролей получателей)
     REQUEST_NEW = 'request_new'
-    
+
     # Комментарий к заявлению
     REQUEST_COMMENT = 'request_comment'
-    
+
     # Изменение статуса
     REQUEST_APPROVED = 'request_approved'
     REQUEST_REJECTED = 'request_rejected'
@@ -26,63 +26,63 @@ class NotificationVerbs:
 
 class MessageTemplates:
     """Шаблоны сообщений для уведомлений."""
-    
+
     @staticmethod
     def new_request_primary(
         author_name: str, request_type: str, comment_preview: str
     ) -> tuple[str, str]:
         """
         Шаблон для основных получателей заявления.
-        
+
         Returns:
             tuple: (title, message)
         """
         title = f"📩 Вам адресовано заявление от {author_name}"
         message = f'Тип: "{request_type}". {comment_preview}'
         return title, message
-    
+
     @staticmethod
     def new_request_cc(
         author_name: str, request_type: str, comment_preview: str
     ) -> tuple[str, str]:
         """
         Шаблон для получателей в копии.
-        
+
         Returns:
             tuple: (title, message)
         """
         title = f"📋 Вы в копии заявления от {author_name}"
         message = f'Тип: "{request_type}". {comment_preview}'
         return title, message
-    
+
     @staticmethod
     def new_request_approver(
         author_name: str, request_type: str, comment_preview: str
     ) -> tuple[str, str]:
         """
         Шаблон для согласующего.
-        
+
         Returns:
             tuple: (title, message)
         """
         title = f"✅ Новое заявление на согласование от {author_name}"
         message = f'Тип: "{request_type}". {comment_preview}'
         return title, message
-    
+
     @staticmethod
     def new_request_department(
         author_name: str, request_type: str, comment_preview: str
     ) -> tuple[str, str]:
         """
         Шаблон для руководителей отдела и обработчиков.
-        
+
         Returns:
             tuple: (title, message)
         """
         title = f"📝 Новое заявление в отделе от {author_name}"
         message = f'Тип: "{request_type}". {comment_preview}'
         return title, message
-    
+
     @staticmethod
     def comment(
         author_name: str,
@@ -92,7 +92,7 @@ class MessageTemplates:
     ) -> tuple[str, str]:
         """
         Шаблон для комментария.
-        
+
         Returns:
             tuple: (title, description)
         """
@@ -102,14 +102,14 @@ class MessageTemplates:
             f'"{request_type}": {comment_text[:100]}'
         )
         return title, description
-    
+
     @staticmethod
     def status_approved(
         employee_name: str, request_type: str, approver_name: str
     ) -> tuple[str, str]:
         """
         Шаблон для одобрения заявления.
-        
+
         Returns:
             tuple: (title, message)
         """
@@ -119,14 +119,14 @@ class MessageTemplates:
             f'одобрено пользователем {approver_name}'
         )
         return title, message
-    
+
     @staticmethod
     def status_rejected(
         employee_name: str, request_type: str, approver_name: str
     ) -> tuple[str, str]:
         """
         Шаблон для отклонения заявления.
-        
+
         Returns:
             tuple: (title, message)
         """
@@ -136,7 +136,7 @@ class MessageTemplates:
             f'отклонено пользователем {approver_name}'
         )
         return title, message
-    
+
     @staticmethod
     def status_changed(
         employee_name: str,
@@ -146,7 +146,7 @@ class MessageTemplates:
     ) -> tuple[str, str]:
         """
         Шаблон для изменения статуса.
-        
+
         Returns:
             tuple: (title, message)
         """
@@ -162,9 +162,9 @@ class MessageTemplates:
 
 class ActionURLs:
     """URL для переходов из уведомлений."""
-    
+
     REQUESTS_LIST = '/requests'
-    
+
     @staticmethod
     def request_detail(request_id: int) -> str:
         """URL детальной страницы заявления."""

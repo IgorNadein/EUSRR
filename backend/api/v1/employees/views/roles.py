@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from django.shortcuts import get_object_or_404
 from employees.models import (Department, DepartmentPermission, DepartmentRole,
-                              DeptPerm, EmployeeDepartment, RoleAssignment)
+                              DeptPerm, RoleAssignment)
 from employees.utils import _ensure_department_permissions
 from rest_framework import status, viewsets
 from rest_framework.decorators import action

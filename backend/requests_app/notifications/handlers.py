@@ -25,7 +25,7 @@ def notify_new_request(request_obj):
     - Пользователям с правом can_process_requests
 
     При sent_to_all_department=True отправляет всем сотрудникам отделов
-    
+
     Args:
         request_obj: Объект Request
     """
@@ -136,7 +136,7 @@ def notify_new_request(request_obj):
         f"📊 [notify_new_request] Всего получателей для заявления "
         f"#{request_obj.id}: {len(recipients_set)}"
     )
-    
+
     if len(recipients_set) == 0:
         logger.warning(
             f"[notify_new_request] ⚠️ НЕТ ПОЛУЧАТЕЛЕЙ! "
@@ -176,12 +176,17 @@ def notify_new_request(request_obj):
         )
 
 
-def _send_new_request_notification(request_obj, recipient, author_name, request_type, comment_preview):
+def _send_new_request_notification(
+        request_obj,
+        recipient,
+        author_name,
+        request_type,
+        comment_preview):
     """
     Отправляет уведомление о новом заявлении конкретному получателю.
-    
+
     Определяет роль получателя и формирует соответствующее сообщение.
-    
+
     Args:
         request_obj: Объект Request
         recipient: Получатель (Employee)
@@ -255,7 +260,7 @@ def notify_status_change(request_obj, old_status, new_status):
     ВАЖНО:
     - Автор (employee) ВСЕГДА получает уведомление о решении (approve/reject)
     - Approver (тот кто принял решение) НЕ получает уведомление о своем же решении
-    
+
     Args:
         request_obj: Объект Request
         old_status: Старый статус
@@ -325,11 +330,16 @@ def notify_status_change(request_obj, old_status, new_status):
 
 
 def _send_status_change_notification(
-    request_obj, recipient, new_status, old_status, employee_name, request_type, approver_name
-):
+        request_obj,
+        recipient,
+        new_status,
+        old_status,
+        employee_name,
+        request_type,
+        approver_name):
     """
     Отправляет уведомление об изменении статуса конкретному получателю.
-    
+
     Args:
         request_obj: Объект Request
         recipient: Получатель (Employee)
@@ -382,14 +392,14 @@ def _send_status_change_notification(
 def notify_comment(comment_obj):
     """
     Отправляет уведомления о новом комментарии к заявлению.
-    
+
     Уведомляет:
     - Автора заявления
     - Всех получателей
     - Всех в копии
     - Согласующего
     - Сотрудников отделов (если sent_to_all_department)
-    
+
     Args:
         comment_obj: Объект RequestComment
     """

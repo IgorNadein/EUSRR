@@ -33,7 +33,7 @@ def create_patched_method():
     """Создаёт пропатченный метод с ленивым импортом констант."""
     # Ленивый импорт - только при создании метода
     from schedule.models.events import freq_dict_order, param_dict_order
-    
+
     def patched_event_params(self):
         """
         Исправленная версия Event._event_params().
@@ -56,7 +56,7 @@ def create_patched_method():
                 and param in start_params
             ):
                 sp = start_params[param]
-                
+
                 # ИСПРАВЛЕНИЕ: Для byweekday не заменяем массив
                 if (param == 'byweekday' and
                         hasattr(rule_params[param], "__iter__")):
@@ -71,7 +71,7 @@ def create_patched_method():
                 event_params[param] = rule_params[param]
 
         return event_params
-    
+
     return patched_event_params
 
 
@@ -82,28 +82,28 @@ _patch_applied = False
 def apply_patch():
     """Применяет патч к django-scheduler Event модели."""
     global _patch_applied
-    
+
     # Если патч уже применён, пропускаем
     if _patch_applied:
         return True
-    
+
     try:
         # Ленивый импорт - только при вызове apply_patch()
         from schedule.models import Event
-        
+
         print("=" * 80)
         print("✅ ПРИМЕНЕНИЕ ПАТЧА django-scheduler")
-        
+
         # Создаём и применяем пропатченный метод
         patched_method = create_patched_method()
         Event._event_params = patched_method
-        
+
         print(
             f"   Патч применён: Event._event_params = "
             f"{patched_method.__name__}"
         )
         print("=" * 80)
-        
+
         _patch_applied = True
         return True
     except Exception as e:

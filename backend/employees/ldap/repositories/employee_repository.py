@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, Optional, Set, Tuple
 
-from django.db.models import QuerySet
 
 from employees.models import Department, Employee, EmployeeDepartment, LdapSyncState
 

@@ -10,7 +10,6 @@ from django.db.models import (
     Exists,
     F,
     OuterRef,
-    Q,
     Subquery,
     Value,
 )
@@ -149,18 +148,18 @@ class PostViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         # Аннотируем счётчик комментариев через communications.Chat
-        from communications.models import Chat, Message
-        
+        from communications.models import Message
+
         # ContentType для Post
         post_ct = ContentType.objects.get_for_model(Post)
-        
+
         # Подсчёт сообщений в чате комментариев для каждого поста
         comments_subquery = Message.objects.filter(
             chat__type='comments',
             chat__context_content_type=post_ct,
             chat__context_object_id=OuterRef('pk')
         ).values('chat').annotate(count=Count('id')).values('count')
-        
+
         qs = qs.annotate(
             comments_count=Subquery(comments_subquery)
         )
@@ -261,19 +260,19 @@ class PostViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get", "post"], permission_classes=[IsAuthenticated])
     def comments(self, request, pk=None):
         """Управление комментариями к посту.
-        
+
         GET: получение списка комментариев
         POST: создание комментария {"text": "..."}
         """
         from communications import comments_helpers
         from ..employees.serializers import EmployeeBriefSerializer
-        
+
         post = self.get_object()
-        
+
         if request.method in {"GET", "HEAD"}:
             # Получаем комментарии через unified system
             messages = comments_helpers.get_comments(post)
-            
+
             # Форматируем в формат, совместимый со старым API
             comments_data = []
             for msg in messages:
@@ -288,9 +287,9 @@ class PostViewSet(viewsets.ModelViewSet):
                     "created_at": msg.created_at,
                     "created_at_display": msg.created_at.strftime("%d.%m.%Y %H:%M"),
                 })
-            
+
             return Response(comments_data)
-        
+
         # POST - создание комментария
         text = request.data.get("text", "").strip()
         if not text:
@@ -298,14 +297,14 @@ class PostViewSet(viewsets.ModelViewSet):
                 {"text": ["Это поле не может быть пустым."]},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Создаём комментарий через unified system
         message = comments_helpers.create_comment(
             obj=post,
             author=request.user,
             content=text
         )
-        
+
         # Форматируем ответ
         author_ser = EmployeeBriefSerializer(message.author)
         response_data = {
@@ -318,5 +317,5 @@ class PostViewSet(viewsets.ModelViewSet):
             "created_at": message.created_at,
             "created_at_display": message.created_at.strftime("%d.%m.%Y %H:%M"),
         }
-        
+
         return Response(response_data, status=status.HTTP_201_CREATED)

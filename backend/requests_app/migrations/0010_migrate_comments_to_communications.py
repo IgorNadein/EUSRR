@@ -6,20 +6,20 @@ from django.utils import timezone
 
 def migrate_comments_forward(apps, schema_editor):
     """Миграция RequestComment → Communications.Message (ORM)"""
-    
+
     Chat = apps.get_model('communications', 'Chat')
     Message = apps.get_model('communications', 'Message')
     RequestComment = apps.get_model('requests_app', 'RequestComment')
     ContentType = apps.get_model('contenttypes', 'ContentType')
-    
+
     try:
         request_ct = ContentType.objects.get(app_label='requests_app', model='request')
     except ContentType.DoesNotExist:
         return
-    
+
     # 1. Создаем чаты для заявок с комментариями
     request_ids_with_comments = RequestComment.objects.values_list('request_id', flat=True).distinct()
-    
+
     for request_id in request_ids_with_comments:
         if Chat.objects.filter(
             type='comments',
@@ -27,7 +27,7 @@ def migrate_comments_forward(apps, schema_editor):
             context_object_id=request_id
         ).exists():
             continue
-        
+
         Chat.objects.create(
             type='comments',
             name=f"Комментарии к заявке #{request_id}",
@@ -44,7 +44,7 @@ def migrate_comments_forward(apps, schema_editor):
             include_all_users=False,
             extra_data={}
         )
-    
+
     # 2. Переносим комментарии
     for comment in RequestComment.objects.select_related('author').all():
         try:
@@ -55,7 +55,7 @@ def migrate_comments_forward(apps, schema_editor):
             )
         except Chat.DoesNotExist:
             continue
-        
+
         if Message.objects.filter(
             chat=chat,
             author_id=comment.author_id,
@@ -63,7 +63,7 @@ def migrate_comments_forward(apps, schema_editor):
             content=comment.text
         ).exists():
             continue
-        
+
         Message.objects.create(
             chat=chat,
             author_id=comment.author_id,
@@ -88,7 +88,7 @@ def migrate_comments_backward(apps, schema_editor):
     """Откат - удаляем чаты комментариев для заявок"""
     Chat = apps.get_model('communications', 'Chat')
     ContentType = apps.get_model('contenttypes', 'ContentType')
-    
+
     try:
         request_ct = ContentType.objects.get(app_label='requests_app', model='request')
         Chat.objects.filter(

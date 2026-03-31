@@ -6,7 +6,7 @@ from django.db import migrations
 class Migration(migrations.Migration):
     """
     Удаление старых таблиц calendar_app после миграции на django-scheduler.
-    
+
     ВАЖНО: Перед применением этой миграции убедитесь, что:
     1. Все данные мигрированы в django-scheduler (таблицы schedule_*)
     2. Приложение schedule работает корректно

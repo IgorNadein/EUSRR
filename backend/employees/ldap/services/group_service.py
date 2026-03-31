@@ -23,19 +23,16 @@ from .base_service import BaseService
 from .constants import (
     LdapFilter,
     LdapAttribute,
-    LdapErrorCode,
-    LdapObjectClass,
-    group_type_value,
 )
 from ..infrastructure.connections import _ldap
 from ..orm_models import LdapGroup, LdapUser
-from ..utils.text_utils import esc_rdn, esc_filter
+from ..utils.text_utils import esc_rdn
 from ..utils.ldap_utils import get_guid_str
 
 
 class GroupService(BaseService):
     """Сервис для управления группами Active Directory.
-    
+
     Рефакторенная версия с улучшенной архитектурой:
     - Использует BaseService для общей логики
     - Константы вместо магических чисел
@@ -89,7 +86,7 @@ class GroupService(BaseService):
         security_enabled: bool = True,
     ) -> str:
         """Внутренний метод создания группы через ORM.
-        
+
         Args:
             conn: LDAP соединение (сохраняется в сигнатуре для обратной совместимости).
             cn: Имя группы.
@@ -127,7 +124,7 @@ class GroupService(BaseService):
                     error=e,
                 )
                 raise RuntimeError(f"LDAP add group failed: {e}") from e
-        
+
         return dn
 
     def delete(self, group_dn: str) -> None:
@@ -152,7 +149,7 @@ class GroupService(BaseService):
         """Внутренний метод переименования группы."""
         new_rdn = f"CN={esc_rdn(new_cn)}"
         ok = conn.modify_dn(group_dn, new_rdn)
-        
+
         if not ok:
             self._log_operation(
                 "rename",
@@ -163,10 +160,10 @@ class GroupService(BaseService):
                 extra={"new_cn": new_cn},
             )
             raise RuntimeError(f"LDAP rename group failed: {conn.result}")
-        
+
         base = ",".join(group_dn.split(",")[1:])
         new_dn = f"{new_rdn},{base}"
-        
+
         self._log_operation(
             "rename",
             model="group",
@@ -174,7 +171,7 @@ class GroupService(BaseService):
             success=True,
             extra={"new_dn": new_dn},
         )
-        
+
         return new_dn
 
     def set_description(self, group_dn: str, description: Optional[str]) -> None:
@@ -198,23 +195,23 @@ class GroupService(BaseService):
         """Добавляет участников в группу (ORM)."""
         if not member_dns:
             return
-        
+
         try:
             group = LdapGroup.objects.get(dn=group_dn)
         except LdapGroup.DoesNotExist:
             self._logger.warning(f"Group not found: {group_dn}")
             return
-        
+
         members = list(group.member or [])
         changed = False
         added_count = 0
-        
+
         for dn in member_dns:
             if dn not in members:
                 members.append(dn)
                 changed = True
                 added_count += 1
-        
+
         if changed:
             group.member = members
             group.save()
@@ -230,23 +227,23 @@ class GroupService(BaseService):
         """Удаляет участников из группы (ORM)."""
         if not member_dns:
             return
-        
+
         try:
             group = LdapGroup.objects.get(dn=group_dn)
         except LdapGroup.DoesNotExist:
             self._logger.warning(f"Group not found: {group_dn}")
             return
-        
+
         members = list(group.member or [])
         changed = False
         removed_count = 0
-        
+
         for dn in member_dns:
             if dn in members:
                 members.remove(dn)
                 changed = True
                 removed_count += 1
-        
+
         if changed:
             group.member = members
             group.save()
@@ -265,11 +262,11 @@ class GroupService(BaseService):
         except LdapGroup.DoesNotExist:
             self._logger.warning(f"Group not found: {group_dn}")
             return
-        
+
         old_count = len(group.member or [])
         group.member = exact_member_dns
         group.save()
-        
+
         self._log_operation(
             "replace_members",
             model="group",
@@ -292,7 +289,7 @@ class GroupService(BaseService):
         self, cn: str, bases: Optional[List[str]] = None
     ) -> Optional[str]:
         """Ищет DN группы по CN (ORM).
-        
+
         Warning: Если есть несколько групп с одинаковым CN,
         вернёт первую найденную.
         """
@@ -307,7 +304,7 @@ class GroupService(BaseService):
             return set(user.member_of or [])
         except LdapUser.DoesNotExist:
             pass
-        
+
         # Fallback: может быть группа вложена в группу
         try:
             group = LdapGroup.objects.get(dn=member_dn)
@@ -325,11 +322,11 @@ class GroupService(BaseService):
         Тянет группы из AD под LDAP_GROUPS_BASE и гарантирует их наличие в Django Group.
         Возвращает количество созданных групп. Обновляет LdapSyncState(model='group').
         Троттлит запросы к AD не чаще, чем раз в throttle_seconds.
-        
+
         Args:
             throttle_seconds: Минимальный интервал между синхронизациями
             delete_absent: Удалять ли группы, отсутствующие в AD
-            
+
         Returns:
             Количество созданных групп
         """
@@ -345,7 +342,7 @@ class GroupService(BaseService):
         if throttle_seconds and now - last < throttle_seconds:
             self._logger.debug("Sync throttled, skipping")
             return 0
-        
+
         if not cache.add("ad_groups_sync_lock", "1", timeout=throttle_seconds or 30):
             self._logger.debug("Sync already in progress, skipping")
             return 0
@@ -359,7 +356,7 @@ class GroupService(BaseService):
                     search_scope=SUBTREE,
                     attributes=[LdapAttribute.CN, LdapAttribute.OBJECT_GUID],
                 )
-                
+
                 if not ok:
                     return 0
 
@@ -370,7 +367,8 @@ class GroupService(BaseService):
                     if not cn:
                         continue
                     dn = str(e.entry_dn)
-                    guid = get_guid_str({LdapAttribute.OBJECT_GUID: getattr(e, LdapAttribute.OBJECT_GUID, None)})
+                    guid = get_guid_str({LdapAttribute.OBJECT_GUID: getattr(
+                        e, LdapAttribute.OBJECT_GUID, None)})
                     ad_index[cn.lower()] = (cn, dn, guid)
 
                 # Существующие группы в Django
@@ -383,7 +381,7 @@ class GroupService(BaseService):
                         created += 1
                         existing[key] = g
                         self._logger.info(f"Created Django group: {cn}")
-                    
+
                     # Фиксируем DN/GUID в sync-state
                     self._touch_state(
                         model="group",
@@ -418,7 +416,7 @@ class GroupService(BaseService):
         security_enabled: bool = True,
     ) -> str:
         """Создаёт группу с существующим соединением (для внутреннего использования).
-        
+
         Используется другими сервисами, которые уже управляют conn.
         """
         return self._create_internal(

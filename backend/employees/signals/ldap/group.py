@@ -40,10 +40,10 @@ def _resolve_group_dn(group: Group) -> str | None:
 @receiver(post_save, sender=Group)
 def sync_group_to_ldap_on_save(sender, instance, created, **kwargs):
     """Синхронизирует изменения Group с LDAP.
-    
+
     При создании: создает LdapGroup
     При обновлении: синхронизирует имя и описание
-    
+
     Использует временные атрибуты для передачи LDAP-специфичных данных:
     - _ldap_parent_dn: родительский DN для новой группы
     - _ldap_description: описание группы
@@ -78,7 +78,10 @@ def sync_group_to_ldap_on_save(sender, instance, created, **kwargs):
                 )
                 logger.info(f"Created LDAP group: {instance.name}")
             except Exception as e:
-                logger.error(f"Failed to create LDAP group {instance.name}: {e}", exc_info=True)
+                logger.error(
+                    f"Failed to create LDAP group {
+                        instance.name}: {e}",
+                    exc_info=True)
                 _enqueue("group_save", "group", instance.pk, {
                     "object_pk": str(instance.pk),
                     "created": True,
@@ -107,9 +110,13 @@ def sync_group_to_ldap_on_save(sender, instance, created, **kwargs):
                         sync_state.ldap_dn = new_dn
                         sync_state.save(update_fields=['ldap_dn'])
                     dn = new_dn
-                    logger.info(f"Renamed LDAP group from {old_name} to {instance.name}")
+                    logger.info(
+                        f"Renamed LDAP group from {old_name} to {
+                            instance.name}")
                 except Exception as e:
-                    logger.error(f"Failed to rename LDAP group {old_name}: {e}", exc_info=True)
+                    logger.error(
+                        f"Failed to rename LDAP group {old_name}: {e}",
+                        exc_info=True)
                     _enqueue("group_save", "group", instance.pk, {
                         "object_pk": str(instance.pk),
                         "created": False,
@@ -124,7 +131,9 @@ def sync_group_to_ldap_on_save(sender, instance, created, **kwargs):
                     svc.set_description(dn, new_description or None)
                     logger.info(f"Updated description for LDAP group {instance.name}")
                 except Exception as e:
-                    logger.error(f"Failed to set description for LDAP group {instance.name}: {e}", exc_info=True)
+                    logger.error(
+                        f"Failed to set description for LDAP group {
+                            instance.name}: {e}", exc_info=True)
                     _enqueue("group_save", "group", instance.pk, {
                         "object_pk": str(instance.pk),
                         "created": False,
@@ -144,7 +153,7 @@ def sync_group_to_ldap_on_save(sender, instance, created, **kwargs):
         )
     finally:
         # Очищаем временные атрибуты
-        for attr in ['_skip_ldap_sync', '_ldap_parent_dn', '_ldap_description', 
+        for attr in ['_skip_ldap_sync', '_ldap_parent_dn', '_ldap_description',
                      '_ldap_scope', '_ldap_security_enabled', '_ldap_old_name']:
             if hasattr(instance, attr):
                 delattr(instance, attr)
@@ -183,7 +192,7 @@ def sync_group_to_ldap_on_delete(sender, instance, **kwargs):
 @receiver(m2m_changed, sender=Group.user_set.through)
 def sync_group_members_to_ldap(sender, instance, action, pk_set, **kwargs):
     """Синхронизирует изменения участников группы с LDAP.
-    
+
     Реагирует на post_add, post_remove, post_clear для синхронизации member в LdapGroup.
     """
     if not _is_ldap_enabled():
@@ -221,9 +230,14 @@ def sync_group_members_to_ldap(sender, instance, action, pk_set, **kwargs):
             if member_dns:
                 try:
                     svc.add_members(dn, member_dns)
-                    logger.info(f"Added {len(member_dns)} members to LDAP group {instance.name}")
+                    logger.info(
+                        f"Added {
+                            len(member_dns)} members to LDAP group {
+                            instance.name}")
                 except Exception as e:
-                    logger.error(f"Failed to add members to LDAP group {instance.name}: {e}", exc_info=True)
+                    logger.error(
+                        f"Failed to add members to LDAP group {
+                            instance.name}: {e}", exc_info=True)
                     _enqueue("group_members", "group", instance.pk, {
                         "dn": dn, "action": "add", "member_dns": member_dns,
                     })
@@ -246,9 +260,14 @@ def sync_group_members_to_ldap(sender, instance, action, pk_set, **kwargs):
             if member_dns:
                 try:
                     svc.remove_members(dn, member_dns)
-                    logger.info(f"Removed {len(member_dns)} members from LDAP group {instance.name}")
+                    logger.info(
+                        f"Removed {
+                            len(member_dns)} members from LDAP group {
+                            instance.name}")
                 except Exception as e:
-                    logger.error(f"Failed to remove members from LDAP group {instance.name}: {e}", exc_info=True)
+                    logger.error(
+                        f"Failed to remove members from LDAP group {
+                            instance.name}: {e}", exc_info=True)
                     _enqueue("group_members", "group", instance.pk, {
                         "dn": dn, "action": "remove", "member_dns": member_dns,
                     })
@@ -259,7 +278,9 @@ def sync_group_members_to_ldap(sender, instance, action, pk_set, **kwargs):
                 svc.replace_members(dn, [])
                 logger.info(f"Cleared all members from LDAP group {instance.name}")
             except Exception as e:
-                logger.error(f"Failed to clear members from LDAP group {instance.name}: {e}", exc_info=True)
+                logger.error(
+                    f"Failed to clear members from LDAP group {
+                        instance.name}: {e}", exc_info=True)
                 _enqueue("group_members", "group", instance.pk, {
                     "dn": dn, "action": "clear", "member_dns": [],
                 })

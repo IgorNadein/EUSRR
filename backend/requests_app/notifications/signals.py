@@ -13,7 +13,7 @@ from django.db.models.signals import m2m_changed, post_save, pre_save
 from django.dispatch import receiver
 
 from ..models import Request
-from .handlers import notify_new_request, notify_status_change, notify_comment
+from .handlers import notify_new_request, notify_status_change
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ def create_request_notifications(sender, instance, created, **kwargs):
                 f"уведомлений после установки recipients"
             )
             _pending_new_requests.add(request_obj.id)
-        
+
         if not created:
             # Проверяем изменение статуса через сохраненный атрибут _old_status
             if hasattr(request_obj, "_old_status"):
@@ -63,7 +63,7 @@ def create_request_notifications(sender, instance, created, **kwargs):
                     # Отправляем уведомления напрямую - channels.py автоматически
                     # сделает асинхронную отправку через Celery
                     notify_status_change(request_obj, old_status, new_status)
-    
+
     except Exception as e:
         logger.exception(f"[SIGNAL ERROR] create_request_notifications: {e}")
 
@@ -96,11 +96,11 @@ def notify_on_recipients_changed(sender, instance, action, **kwargs):
                 f"отправляем уведомления"
             )
             _pending_new_requests.discard(instance.id)
-            
+
             # Отправляем уведомления напрямую - channels.py автоматически
             # сделает асинхронную отправку через Celery
             notify_new_request(instance)
-    
+
     except Exception as e:
         logger.exception(f"[SIGNAL ERROR] notify_on_recipients_changed: {e}")
 
@@ -114,7 +114,8 @@ def notify_on_cc_users_changed(sender, instance, action, **kwargs):
     также отправляем уведомления.
     """
     try:
-        # Если это завершение добавления cc_users И заявление все еще ожидает уведомлений
+        # Если это завершение добавления cc_users И заявление все еще ожидает
+        # уведомлений
         if action == "post_add" and instance.id in _pending_new_requests:
             # Проверяем что recipients пусты (значит уведомления еще не отправлены)
             if instance.recipients.count() == 0:
@@ -123,10 +124,10 @@ def notify_on_cc_users_changed(sender, instance, action, **kwargs):
                     f"(без recipients), отправляем уведомления"
                 )
                 _pending_new_requests.discard(instance.id)
-                
+
                 # Отправляем уведомления напрямую - channels.py автоматически
                 # сделает асинхронную отправку через Celery
                 notify_new_request(instance)
-    
+
     except Exception as e:
         logger.exception(f"[SIGNAL ERROR] notify_on_cc_users_changed: {e}")

@@ -26,7 +26,7 @@ def load_config(request=None) -> ApiConfig:
     # Всегда используем локальный адрес для внутренних запросов API к самому себе
     # Это избегает проблем с SSL и быстрее работает
     base = getattr(settings, "API_BASE_URL", "http://127.0.0.1:8000/api")
-    
+
     return ApiConfig(
         base_url=base.rstrip("/"),
         token_obtain_path=getattr(settings, "API_TOKEN_OBTAIN_PATH", "/auth/token/"),
@@ -76,7 +76,7 @@ class ApiClient:
 
     def _make_url(self, path: str) -> str:
         return f"{self.cfg.base_url}/{path.lstrip('/')}"
-    
+
     def _request(
         self,
         method: str,
@@ -91,11 +91,13 @@ class ApiClient:
     ) -> ApiResponse:
         url = self._make_url(path)
         hdrs = dict(self.cfg.default_headers or {})
-        # Не выставляем Content-Type вручную — requests сделает это сам (особенно важно для multipart)
+        # Не выставляем Content-Type вручную — requests сделает это сам (особенно
+        # важно для multipart)
         if headers:
             # если вдруг передали Content-Type, но у нас files — лучше его удалить
             if files and "Content-Type" in headers:
-                headers = {k: v for k, v in headers.items() if k.lower() != "content-type"}
+                headers = {k: v for k, v in headers.items() if k.lower() !=
+                           "content-type"}
             hdrs.update(headers)
         hdrs.update(self._auth_headers())
 
@@ -132,8 +134,12 @@ class ApiClient:
             data_json = resp.json()
         except Exception:
             data_json = None
-        return ApiResponse(ok=resp.ok, status=resp.status_code, json=data_json, text=resp.text)
-    
+        return ApiResponse(
+            ok=resp.ok,
+            status=resp.status_code,
+            json=data_json,
+            text=resp.text)
+
     # --- публичные методы HTTP ---
     def get(self, path: str, **kw) -> ApiResponse:
         return self._request("GET", path, **kw)
@@ -153,7 +159,12 @@ class ApiClient:
     # --- аутентификация ---
     def login(self, email: str, password: str) -> bool:
         url = self._make_url(self.cfg.token_obtain_path)
-        resp = self.session.post(url, json={"email": email, "password": password}, timeout=self.cfg.timeout)
+        resp = self.session.post(
+            url,
+            json={
+                "email": email,
+                "password": password},
+            timeout=self.cfg.timeout)
         if resp.status_code >= 400:
             return False
         if "application/json" not in (resp.headers.get("Content-Type") or ""):

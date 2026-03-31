@@ -8,12 +8,9 @@
 """
 
 import logging
-import os
 from datetime import datetime
 
 from django.contrib.contenttypes.models import ContentType
-from django.core.files.base import ContentFile
-from django.db.models import Q
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
@@ -59,17 +56,17 @@ def create_hired_action(sender, instance: Employee, created, **kwargs):
 def create_main_department_chat(sender, instance, created, **kwargs):
     """
     Создает главный чат для нового отдела (EUSRR-specific logic).
-    
+
     Использует GenericFK (context_object) и flags['is_primary'].
     """
     if not created:
         return
-    
+
     try:
         from communications.models import Chat
-        
+
         dept_ct = ContentType.objects.get_for_model(Department)
-        
+
         # Проверка: существует ли уже чат для этого отдела
         existing = Chat.objects.filter(
             type="channel",
@@ -77,7 +74,7 @@ def create_main_department_chat(sender, instance, created, **kwargs):
             context_object_id=instance.id,
             flags__is_primary=True
         ).exists()
-        
+
         if not existing:
             Chat.objects.create(
                 type="channel",
@@ -112,7 +109,7 @@ def track_request_status_change(sender, instance, **kwargs):
 def create_action_on_request_approval(sender, instance, created, **kwargs):
     """
     Автоматически создает EmployeeAction при одобрении заявок.
-    
+
     Две стратегии:
     1. НЕМЕДЛЕННО (transfer, dismissal) - сразу при одобрении
     2. ОТЛОЖЕННО (vacation, sick_leave) - через Celery в date_from
@@ -120,30 +117,30 @@ def create_action_on_request_approval(sender, instance, created, **kwargs):
     # Пропускаем если это новая заявка
     if created:
         return
-    
+
     # Получаем enum из requests_app
     try:
         from requests_app.enums import RequestStatus
     except ImportError:
         logger.error("Cannot import RequestStatus from requests_app")
         return
-    
+
     # Проверяем изменение статуса
     old_status = getattr(instance, '_old_status', None)
     if old_status == RequestStatus.APPROVED:
         return  # Уже была одобрена
-    
+
     if instance.status != RequestStatus.APPROVED:
         return  # Не одобрение
-    
+
     # === СТРАТЕГИЯ 1: Немедленное создание ===
     if instance.type in IMMEDIATE_ACTION_MAPPING:
         _create_immediate_action(instance)
-    
+
     # === СТРАТЕГИЯ 2: Отложенное создание через Celery ===
     elif instance.type in SCHEDULED_ACTION_MAPPING:
         _schedule_delayed_action(instance)
-    
+
     else:
         logger.debug(
             f"Request #{instance.id} approved but type '{instance.type}' "
@@ -156,7 +153,7 @@ def _create_immediate_action(request):
     action_type = IMMEDIATE_ACTION_MAPPING.get(request.type)
     if not action_type:
         return
-    
+
     # Проверяем дубли
     if EmployeeAction.objects.filter(
         extra__request_id=request.id,
@@ -166,13 +163,13 @@ def _create_immediate_action(request):
             f"EmployeeAction already exists for Request #{request.id}"
         )
         return
-    
+
     # Создаем событие
     action_date = request.date_from or request.decided_at or timezone.now()
     action_comment = f"Заявление #{request.id}"
     if request.comment:
         action_comment += f": {request.comment[:200]}"
-    
+
     try:
         action = EmployeeAction.objects.create(
             employee=request.employee,
@@ -187,15 +184,15 @@ def _create_immediate_action(request):
                 'immediate': True
             }
         )
-        
+
         # Применяем эффекты (деактивация, LDAP sync)
         _apply_action_effects(action)
-        
+
         logger.info(
             f"Created immediate EmployeeAction #{action.id} ({action_type}) "
             f"from Request #{request.id}"
         )
-        
+
     except Exception as e:
         logger.error(
             f"Failed to create EmployeeAction for Request #{request.id}: {e}",
@@ -210,14 +207,14 @@ def _schedule_delayed_action(request):
     except ImportError:
         logger.error("Cannot import create_scheduled_action task")
         return
-    
+
     if not request.date_from:
         logger.warning(
             f"Request #{request.id} type '{request.type}' needs date_from "
             f"for scheduling"
         )
         return
-    
+
     # Если date_from уже прошла или сегодня - создаем сразу
     today = timezone.now().date()
     if request.date_from <= today:
@@ -228,12 +225,12 @@ def _schedule_delayed_action(request):
         # Вызываем task синхронно
         create_scheduled_action.apply(args=[request.id])
         return
-    
+
     # Иначе планируем на date_from в 00:00
     eta = timezone.make_aware(
         datetime.combine(request.date_from, datetime.min.time())
     )
-    
+
     try:
         task = create_scheduled_action.apply_async(
             args=[request.id],

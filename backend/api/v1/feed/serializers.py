@@ -27,7 +27,7 @@ class AuthorMiniSerializer(serializers.ModelSerializer):
         ln = (obj.last_name or "").strip()
         nm = f"{fn} {ln}".strip()
         return nm
-    
+
     @extend_schema_field(OpenApiTypes.URI)
     def get_avatar(self, obj):
         """Возвращает полный URL для аватара"""
@@ -46,10 +46,11 @@ class PostListSerializer(serializers.ModelSerializer):
 
     # ожидания фронта
     is_liked = serializers.BooleanField(read_only=True, default=False)
-    comments_count = serializers.IntegerField(read_only=True, default=0, allow_null=True)
+    comments_count = serializers.IntegerField(
+        read_only=True, default=0, allow_null=True)
     # для ссылок на отдел
     department_id = serializers.IntegerField(read_only=True)
-    
+
     # Переопределяем поля для полных URL
     image = serializers.SerializerMethodField()
     attachment = serializers.SerializerMethodField()
@@ -91,7 +92,7 @@ class PostListSerializer(serializers.ModelSerializer):
         """Возвращает полный URL для изображения"""
         request = self.context.get('request')
         return build_media_url(obj.image, request)
-    
+
     @extend_schema_field(OpenApiTypes.URI)
     def get_attachment(self, obj):
         """Возвращает полный URL для вложения"""

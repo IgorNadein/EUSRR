@@ -54,7 +54,8 @@ class ChatAdmin(admin.ModelAdmin):
         if obj:
             is_primary = obj.is_main or (obj.flags and obj.flags.get('is_primary'))
             if is_primary:
-                return self.readonly_fields + ("type", "is_main", "flags", "context_object_id", "context_content_type")
+                return self.readonly_fields + \
+                    ("type", "is_main", "flags", "context_object_id", "context_content_type")
         return self.readonly_fields
 
 
@@ -131,9 +132,10 @@ class MessageEditHistoryAdmin(admin.ModelAdmin):
     search_fields = ("message__content", "previous_content")
     ordering = ("-edited_at",)
     readonly_fields = ("message", "edited_at", "previous_content", "edited_by")
-    
+
     def short_previous_content(self, obj):
-        return (obj.previous_content[:50] + "...") if len(obj.previous_content) > 50 else obj.previous_content
+        return (obj.previous_content[:50] + "...") if len(
+            obj.previous_content) > 50 else obj.previous_content
     short_previous_content.short_description = "Предыдущий текст"
 
 
@@ -215,7 +217,7 @@ class AvailableReactionAdmin(admin.ModelAdmin):
     ordering = ("order", "created_at")
     list_editable = ("order", "is_active")
     readonly_fields = ("created_at",)
-    
+
     fieldsets = (
         ("Основное", {
             "fields": ("emoji", "name", "is_active")
@@ -270,7 +272,7 @@ class PollAdmin(admin.ModelAdmin):
         "total_voters"
     )
     inlines = [PollOptionInline, PollVoteInline]
-    
+
     def question_short(self, obj):
         return (
             obj.question[:50] + "..."
@@ -293,7 +295,7 @@ class PollOptionAdmin(admin.ModelAdmin):
     search_fields = ("text", "poll__question")
     ordering = ("poll", "position")
     readonly_fields = ("vote_count", "created_at")
-    
+
     def poll_question_short(self, obj):
         return (
             obj.poll.question[:30] + "..."
@@ -320,7 +322,7 @@ class PollVoteAdmin(admin.ModelAdmin):
     )
     ordering = ("-voted_at",)
     readonly_fields = ("voted_at",)
-    
+
     def poll_question_short(self, obj):
         return (
             obj.poll.question[:30] + "..."
@@ -328,7 +330,7 @@ class PollVoteAdmin(admin.ModelAdmin):
             else obj.poll.question
         )
     poll_question_short.short_description = "Голосование"
-    
+
     def option_text_short(self, obj):
         return (
             obj.option.text[:20] + "..."

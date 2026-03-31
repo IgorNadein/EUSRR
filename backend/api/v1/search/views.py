@@ -4,8 +4,7 @@ API views для глобального поиска через django-watson.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List
-from collections import Counter
+from typing import Any, Dict
 
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
@@ -23,7 +22,7 @@ def _get_model_name(obj: Any) -> str:
     """Определяет тип модели для результата поиска."""
     model = type(obj)
     model_name = model.__name__.lower()
-    
+
     mapping = {
         "post": "post",
         "employee": "employee",
@@ -38,7 +37,7 @@ def _get_model_name(obj: Any) -> str:
         "document": "document",
         "notification": "notification",
     }
-    
+
     return mapping.get(model_name, model_name)
 
 
@@ -182,7 +181,12 @@ def _format_equipment(obj: Any) -> Dict[str, Any]:
         "model_name": "equipment",
         "object_id": obj.pk,
         "title": obj.name,
-        "description": f"Инв. №: {obj.inventory_number}" + (f", Сер. №: {obj.serial_number}" if obj.serial_number else ""),
+        "description": (
+            f"Инв. №: {obj.inventory_number}"
+            f", Сер. №: {obj.serial_number}"
+            if obj.serial_number
+            else f"Инв. №: {obj.inventory_number}"
+        ),
         "url": f"/procurement/equipment/{obj.pk}/",
         "meta": {
             "inventory_number": obj.inventory_number,
@@ -198,7 +202,11 @@ def _format_document(obj: Any) -> Dict[str, Any]:
         "model_name": "document",
         "object_id": obj.pk,
         "title": obj.title,
-        "description": obj.description[:200] + "..." if obj.description and len(obj.description) > 200 else (obj.description or ""),
+        "description": (
+            obj.description[:200] + "..."
+            if obj.description and len(obj.description) > 200
+            else (obj.description or "")
+        ),
         "url": f"/documents/{obj.pk}/",
         "meta": {
             "uploaded_by": str(obj.uploaded_by) if hasattr(obj, "uploaded_by") and obj.uploaded_by else None,
@@ -238,11 +246,11 @@ def _format_result(obj: Any, model_name: str) -> Dict[str, Any]:
         "document": _format_document,
         "notification": _format_notification,
     }
-    
+
     formatter = formatters.get(model_name)
     if formatter:
         return formatter(obj)
-    
+
     # Фоллбэк для неизвестных типов
     return {
         "model_name": model_name,
@@ -275,17 +283,20 @@ def _is_hr(user: Any) -> bool:
 def search_api_view(request: DRFRequest) -> Response:
     """
     API для глобального поиска через django-watson.
-    
+
     Query Parameters:
         - q (str): Поисковый запрос
         - limit (int): Максимальное количество результатов на тип (default: 10)
-    
+
     Returns:
         {
             "query": "поисковый запрос",
             "results": [
                 {
-                    "model_name": "post|employee|department|request|chat|message|event|procurement_request|equipment|document|notification",
+                    "model_name": (
+                        "post|employee|department|request|chat|message|event|"
+                        "procurement_request|equipment|document|notification"
+                    ),
                     "object_id": 123,
                     "title": "Заголовок",
                     "description": "Описание",
@@ -308,7 +319,7 @@ def search_api_view(request: DRFRequest) -> Response:
         limit = int(request.query_params.get("limit", 10))
     except (ValueError, TypeError):
         limit = 10
-    
+
     if not query:
         return Response(
             {
@@ -319,42 +330,44 @@ def search_api_view(request: DRFRequest) -> Response:
             },
             status=status.HTTP_200_OK
         )
-    
+
     # Выполняем поиск через watson
     search_results = watson_search(query)
-    
+
     # Группируем и форматируем результаты
     results = []
     model_counts: Dict[str, int] = {}
-    
+
     for search_result in search_results:
         obj = search_result.object
-        
+
         # Пропускаем удаленные объекты
         if obj is None:
             continue
-        
+
         model_name = _get_model_name(obj)
-        
+
         # Фильтрация по правам доступа
         if model_name == "request":
             is_hr = _is_hr(request.user)
-            if not is_hr and hasattr(obj, 'employee') and obj.employee != request.user:  # type: ignore[attr-defined]
+            if not is_hr and hasattr(
+                    obj, 'employee') and obj.employee != request.user:  # type: ignore[attr-defined]
                 continue  # Пропускаем чужие заявления
-        
+
         # Фильтрация уведомлений - показываем только свои
         if model_name == "notification":
-            if hasattr(obj, 'recipient') and obj.recipient != request.user:  # type: ignore[attr-defined]
+            if hasattr(
+                    obj, 'recipient') and obj.recipient != request.user:  # type: ignore[attr-defined]
                 continue  # Пропускаем чужие уведомления
-        
+
         # Подсчитываем
         model_counts[model_name] = model_counts.get(model_name, 0) + 1
-        
+
         # Ограничиваем количество на тип
         if model_counts[model_name] <= limit:
             formatted = _format_result(obj, model_name)
             results.append(formatted)
-    
+
     # Готовим ответ
     response_data = {
         "query": query,
@@ -362,11 +375,11 @@ def search_api_view(request: DRFRequest) -> Response:
         "counts": model_counts,
         "total": sum(model_counts.values())
     }
-    
+
     # Валидируем через сериализатор (опционально, для проверки структуры)
     serializer = SearchResponseSerializer(data=response_data)
     if serializer.is_valid():
         return Response(serializer.validated_data, status=status.HTTP_200_OK)
-    
+
     # Если валидация не прошла, все равно возвращаем результат (для отладки)
     return Response(response_data, status=status.HTTP_200_OK)

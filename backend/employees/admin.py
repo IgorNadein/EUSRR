@@ -2,7 +2,7 @@
 
 from django import forms
 from django.contrib import admin, messages
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin, GroupAdmin as DefaultGroupAdmin
+from django.contrib.auth.admin import GroupAdmin as DefaultGroupAdmin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField, AdminPasswordChangeForm
 from django.contrib.auth.models import Group, Permission
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
@@ -27,19 +27,19 @@ from .models import (
 
 class LdapSyncedFilter(admin.SimpleListFilter):
     """Фильтр для отображения сотрудников по состоянию LDAP синхронизации."""
-    
+
     title = "Статус LDAP синхронизации"
     parameter_name = "ldap_synced"
-    
+
     def lookups(self, request, model_admin):
         return (
             ("yes", "Есть запись синхронизации"),
             ("no", "Нет записи синхронизации"),
         )
-    
+
     def queryset(self, request, queryset):
         from django.db.models import Exists, OuterRef
-        
+
         if self.value() == "yes":
             # Показываем только тех, у кого есть запись синхронизации
             return queryset.filter(
@@ -68,7 +68,9 @@ class EmployeeCreationForm(forms.ModelForm):
     Создание сотрудника в админке: логин — email, без username.
     """
     password1 = forms.CharField(label="Пароль", widget=forms.PasswordInput)
-    password2 = forms.CharField(label="Подтверждение пароля", widget=forms.PasswordInput)
+    password2 = forms.CharField(
+        label="Подтверждение пароля",
+        widget=forms.PasswordInput)
 
     class Meta:
         model = Employee
@@ -156,7 +158,6 @@ class EmployeeDepartmentInline(admin.TabularInline):
     show_change_link = True
 
 
-
 class DepartmentMembershipInline(admin.TabularInline):
     """
     Состав отдела — список участников прямо в карточке отдела.
@@ -224,37 +225,37 @@ class EmployeeAdmin(DjangoUserAdmin):
         "email_activation_code",
         "sms_activation_code",
     )
-    
+
     def ldap_sync_status(self, obj):
         """Краткий статус LDAP синхронизации для списка."""
         if not obj.pk:
             return "-"
-        
+
         from django.utils.html import format_html
         import logging
         logger = logging.getLogger(__name__)
-        
+
         # Если не управляется LDAP
         if not obj.is_ldap_managed:
             return format_html('<span style="color: gray;">Локальный</span>')
-        
+
         try:
             # Логируем попытку поиска
             logger.debug(
                 f"[ldap_sync_status] Searching for employee {obj.pk} "
                 f"(email: {obj.email})"
             )
-            
+
             sync_state = LdapSyncState.objects.filter(
                 model="employee",
                 object_pk=str(obj.pk)
             ).first()
-            
+
             logger.debug(
                 f"[ldap_sync_status] Employee {obj.pk}: "
                 f"sync_state={'found' if sync_state else 'not found'}"
             )
-            
+
             if not sync_state:
                 # Попробуем найти любые записи для этого employee
                 all_syncs = LdapSyncState.objects.filter(
@@ -264,26 +265,21 @@ class EmployeeAdmin(DjangoUserAdmin):
                     f"[ldap_sync_status] No sync record for employee {obj.pk}. "
                     f"All employee object_pks in sync table: {list(all_syncs)}"
                 )
-                
+
                 # Создаем ссылку для быстрого создания записи
                 from django.urls import reverse
                 create_url = reverse('admin:employees_ldapsyncstate_add')
-                
+
                 return format_html(
                     '<span style="color: red;" title="ID: {} - Нет записи синхронизации. Кликните для создания.">'
                     '<a href="{}?model=employee&object_pk={}" style="color: red;">❌ Нет записи (ID: {})</a>'
-                    '</span>',
-                    obj.pk,
-                    create_url,
-                    obj.pk,
-                    obj.pk
-                )
-            
+                    '</span>', obj.pk, create_url, obj.pk, obj.pk)
+
             # Проверяем полноту данных
             has_guid = bool(sync_state.ldap_guid)
             has_dn = bool(sync_state.ldap_dn)
             has_updated = bool(sync_state.updated_at)
-            
+
             # Полные данные
             if has_guid and has_dn and has_updated:
                 return format_html(
@@ -300,7 +296,7 @@ class EmployeeAdmin(DjangoUserAdmin):
                     missing.append("GUID")
                 if not has_dn:
                     missing.append("DN")
-                
+
                 return format_html(
                     '⚠️ <span title="ID: {}\nОтсутствует: {}">{}</span>',
                     obj.pk,
@@ -310,8 +306,7 @@ class EmployeeAdmin(DjangoUserAdmin):
             else:
                 return format_html(
                     '<span style="color: orange;" title="ID: {} - Нет даты обновления">⚠️ Неполные данные</span>',
-                    obj.pk
-                )
+                    obj.pk)
         except Exception as e:
             logger.exception(
                 f"[ldap_sync_status] Error for employee {obj.pk}: {e}"
@@ -321,7 +316,7 @@ class EmployeeAdmin(DjangoUserAdmin):
                 obj.pk,
                 str(e)
             )
-    
+
     ldap_sync_status.short_description = "LDAP статус"
     ldap_sync_status.admin_order_field = "id"  # Сортировка по ID
 
@@ -361,37 +356,37 @@ class EmployeeAdmin(DjangoUserAdmin):
         }),
         ("Служебное", {"fields": ("last_login", "created_at", "updated_at")}),
     )
-    
+
     def ldap_sync_info(self, obj):
         """Отображает информацию о состоянии синхронизации LDAP."""
         if not obj.pk:
             return "-"
-        
+
         try:
             sync_state = LdapSyncState.objects.filter(
                 model="employee",
                 object_pk=str(obj.pk)
             ).first()
-            
+
             if not sync_state:
                 return "Нет записи синхронизации"
-            
+
             from django.utils.html import format_html
             from django.urls import reverse
-            
+
             # Ссылка на запись синхронизации в админке
             sync_url = reverse(
                 'admin:employees_ldapsyncstate_change',
                 args=[sync_state.pk]
             )
-            
+
             info = [
                 format_html(
                     '<a href="{}" target="_blank">📋 Открыть запись синхронизации</a>',
                     sync_url
                 )
             ]
-            
+
             if sync_state.ldap_dn:
                 info.append(f"<b>DN:</b> {sync_state.ldap_dn}")
             if sync_state.ldap_guid:
@@ -408,11 +403,11 @@ class EmployeeAdmin(DjangoUserAdmin):
                 )
             if sync_state.updated_at:
                 info.append(f"<b>Обновлено:</b> {sync_state.updated_at}")
-            
+
             return format_html("<br>".join(info)) if info else "-"
         except Exception as e:
             return f"Ошибка: {e}"
-    
+
     ldap_sync_info.short_description = "Состояние LDAP синхронизации"
 
     add_fieldsets = (
@@ -438,7 +433,7 @@ class EmployeeAdmin(DjangoUserAdmin):
     )
 
     inlines = [EmployeeDepartmentInline]
-    
+
     actions = [
         "create_ldap_sync_records",
         "check_ldap_sync_status",
@@ -446,16 +441,16 @@ class EmployeeAdmin(DjangoUserAdmin):
         "sync_from_ldap_to_django",
         "show_sync_diff",
     ]
-    
+
     def create_ldap_sync_records(self, request, queryset):
         """Создать записи синхронизации для выбранных сотрудников."""
         created_count = 0
         already_exists = 0
-        
+
         for employee in queryset:
             if not employee.is_ldap_managed:
                 continue
-            
+
             sync_state, created = LdapSyncState.objects.get_or_create(
                 model="employee",
                 object_pk=str(employee.pk),
@@ -463,12 +458,12 @@ class EmployeeAdmin(DjangoUserAdmin):
                     "last_sync_dir": "django",
                 }
             )
-            
+
             if created:
                 created_count += 1
             else:
                 already_exists += 1
-        
+
         if created_count:
             self.message_user(
                 request,
@@ -487,14 +482,14 @@ class EmployeeAdmin(DjangoUserAdmin):
                 "Выбраны только локальные пользователи (не управляются LDAP)",
                 level="warning"
             )
-    
+
     create_ldap_sync_records.short_description = "Создать записи LDAP синхронизации"
-    
+
     def check_ldap_sync_status(self, request, queryset):
         """Проверить статус LDAP синхронизации для выбранных сотрудников."""
         ldap_managed = queryset.filter(is_ldap_managed=True)
         ldap_count = ldap_managed.count()
-        
+
         if ldap_count == 0:
             self.message_user(
                 request,
@@ -502,39 +497,39 @@ class EmployeeAdmin(DjangoUserAdmin):
                 level="warning"
             )
             return
-        
+
         # Проверяем наличие записей синхронизации
         sync_records = LdapSyncState.objects.filter(
             model="employee",
             object_pk__in=[str(e.pk) for e in ldap_managed]
         )
-        
+
         has_sync = sync_records.count()
         missing_sync = ldap_count - has_sync
-        
+
         # Проверяем полноту данных
         complete = sync_records.filter(
             ldap_guid__isnull=False,
             ldap_dn__isnull=False
         ).exclude(ldap_dn="").count()
-        
+
         incomplete = has_sync - complete
-        
-        message = f"Статус LDAP синхронизации:\n"
+
+        message = "Статус LDAP синхронизации:\n"
         message += f"• Управляются LDAP: {ldap_count}\n"
         message += f"• Есть запись синхронизации: {has_sync}\n"
         message += f"• Нет записи синхронизации: {missing_sync}\n"
         message += f"• Полные данные: {complete}\n"
         message += f"• Неполные данные: {incomplete}"
-        
+
         self.message_user(request, message, level="info")
-    
+
     check_ldap_sync_status.short_description = "Проверить статус LDAP синхронизации"
-    
+
     @admin.action(description='🔄 Синхронизировать Django → LDAP (создать/обновить в Active Directory)')
     def sync_from_django_to_ldap(self, request, queryset):
         """Создает или обновляет пользователей в LDAP из Django.
-        
+
         Django считается источником истины - данные из БД будут
         записаны в Active Directory (создание или обновление).
         """
@@ -542,63 +537,80 @@ class EmployeeAdmin(DjangoUserAdmin):
         from employees.ldap.services import UserService
         from employees.ldap.orm_models import LdapUser
         from employees.ldap.utils.ldap_utils import get_ldap_str
-        
+
         logger = logging.getLogger(__name__)
-        
+
         success_count = 0
         created_count = 0
         updated_count = 0
         error_count = 0
-        
+
         service = UserService()
-        
+
         for employee in queryset:
-            logger.info(f"[sync_from_django_to_ldap] Начинаем обработку employee ID={employee.pk}, email={employee.email}")
+            logger.info(
+                f"[sync_from_django_to_ldap] Начинаем обработку employee ID={
+                    employee.pk}, email={
+                    employee.email}")
             try:
                 # Ищем существующего LDAP пользователя
                 ldap_user = None
-                logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: is_ldap_managed={employee.is_ldap_managed}")
-                
+                logger.info(
+                    f"[sync_from_django_to_ldap] Employee {
+                        employee.pk}: is_ldap_managed={
+                        employee.is_ldap_managed}")
+
                 if employee.is_ldap_managed:
                     # Пробуем найти по employee_number
-                    logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: поиск в LDAP по employee_number={employee.pk}")
+                    logger.info(
+                        f"[sync_from_django_to_ldap] Employee {
+                            employee.pk}: поиск в LDAP по employee_number={
+                            employee.pk}")
                     ldap_user = LdapUser.objects.filter(
                         employee_number=str(employee.pk)
                     ).first()
                     if ldap_user:
-                        logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: найден LDAP user с DN={ldap_user.dn}")
+                        logger.info(
+                            f"[sync_from_django_to_ldap] Employee {
+                                employee.pk}: найден LDAP user с DN={
+                                ldap_user.dn}")
                     else:
-                        logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: не найден по employee_number")
-                
+                        logger.info(
+                            f"[sync_from_django_to_ldap] Employee {
+                                employee.pk}: не найден по employee_number")
+
                 if ldap_user:
                     # ОБНОВЛЕНИЕ существующего LDAP пользователя
-                    logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: LDAP пользователь существует, начинаем проверку изменений")
+                    logger.info(
+                        f"[sync_from_django_to_ldap] Employee {
+                            employee.pk}: LDAP пользователь существует, начинаем проверку изменений")
                     try:
                         changes = {}
-                        
+
                         ldap_first = get_ldap_str(ldap_user.given_name)
                         if ldap_first != employee.first_name:
                             changes['first_name'] = employee.first_name
-                            
+
                         ldap_last = get_ldap_str(ldap_user.sn)
                         if ldap_last != employee.last_name:
                             changes['last_name'] = employee.last_name
-                            
+
                         ldap_email = get_ldap_str(ldap_user.mail)
                         if ldap_email != employee.email:
                             changes['email'] = employee.email
-                        
-                        ldap_phone = get_ldap_str(ldap_user.telephone_number or ldap_user.mobile)
+
+                        ldap_phone = get_ldap_str(
+                            ldap_user.telephone_number or ldap_user.mobile)
                         if employee.phone_number and ldap_phone != employee.phone_number:
                             changes['phone_number'] = employee.phone_number
-                        
+
                         if changes:
                             service.update_user(employee, changes)
                             updated_count += 1
-                        
+
                         # Проверяем, в правильной ли OU находится пользователь
                         from django.conf import settings as _settings
-                        
+
                         expected_base = None
                         if not employee.is_actually_active:
                             expected_base = getattr(
@@ -618,26 +630,27 @@ class EmployeeAdmin(DjangoUserAdmin):
                                         _settings, 'LDAP_DEPARTMENTS_BASE', ''
                                     )
                                     if depts_base:
-                                        expected_base = f"OU={active_dept.name},{depts_base}"
-                        
+                                        expected_base = f"OU={
+                                            active_dept.name},{depts_base}"
+
                         if expected_base:
                             # Текущий base_dn = DN без первой компоненты (CN=...)
                             current_parts = ldap_user.dn.split(',', 1)
-                            current_base = current_parts[1] if len(current_parts) > 1 else ''
-                            
+                            current_base = current_parts[1] if len(
+                                current_parts) > 1 else ''
+
                             if current_base.lower() != expected_base.lower():
                                 try:
                                     ldap_user.move_to(expected_base)
                                     logger.info(
-                                        f"[sync_from_django_to_ldap] Employee {employee.pk}: "
-                                        f"перемещён из {current_base} в {expected_base}"
-                                    )
+                                        f"[sync_from_django_to_ldap] Employee {
+                                            employee.pk}: " f"перемещён из {current_base} в {expected_base}")
                                     self.message_user(
                                         request,
                                         f'📦 {employee.email}: перемещён в {expected_base}',
                                         level=messages.INFO
                                     )
-                                    
+
                                     # Добавляем в группу DEP_* нового отдела
                                     try:
                                         from employees.ldap.orm_models import LdapOrganizationalUnit
@@ -649,18 +662,17 @@ class EmployeeAdmin(DjangoUserAdmin):
                                         )
                                     except Exception:
                                         pass  # best effort
-                                    
+
                                 except Exception as move_err:
                                     logger.warning(
-                                        f"[sync_from_django_to_ldap] Employee {employee.pk}: "
-                                        f"ошибка перемещения: {move_err}"
-                                    )
+                                        f"[sync_from_django_to_ldap] Employee {
+                                            employee.pk}: " f"ошибка перемещения: {move_err}")
                                     self.message_user(
                                         request,
-                                        f'⚠️ {employee.email}: не удалось переместить в {expected_base}: {move_err}',
-                                        level=messages.WARNING
-                                    )
-                        
+                                        f'⚠️ {
+                                            employee.email}: не удалось переместить в {expected_base}: {move_err}',
+                                        level=messages.WARNING)
+
                         # Обновляем sync state (DN мог измениться после перемещения)
                         # Перечитываем пользователя чтобы получить актуальный DN
                         try:
@@ -670,7 +682,7 @@ class EmployeeAdmin(DjangoUserAdmin):
                             fresh_dn = ldap_user_fresh.dn
                         except LdapUser.DoesNotExist:
                             fresh_dn = ldap_user.dn
-                        
+
                         LdapSyncState.objects.update_or_create(
                             model='employee',
                             object_pk=str(employee.pk),
@@ -679,11 +691,13 @@ class EmployeeAdmin(DjangoUserAdmin):
                                 'last_sync_dir': 'django',
                             }
                         )
-                        
+
                         if not changes:
                             success_count += 1  # Уже синхронизирован
                     except Exception as e:
-                        logger.exception(f"[sync_from_django_to_ldap] Employee {employee.pk}: ошибка обновления в LDAP")
+                        logger.exception(
+                            f"[sync_from_django_to_ldap] Employee {
+                                employee.pk}: ошибка обновления в LDAP")
                         error_count += 1
                         self.message_user(
                             request,
@@ -692,23 +706,25 @@ class EmployeeAdmin(DjangoUserAdmin):
                         )
                 else:
                     # СОЗДАНИЕ нового LDAP пользователя
-                    logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: LDAP пользователь не найден, создаем новый")
+                    logger.info(
+                        f"[sync_from_django_to_ldap] Employee {
+                            employee.pk}: LDAP пользователь не найден, создаем новый")
                     try:
                         # Генерируем временный пароль
                         import secrets
                         from employees.ldap.domain.dtos import DirectoryUserDTO
                         from employees.ldap.utils.phone_utils import normalize_phone
                         from django.conf import settings as _settings
-                        
+
                         temp_password = secrets.token_urlsafe(16)
-                        
+
                         phone_e164 = None
                         if employee.phone_number:
                             phone_e164 = normalize_phone(employee.phone_number)
-                        
+
                         # Определяем department_dn на основе отдела и статуса
                         department_dn = None
-                        
+
                         if not employee.is_actually_active:
                             # Уволенный → OU=Dismissed
                             department_dn = getattr(
@@ -734,12 +750,13 @@ class EmployeeAdmin(DjangoUserAdmin):
                                         _settings, 'LDAP_DEPARTMENTS_BASE', ''
                                     )
                                     if depts_base:
-                                        department_dn = f"OU={active_dept.name},{depts_base}"
+                                        department_dn = f"OU={
+                                            active_dept.name},{depts_base}"
                                 logger.info(
-                                    f"[sync_from_django_to_ldap] Employee {employee.pk}: "
-                                    f"отдел={active_dept.name}, department_dn={department_dn}"
-                                )
-                        
+                                    f"[sync_from_django_to_ldap] Employee {
+                                        employee.pk}: " f"отдел={
+                                        active_dept.name}, department_dn={department_dn}")
+
                         dto = DirectoryUserDTO(
                             first_name=employee.first_name,
                             last_name=employee.last_name,
@@ -749,17 +766,23 @@ class EmployeeAdmin(DjangoUserAdmin):
                             group_cns=[],
                             initial_password=temp_password,
                         )
-                        
+
                         # Создаем через сервис
-                        logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: вызов service.create_user(dto)")
+                        logger.info(
+                            f"[sync_from_django_to_ldap] Employee {
+                                employee.pk}: вызов service.create_user(dto)")
                         service.create_user(dto)
-                        logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: LDAP пользователь успешно создан")
-                        
+                        logger.info(
+                            f"[sync_from_django_to_ldap] Employee {
+                                employee.pk}: LDAP пользователь успешно создан")
+
                         created_count += 1
                         employee.is_ldap_managed = True
                         employee.save(update_fields=['is_ldap_managed'])
-                        logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: is_ldap_managed установлен в True")
-                        
+                        logger.info(
+                            f"[sync_from_django_to_ldap] Employee {
+                                employee.pk}: is_ldap_managed установлен в True")
+
                         self.message_user(
                             request,
                             f'✅ Создан LDAP пользователь для {employee.email}. '
@@ -767,7 +790,9 @@ class EmployeeAdmin(DjangoUserAdmin):
                             level=messages.SUCCESS
                         )
                     except Exception as e:
-                        logger.exception(f"[sync_from_django_to_ldap] Employee {employee.pk}: ошибка создания в LDAP")
+                        logger.exception(
+                            f"[sync_from_django_to_ldap] Employee {
+                                employee.pk}: ошибка создания в LDAP")
                         error_count += 1
                         self.message_user(
                             request,
@@ -775,14 +800,16 @@ class EmployeeAdmin(DjangoUserAdmin):
                             level=messages.ERROR
                         )
             except Exception as e:
-                logger.exception(f"[sync_from_django_to_ldap] Employee {employee.pk}: необработанное исключение на верхнем уровне")
+                logger.exception(
+                    f"[sync_from_django_to_ldap] Employee {
+                        employee.pk}: необработанное исключение на верхнем уровне")
                 error_count += 1
                 self.message_user(
                     request,
                     f'Ошибка обработки {employee.email}: {e}',
                     level=messages.ERROR
                 )
-        
+
         # Итоговое сообщение
         if created_count > 0:
             self.message_user(
@@ -808,38 +835,38 @@ class EmployeeAdmin(DjangoUserAdmin):
                 f'❌ Ошибок: {error_count}',
                 level=messages.WARNING
             )
-    
+
     @admin.action(description='🔄 Синхронизировать LDAP → Django (обновить из Active Directory)')
     def sync_from_ldap_to_django(self, request, queryset):
         """Обновляет Django пользователей из LDAP.
-        
+
         LDAP считается источником истины - данные из Active Directory
         перезапишут данные в Django Employee.
         """
         from employees.ldap.orm_models import LdapUser
         from employees.ldap.utils.ldap_utils import get_ldap_str
-        
+
         success_count = 0
         error_count = 0
         not_in_ldap = 0
-        
+
         for employee in queryset:
             if not employee.is_ldap_managed:
                 not_in_ldap += 1
                 continue
-            
+
             try:
                 # Ищем LDAP пользователя
                 ldap_user = LdapUser.objects.filter(
                     employee_number=str(employee.pk)
                 ).first()
-                
+
                 if not ldap_user:
                     # Попробуем по email
                     ldap_user = LdapUser.objects.filter(
                         mail=employee.email
                     ).first()
-                
+
                 if not ldap_user:
                     error_count += 1
                     self.message_user(
@@ -848,33 +875,34 @@ class EmployeeAdmin(DjangoUserAdmin):
                         level=messages.WARNING
                     )
                     continue
-                
+
                 # Обновляем Django из LDAP
                 updated_fields = []
-                
+
                 ldap_first = get_ldap_str(ldap_user.given_name)
                 if ldap_first and ldap_first != employee.first_name:
                     employee.first_name = ldap_first
                     updated_fields.append('first_name')
-                
+
                 ldap_last = get_ldap_str(ldap_user.sn)
                 if ldap_last and ldap_last != employee.last_name:
                     employee.last_name = ldap_last
                     updated_fields.append('last_name')
-                
+
                 ldap_email = get_ldap_str(ldap_user.mail)
                 if ldap_email and ldap_email != employee.email:
                     employee.email = ldap_email
                     updated_fields.append('email')
-                
-                ldap_phone = get_ldap_str(ldap_user.telephone_number or ldap_user.mobile)
+
+                ldap_phone = get_ldap_str(
+                    ldap_user.telephone_number or ldap_user.mobile)
                 if ldap_phone and ldap_phone != employee.phone_number:
                     employee.phone_number = ldap_phone
                     updated_fields.append('phone_number')
-                
+
                 if updated_fields:
                     employee.save(update_fields=updated_fields)
-                
+
                 # Обновляем LdapSyncState
                 LdapSyncState.objects.update_or_create(
                     model='employee',
@@ -885,9 +913,9 @@ class EmployeeAdmin(DjangoUserAdmin):
                         'last_sync_dir': 'ldap',
                     }
                 )
-                
+
                 success_count += 1
-                
+
             except Exception as e:
                 error_count += 1
                 self.message_user(
@@ -895,13 +923,12 @@ class EmployeeAdmin(DjangoUserAdmin):
                     f'Ошибка синхронизации {employee.email}: {e}',
                     level=messages.ERROR
                 )
-        
+
         if success_count:
             self.message_user(
                 request,
                 f'✅ Успешно синхронизировано: {success_count} пользователей (LDAP → Django)',
-                level=messages.SUCCESS
-            )
+                level=messages.SUCCESS)
         if not_in_ldap:
             self.message_user(
                 request,
@@ -914,71 +941,72 @@ class EmployeeAdmin(DjangoUserAdmin):
                 f'❌ Ошибок: {error_count}',
                 level=messages.WARNING
             )
-    
+
     @admin.action(description='🔍 Показать различия Django ↔ LDAP')
     def show_sync_diff(self, request, queryset):
         """Показывает различия между Django и LDAP для выбранных пользователей."""
         from employees.ldap.orm_models import LdapUser
         from employees.ldap.utils.ldap_utils import get_ldap_str
-        
+
         diffs = []
         no_ldap_count = 0
-        
+
         for employee in queryset:
             if not employee.is_ldap_managed:
                 continue
-            
+
             try:
                 # Ищем LDAP пользователя
                 ldap_user = LdapUser.objects.filter(
                     employee_number=str(employee.pk)
                 ).first()
-                
+
                 if not ldap_user:
                     ldap_user = LdapUser.objects.filter(mail=employee.email).first()
-                
+
                 if not ldap_user:
                     no_ldap_count += 1
                     diffs.append(f"❌ {employee.email}: не найден в LDAP")
                     continue
-                
+
                 user_diffs = []
-                
+
                 # Сравниваем поля
                 ldap_first = get_ldap_str(ldap_user.given_name)
                 if ldap_first != employee.first_name:
                     user_diffs.append(
                         f"Имя: Django='{employee.first_name}' vs LDAP='{ldap_first}'"
                     )
-                
+
                 ldap_last = get_ldap_str(ldap_user.sn)
                 if ldap_last != employee.last_name:
                     user_diffs.append(
                         f"Фамилия: Django='{employee.last_name}' vs LDAP='{ldap_last}'"
                     )
-                
+
                 ldap_email = get_ldap_str(ldap_user.mail)
                 if ldap_email != employee.email:
                     user_diffs.append(
                         f"Email: Django='{employee.email}' vs LDAP='{ldap_email}'"
                     )
-                
-                ldap_phone = get_ldap_str(ldap_user.telephone_number or ldap_user.mobile)
+
+                ldap_phone = get_ldap_str(
+                    ldap_user.telephone_number or ldap_user.mobile)
                 if employee.phone_number and ldap_phone and ldap_phone != employee.phone_number:
                     user_diffs.append(
-                        f"Телефон: Django='{employee.phone_number}' vs LDAP='{ldap_phone}'"
-                    )
-                
+                        f"Телефон: Django='{
+                            employee.phone_number}' vs LDAP='{ldap_phone}'")
+
                 if user_diffs:
                     diffs.append(
                         f"⚠️ {employee.email}: " + " | ".join(user_diffs)
                     )
                 else:
                     diffs.append(f"✅ {employee.email}: данные совпадают")
-                    
+
             except Exception as e:
                 diffs.append(f"❌ {employee.email}: ошибка сравнения - {e}")
-        
+
         if diffs:
             message = "Результаты сравнения Django ↔ LDAP:\n\n" + "\n".join(diffs)
             self.message_user(request, message, level=messages.INFO)
@@ -995,7 +1023,7 @@ class PositionAdmin(SimpleHistoryAdmin):
     list_display = ("name", "description")
     search_fields = ("name", "description", "ldap_group_dn")
     filter_horizontal = ("groups",)
-    
+
     fieldsets = (
         (None, {"fields": ("name", "description")}),
         ("Права", {"fields": ("groups",)}),
@@ -1017,13 +1045,18 @@ class EmployeeActionAdmin(SimpleHistoryAdmin):
 
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ("name", "head", "ldap_sync_status", "head_appointed_at", "created_at")
+    list_display = (
+        "name",
+        "head",
+        "ldap_sync_status",
+        "head_appointed_at",
+        "created_at")
     list_filter = ("head",)
     search_fields = ("name", "description", "ldap_group_dn")
     autocomplete_fields = ("head",)
     readonly_fields = ("created_at", "head_appointed_at", "ldap_sync_info")
     inlines = [DepartmentMembershipInline]
-    
+
     fieldsets = (
         (None, {"fields": ("name", "description")}),
         ("Руководство", {
@@ -1035,42 +1068,39 @@ class DepartmentAdmin(admin.ModelAdmin):
         }),
         ("Служебное", {"fields": ("created_at",)}),
     )
-    
+
     actions = [
         'sync_from_ldap_to_django',
         'sync_from_django_to_ldap',
         'show_sync_diff',
     ]
-    
+
     def ldap_sync_status(self, obj):
         """Краткий статус LDAP синхронизации для списка."""
         if not obj.pk:
             return "-"
-        
+
         from django.utils.html import format_html
         from django.urls import reverse
-        
+
         try:
             sync_state = LdapSyncState.objects.filter(
                 model='department',
                 object_pk=str(obj.pk)
             ).first()
-            
+
             if not sync_state:
                 # Нет записи синхронизации
                 create_url = reverse('admin:employees_ldapsyncstate_add')
                 return format_html(
                     '<span style="color: red;" title="Нет записи синхронизации">'
                     '<a href="{}?model=department&object_pk={}" style="color: red;">❌ Нет записи</a>'
-                    '</span>',
-                    create_url,
-                    obj.pk
-                )
-            
+                    '</span>', create_url, obj.pk)
+
             # Проверяем полноту данных
             has_dn = bool(sync_state.ldap_dn)
             has_updated = bool(sync_state.updated_at)
-            
+
             # Полные данные
             if has_dn and has_updated:
                 # Определяем направление последней синхронизации
@@ -1083,9 +1113,10 @@ class DepartmentAdmin(admin.ModelAdmin):
                 else:
                     icon = '✅'
                     title_dir = 'Синхронизирован'
-                
-                dn_short = sync_state.ldap_dn[:60] + '...' if len(sync_state.ldap_dn) > 60 else sync_state.ldap_dn
-                
+
+                dn_short = sync_state.ldap_dn[:60] + '...' if len(
+                    sync_state.ldap_dn) > 60 else sync_state.ldap_dn
+
                 return format_html(
                     '{} <span title="DN: {}\nНаправление: {}">{}</span>',
                     icon,
@@ -1108,24 +1139,24 @@ class DepartmentAdmin(admin.ModelAdmin):
                 '<span style="color: red;" title="Ошибка: {}">❌ Ошибка</span>',
                 str(e)
             )
-    
+
     ldap_sync_status.short_description = "LDAP статус"
     ldap_sync_status.admin_order_field = "id"
-    
+
     def ldap_sync_info(self, obj):
         """Подробная информация о синхронизации для формы."""
         if not obj.pk:
             return "-"
-        
+
         from django.utils.html import format_html
         from django.urls import reverse
-        
+
         try:
             sync_state = LdapSyncState.objects.filter(
                 model='department',
                 object_pk=str(obj.pk)
             ).first()
-            
+
             if not sync_state:
                 create_url = reverse('admin:employees_ldapsyncstate_add')
                 return format_html(
@@ -1133,14 +1164,13 @@ class DepartmentAdmin(admin.ModelAdmin):
                     '❌ <strong>Нет записи синхронизации</strong><br>'
                     '<small>Создайте запись синхронизации или выполните синхронизацию.</small><br>'
                     '<a href="{}?model=department&object_pk={}" target="_blank">➕ Создать запись</a>'
-                    '</div>',
-                    create_url,
-                    obj.pk
-                )
-            
+                    '</div>', create_url, obj.pk)
+
             # Формируем подробную информацию
-            sync_url = reverse('admin:employees_ldapsyncstate_change', args=[sync_state.pk])
-            
+            sync_url = reverse(
+                'admin:employees_ldapsyncstate_change', args=[
+                    sync_state.pk])
+
             if sync_state.last_sync_dir == 'ldap':
                 direction = '⬇️ LDAP → Django'
                 color = '#17a2b8'
@@ -1150,7 +1180,7 @@ class DepartmentAdmin(admin.ModelAdmin):
             else:
                 direction = '↔️ Неизвестно'
                 color = '#6c757d'
-            
+
             return format_html(
                 '<div style="padding:10px;background:#d1ecf1;border-left:4px solid {};">'
                 '<strong>Информация о синхронизации:</strong><br>'
@@ -1165,55 +1195,57 @@ class DepartmentAdmin(admin.ModelAdmin):
                 sync_state.ldap_dn or '—',
                 direction,
                 sync_state.updated_at.strftime('%Y-%m-%d %H:%M:%S') if sync_state.updated_at else '—',
-                sync_url
-            )
+                sync_url)
         except Exception as e:
             return format_html(
                 '<div style="padding:10px;background:#f8d7da;border-left:4px solid #dc3545;">'
                 '❌ <strong>Ошибка:</strong> {}'
-                '</div>',
-                str(e)
-            )
-    
+                '</div>', str(e))
+
     ldap_sync_info.short_description = "Статус синхронизации"
-    
+
     @admin.action(description='🔄 Синхронизировать LDAP → Django (LDAP как источник истины)')
     def sync_from_ldap_to_django(self, request, queryset):
         """Синхронизирует выбранные отделы из LDAP OU в Django Department."""
         from employees.ldap.orm_models import LdapOrganizationalUnit
         from employees.ldap.utils.ldap_utils import get_ldap_str
-        
+
         success_count = 0
         error_count = 0
         warnings = []
-        
+
         for dept in queryset:
             # Ищем соответствующую OU в LDAP
             sync_state = LdapSyncState.objects.filter(
                 model='department',
                 object_pk=str(dept.pk),
             ).first()
-            
+
             ldap_ou = None
             if sync_state and sync_state.ldap_dn:
                 try:
                     ldap_ou = LdapOrganizationalUnit.objects.get(dn=sync_state.ldap_dn)
                 except LdapOrganizationalUnit.DoesNotExist:
-                    warnings.append(f'⚠️ {dept.name}: OU с DN {sync_state.ldap_dn} не найдена')
-            
+                    warnings.append(
+                        f'⚠️ {
+                            dept.name}: OU с DN {
+                            sync_state.ldap_dn} не найдена')
+
             if not ldap_ou:
                 # Пытаемся найти по имени
                 try:
                     ldap_ou = LdapOrganizationalUnit.objects.get(ou=dept.name)
                 except (LdapOrganizationalUnit.DoesNotExist, LdapOrganizationalUnit.MultipleObjectsReturned):
                     error_count += 1
-                    warnings.append(f'⚠️ {dept.name}: не найдена соответствующая OU в LDAP')
+                    warnings.append(
+                        f'⚠️ {
+                            dept.name}: не найдена соответствующая OU в LDAP')
                     continue
-            
+
             try:
                 # Обновляем Department из LDAP OU
                 dept.description = get_ldap_str(ldap_ou.description) or dept.description
-                
+
                 # Обновляем руководителя из managedBy
                 mb = get_ldap_str(ldap_ou.managed_by)
                 if mb:
@@ -1222,17 +1254,21 @@ class DepartmentAdmin(admin.ModelAdmin):
                         mgr = LdapUser.objects.get(dn=mb)
                         if mgr.employee_number:
                             try:
-                                dept.head = Employee.objects.get(pk=int(mgr.employee_number))
+                                dept.head = Employee.objects.get(
+                                    pk=int(mgr.employee_number))
                             except (Employee.DoesNotExist, ValueError):
                                 warnings.append(
-                                    f'⚠️ {dept.name}: руководитель Employee #{mgr.employee_number} не найден'
-                                )
+                                    f'⚠️ {
+                                        dept.name}: руководитель Employee #{
+                                        mgr.employee_number} не найден')
                     except LdapUser.DoesNotExist:
-                        warnings.append(f'⚠️ {dept.name}: managedBy DN не найден в LDAP')
-                
+                        warnings.append(
+                            f'⚠️ {
+                                dept.name}: managedBy DN не найден в LDAP')
+
                 dept._skip_ldap_sync = True
                 dept.save()
-                
+
                 LdapSyncState.objects.update_or_create(
                     model='department',
                     object_pk=str(dept.pk),
@@ -1248,7 +1284,7 @@ class DepartmentAdmin(admin.ModelAdmin):
                     request, f'Ошибка синхронизации {dept.name}: {e}',
                     level=messages.ERROR,
                 )
-        
+
         for w in warnings[:10]:
             self.message_user(request, w, level=messages.WARNING)
         if len(warnings) > 10:
@@ -1266,40 +1302,39 @@ class DepartmentAdmin(admin.ModelAdmin):
             self.message_user(
                 request, f'Ошибок: {error_count}', level=messages.WARNING,
             )
-    
+
     @admin.action(description='🔄 Синхронизировать Django → LDAP (Django как источник истины)')
     def sync_from_django_to_ldap(self, request, queryset):
         """Синхронизирует выбранные отделы из Django Department в LDAP OU."""
         from employees.ldap.orm_models import LdapOrganizationalUnit
         from employees.ldap.infrastructure.connections import _ldap
         from django.conf import settings
-        
+
         success_count = 0
         error_count = 0
         created_count = 0
         warnings = []
-        
+
         for dept in queryset:
             if not dept.name or not dept.name.strip():
                 warnings.append(f'⚠️ Department #{dept.pk}: пустое название')
                 error_count += 1
                 continue
-            
+
             # Ищем соответствующую OU
             sync_state = LdapSyncState.objects.filter(
                 model='department',
                 object_pk=str(dept.pk),
             ).first()
-            
+
             ldap_ou = None
-            created_new = False
-            
+
             if sync_state and sync_state.ldap_dn:
                 try:
                     ldap_ou = LdapOrganizationalUnit.objects.get(dn=sync_state.ldap_dn)
                 except LdapOrganizationalUnit.DoesNotExist:
                     pass
-            
+
             if not ldap_ou:
                 # Пытаемся найти по имени
                 try:
@@ -1310,30 +1345,31 @@ class DepartmentAdmin(admin.ModelAdmin):
                         with _ldap() as conn:
                             base = getattr(settings, 'LDAP_DEPARTMENTS_BASE', '')
                             if not base:
-                                raise RuntimeError('LDAP_DEPARTMENTS_BASE not configured')
-                            
+                                raise RuntimeError(
+                                    'LDAP_DEPARTMENTS_BASE not configured')
+
                             ou_dn = f"OU={dept.name},{base}"
-                            
+
                             # Проверяем существование
                             from ldap3 import BASE
                             ok = conn.search(
-                                ou_dn, '(objectClass=organizationalUnit)', search_scope=BASE
-                            )
-                            
+                                ou_dn, '(objectClass=organizationalUnit)', search_scope=BASE)
+
                             if not ok or not conn.entries:
                                 # Создаём OU
                                 ok = conn.add(ou_dn, ['top', 'organizationalUnit'])
                                 if not ok:
-                                    raise RuntimeError(f'LDAP add OU failed: {conn.result}')
-                                created_new = True
+                                    raise RuntimeError(
+                                        f'LDAP add OU failed: {conn.result}')
                                 created_count += 1
-                        
+
                         # Получаем созданную OU через ORM
                         try:
                             ldap_ou = LdapOrganizationalUnit.objects.get(dn=ou_dn)
                         except LdapOrganizationalUnit.DoesNotExist:
-                            raise RuntimeError(f'OU был создан, но не найден по DN: {ou_dn}')
-                            
+                            raise RuntimeError(
+                                f'OU был создан, но не найден по DN: {ou_dn}')
+
                     except Exception as e:
                         error_count += 1
                         self.message_user(
@@ -1347,11 +1383,11 @@ class DepartmentAdmin(admin.ModelAdmin):
                         f'⚠️ {dept.name}: найдено несколько OU с таким именем'
                     )
                     continue
-            
+
             try:
                 # Обновляем LDAP OU из Django Department
                 ldap_ou.description = dept.description or ''
-                
+
                 # Обновляем managedBy
                 if dept.head:
                     head_sync = LdapSyncState.objects.filter(
@@ -1366,9 +1402,9 @@ class DepartmentAdmin(admin.ModelAdmin):
                         )
                 else:
                     ldap_ou.managed_by = ''
-                
+
                 ldap_ou.save()
-                
+
                 # Создаём/обновляем группу отдела DEP_*
                 # и синхронизируем участников
                 try:
@@ -1417,7 +1453,7 @@ class DepartmentAdmin(admin.ModelAdmin):
                     request, f'Ошибка синхронизации {dept.name}: {e}',
                     level=messages.ERROR,
                 )
-        
+
         for w in warnings[:10]:
             self.message_user(request, w, level=messages.WARNING)
         if len(warnings) > 10:
@@ -1441,38 +1477,38 @@ class DepartmentAdmin(admin.ModelAdmin):
             self.message_user(
                 request, f'Ошибок: {error_count}', level=messages.WARNING,
             )
-    
+
     @admin.action(description='🔍 Показать различия Django ↔ LDAP')
     def show_sync_diff(self, request, queryset):
         """Показывает различия между Django Department и LDAP OU."""
         from employees.ldap.orm_models import LdapOrganizationalUnit
         from employees.ldap.utils.ldap_utils import get_ldap_str
-        
+
         diffs = []
-        
+
         for dept in queryset:
             # Ищем OU
             sync_state = LdapSyncState.objects.filter(
                 model='department',
                 object_pk=str(dept.pk),
             ).first()
-            
+
             ldap_ou = None
             if sync_state and sync_state.ldap_dn:
                 try:
                     ldap_ou = LdapOrganizationalUnit.objects.get(dn=sync_state.ldap_dn)
                 except LdapOrganizationalUnit.DoesNotExist:
                     pass
-            
+
             if not ldap_ou:
                 try:
                     ldap_ou = LdapOrganizationalUnit.objects.get(ou=dept.name)
                 except (LdapOrganizationalUnit.DoesNotExist, LdapOrganizationalUnit.MultipleObjectsReturned):
                     diffs.append(f'{dept.name}: не найдена соответствующая OU в LDAP')
                     continue
-            
+
             dept_diffs = []
-            
+
             # Сравниваем описание
             ldap_desc = get_ldap_str(ldap_ou.description) or ''
             django_desc = dept.description or ''
@@ -1480,7 +1516,7 @@ class DepartmentAdmin(admin.ModelAdmin):
                 dept_diffs.append(
                     f"Описание: LDAP='{ldap_desc[:50]}' vs Django='{django_desc[:50]}'"
                 )
-            
+
             # Сравниваем руководителя
             mb = get_ldap_str(ldap_ou.managed_by)
             if dept.head:
@@ -1495,10 +1531,10 @@ class DepartmentAdmin(admin.ModelAdmin):
                     )
             elif mb:
                 dept_diffs.append(f"Руководитель: LDAP='{mb}' vs Django='не назначен'")
-            
+
             if dept_diffs:
                 diffs.append(f'{dept.name}: ' + ', '.join(dept_diffs))
-        
+
         if diffs:
             self.message_user(
                 request,
@@ -1520,7 +1556,7 @@ class DepartmentRoleAdmin(admin.ModelAdmin):
     search_fields = ("name", "department__name", "ldap_group_dn")
     autocomplete_fields = ("department",)
     filter_horizontal = ("scoped_permissions",)
-    
+
     fieldsets = (
         (None, {"fields": ("department", "name")}),
         ("Права", {"fields": ("scoped_permissions",)}),
@@ -1530,9 +1566,16 @@ class DepartmentRoleAdmin(admin.ModelAdmin):
         }),
     )
 
+
 @admin.register(EmployeeDepartment)
 class EmployeeDepartmentAdmin(admin.ModelAdmin):
-    list_display = ("employee", "department", "role", "is_active", "date_from", "date_to")
+    list_display = (
+        "employee",
+        "department",
+        "role",
+        "is_active",
+        "date_from",
+        "date_to")
     list_filter = ("is_active", "department", "role")
     search_fields = ("employee__first_name", "employee__last_name", "department__name")
     autocomplete_fields = ("employee", "department", "role")
@@ -1556,7 +1599,7 @@ class PermissionAdmin(admin.ModelAdmin):
 @admin.register(LdapSyncState)
 class LdapSyncStateAdmin(admin.ModelAdmin):
     """Админка для просмотра состояния синхронизации LDAP."""
-    
+
     list_display = (
         "model",
         "object_pk",
@@ -1568,7 +1611,7 @@ class LdapSyncStateAdmin(admin.ModelAdmin):
     list_filter = ("model", "last_sync_dir")
     search_fields = ("object_pk", "ldap_dn", "ldap_guid")
     readonly_fields = ("updated_at",)
-    
+
     fields = (
         "model",
         "object_pk",
@@ -1580,18 +1623,18 @@ class LdapSyncStateAdmin(admin.ModelAdmin):
         "data_hash",
         "updated_at",
     )
-    
+
     def ldap_dn_short(self, obj):
         """Показываем сокращенную версию DN для удобства."""
         if obj.ldap_dn:
             return obj.ldap_dn[:50] + "..." if len(obj.ldap_dn) > 50 else obj.ldap_dn
         return "-"
     ldap_dn_short.short_description = "LDAP DN"
-    
+
     def has_add_permission(self, request):
         """Разрешаем создание записей для отсутствующих пользователей."""
         return True
-    
+
     def has_delete_permission(self, request, obj=None):
         """Разрешаем удаление для очистки."""
         return True

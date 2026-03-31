@@ -372,10 +372,10 @@ class BudgetAdmin(admin.ModelAdmin):
         """Создать бюджеты на следующий квартал для всех отделов."""
         from django.utils import timezone
         from employees.models import Department
-        
+
         now = timezone.now()
         current_quarter = (now.month - 1) // 3 + 1
-        
+
         # Определяем следующий квартал
         if current_quarter == 4:
             next_quarter = 1
@@ -383,12 +383,12 @@ class BudgetAdmin(admin.ModelAdmin):
         else:
             next_quarter = current_quarter + 1
             next_year = now.year
-        
+
         # Получаем все активные отделы
         departments = Department.objects.all()
         created_count = 0
         skipped_count = 0
-        
+
         for dept in departments:
             # Проверяем существует ли уже бюджет
             exists = Budget.objects.filter(
@@ -396,11 +396,11 @@ class BudgetAdmin(admin.ModelAdmin):
                 year=next_year,
                 quarter=next_quarter
             ).exists()
-            
+
             if exists:
                 skipped_count += 1
                 continue
-            
+
             # Пытаемся скопировать бюджет из текущего квартала
             try:
                 current_budget = Budget.objects.get(
@@ -412,7 +412,7 @@ class BudgetAdmin(admin.ModelAdmin):
             except Budget.DoesNotExist:
                 # Если нет текущего бюджета - ставим 0
                 allocated = Decimal('0.00')
-            
+
             Budget.objects.create(
                 department=dept,
                 year=next_year,
@@ -421,14 +421,14 @@ class BudgetAdmin(admin.ModelAdmin):
                 spent_amount=Decimal('0.00')
             )
             created_count += 1
-        
+
         self.message_user(
             request,
             f"Создано {created_count} бюджетов на "
             f"{next_year} Q{next_quarter}. "
             f"Пропущено (уже существуют): {skipped_count}."
         )
-    
+
     create_next_quarter_budgets.short_description = (
         "🔄 Создать бюджеты на следующий квартал для всех отделов"
     )
@@ -436,10 +436,10 @@ class BudgetAdmin(admin.ModelAdmin):
     def copy_selected_budgets(self, request, queryset):
         """Копировать выбранные бюджеты в следующий квартал."""
         from django.utils import timezone
-        
+
         now = timezone.now()
         current_quarter = (now.month - 1) // 3 + 1
-        
+
         # Определяем следующий квартал
         if current_quarter == 4:
             next_quarter = 1
@@ -447,10 +447,10 @@ class BudgetAdmin(admin.ModelAdmin):
         else:
             next_quarter = current_quarter + 1
             next_year = now.year
-        
+
         created_count = 0
         skipped_count = 0
-        
+
         for budget in queryset:
             # Проверяем существует ли уже бюджет
             exists = Budget.objects.filter(
@@ -458,11 +458,11 @@ class BudgetAdmin(admin.ModelAdmin):
                 year=next_year,
                 quarter=next_quarter
             ).exists()
-            
+
             if exists:
                 skipped_count += 1
                 continue
-            
+
             Budget.objects.create(
                 department=budget.department,
                 year=next_year,
@@ -471,14 +471,14 @@ class BudgetAdmin(admin.ModelAdmin):
                 spent_amount=Decimal('0.00')
             )
             created_count += 1
-        
+
         self.message_user(
             request,
             f"Скопировано {created_count} бюджетов в "
             f"{next_year} Q{next_quarter}. "
             f"Пропущено (уже существуют): {skipped_count}."
         )
-    
+
     copy_selected_budgets.short_description = (
         "📋 Скопировать выбранные бюджеты в следующий квартал"
     )
@@ -556,4 +556,3 @@ class SupplierAdmin(admin.ModelAdmin):
             },
         ),
     )
-

@@ -6,7 +6,7 @@ from drf_spectacular.utils import extend_schema_field
 from django.contrib.auth import get_user_model
 from django.db import models
 from employees.models import Department
-from requests_app.enums import RequestStatus, RequestType
+from requests_app.enums import RequestStatus
 from requests_app.models import Request
 from rest_framework import serializers
 
@@ -179,10 +179,12 @@ class RequestWriteSerializer(serializers.ModelSerializer):
     они будут проигнорированы. Админы/обладатели прав могут их указывать.
 
     Поле `employee` умышленно НЕ делаем read_only, чтобы админ мог его задать.
-    Для обычных пользователей оно подставится автоматически в `create()`/`perform_create()`.
+    Для обычных пользователей оно подставится автоматически в
+    `create()`/`perform_create()`.
 
     Raises:
-        serializers.ValidationError: При некорректных данных (кроме запрещённых полей у обычных пользователей — они вычищаются).
+        serializers.ValidationError: При некорректных данных.
+        Запрещённые поля у обычных пользователей просто вычищаются.
     """
 
     # Важно: снять обязательность, чтобы отсутствие полей не роняло валидацию
@@ -381,8 +383,7 @@ class RequestWriteSerializer(serializers.ModelSerializer):
 
         # Отладка: проверяем что передается
         print(
-            f"📝 [SERIALIZER] create: recipient_ids={recipient_ids}, cc_user_ids={cc_user_ids}"
-        )
+            f"📝 [SERIALIZER] create: recipient_ids={recipient_ids}, cc_user_ids={cc_user_ids}")
 
         if not self._is_power():
             # обычный пользователь: запрещённые поля убираем/переписываем
@@ -401,8 +402,8 @@ class RequestWriteSerializer(serializers.ModelSerializer):
         # Создаем заявку
         request_obj = super().create(validated_data)
         print(
-            f"✅ [SERIALIZER] Заявление #{request_obj.id} создано, устанавливаем recipients..."
-        )
+            f"✅ [SERIALIZER] Заявление #{
+                request_obj.id} создано, устанавливаем recipients...")
 
         # Устанавливаем связи ManyToMany
         if departments:

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 
 from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import ValidationError
 
-from requests_app.enums import RequestType  # VACATION/SICK_LEAVE/TRANSFER/DISMISSAL/OTHER
+# VACATION/SICK_LEAVE/TRANSFER/DISMISSAL/OTHER
+from requests_app.enums import RequestType
 
 
 class RequestDatesByTypeValidator:
@@ -44,7 +45,8 @@ class RequestDatesByTypeValidator:
                      "date_to": _("Требуются обе даты.")}
                 )
             if date_from and date_to and date_to < date_from:
-                raise ValidationError({"date_to": _("Дата окончания раньше даты начала.")})
+                raise ValidationError(
+                    {"date_to": _("Дата окончания раньше даты начала.")})
 
         elif type_ in (RequestType.TRANSFER, RequestType.DISMISSAL):
             if touches_dates and not date_from:
@@ -68,8 +70,10 @@ class RequestApproverNotEmployeeValidator:
                 return attrs[name]
             return getattr(instance, name, None) if instance is not None else None
 
-        employee = eff("employee") or getattr(serializer.context.get("request"), "user", None)
+        employee = eff("employee") or getattr(
+            serializer.context.get("request"), "user", None)
         approver = eff("approver")
 
         if employee and approver and employee == approver:
-            raise ValidationError({"approver": _("Согласующий не может совпадать с автором.")})
+            raise ValidationError(
+                {"approver": _("Согласующий не может совпадать с автором.")})

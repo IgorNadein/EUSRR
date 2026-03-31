@@ -9,7 +9,7 @@ def add_document_related_notification_type(apps, schema_editor):
     """
     NotificationCategory = apps.get_model('notifications', 'NotificationCategory')
     NotificationType = apps.get_model('notifications', 'NotificationType')
-    
+
     # Получаем категорию "Документы"
     try:
         documents_category = NotificationCategory.objects.get(code='documents')
@@ -24,7 +24,7 @@ def add_document_related_notification_type(apps, schema_editor):
             is_active=True,
             order=2
         )
-    
+
     # Создаём новый тип уведомления (если его ещё нет)
     NotificationType.objects.get_or_create(
         code='document_related',
@@ -45,7 +45,7 @@ def add_document_related_notification_type(apps, schema_editor):
             'is_active': True,
         }
     )
-    
+
     # Также добавим тип для ответов на комментарии (если нужен отдельный)
     NotificationType.objects.get_or_create(
         code='document_comment_reply',
@@ -73,7 +73,7 @@ def remove_document_related_notification_type(apps, schema_editor):
     Откат: удаляет добавленный тип уведомления.
     """
     NotificationType = apps.get_model('notifications', 'NotificationType')
-    
+
     NotificationType.objects.filter(
         code__in=['document_related', 'document_comment_reply']
     ).delete()

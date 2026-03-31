@@ -40,19 +40,17 @@ class EmployeesConfig(AppConfig):
     name = 'employees'
 
     def ready(self):
-        import employees.signals  # Все сигналы (common, birthday, ldap)
-        import employees.rules    # django-rules: регистрация предикатов и правил доступа
 
         if getattr(settings, 'LDAP_WRITE_ENABLED', False):
             _ensure_ldapdb_timezone_compat()
             self._patch_ldapdb_compiler()
-    
+
     def _patch_ldapdb_compiler(self):
         """Патчит django-ldapdb для поддержки Value выражений.
-        
+
         Проблема: ldapdb компилятор в results_iter вызывает e[0].field.attname,
         но у полей из Value() выражений (например, от .exists()) нет attname.
-        
+
         Решение: Патчим results_iter, заменяя прямые обращения к .attname
         на безопасный getattr(..., 'attname', None).
         """
@@ -60,9 +58,9 @@ class EmployeesConfig(AppConfig):
             from ldapdb.backends.ldap.compiler import SQLCompiler
             from django.db.models import aggregates
             from ldapdb.models.fields import ListField
-            
+
             original_results_iter = SQLCompiler.results_iter
-            
+
             def safe_results_iter(self, results=None, tuple_expected=False,
                                   chunked_fetch=False, chunk_size=None):
                 """Обёртка над оригинальным results_iter с безопасным attname."""
@@ -82,28 +80,29 @@ class EmployeesConfig(AppConfig):
                         raise
                     # Fallback: повторяем логику оригинала с безопасным getattr
                     yield from self._safe_results_iter_fallback()
-            
+
             def _safe_results_iter_fallback(self):
                 """Fallback-итератор с безопасными проверками attname."""
                 import ldap as ldap_lib
-                
+
                 lookup = None
                 try:
                     from ldapdb.backends.ldap.compiler import query_as_ldap
-                    lookup = query_as_ldap(self.query, compiler=self, connection=self.connection)
+                    lookup = query_as_ldap(
+                        self.query, compiler=self, connection=self.connection)
                 except Exception:
                     return
-                
+
                 if lookup is None:
                     return
-                
+
                 if len(self.query.select):
                     fields = [x.field for x in self.query.select]
                 else:
                     fields = self.query.model._meta.fields
-                
+
                 attrlist = [x.db_column for x in fields if x.db_column]
-                
+
                 try:
                     vals = self.connection.search_s(
                         base=lookup.base,
@@ -113,15 +112,15 @@ class EmployeesConfig(AppConfig):
                     )
                 except ldap_lib.NO_SUCH_OBJECT:
                     return
-                
+
                 # Слайсинг
                 pos = 0
                 for dn, attrs in vals:
-                    if (self.query.low_mark and pos < self.query.low_mark) or \
-                       (self.query.high_mark is not None and pos >= self.query.high_mark):
+                    if (self.query.low_mark and pos < self.query.low_mark) or (
+                            self.query.high_mark is not None and pos >= self.query.high_mark):
                         pos += 1
                         continue
-                    
+
                     row = []
                     self.setup_query()
                     for e in self.select:
@@ -150,10 +149,10 @@ class EmployeesConfig(AppConfig):
                                 row.append(None)
                     yield row
                     pos += 1
-            
+
             SQLCompiler.results_iter = safe_results_iter
             SQLCompiler._safe_results_iter_fallback = _safe_results_iter_fallback
-            
+
         except ImportError:
             # ldapdb не установлен - это нормально для тестов без LDAP
             pass

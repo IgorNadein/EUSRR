@@ -32,7 +32,7 @@ class Command(BaseCommand):
                     'is_active': True
                 }
             )
-            
+
             if created:
                 created_count += 1
                 self.stdout.write(

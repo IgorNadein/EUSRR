@@ -119,8 +119,6 @@ class Command(BaseCommand):
 
                 # Создаём новую OU
                 self.stdout.write("Создание OU=Dismissed...")
-                from ldap3 import MODIFY_REPLACE
-
                 ok = conn.add(
                     dismissed_base,
                     ["top", "organizationalUnit"],

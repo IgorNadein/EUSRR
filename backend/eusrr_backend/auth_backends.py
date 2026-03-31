@@ -51,7 +51,7 @@ class EmailOrPhoneBackend(ModelBackend):
             "EmailOrPhoneBackend.authenticate: login=%s, password_provided=%s",
             bool(login), bool(password)
         )
-        
+
         if not login or not password:
             logger.debug("EmailOrPhoneBackend: missing credentials")
             return None
@@ -61,7 +61,10 @@ class EmailOrPhoneBackend(ModelBackend):
         # 1) Email
         if _looks_like_email(login):
             user = Employee.objects.filter(email__iexact=login).first()
-            logger.debug("EmailOrPhoneBackend: email lookup=%s, found=%s", login, bool(user))
+            logger.debug(
+                "EmailOrPhoneBackend: email lookup=%s, found=%s",
+                login,
+                bool(user))
         else:
             # 2) Phone
             if PHONE_FIELD:
@@ -69,7 +72,8 @@ class EmailOrPhoneBackend(ModelBackend):
                 # сначала пробуем нормализованный E.164
                 if normalized:
                     user = Employee.objects.filter(**{PHONE_FIELD: normalized}).first()
-                # если не нашли — пробуем как ввёл пользователь (на случай старых данных)
+                # если не нашли — пробуем как ввёл пользователь (на случай старых
+                # данных)
                 if not user:
                     raw = str(login).strip()
                     user = Employee.objects.filter(**{PHONE_FIELD: raw}).first()
@@ -81,8 +85,10 @@ class EmailOrPhoneBackend(ModelBackend):
 
         logger.debug(
             "EmailOrPhoneBackend: found user id=%s email=%s is_active=%s has_usable_password=%s",
-            user.id, user.email, user.is_active, user.has_usable_password()
-        )
+            user.id,
+            user.email,
+            user.is_active,
+            user.has_usable_password())
 
         # допускаем логин только активных (email подтверждён → is_active=True)
         if not user.is_active:
@@ -91,11 +97,11 @@ class EmailOrPhoneBackend(ModelBackend):
 
         password_valid = user.check_password(password)
         logger.debug("EmailOrPhoneBackend: password_valid=%s", password_valid)
-        
+
         if password_valid:
             logger.info("EmailOrPhoneBackend: AUTH SUCCESS for %s", user.email)
             return user
-        
+
         logger.warning(
             "EmailOrPhoneBackend: password check FAILED for user=%s (id=%s). "
             "Password hash starts with: %s...",
@@ -156,7 +162,10 @@ class LDAP3Backend(ModelBackend):
             "LDAP3Backend.authenticate called: identifier_provided=%s, password_provided=%s, LDAP_ENABLED=%s",
             bool(identifier),
             bool(password),
-            getattr(settings, "LDAP_ENABLED", False),
+            getattr(
+                settings,
+                "LDAP_ENABLED",
+                False),
         )
 
         if (
@@ -498,13 +507,13 @@ class SuperuserOnlyBackend(ModelBackend):
             "SuperuserOnlyBackend.authenticate: username=%s, password_provided=%s",
             bool(username), bool(password)
         )
-        
+
         user = super().authenticate(
             request, username=username, password=password, **kwargs
         )
-        
+
         logger.debug("SuperuserOnlyBackend: parent auth returned user=%s", bool(user))
-        
+
         if user:
             is_super = getattr(user, "is_superuser", False)
             logger.debug(
@@ -512,11 +521,13 @@ class SuperuserOnlyBackend(ModelBackend):
                 getattr(user, "email", "?"), is_super
             )
             if is_super:
-                logger.info("SuperuserOnlyBackend: AUTH SUCCESS for superuser %s", user.email)
+                logger.info(
+                    "SuperuserOnlyBackend: AUTH SUCCESS for superuser %s",
+                    user.email)
                 return user
             else:
                 logger.debug("SuperuserOnlyBackend: user is not superuser, rejecting")
-        
+
         return None
 
 
@@ -527,7 +538,7 @@ class PositionRoleBackend(ModelBackend):
 
     def get_all_permissions(self, user_obj, obj=None):
         perms = super().get_all_permissions(user_obj, obj)
-        
+
         # Проверяем, что пользователь authenticated и active
         if not getattr(user_obj, "is_authenticated", False) or obj is not None:
             return perms
@@ -545,7 +556,8 @@ class PositionRoleBackend(ModelBackend):
             perms |= {f"{p.content_type.app_label}.{p.codename}" for p in pos_perms}
 
         # 2) ⚠️ НЕ добавляем сюда пермишены из DepartmentRole.
-        # Они должны проверяться только на уровне конкретного Department в has_perm(..., obj=dept)
+        # Они должны проверяться только на уровне конкретного Department в
+        # has_perm(..., obj=dept)
 
         return perms
 

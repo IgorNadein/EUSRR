@@ -1,5 +1,5 @@
 # Generated manually - Remove deprecated fields from ChatReadState
-from django.db import migrations, models
+from django.db import migrations
 
 
 class Migration(migrations.Migration):
@@ -14,7 +14,7 @@ class Migration(migrations.Migration):
             model_name='chatreadstate',
             name='communicati_chat_id_edefdb_idx',
         ),
-        
+
         # Удаляем устаревшие поля
         migrations.RemoveField(
             model_name='chatreadstate',

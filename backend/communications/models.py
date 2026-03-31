@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, models
+from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 
@@ -14,7 +14,7 @@ User = get_user_model()
 class ChatReadState(models.Model):
     """
     Состояние прочтения чата пользователем.
-    
+
     Использует Telegram-style подход: последнее прочитанное сообщение
     отмечается автоматически при загрузке сообщений через GET запросы.
     """
@@ -27,7 +27,7 @@ class ChatReadState(models.Model):
         related_name="chat_read_states",
     )
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     # Последнее прочитанное сообщение (единственный источник истины)
     last_read_message = models.ForeignKey(
         'Message',
@@ -38,14 +38,14 @@ class ChatReadState(models.Model):
         verbose_name="Последнее прочитанное сообщение",
         help_text="Обновляется автоматически при загрузке сообщений (Telegram-style)"
     )
-    
+
     # Денормализованный счетчик непрочитанных (оптимизация)
     unread_count = models.IntegerField(
         default=0,
         verbose_name="Непрочитанных сообщений",
         help_text="Кешированное значение для производительности. Обновляется при новых сообщениях и прочтении."
     )
-    
+
     # Статус набора текста
     is_typing = models.BooleanField(
         default=False,
@@ -67,8 +67,10 @@ class ChatReadState(models.Model):
         indexes = [
             models.Index(fields=["chat", "user"]),
             models.Index(fields=["chat", "user", "is_typing"]),
-            models.Index(fields=["last_read_message"]),  # Для быстрого поиска по message
-            models.Index(fields=["user", "unread_count"]),  # Для быстрых запросов непрочитанных
+            # Для быстрого поиска по message
+            models.Index(fields=["last_read_message"]),
+            # Для быстрых запросов непрочитанных
+            models.Index(fields=["user", "unread_count"]),
         ]
 
     def __str__(self):
@@ -95,9 +97,12 @@ class Chat(models.Model):
         choices=CHAT_TYPE_CHOICES,
         verbose_name="Тип чата",
         db_index=True,
-        help_text="Chat type: private, group, channel, announcement, global, comments. Use 'group' + context_object for domain-specific chats."
+        help_text=(
+            "Chat type: private, group, channel, announcement, global, comments. "
+            "Use 'group' + context_object for domain-specific chats."
+        )
     )
-    
+
     # Новые базовые поля
     name = models.CharField(
         max_length=255,
@@ -123,21 +128,21 @@ class Chat(models.Model):
         related_name='created_chats',
         verbose_name="Создатель"
     )
-    
+
     # Для гибкой настройки участников
     include_all_users = models.BooleanField(
         default=False,
         verbose_name="Включить всех пользователей",
         help_text="Для анонсов и общих чатов"
     )
-    
+
     participants = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         blank=True,
         related_name="chats",
         verbose_name="Участники",
     )
-    
+
     # ===== Universal context (GenericForeignKey) =====
     # Позволяет привязать чат к ЛЮБОЙ модели (Project, Team, Event, Document, etc.)
     context_content_type = models.ForeignKey(
@@ -157,10 +162,10 @@ class Chat(models.Model):
         'context_content_type',
         'context_object_id'
     )
-    
+
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
     is_main = models.BooleanField(default=False, verbose_name="Основной чат")
-    
+
     # ===== NEW: Flexible flags & metadata =====
     flags = models.JSONField(
         default=dict,
@@ -174,7 +179,7 @@ class Chat(models.Model):
         verbose_name="Extra data",
         help_text="Additional chat metadata (extensible)"
     )
-    
+
     # Новые поля для announcement и channel
     is_blocked = models.BooleanField(
         default=False,
@@ -221,7 +226,11 @@ class Chat(models.Model):
             models.Index(fields=["type", "is_main"]),
             models.Index(fields=["created_at"]),
             # Index for GenericForeignKey
-            models.Index(fields=["context_content_type", "context_object_id"], name="chat_context_idx"),
+            models.Index(
+                fields=[
+                    "context_content_type",
+                    "context_object_id"],
+                name="chat_context_idx"),
         ]
 
     def clean(self):
@@ -244,14 +253,14 @@ class Chat(models.Model):
     def mark_read(self, user):
         """
         [DEPRECATED] Помечает чат прочитанным до последнего сообщения.
-        
+
         ВНИМАНИЕ: Этот метод устарел. Используйте автоматическую отметку
         через ChatViewSet._auto_mark_read() при загрузке сообщений.
         """
         last_message = self.messages.order_by("-created_at").first()
         if not last_message:
             return
-        
+
         # Обновляем, только если новое сообщение НОВЕЕ текущего
         read_state, created = ChatReadState.objects.get_or_create(
             chat=self,
@@ -261,20 +270,24 @@ class Chat(models.Model):
                 'unread_count': 0
             }
         )
-        
+
         if not created:
             if read_state.last_read_message_id:
                 if last_message.id <= read_state.last_read_message_id:
                     return  # Не откатываем назад
-            
+
             read_state.last_read_message = last_message
             read_state.unread_count = 0
-            read_state.save(update_fields=['last_read_message', 'unread_count', 'updated_at'])
+            read_state.save(
+                update_fields=[
+                    'last_read_message',
+                    'unread_count',
+                    'updated_at'])
 
     def unread_count_for(self, user):
         """
         Количество непрочитанных сообщений (кроме своих).
-        
+
         ОПТИМИЗИРОВАНО: Использует денормализованное поле unread_count из ChatReadState
         вместо подсчета в реальном времени.
         """
@@ -288,12 +301,12 @@ class Chat(models.Model):
     def get_participants(self):
         """
         Возвращает QuerySet участников чата.
-        
+
         MIGRATION: Переписано для использования только ChatMembership
-        
+
         Использует callback из settings.COMMUNICATIONS_PARTICIPANT_RESOLVER
         для проектно-специфичной логики.
-        
+
         Fallback логика:
         - private/group/channel/announcement: только активные ChatMembership
         - global: все активные пользователи
@@ -302,9 +315,9 @@ class Chat(models.Model):
         # Попытка использовать callback из settings
         from django.conf import settings
         from django.utils.module_loading import import_string
-        
+
         resolver_path = getattr(settings, 'COMMUNICATIONS_PARTICIPANT_RESOLVER', None)
-        
+
         if resolver_path:
             try:
                 resolver_func = import_string(resolver_path)
@@ -315,31 +328,34 @@ class Chat(models.Model):
                 # Логируем ошибку, но не падаем
                 import logging
                 logger = logging.getLogger(__name__)
-                logger.warning(f"Failed to import participant resolver '{resolver_path}': {e}")
-        
+                logger.warning(
+                    f"Failed to import participant resolver '{resolver_path}': {e}")
+
         # Fallback логика (универсальная, без бизнес-специфики)
         if self.type == "global" or self.include_all_users:
             return User.objects.filter(is_active=True)
-        
+
         # Для всех остальных типов - используем только активные memberships
         from communications.models import ChatMembership
-        
+
         membership_user_ids = ChatMembership.objects.filter(
             chat=self,
             is_active=True
         ).values_list("user_id", flat=True)
-        
+
         return User.objects.filter(id__in=membership_user_ids).distinct()
 
     def __str__(self):
         if self.type == "private":
             # MIGRATION: используем memberships вместо participants
             members = ChatMembership.objects.filter(
-                chat=self, 
+                chat=self,
                 is_active=True
             ).select_related('user')[:3]
-            names = ", ".join(f"{m.user.last_name} {m.user.first_name}".strip() for m in members) or "—"
-            total_count = ChatMembership.objects.filter(chat=self, is_active=True).count()
+            names = ", ".join(f"{m.user.last_name} {m.user.first_name}".strip()
+                              for m in members) or "—"
+            total_count = ChatMembership.objects.filter(
+                chat=self, is_active=True).count()
             more = total_count - len(members)
             if more > 0:
                 names += f" и ещё {more}"
@@ -377,7 +393,7 @@ class ChatUserSettings(models.Model):
         on_delete=models.CASCADE,
         related_name='chat_settings'
     )
-    
+
     # Закрепление
     is_pinned = models.BooleanField(default=False, verbose_name="Закреплен")
     pinned_at = models.DateTimeField(
@@ -386,23 +402,23 @@ class ChatUserSettings(models.Model):
         verbose_name="Время закрепления"
     )
     pin_order = models.IntegerField(default=0, verbose_name="Порядок")
-    
+
     # Уведомления
     notifications_enabled = models.BooleanField(
         default=True,
         verbose_name="Уведомления"
     )
-    
+
     # Кастомное название
     custom_name = models.CharField(
         max_length=255,
         blank=True,
         verbose_name="Свое название"
     )
-    
+
     # Скрыть чат
     is_hidden = models.BooleanField(default=False, verbose_name="Скрыт")
-    
+
     class Meta:
         verbose_name = "Настройки чата"
         verbose_name_plural = "Настройки чатов"
@@ -412,7 +428,7 @@ class ChatUserSettings(models.Model):
             models.Index(fields=['user', 'is_pinned']),
             models.Index(fields=['chat', 'user']),
         ]
-    
+
     def __str__(self):
         return f"{self.user} → {self.chat}"
 
@@ -435,9 +451,9 @@ class Message(models.Model):
         verbose_name="Время отправки",
         db_index=True
     )
-    
+
     # НОВЫЕ ПОЛЯ
-    
+
     # Ответ на сообщение (упрощенная связь)
     reply_to = models.ForeignKey(
         'self',
@@ -447,11 +463,11 @@ class Message(models.Model):
         related_name='direct_replies',
         help_text="Простая связь для быстрого доступа"
     )
-    
+
     # Редактирование
     is_edited = models.BooleanField(default=False)
     edited_at = models.DateTimeField(null=True, blank=True)
-    
+
     # Удаление
     is_deleted = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(null=True, blank=True)
@@ -463,10 +479,10 @@ class Message(models.Model):
         related_name='+',
         help_text="Кто удалил (может отличаться от автора)"
     )
-    
+
     # Вложения
     has_attachments = models.BooleanField(default=False)
-    
+
     # Системные сообщения
     is_system = models.BooleanField(default=False)
     system_type = models.CharField(max_length=50, blank=True)
@@ -475,7 +491,7 @@ class Message(models.Model):
         blank=True,
         help_text="Дополнительные данные для системных сообщений"
     )
-    
+
     # Важные/закрепленные
     is_pinned = models.BooleanField(default=False)
     pinned_by = models.ForeignKey(
@@ -486,14 +502,14 @@ class Message(models.Model):
         related_name='+'
     )
     pinned_at = models.DateTimeField(null=True, blank=True)
-    
+
     # Флаги для специальных типов сообщений
     is_forwarded = models.BooleanField(default=False)
     is_cross_chat = models.BooleanField(
         default=False,
         help_text="Сообщение отправлено не участником чата"
     )
-    
+
     # Треды
     thread_root = models.ForeignKey(
         'self',
@@ -530,7 +546,7 @@ class Message(models.Model):
         """
         # Используем related_name='reactions' из MessageReaction
         reactions_qs = self.reactions.select_related('user')
-        
+
         summary = {}
         for reaction in reactions_qs:
             emoji = reaction.emoji
@@ -545,20 +561,20 @@ class Message(models.Model):
             summary[emoji]['user_names'].append(
                 reaction.user.get_full_name() or reaction.user.username
             )
-        
+
         return summary
 
 
 class MessageAttachment(models.Model):
     """Вложения в сообщениях"""
-    
+
     FILE_TYPE_CHOICES = [
         ('image', 'Изображение'),
         ('video', 'Видео'),
         ('audio', 'Аудио'),
         ('file', 'Файл'),
     ]
-    
+
     message = models.ForeignKey(
         Message,
         on_delete=models.CASCADE,
@@ -600,7 +616,7 @@ class MessageAttachment(models.Model):
         verbose_name="Миниатюра",
         help_text="Для изображений и видео"
     )
-    
+
     # Размеры для изображений и видео
     width = models.IntegerField(
         null=True,
@@ -614,7 +630,7 @@ class MessageAttachment(models.Model):
         verbose_name="Высота",
         help_text="Высота изображения или видео в пикселях"
     )
-    
+
     class Meta:
         verbose_name = "Вложение"
         verbose_name_plural = "Вложения"
@@ -623,48 +639,48 @@ class MessageAttachment(models.Model):
             models.Index(fields=['message', 'file_type']),
             models.Index(fields=['uploaded_at']),
         ]
-    
+
     def __str__(self):
         return f"{self.file_name} ({self.get_file_type_display()})"
-    
+
     def save(self, *args, **kwargs):
         """
         Автоматически извлекает размеры изображения при сохранении.
         Telegram-подход: размеры всегда известны до рендеринга.
         """
         # Если это изображение и размеры еще не установлены
-        if self.file_type == 'image' and self.file and (not self.width or not self.height):
+        if self.file_type == 'image' and self.file and (
+                not self.width or not self.height):
             try:
                 from PIL import Image
-                from io import BytesIO
-                
+
                 # Открываем файл
                 file_obj = self.file.file if hasattr(self.file, 'file') else self.file
-                
+
                 # Сохраняем позицию курсора
                 if hasattr(file_obj, 'seek'):
                     file_obj.seek(0)
-                
+
                 # Открываем изображение
                 image = Image.open(file_obj)
                 self.width, self.height = image.size
-                
+
                 # Возвращаем курсор в начало
                 if hasattr(file_obj, 'seek'):
                     file_obj.seek(0)
-                    
+
             except Exception as e:
                 # Если не удалось извлечь размеры - не критично
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Could not extract image dimensions: {e}")
-        
+
         super().save(*args, **kwargs)
 
 
 class MessageEditHistory(models.Model):
     """История редактирования сообщения"""
-    
+
     message = models.ForeignKey(
         Message,
         on_delete=models.CASCADE,
@@ -686,7 +702,7 @@ class MessageEditHistory(models.Model):
         related_name='+',
         verbose_name="Кто отредактировал"
     )
-    
+
     class Meta:
         verbose_name = "Запись истории редактирования"
         verbose_name_plural = "История редактирования сообщений"
@@ -694,14 +710,14 @@ class MessageEditHistory(models.Model):
         indexes = [
             models.Index(fields=['message', 'edited_at']),
         ]
-    
+
     def __str__(self):
         return f"Редактирование сообщения {self.message_id} в {self.edited_at}"
 
 
 class MessageForwardMetadata(models.Model):
     """Метаданные пересланного сообщения"""
-    
+
     message = models.OneToOneField(
         Message,
         on_delete=models.CASCADE,
@@ -758,7 +774,7 @@ class MessageForwardMetadata(models.Model):
         blank=True,
         verbose_name="Название оригинального чата"
     )
-    
+
     class Meta:
         verbose_name = "Метаданные пересылки"
         verbose_name_plural = "Метаданные пересылок"
@@ -766,7 +782,7 @@ class MessageForwardMetadata(models.Model):
             models.Index(fields=['original_message']),
             models.Index(fields=['forwarded_by', 'forwarded_at']),
         ]
-    
+
     def __str__(self):
         return f"Пересылка {self.message_id}: {self.forward_count}x"
 
@@ -774,24 +790,24 @@ class MessageForwardMetadata(models.Model):
 class ChatMembership(models.Model):
     """
     Явное управление участниками чатов
-    
+
     Роли и права:
     - admin: полный доступ к управлению чатом (кроме удаления)
     - moderator: может модерировать контент (закреплять, удалять чужие сообщения)
     - member: обычный участник (может отправлять сообщения)
     - guest: ограниченный доступ (только чтение, может быть отключен can_send_messages)
-    
+
     Примечание: роль 'owner' (владелец) НЕ используется - владелец определяется
     через Chat.created_by и имеет максимальные права через django-rules.
     """
-    
+
     ROLE_CHOICES = [
         ('admin', 'Администратор'),
         ('moderator', 'Модератор'),
         ('member', 'Участник'),
         ('guest', 'Гость'),
     ]
-    
+
     chat = models.ForeignKey(
         Chat,
         on_delete=models.CASCADE,
@@ -848,7 +864,7 @@ class ChatMembership(models.Model):
         default=False,
         verbose_name="Может закреплять сообщения"
     )
-    
+
     class Meta:
         verbose_name = "Участник чата"
         verbose_name_plural = "Участники чатов"
@@ -858,15 +874,15 @@ class ChatMembership(models.Model):
             models.Index(fields=['user', 'is_active']),
             models.Index(fields=['chat', 'role']),
         ]
-    
+
     def __str__(self):
         return f"{self.user} в {self.chat} ({self.get_role_display()})"
-    
+
     @property
     def can_manage_members(self):
         """Может ли участник управлять другими участниками (добавлять/удалять)"""
         return self.can_add_members and self.can_remove_members
-    
+
     def set_permissions_for_role(self):
         """
         Устанавливает права доступа автоматически на основе роли.
@@ -892,19 +908,19 @@ class ChatMembership(models.Model):
             self.can_add_members = False
             self.can_remove_members = False
             self.can_pin_messages = False
-    
+
     def promote_to_admin(self):
         """Повышает участника до администратора"""
         self.role = 'admin'
         self.set_permissions_for_role()
         self.save()
-    
+
     def demote_to_member(self):
         """Понижает участника до обычного члена"""
         self.role = 'member'
         self.set_permissions_for_role()
         self.save()
-    
+
     def save(self, *args, **kwargs):
         # Автоматически устанавливаем права при создании
         if not self.pk:
@@ -914,7 +930,7 @@ class ChatMembership(models.Model):
 
 class MessageReaction(models.Model):
     """Реакции на сообщения (эмодзи)"""
-    
+
     message = models.ForeignKey(
         Message,
         on_delete=models.CASCADE,
@@ -936,7 +952,7 @@ class MessageReaction(models.Model):
         auto_now_add=True,
         verbose_name="Время добавления"
     )
-    
+
     class Meta:
         verbose_name = "Реакция на сообщение"
         verbose_name_plural = "Реакции на сообщения"
@@ -947,14 +963,14 @@ class MessageReaction(models.Model):
             models.Index(fields=['created_at']),
         ]
         ordering = ['created_at']
-    
+
     def __str__(self):
         return f"{self.user} {self.emoji} → сообщение {self.message_id}"
 
 
 class AvailableReaction(models.Model):
     """Доступные реакции для сообщений"""
-    
+
     emoji = models.CharField(
         max_length=10,
         unique=True,
@@ -980,7 +996,7 @@ class AvailableReaction(models.Model):
         auto_now_add=True,
         verbose_name="Дата добавления"
     )
-    
+
     class Meta:
         verbose_name = "Доступная реакция"
         verbose_name_plural = "Доступные реакции"
@@ -988,14 +1004,14 @@ class AvailableReaction(models.Model):
         indexes = [
             models.Index(fields=['is_active', 'order']),
         ]
-    
+
     def __str__(self):
         return f"{self.emoji} {self.name}"
 
 
 class Poll(models.Model):
     """Голосование в чате"""
-    
+
     message = models.OneToOneField(
         Message,
         on_delete=models.CASCADE,
@@ -1012,7 +1028,7 @@ class Poll(models.Model):
         max_length=500,
         verbose_name="Вопрос"
     )
-    
+
     # Настройки голосования
     is_anonymous = models.BooleanField(
         default=False,
@@ -1034,7 +1050,7 @@ class Poll(models.Model):
         verbose_name="Разрешить свои варианты",
         help_text="Пользователи могут добавить свой вариант ответа"
     )
-    
+
     # Статус
     is_closed = models.BooleanField(
         default=False,
@@ -1051,7 +1067,7 @@ class Poll(models.Model):
         verbose_name="Автоматическое закрытие",
         help_text="Голосование автоматически закроется в указанное время"
     )
-    
+
     # Метаданные
     created_at = models.DateTimeField(
         auto_now_add=True,
@@ -1066,7 +1082,7 @@ class Poll(models.Model):
         verbose_name="Всего проголосовало",
         help_text="Количество уникальных пользователей, проголосовавших"
     )
-    
+
     class Meta:
         verbose_name = "Голосование"
         verbose_name_plural = "Голосования"
@@ -1076,25 +1092,25 @@ class Poll(models.Model):
             models.Index(fields=['author', 'created_at']),
             models.Index(fields=['is_closed', 'closes_at']),
         ]
-    
+
     def __str__(self):
         return f"Голосование: {self.question[:50]}"
-    
+
     def close(self):
         """Закрыть голосование"""
         if not self.is_closed:
             self.is_closed = True
             self.closed_at = timezone.now()
             self.save(update_fields=['is_closed', 'closed_at'])
-    
+
     def get_results(self):
         """Получить результаты голосования"""
         options = self.options.annotate(
             vote_count_calc=models.Count('votes')
         ).order_by('position')
-        
+
         total_votes = sum(opt.vote_count for opt in options)
-        
+
         results = []
         for option in options:
             percentage = (
@@ -1116,7 +1132,7 @@ class Poll(models.Model):
                     )
                 )
             })
-        
+
         return {
             'id': self.id,
             'question': self.question,
@@ -1131,7 +1147,7 @@ class Poll(models.Model):
 
 class PollOption(models.Model):
     """Вариант ответа в голосовании"""
-    
+
     poll = models.ForeignKey(
         Poll,
         on_delete=models.CASCADE,
@@ -1159,7 +1175,7 @@ class PollOption(models.Model):
         auto_now_add=True,
         verbose_name="Создан"
     )
-    
+
     class Meta:
         verbose_name = "Вариант ответа"
         verbose_name_plural = "Варианты ответов"
@@ -1167,14 +1183,14 @@ class PollOption(models.Model):
         indexes = [
             models.Index(fields=['poll', 'position']),
         ]
-    
+
     def __str__(self):
         return f"{self.poll.question[:30]} - {self.text[:30]}"
 
 
 class PollVote(models.Model):
     """Голос пользователя в голосовании"""
-    
+
     poll = models.ForeignKey(
         Poll,
         on_delete=models.CASCADE,
@@ -1197,7 +1213,7 @@ class PollVote(models.Model):
         auto_now_add=True,
         verbose_name="Время голосования"
     )
-    
+
     class Meta:
         verbose_name = "Голос"
         verbose_name_plural = "Голоса"
@@ -1212,6 +1228,6 @@ class PollVote(models.Model):
             models.Index(fields=['poll', 'voter']),
             models.Index(fields=['option']),
         ]
-    
+
     def __str__(self):
         return f"{self.voter} → {self.option.text}"

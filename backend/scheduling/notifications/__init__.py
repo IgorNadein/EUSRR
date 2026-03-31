@@ -11,7 +11,7 @@
 
 class NotificationVerbs:
     """Глаголы (verbs) для уведомлений событий календаря."""
-    
+
     EVENT_CREATED = 'event_created'
     EVENT_CHANGED = 'event_changed'
     EVENT_CANCELLED = 'event_cancelled'
@@ -20,7 +20,7 @@ class NotificationVerbs:
 
 class MessageTemplates:
     """Шаблоны сообщений для уведомлений календаря."""
-    
+
     @staticmethod
     def event_created(
         event_title: str,
@@ -34,12 +34,12 @@ class MessageTemplates:
                 f'"{event_title}" ({event_date})'
             )
         return f'Добавлено новое событие: "{event_title}" ({event_date})'
-    
+
     @staticmethod
     def event_created_title() -> str:
         """Заголовок для нового события."""
         return 'Новое событие в календаре'
-    
+
     @staticmethod
     def event_changed(
         event_title: str,
@@ -52,17 +52,17 @@ class MessageTemplates:
                 f'Изменения: {changes_text}'
             )
         return f'Событие "{event_title}" изменено'
-    
+
     @staticmethod
     def event_changed_title() -> str:
         """Заголовок для изменения события."""
         return 'Событие изменено'
-    
+
     @staticmethod
     def event_cancelled(event_title: str, event_date: str) -> str:
         """Шаблон для отмены события."""
         return f'Событие "{event_title}" ({event_date}) отменено'
-    
+
     @staticmethod
     def event_cancelled_title() -> str:
         """Заголовок для отмены события."""
@@ -71,14 +71,14 @@ class MessageTemplates:
 
 class ActionURLs:
     """URL-адреса для действий с календарем."""
-    
+
     CALENDAR = '/calendar'
-    
+
     @staticmethod
     def event_detail(event_id: int) -> str:
         """
         Возвращает URL-адрес события.
-        
+
         TODO: реализовать прямые ссылки на конкретные события
         """
         return f'/calendar?event={event_id}'
@@ -102,10 +102,10 @@ IMPORTANT_FIELDS = [
 def format_datetime(dt) -> str:
     """
     Форматирует дату/время в строку.
-    
+
     Args:
         dt: Объект datetime
-    
+
     Returns:
         str: Отформатированная дата и время (например, "10.03.2026 14:30")
     """
@@ -117,10 +117,10 @@ def format_datetime(dt) -> str:
 def format_date(dt) -> str:
     """
     Форматирует только дату в строку.
-    
+
     Args:
         dt: Объект datetime или date
-    
+
     Returns:
         str: Отформатированная дата (например, "10.03.2026")
     """
@@ -132,10 +132,10 @@ def format_date(dt) -> str:
 def format_changes(changed_fields: list[str]) -> str:
     """
     Форматирует список изменённых полей в текст.
-    
+
     Args:
         changed_fields: Список имён полей
-    
+
     Returns:
         str: Текстовое описание изменений через запятую
     """

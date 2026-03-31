@@ -11,6 +11,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 
 User = get_user_model()
 
+
 class JWTAuthMiddleware(BaseMiddleware):
     """Auth для Channels по JWT (query: ?token=... или header Authorization: Bearer ...)."""
 

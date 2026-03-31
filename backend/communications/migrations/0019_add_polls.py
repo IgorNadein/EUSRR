@@ -88,7 +88,7 @@ class Migration(migrations.Migration):
                 'ordering': ['-created_at'],
             },
         ),
-        
+
         # Таблица вариантов ответа
         migrations.CreateModel(
             name='PollOption',
@@ -132,7 +132,7 @@ class Migration(migrations.Migration):
                 'ordering': ['position', 'id'],
             },
         ),
-        
+
         # Таблица голосов
         migrations.CreateModel(
             name='PollVote',
@@ -172,7 +172,7 @@ class Migration(migrations.Migration):
                 'ordering': ['-voted_at'],
             },
         ),
-        
+
         # Индексы и констрейнты
         migrations.AddIndex(
             model_name='poll',
@@ -216,7 +216,7 @@ class Migration(migrations.Migration):
                 name='comm_option_idx'
             ),
         ),
-        
+
         # Уникальность голоса
         migrations.AddConstraint(
             model_name='pollvote',

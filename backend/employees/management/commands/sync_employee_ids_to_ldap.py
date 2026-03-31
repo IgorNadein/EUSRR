@@ -131,12 +131,11 @@ class Command(BaseCommand):
 
             # Проверяем нужно ли обновлять
             expected_value = str(pk)
-            
+
             if current_value == expected_value:
                 if verbose > 1:
                     self.stdout.write(
-                        f"  [OK] pk={pk}: уже установлено {employee_id_attr}={current_value}"
-                    )
+                        f"  [OK] pk={pk}: уже установлено {employee_id_attr}={current_value}")
                 skipped_already_set += 1
                 continue
 
@@ -173,12 +172,12 @@ class Command(BaseCommand):
                     )
                     errors += 1
             else:
-                    updated += 1
+                updated += 1
 
         # Итоги
         self.stdout.write("")
         self.stdout.write("=" * 50)
-        
+
         if dry_run:
             self.stdout.write(
                 self.style.SUCCESS(f"Будет обновлено: {updated}")
@@ -187,10 +186,10 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS(f"Обновлено: {updated}")
             )
-        
+
         self.stdout.write(f"Пропущено (уже установлено): {skipped_already_set}")
         self.stdout.write(f"Пропущено (нет Employee): {skipped_no_employee}")
-        
+
         if errors:
             self.stdout.write(
                 self.style.ERROR(f"Ошибок: {errors}")

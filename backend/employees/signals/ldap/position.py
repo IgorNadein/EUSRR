@@ -30,10 +30,10 @@ def _is_ldap_enabled():
 @receiver(post_save, sender=Position)
 def sync_position_to_ldap_on_save(sender, instance, created, **kwargs):
     """Создает/обновляет POS-группу должности в LDAP при сохранении Position.
-    
+
     При создании: создает POS-группу (CN=POS_<name>)
     При обновлении: переименовывает POS-группу при изменении имени
-    
+
     Использует временный атрибут _skip_ldap_sync для отключения синхронизации.
     """
     if not _is_ldap_enabled():
@@ -44,11 +44,11 @@ def sync_position_to_ldap_on_save(sender, instance, created, **kwargs):
 
     try:
         svc = PositionService()
-        
+
         # reconcile_position гарантирует наличие POS-группы и обновляет её при необходимости
         # Также синхронизирует вложенность в целевые группы и участников
         svc.reconcile_position(instance)
-        
+
         logger.info(
             f"Synced position '{instance.name}' to LDAP (created={created})"
         )
@@ -96,12 +96,12 @@ def sync_position_to_ldap_on_delete(sender, instance, **kwargs):
 @receiver(m2m_changed, sender=Position.groups.through)
 def sync_position_groups_to_ldap(sender, instance, action, **kwargs):
     """Синхронизирует изменения Position.groups с LDAP.
-    
+
     При изменении групп должности (add/remove/clear/set):
     - Обновляет вложенность POS-группы в целевые AD-группы
     - POS-группа добавляется в AD-группы, соответствующие Position.groups
     - POS-группа удаляется из AD-групп, не указанных в Position.groups
-    
+
     Реагирует на post_add, post_remove, post_clear для синхронизации вложенности.
     """
     if not _is_ldap_enabled():
@@ -115,19 +115,19 @@ def sync_position_groups_to_ldap(sender, instance, action, **kwargs):
 
     try:
         svc = PositionService()
-        
+
         # reconcile_position обновит вложенность POS-группы в целевые AD-группы
         # на основе текущего состояния Position.groups
         svc.reconcile_position(instance)
-        
+
         logger.info(
             f"Synced position '{instance.name}' groups to LDAP (action={action})"
         )
     except (DirectoryLdapError, DirectoryServiceError, DirectoryDbError) as e:
         logger.error(
-            f"LDAP groups sync failed for Position {instance.id} (action={action}): {e}",
-            exc_info=True
-        )
+            f"LDAP groups sync failed for Position {
+                instance.id} (action={action}): {e}",
+            exc_info=True)
         _enqueue("position_save", "position", instance.pk, {
             "object_pk": str(instance.pk),
         })

@@ -37,11 +37,11 @@ User = get_user_model()
 
 class ProcurementRequest(models.Model):
     """Заявка на закупку.
-    
+
     Статусы: DRAFT → PENDING → APPROVED → IN_PROGRESS → COMPLETED
     Альтернативные переходы: → REJECTED, → CANCELLED
     """
-    
+
     title = models.CharField(
         'Название',
         max_length=255,
@@ -92,7 +92,7 @@ class ProcurementRequest(models.Model):
         blank=True,
         validators=[MinValueValidator(Decimal('0.01'))]
     )
-    
+
     # Даты
     created_at = models.DateTimeField(
         'Создано',
@@ -117,7 +117,7 @@ class ProcurementRequest(models.Model):
         null=True,
         blank=True
     )
-    
+
     class Meta:
         verbose_name = 'Заявка на закупку'
         verbose_name_plural = 'Заявки на закупку'
@@ -127,10 +127,10 @@ class ProcurementRequest(models.Model):
             ('view_all_requests', 'Can view all department requests'),
             ('execute_procurement', 'Can execute approved requests'),
         ]
-    
+
     def __str__(self):
         return f"#{self.pk} {self.title}"
-    
+
     def get_required_approval_priorities(self):
         """Возвращает приоритеты обязательных этапов из таблицы маршрутов."""
         return list(
@@ -140,7 +140,7 @@ class ProcurementRequest(models.Model):
     def get_required_approval_routes(self):
         """Возвращает queryset обязательных этапов из таблицы маршрутов."""
         return ApprovalRoute.get_applicable_routes(self.total_cost)
-    
+
     @property
     def total_cost(self):
         """Общая стоимость заявки (сумма всех позиций)."""
@@ -151,12 +151,12 @@ class ProcurementRequest(models.Model):
             )
         )['total']
         return total or Decimal('0.00')
-    
+
     @property
     def items_count(self):
         """Количество позиций в заявке."""
         return self.items.count()
-    
+
     @property
     def is_editable(self):
         """Можно ли редактировать заявку."""
@@ -165,7 +165,7 @@ class ProcurementRequest(models.Model):
 
 class ProcurementItem(models.Model):
     """Позиция в заявке на закупку."""
-    
+
     request = models.ForeignKey(
         ProcurementRequest,
         on_delete=models.CASCADE,
@@ -214,15 +214,15 @@ class ProcurementItem(models.Model):
         help_text='Связь с оборудованием после закупки'
     )
     created_at = models.DateTimeField('Создано', auto_now_add=True)
-    
+
     class Meta:
         verbose_name = 'Позиция заявки'
         verbose_name_plural = 'Позиции заявок'
         ordering = ['id']
-    
+
     def __str__(self):
         return f"{self.name} ({self.quantity} {self.unit})"
-    
+
     @property
     def total_price(self):
         """Общая стоимость позиции."""
@@ -292,14 +292,16 @@ class ApprovalRoute(models.Model):
     def clean(self):
         super().clean()
         if self.resolver_type == self.ResolverType.FIXED_EMPLOYEE and not self.employee_id:
-            raise ValidationError({'employee': 'Для статического этапа укажите сотрудника.'})
+            raise ValidationError(
+                {'employee': 'Для статического этапа укажите сотрудника.'})
         if self.resolver_type == self.ResolverType.DEPARTMENT_HEAD and self.employee_id:
-            raise ValidationError({'employee': 'Для этапа руководителя отдела сотрудник не указывается.'})
+            raise ValidationError(
+                {'employee': 'Для этапа руководителя отдела сотрудник не указывается.'})
 
 
 class Approval(models.Model):
     """Запись о согласовании заявки."""
-    
+
     request = models.ForeignKey(
         ProcurementRequest,
         on_delete=models.CASCADE,
@@ -333,13 +335,13 @@ class Approval(models.Model):
     )
     created_at = models.DateTimeField('Создано', auto_now_add=True)
     updated_at = models.DateTimeField('Обновлено', auto_now=True)
-    
+
     class Meta:
         verbose_name = 'Согласование'
         verbose_name_plural = 'Согласования'
         ordering = ['priority', 'created_at', 'id']
         unique_together = [('request', 'priority')]
-    
+
     def __str__(self):
         return f"Этап {self.priority} - {self.get_status_display()}"
 
@@ -362,7 +364,7 @@ class Approval(models.Model):
 
 class EquipmentCategory(models.Model):
     """Категория оборудования (иерархическая)."""
-    
+
     name = models.CharField(
         'Название',
         max_length=100,
@@ -387,17 +389,17 @@ class EquipmentCategory(models.Model):
         help_text='Например: bi-laptop, bi-printer'
     )
     created_at = models.DateTimeField('Создано', auto_now_add=True)
-    
+
     class Meta:
         verbose_name = 'Категория оборудования'
         verbose_name_plural = 'Категории оборудования'
         ordering = ['name']
-    
+
     def __str__(self):
         if self.parent:
             return f"{self.parent.name} → {self.name}"
         return self.name
-    
+
     @property
     def full_path(self):
         """Полный путь категории."""
@@ -408,7 +410,7 @@ class EquipmentCategory(models.Model):
 
 class Equipment(models.Model):
     """Единица оборудования/инвентаря."""
-    
+
     name = models.CharField(
         'Название',
         max_length=255
@@ -477,15 +479,15 @@ class Equipment(models.Model):
     )
     created_at = models.DateTimeField('Создано', auto_now_add=True)
     updated_at = models.DateTimeField('Обновлено', auto_now=True)
-    
+
     class Meta:
         verbose_name = 'Оборудование'
         verbose_name_plural = 'Оборудование'
         ordering = ['-created_at']
-    
+
     def __str__(self):
         return f"{self.inventory_number} - {self.name}"
-    
+
     @property
     def is_under_warranty(self):
         """Находится ли под гарантией."""
@@ -496,7 +498,7 @@ class Equipment(models.Model):
 
 class MaintenanceRecord(models.Model):
     """Запись о техническом обслуживании оборудования."""
-    
+
     equipment = models.ForeignKey(
         Equipment,
         on_delete=models.CASCADE,
@@ -534,12 +536,12 @@ class MaintenanceRecord(models.Model):
         blank=True
     )
     created_at = models.DateTimeField('Создано', auto_now_add=True)
-    
+
     class Meta:
         verbose_name = 'Запись обслуживания'
         verbose_name_plural = 'Записи обслуживания'
         ordering = ['-date']
-    
+
     def __str__(self):
         return (
             f"{self.equipment.inventory_number} - "
@@ -549,13 +551,13 @@ class MaintenanceRecord(models.Model):
 
 class EquipmentTransferLog(models.Model):
     """Лог передачи/перемещения оборудования."""
-    
+
     TRANSFER_TYPES = [
         ('assignment', 'Назначение ответственного'),
         ('transfer', 'Перемещение'),
         ('return', 'Возврат'),
     ]
-    
+
     equipment = models.ForeignKey(
         Equipment,
         on_delete=models.CASCADE,
@@ -623,12 +625,12 @@ class EquipmentTransferLog(models.Model):
         related_name='transfers_created',
         verbose_name='Кто оформил'
     )
-    
+
     class Meta:
         verbose_name = 'Лог передачи'
         verbose_name_plural = 'Логи передач'
         ordering = ['-created_at']
-    
+
     def __str__(self):
         return (
             f"{self.equipment.inventory_number}: "
@@ -638,7 +640,7 @@ class EquipmentTransferLog(models.Model):
 
 class Budget(models.Model):
     """Бюджет отдела на квартал."""
-    
+
     department = models.ForeignKey(
         Department,
         on_delete=models.CASCADE,
@@ -669,25 +671,25 @@ class Budget(models.Model):
     )
     created_at = models.DateTimeField('Создано', auto_now_add=True)
     updated_at = models.DateTimeField('Обновлено', auto_now=True)
-    
+
     class Meta:
         verbose_name = 'Бюджет'
         verbose_name_plural = 'Бюджеты'
         ordering = ['-year', '-quarter']
         unique_together = [('department', 'year', 'quarter')]
-    
+
     def __str__(self):
         return (
             f"{self.department.name} - "
             f"{self.year} Q{self.quarter}"
         )
-    
+
     @property
     def remaining_amount(self):
         """Остаток бюджета."""
         allocated = self.allocated_amount or Decimal('0.00')
         return allocated - self.spent_amount
-    
+
     @property
     def reserved_amount(self):
         """Сумма зарезервированная pending заявками."""
@@ -697,17 +699,17 @@ class Budget(models.Model):
             created_at__year=self.year,
             created_at__month__in=self._quarter_months()
         )
-        
+
         total = Decimal('0.00')
         for req in pending_requests:
             total += req.total_cost
         return total
-    
+
     @property
     def available_amount(self):
         """Доступный бюджет (с учётом резерва)."""
         return self.remaining_amount - self.reserved_amount
-    
+
     def _quarter_months(self):
         """Получить месяцы квартала."""
         return {
@@ -716,7 +718,7 @@ class Budget(models.Model):
             3: [7, 8, 9],
             4: [10, 11, 12],
         }[self.quarter]
-    
+
     @property
     def utilization_percentage(self):
         """Процент использования бюджета."""
@@ -726,7 +728,7 @@ class Budget(models.Model):
         return (
             self.spent_amount / allocated * 100
         ).quantize(Decimal('0.01'))
-    
+
     def can_spend(self, amount):
         """Проверка возможности потратить сумму."""
         return self.remaining_amount >= amount
@@ -734,7 +736,7 @@ class Budget(models.Model):
 
 class Supplier(models.Model):
     """Поставщик товаров/услуг."""
-    
+
     name = models.CharField(
         'Название',
         max_length=255
@@ -784,11 +786,11 @@ class Supplier(models.Model):
     )
     created_at = models.DateTimeField('Создано', auto_now_add=True)
     updated_at = models.DateTimeField('Обновлено', auto_now=True)
-    
+
     class Meta:
         verbose_name = 'Поставщик'
         verbose_name_plural = 'Поставщики'
         ordering = ['name']
-    
+
     def __str__(self):
         return self.name

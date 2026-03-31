@@ -25,14 +25,14 @@ def can_view_calendar(user, calendar):
     """Проверяет доступ пользователя к календарю через CalendarRelation"""
     if calendar is None:
         return False
-    
+
     if user.is_superuser:
         return True
-    
+
     try:
         from schedule.models import CalendarRelation
         user_ct = ContentType.objects.get_for_model(user)
-        
+
         return CalendarRelation.objects.filter(
             calendar=calendar,
             content_type=user_ct,
@@ -47,14 +47,14 @@ def can_edit_calendar(user, calendar):
     """Проверяет право на редактирование календаря"""
     if calendar is None:
         return False
-    
+
     if user.is_superuser:
         return True
-    
+
     try:
         from schedule.models import CalendarRelation
         user_ct = ContentType.objects.get_for_model(user)
-        
+
         # Проверяем что пользователь имеет отношение с правом редактирования
         relation = CalendarRelation.objects.filter(
             calendar=calendar,
@@ -62,7 +62,7 @@ def can_edit_calendar(user, calendar):
             object_id=user.id,
             distinction='owner'  # или используйте ваше значение для владельца
         ).first()
-        
+
         return relation is not None
     except Exception:
         return False
@@ -73,10 +73,10 @@ def can_view_event(user, event):
     """Проверяет доступ пользователя к событию через календарь"""
     if event is None:
         return False
-    
+
     if user.is_superuser:
         return True
-    
+
     # Проверяем доступ через календарь
     return can_view_calendar(user, event.calendar)
 
@@ -86,10 +86,10 @@ def can_edit_event(user, event):
     """Проверяет право на редактирование события"""
     if event is None:
         return False
-    
+
     if user.is_superuser:
         return True
-    
+
     # Проверяем доступ через календарь
     return can_edit_calendar(user, event.calendar)
 

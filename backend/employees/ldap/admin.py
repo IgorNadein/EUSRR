@@ -7,12 +7,11 @@
 """
 
 import base64
-from urllib.parse import quote, unquote
+from urllib.parse import quote
 
 from django.contrib import admin, messages
 from django.utils.html import format_html
-from django.urls import reverse, path
-from django.db.models import OuterRef, Exists
+from django.urls import reverse
 
 from employees.models import Employee, LdapSyncState
 from .orm_models import (
@@ -29,7 +28,7 @@ class LdapSyncStateInline(admin.TabularInline):
     model = LdapSyncState
     extra = 0
     can_delete = False
-    
+
     fields = (
         'model',
         'object_pk',
@@ -39,7 +38,7 @@ class LdapSyncStateInline(admin.TabularInline):
         'updated_at',
     )
     readonly_fields = fields
-    
+
     def has_add_permission(self, request, obj=None):
         return False
 
@@ -47,13 +46,13 @@ class LdapSyncStateInline(admin.TabularInline):
 @admin.register(LdapUser)
 class LdapUserAdmin(admin.ModelAdmin):
     """Админка для LDAP пользователей с поддержкой синхронизации.
-    
+
     Возможности:
     - Просмотр всех LDAP-атрибутов
     - Ручное редактирование (для исправления рассинхрона)
     - Actions для синхронизации с выбором источника истины
     """
-    
+
     def get_urls(self):
         """Добавляем URL для смены пароля конкретного пользователя."""
         from django.urls import re_path
@@ -65,7 +64,7 @@ class LdapUserAdmin(admin.ModelAdmin):
             ),
         ]
         return urls + super().get_urls()
-    
+
     list_display = (
         'cn_display',
         'sam_account_name',
@@ -74,11 +73,11 @@ class LdapUserAdmin(admin.ModelAdmin):
         'sync_status',
         'account_status',
     )
-    
+
     list_filter = (
         'user_account_control',
     )
-    
+
     search_fields = (
         'cn',
         'sam_account_name',
@@ -87,7 +86,7 @@ class LdapUserAdmin(admin.ModelAdmin):
         'given_name',
         'sn',
     )
-    
+
     readonly_fields = (
         'dn_display',
         'member_of_display',
@@ -95,7 +94,7 @@ class LdapUserAdmin(admin.ModelAdmin):
         'thumbnail_photo_display',
         'password_change_link',
     )
-    
+
     fieldsets = (
         ('🔑 Идентификация', {
             'fields': (
@@ -145,7 +144,7 @@ class LdapUserAdmin(admin.ModelAdmin):
             )
         }),
     )
-    
+
     actions = [
         'delete_selected_ldap',
         'sync_from_ldap_to_django',
@@ -153,13 +152,13 @@ class LdapUserAdmin(admin.ModelAdmin):
         'show_sync_diff',
         'change_password_action',
     ]
-    
+
     # Пагинация (LDAP может быть медленным)
     list_per_page = 100
-    
+
     def _resolve_ldap_users(self, request):
         """Получает выбранные LDAP объекты по DN из POST данных.
-        
+
         ldapdb не поддерживает dn__in lookup, поэтому
         получаем каждый объект по DN отдельно.
         """
@@ -172,61 +171,71 @@ class LdapUserAdmin(admin.ModelAdmin):
             except LdapUser.DoesNotExist:
                 pass
         return users
-    
+
     # Кастомные поля для отображения
-    
+
     def cn_display(self, obj):
         """CN с иконкой статуса."""
         if obj.cn:
             return format_html('👤 {}', obj.cn)
         return '-'
     cn_display.short_description = 'CN (Common Name)'
-    
+
     def dn_display(self, obj):
         """DN с подсветкой компонентов."""
         if not obj.dn:
             return '-'
-        
+
         # Разбиваем DN на части для читаемости
         parts = obj.dn.split(',')
         html_parts = []
-        
+
         for part in parts:
             if part.startswith('CN='):
-                html_parts.append(format_html('<strong style="color: #0066cc;">{}</strong>', part))
+                html_parts.append(
+                    format_html(
+                        '<strong style="color: #0066cc;">{}</strong>',
+                        part))
             elif part.startswith('OU='):
-                html_parts.append(format_html('<span style="color: #666;">{}</span>', part))
+                html_parts.append(
+                    format_html(
+                        '<span style="color: #666;">{}</span>',
+                        part))
             elif part.startswith('DC='):
-                html_parts.append(format_html('<span style="color: #999;">{}</span>', part))
+                html_parts.append(
+                    format_html(
+                        '<span style="color: #999;">{}</span>',
+                        part))
             else:
                 html_parts.append(part)
-        
+
         return format_html(','.join(html_parts))
     dn_display.short_description = 'Distinguished Name'
-    
+
     def member_of_display(self, obj):
         """Список групп с форматированием."""
         if not obj.member_of:
             return format_html('<em style="color: #999;">Не состоит в группах</em>')
-        
+
         groups_html = []
         for group_dn in obj.member_of[:10]:  # Ограничиваем первыми 10
             # Извлекаем CN из DN
             cn = group_dn.split(',')[0].replace('CN=', '')
             groups_html.append(format_html('• {}', cn))
-        
+
         result = '<br>'.join(groups_html)
         if len(obj.member_of) > 10:
-            result += format_html('<br><em>...и ещё {} групп</em>', len(obj.member_of) - 10)
-        
+            result += format_html('<br><em>...и ещё {} групп</em>',
+                                  len(obj.member_of) - 10)
+
         return format_html(result)
     member_of_display.short_description = 'Членство в группах'
-    
+
     def django_employee_link(self, obj):
         """Ссылка на Django Employee если есть."""
         if not obj.employee_number:
             return format_html('<em style="color: #999;">-</em>')
-        
+
         try:
             emp = Employee.objects.get(pk=int(obj.employee_number))
             url = reverse('admin:employees_employee_change', args=[emp.pk])
@@ -242,18 +251,18 @@ class LdapUserAdmin(admin.ModelAdmin):
                 obj.employee_number
             )
     django_employee_link.short_description = 'Django Employee'
-    
+
     def sync_status(self, obj):
         """Статус синхронизации с Django."""
         if not obj.employee_number:
             return format_html('<span style="color: #999;">❌ Не связан</span>')
-        
+
         try:
             sync_state = LdapSyncState.objects.get(
                 model='employee',
                 object_pk=obj.employee_number
             )
-            
+
             if sync_state.last_sync_dir == 'django':
                 icon = '⬆️'
                 color = '#0066cc'
@@ -266,7 +275,7 @@ class LdapUserAdmin(admin.ModelAdmin):
                 icon = '❓'
                 color = '#999'
                 text = 'Неизвестно'
-            
+
             return format_html(
                 '<span style="color: {};">{} {}</span><br>'
                 '<small style="color: #666;">{}</small>',
@@ -276,18 +285,18 @@ class LdapUserAdmin(admin.ModelAdmin):
         except LdapSyncState.DoesNotExist:
             return format_html('<span style="color: #cc6600;">⚠️ Нет записи</span>')
     sync_status.short_description = 'Синхронизация'
-    
+
     def account_status(self, obj):
         """Статус учетной записи (активна/заблокирована)."""
         # UAC флаг ACCOUNTDISABLE = 0x2 (2)
         is_disabled = bool(obj.user_account_control and (obj.user_account_control & 2))
-        
+
         if is_disabled:
             return format_html('<span style="color: #cc0000;">🔒 Заблокирована</span>')
         else:
             return format_html('<span style="color: #00cc00;">✅ Активна</span>')
     account_status.short_description = 'Статус'
-    
+
     def thumbnail_photo_display(self, obj):
         """Превью аватара из LDAP thumbnailPhoto."""
         data = obj.thumbnail_photo
@@ -311,25 +320,22 @@ class LdapUserAdmin(admin.ModelAdmin):
                 '<div style="padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107;">'
                 '⚠️ <strong>Не связан с Django Employee</strong><br>'
                 '<small>Этот LDAP-пользователь не привязан к записи в БД Django.</small>'
-                '</div>'
-            )
-        
+                '</div>')
+
         try:
             emp = Employee.objects.get(pk=int(obj.employee_number))
             sync_state = LdapSyncState.objects.filter(
                 model='employee',
                 object_pk=obj.employee_number
             ).first()
-            
+
             if not sync_state:
                 return format_html(
                     '<div style="padding: 10px; background: #f8d7da; border-left: 4px solid #dc3545;">'
                     '❌ <strong>Нет записи синхронизации</strong><br>'
                     '<small>Связь с Employee ID {} установлена, но LdapSyncState отсутствует.</small>'
-                    '</div>',
-                    obj.employee_number
-                )
-            
+                    '</div>', obj.employee_number)
+
             return format_html(
                 '<div style="padding: 10px; background: #d1ecf1; border-left: 4px solid #17a2b8;">'
                 '✅ <strong>Синхронизирован</strong><br>'
@@ -343,32 +349,29 @@ class LdapUserAdmin(admin.ModelAdmin):
                 emp.pk,
                 sync_state.ldap_dn or '-',
                 sync_state.updated_at.strftime('%Y-%m-%d %H:%M:%S'),
-                sync_state.last_sync_dir or 'не указано'
-            )
+                sync_state.last_sync_dir or 'не указано')
         except Employee.DoesNotExist:
             return format_html(
                 '<div style="padding: 10px; background: #f8d7da; border-left: 4px solid #dc3545;">'
                 '❌ <strong>Employee не найден</strong><br>'
                 '<small>employee_number={} указывает на несуществующую запись.</small>'
-                '</div>',
-                obj.employee_number
-            )
+                '</div>', obj.employee_number)
     sync_info.short_description = 'Информация о синхронизации'
-    
+
     def password_change_link(self, obj):
         """Ссылка на форму смены пароля (как в стандартной Django admin)."""
         if not obj.dn:
             return '-'
-        
+
         # Кодируем DN для URL
         from urllib.parse import quote
         dn_encoded = quote(obj.dn, safe='')
-        
+
         change_password_url = reverse(
             'admin:ldapuser_password_change',
             args=[dn_encoded],
         )
-        
+
         return format_html(
             '<div style="margin: 10px 0;">'
             '<a href="{}" class="button" style="'
@@ -389,20 +392,20 @@ class LdapUserAdmin(admin.ModelAdmin):
             change_password_url
         )
     password_change_link.short_description = 'Управление паролем'
-    
+
     # Actions для синхронизации
-    
+
     @admin.action(description='🔄 Синхронизировать LDAP → Django (LDAP как источник истины)')
     def sync_from_ldap_to_django(self, request, queryset):
         """Синхронизирует выбранных пользователей из LDAP в Django.
-        
+
         LDAP считается источником истины - данные из Active Directory
         перезапишут данные в Django Employee.
         """
         success_count = 0
         error_count = 0
         warnings = []
-        
+
         ldap_users = self._resolve_ldap_users(request)
         for ldap_user in ldap_users:
             if not ldap_user.employee_number:
@@ -411,7 +414,7 @@ class LdapUserAdmin(admin.ModelAdmin):
                     f'⚠️ {ldap_user.cn}: отсутствует employeeNumber (связь с Django)'
                 )
                 continue
-            
+
             # Проверка обязательных полей в LDAP
             missing_fields = []
             if not get_ldap_str(ldap_user.given_name):
@@ -420,23 +423,25 @@ class LdapUserAdmin(admin.ModelAdmin):
                 missing_fields.append('sn (фамилия)')
             if not get_ldap_str(ldap_user.mail):
                 missing_fields.append('mail (email)')
-            
+
             if missing_fields:
                 warnings.append(
-                    f'⚠️ {ldap_user.cn}: отсутствуют поля в LDAP: {", ".join(missing_fields)}'
-                )
-            
+                    f'⚠️ {
+                        ldap_user.cn}: отсутствуют поля в LDAP: {
+                        ", ".join(missing_fields)}')
+
             try:
                 emp = Employee.objects.get(pk=int(ldap_user.employee_number))
-                
+
                 # Обновляем Django из LDAP
                 emp.first_name = get_ldap_str(ldap_user.given_name) or emp.first_name
                 emp.last_name = get_ldap_str(ldap_user.sn) or emp.last_name
                 emp.email = get_ldap_str(ldap_user.mail) or emp.email
-                ldap_phone = get_ldap_str(ldap_user.telephone_number or ldap_user.mobile)
+                ldap_phone = get_ldap_str(
+                    ldap_user.telephone_number or ldap_user.mobile)
                 emp.phone_number = ldap_phone or emp.phone_number
                 emp.save()
-                
+
                 # Обновляем LdapSyncState
                 LdapSyncState.objects.update_or_create(
                     model='employee',
@@ -446,7 +451,7 @@ class LdapUserAdmin(admin.ModelAdmin):
                         'last_sync_dir': 'ldap',
                     }
                 )
-                
+
                 success_count += 1
             except Exception as e:
                 error_count += 1
@@ -455,7 +460,7 @@ class LdapUserAdmin(admin.ModelAdmin):
                     f'Ошибка синхронизации {ldap_user.cn}: {e}',
                     level=messages.ERROR
                 )
-        
+
         if warnings:
             for warning in warnings[:10]:  # Первые 10 предупреждений
                 self.message_user(request, warning, level=messages.WARNING)
@@ -465,35 +470,34 @@ class LdapUserAdmin(admin.ModelAdmin):
                     f'...и ещё {len(warnings) - 10} предупреждений',
                     level=messages.WARNING
                 )
-        
+
         if success_count:
             self.message_user(
                 request,
                 f'Успешно синхронизировано: {success_count} пользователей (LDAP → Django)',
-                level=messages.SUCCESS
-            )
+                level=messages.SUCCESS)
         if error_count:
             self.message_user(
                 request,
                 f'Ошибок: {error_count}',
                 level=messages.WARNING
             )
-    
+
     @admin.action(description='🔄 Синхронизировать Django → LDAP (Django как источник истины)')
     def sync_from_django_to_ldap(self, request, queryset):
         """Синхронизирует выбранных пользователей из Django в LDAP.
-        
+
         Django считается источником истины - данные из БД
         перезапишут данные в Active Directory.
         """
         from employees.ldap.services import UserService
-        
+
         success_count = 0
         error_count = 0
         warnings = []
-        
+
         service = UserService()
-        
+
         ldap_users = self._resolve_ldap_users(request)
         for ldap_user in ldap_users:
             if not ldap_user.employee_number:
@@ -502,10 +506,10 @@ class LdapUserAdmin(admin.ModelAdmin):
                     f'⚠️ {ldap_user.cn}: отсутствует employeeNumber (связь с Django)'
                 )
                 continue
-            
+
             try:
                 emp = Employee.objects.get(pk=int(ldap_user.employee_number))
-                
+
                 # Проверка обязательных полей в Django
                 missing_fields = []
                 if not emp.first_name or not emp.first_name.strip():
@@ -514,12 +518,13 @@ class LdapUserAdmin(admin.ModelAdmin):
                     missing_fields.append('last_name (фамилия)')
                 if not emp.email or not emp.email.strip():
                     missing_fields.append('email')
-                
+
                 if missing_fields:
                     warnings.append(
-                        f'⚠️ Employee #{emp.pk}: отсутствуют поля: {", ".join(missing_fields)}'
-                    )
-                
+                        f'⚠️ Employee #{
+                            emp.pk}: отсутствуют поля: {
+                            ", ".join(missing_fields)}')
+
                 # Обновляем LDAP из Django через сервис
                 changes = {
                     'first_name': emp.first_name,
@@ -527,9 +532,9 @@ class LdapUserAdmin(admin.ModelAdmin):
                     'email': emp.email,
                     'phone_number': emp.phone_number,
                 }
-                
+
                 service.update_user(emp, changes)
-                
+
                 success_count += 1
             except Exception as e:
                 error_count += 1
@@ -538,7 +543,7 @@ class LdapUserAdmin(admin.ModelAdmin):
                     f'Ошибка синхронизации {ldap_user.cn}: {e}',
                     level=messages.ERROR
                 )
-        
+
         if warnings:
             for warning in warnings[:10]:  # Первые 10 предупреждений
                 self.message_user(request, warning, level=messages.WARNING)
@@ -548,29 +553,28 @@ class LdapUserAdmin(admin.ModelAdmin):
                     f'...и ещё {len(warnings) - 10} предупреждений',
                     level=messages.WARNING
                 )
-        
+
         if success_count:
             self.message_user(
                 request,
                 f'Успешно синхронизировано: {success_count} пользователей (Django → LDAP)',
-                level=messages.SUCCESS
-            )
+                level=messages.SUCCESS)
         if error_count:
             self.message_user(
                 request,
                 f'Ошибок: {error_count}',
                 level=messages.WARNING
             )
-    
+
     @admin.action(description='🔑 Изменить пароль выбранных пользователей')
     def change_password_action(self, request, queryset):
         """Изменяет пароль выбранных LDAP пользователей.
-        
+
         Показывает форму для ввода нового пароля и применяет его
         к выбранным пользователям через AD extended operation.
         """
         ldap_users = self._resolve_ldap_users(request)
-        
+
         if not ldap_users:
             self.message_user(
                 request,
@@ -578,12 +582,12 @@ class LdapUserAdmin(admin.ModelAdmin):
                 level=messages.ERROR
             )
             return
-        
+
         # Если форма не отправлена - показываем её
         if 'new_password' not in request.POST:
             from django import forms
             from django.template.response import TemplateResponse
-            
+
             class PasswordForm(forms.Form):
                 new_password = forms.CharField(
                     label='Новый пароль',
@@ -595,7 +599,7 @@ class LdapUserAdmin(admin.ModelAdmin):
                     label='Подтверждение пароля',
                     widget=forms.PasswordInput(attrs={'autocomplete': 'new-password'}),
                 )
-                
+
                 def clean(self):
                     cleaned = super().clean()
                     pwd1 = cleaned.get('new_password')
@@ -603,9 +607,9 @@ class LdapUserAdmin(admin.ModelAdmin):
                     if pwd1 and pwd2 and pwd1 != pwd2:
                         raise forms.ValidationError('Пароли не совпадают')
                     return cleaned
-            
+
             form = PasswordForm()
-            
+
             context = {
                 **self.admin_site.each_context(request),
                 'title': 'Изменение пароля LDAP пользователей',
@@ -618,18 +622,18 @@ class LdapUserAdmin(admin.ModelAdmin):
                 'media': self.media,
             }
             request.current_app = self.admin_site.name
-            
+
             # Используем кастомный шаблон для смены пароля
             return TemplateResponse(
                 request,
                 'admin/ldap_change_password.html',
                 context,
             )
-        
+
         # Форма отправлена - обрабатываем
         new_password = request.POST.get('new_password', '').strip()
         confirm_password = request.POST.get('confirm_password', '').strip()
-        
+
         if not new_password:
             self.message_user(
                 request,
@@ -637,7 +641,7 @@ class LdapUserAdmin(admin.ModelAdmin):
                 level=messages.ERROR
             )
             return
-        
+
         if new_password != confirm_password:
             self.message_user(
                 request,
@@ -645,7 +649,7 @@ class LdapUserAdmin(admin.ModelAdmin):
                 level=messages.ERROR
             )
             return
-        
+
         if len(new_password) < 7:
             self.message_user(
                 request,
@@ -653,16 +657,16 @@ class LdapUserAdmin(admin.ModelAdmin):
                 level=messages.ERROR
             )
             return
-        
+
         # Применяем пароль ко всем выбранным пользователям
         success_count = 0
         error_count = 0
-        
+
         for ldap_user in ldap_users:
             try:
                 ldap_user.set_password(new_password)
                 success_count += 1
-                
+
                 # Обновляем Django Employee если есть связь
                 if ldap_user.employee_number:
                     try:
@@ -671,7 +675,7 @@ class LdapUserAdmin(admin.ModelAdmin):
                         emp.save(update_fields=['password'])
                     except (Employee.DoesNotExist, ValueError):
                         pass  # Не критично
-                        
+
             except ValueError as e:
                 error_count += 1
                 self.message_user(
@@ -686,7 +690,7 @@ class LdapUserAdmin(admin.ModelAdmin):
                     f'❌ {ldap_user.cn}: ошибка - {e}',
                     level=messages.ERROR
                 )
-        
+
         if success_count:
             self.message_user(
                 request,
@@ -699,44 +703,54 @@ class LdapUserAdmin(admin.ModelAdmin):
                 f'❌ Ошибок: {error_count}',
                 level=messages.WARNING
             )
-    
+
     @admin.action(description='🔍 Показать различия LDAP ↔ Django')
     def show_sync_diff(self, request, queryset):
         """Показывает различия между LDAP и Django для выбранных пользователей."""
         diffs = []
-        
+
         ldap_users = self._resolve_ldap_users(request)
         for ldap_user in ldap_users:
             if not ldap_user.employee_number:
                 continue
-            
+
             try:
                 emp = Employee.objects.get(pk=int(ldap_user.employee_number))
-                
+
                 user_diffs = []
-                
+
                 # Сравниваем поля
                 ldap_first = get_ldap_str(ldap_user.given_name)
                 if ldap_first != emp.first_name:
-                    user_diffs.append(f"Имя: LDAP='{ldap_first}' vs Django='{emp.first_name}'")
-                
+                    user_diffs.append(
+                        f"Имя: LDAP='{ldap_first}' vs Django='{
+                            emp.first_name}'")
+
                 ldap_last = get_ldap_str(ldap_user.sn)
                 if ldap_last != emp.last_name:
-                    user_diffs.append(f"Фамилия: LDAP='{ldap_last}' vs Django='{emp.last_name}'")
-                
+                    user_diffs.append(
+                        f"Фамилия: LDAP='{ldap_last}' vs Django='{
+                            emp.last_name}'")
+
                 ldap_email = get_ldap_str(ldap_user.mail)
                 if ldap_email != emp.email:
-                    user_diffs.append(f"Email: LDAP='{ldap_email}' vs Django='{emp.email}'")
-                
-                ldap_phone = get_ldap_str(ldap_user.telephone_number or ldap_user.mobile)
+                    user_diffs.append(
+                        f"Email: LDAP='{ldap_email}' vs Django='{
+                            emp.email}'")
+
+                ldap_phone = get_ldap_str(
+                    ldap_user.telephone_number or ldap_user.mobile)
                 if ldap_phone and ldap_phone != emp.phone_number:
-                    user_diffs.append(f"Телефон: LDAP='{ldap_phone}' vs Django='{emp.phone_number}'")
-                
+                    user_diffs.append(
+                        f"Телефон: LDAP='{ldap_phone}' vs Django='{
+                            emp.phone_number}'")
+
                 if user_diffs:
                     diffs.append(f"{ldap_user.cn}: " + ", ".join(user_diffs))
             except Employee.DoesNotExist:
-                diffs.append(f"{ldap_user.cn}: Employee ID {ldap_user.employee_number} не найден")
-        
+                diffs.append(
+                    f"{ldap_user.cn}: Employee ID {ldap_user.employee_number} не найден")
+
         if diffs:
             self.message_user(
                 request,
@@ -749,19 +763,19 @@ class LdapUserAdmin(admin.ModelAdmin):
                 "Различий не найдено. Все выбранные пользователи синхронизированы.",
                 level=messages.SUCCESS
             )
-    
+
     # Страница смены пароля для конкретного пользователя
-    
+
     def user_change_password(self, request, dn_encoded):
         """Форма смены пароля для конкретного LDAP пользователя."""
         from django import forms
         from django.template.response import TemplateResponse
         from django.http import HttpResponseRedirect
         from urllib.parse import unquote
-        
+
         # Декодируем DN
         dn = unquote(dn_encoded)
-        
+
         # Находим пользователя
         try:
             user = LdapUser.objects.get(dn=dn)
@@ -772,7 +786,7 @@ class LdapUserAdmin(admin.ModelAdmin):
                 level=messages.ERROR
             )
             return HttpResponseRedirect('../../')  # Возврат на список
-        
+
         # Форма для смены пароля
         class PasswordChangeForm(forms.Form):
             password1 = forms.CharField(
@@ -785,7 +799,7 @@ class LdapUserAdmin(admin.ModelAdmin):
                 label='Подтверждение пароля',
                 widget=forms.PasswordInput(attrs={'autocomplete': 'new-password'}),
             )
-            
+
             def clean(self):
                 cleaned = super().clean()
                 pwd1 = cleaned.get('password1')
@@ -793,16 +807,16 @@ class LdapUserAdmin(admin.ModelAdmin):
                 if pwd1 and pwd2 and pwd1 != pwd2:
                     raise forms.ValidationError('Пароли не совпадают')
                 return cleaned
-        
+
         if request.method == 'POST':
             form = PasswordChangeForm(request.POST)
             if form.is_valid():
                 new_password = form.cleaned_data['password1']
-                
+
                 try:
                     # Меняем пароль в LDAP
                     user.set_password(new_password)
-                    
+
                     # Синхронизируем с Django Employee
                     if user.employee_number:
                         try:
@@ -811,23 +825,24 @@ class LdapUserAdmin(admin.ModelAdmin):
                             emp.save(update_fields=['password'])
                         except (Employee.DoesNotExist, ValueError):
                             pass  # Не критично
-                    
+
                     self.message_user(
                         request,
                         f'✅ Пароль успешно изменён для {user.cn}',
                         level=messages.SUCCESS
                     )
-                    
-                    # Перенаправляем на список пользователей (избегаем проблем с кодировкой DN)
+
+                    # Перенаправляем на список пользователей (избегаем проблем с
+                    # кодировкой DN)
                     return HttpResponseRedirect('../../')
-                    
+
                 except ValueError as e:
                     form.add_error(None, f'Ошибка валидации: {e}')
                 except Exception as e:
                     form.add_error(None, f'Ошибка LDAP: {e}')
         else:
             form = PasswordChangeForm()
-        
+
         context = {
             **self.admin_site.each_context(request),
             'title': f'Изменение пароля: {user.cn}',
@@ -837,19 +852,19 @@ class LdapUserAdmin(admin.ModelAdmin):
             'original': user,
             'media': self.media,
         }
-        
+
         return TemplateResponse(
             request,
             'admin/ldap_user_password_change.html',
             context,
         )
-    
+
     # Переопределение разрешений (опционально - можно разрешить редактирование)
-    
+
     def has_add_permission(self, request):
         """Запрещаем создание через админку (используйте signals)."""
         return False
-    
+
     def has_delete_permission(self, request, obj=None):
         """Разрешаем удаление только суперпользователям."""
         return request.user.is_superuser
@@ -913,7 +928,7 @@ class LdapUserAdmin(admin.ModelAdmin):
                 f'Удалено: {deleted} пользователей из LDAP.',
                 level=messages.SUCCESS,
             )
-    
+
     def get_queryset(self, request):
         """Базовый queryset без slice - пагинация через list_per_page."""
         return super().get_queryset(request)
@@ -929,7 +944,7 @@ class LdapOrganizationalUnitAdmin(admin.ModelAdmin):
     - Связь с Django Department
     - Actions для синхронизации и удаления
     """
-    
+
     def get_urls(self):
         """Переопределяем URLs для корректной работы с DN как PK."""
         urls = super().get_urls()
@@ -1098,7 +1113,6 @@ class LdapOrganizationalUnitAdmin(admin.ModelAdmin):
 
     def django_department_link(self, obj):
         """Ссылка на Django Department в списке."""
-        from employees.models import Department
         dept = self._find_django_department(obj)
         if dept:
             url = reverse('admin:employees_department_change', args=[dept.pk])
@@ -1110,7 +1124,6 @@ class LdapOrganizationalUnitAdmin(admin.ModelAdmin):
 
     def django_department_info(self, obj):
         """Подробная информация о связи с Django Department."""
-        from employees.models import Department
         dept = self._find_django_department(obj)
         if not dept:
             return format_html(
@@ -1181,8 +1194,8 @@ class LdapOrganizationalUnitAdmin(admin.ModelAdmin):
                                 )
                             except (Employee.DoesNotExist, ValueError):
                                 warnings.append(
-                                    f'⚠️ {ou_name}: руководитель Employee #{mgr.employee_number} не найден',
-                                )
+                                    f'⚠️ {ou_name}: руководитель Employee #{
+                                        mgr.employee_number} не найден', )
                     except LdapUser.DoesNotExist:
                         warnings.append(
                             f'⚠️ {ou_name}: managedBy DN не найден в LDAP',
@@ -1228,7 +1241,6 @@ class LdapOrganizationalUnitAdmin(admin.ModelAdmin):
     @admin.action(description='🔄 Синхронизировать Django → LDAP (Django как источник истины)')
     def sync_from_django_to_ldap(self, request, queryset):
         """Синхронизирует выбранные OU из Django Department в LDAP."""
-        from employees.models import Department
 
         success_count = 0
         error_count = 0
@@ -1249,8 +1261,9 @@ class LdapOrganizationalUnitAdmin(admin.ModelAdmin):
                 missing_fields.append('name (название)')
             if missing_fields:
                 warnings.append(
-                    f'⚠️ Department #{dept.pk}: отсутствуют поля: {", ".join(missing_fields)}',
-                )
+                    f'⚠️ Department #{
+                        dept.pk}: отсутствуют поля: {
+                        ", ".join(missing_fields)}', )
 
             try:
                 ldap_ou.description = dept.description or ''
@@ -1309,7 +1322,6 @@ class LdapOrganizationalUnitAdmin(admin.ModelAdmin):
     @admin.action(description='🔍 Показать различия LDAP ↔ Django')
     def show_sync_diff(self, request, queryset):
         """Показывает различия между LDAP OU и Django Department."""
-        from employees.models import Department
         diffs = []
 
         ldap_ous = self._resolve_ldap_ous(request)
@@ -1427,26 +1439,26 @@ class LdapOrganizationalUnitAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         """Базовый queryset."""
         return super().get_queryset(request)
-    
+
     def changelist_view(self, request, extra_context=None):
         """Переопределяем для фильтрации корневого контейнера."""
         from .orm_models import get_departments_base
-        
+
         # Сохраняем base DN для использования в get_results
         self._exclude_base_dn = get_departments_base().lower()
-        
+
         return super().changelist_view(request, extra_context)
-    
+
     def get_changelist_instance(self, request):
         """Создаём кастомный changelist с фильтрацией."""
         from django.contrib.admin.views.main import ChangeList
-        
+
         class FilteredChangeList(ChangeList):
             """ChangeList с фильтрацией base DN."""
-            
+
             def get_results(self, request):
                 super().get_results(request)
-                
+
                 # Фильтруем результаты после получения
                 if hasattr(self.model_admin, '_exclude_base_dn'):
                     exclude = self.model_admin._exclude_base_dn
@@ -1456,13 +1468,13 @@ class LdapOrganizationalUnitAdmin(admin.ModelAdmin):
                     ]
                     self.result_count = len(self.result_list)
                     self.full_result_count = self.result_count
-        
+
         list_display = self.get_list_display(request)
         list_display_links = self.get_list_display_links(request, list_display)
         list_filter = self.get_list_filter(request)
         search_fields = self.get_search_fields(request)
         list_select_related = self.get_list_select_related(request)
-        
+
         return FilteredChangeList(
             request,
             self.model,
@@ -1494,7 +1506,7 @@ class LdapOrganizationalUnitGroupAdmin(admin.ModelAdmin):
     - Связь с Django Department и OU
     - Просмотр членов группы
     """
-    
+
     def get_urls(self):
         """Переопределяем URLs для корректной работы с DN как PK."""
         urls = super().get_urls()
@@ -1864,7 +1876,7 @@ class LdapGroupAdmin(admin.ModelAdmin):
     Охватывает:
     - Глобальные группы: CN=GroupName,OU=Groups,...
     - Роли отделов: CN=ROLE_*,OU=<Dept>,OU=Departments,...
-    
+
     НЕ охватывает группы отделов DEP_* — для них LdapOrganizationalUnitGroupAdmin.
 
     Возможности:
@@ -1872,7 +1884,7 @@ class LdapGroupAdmin(admin.ModelAdmin):
     - Управление членством
     - Просмотр вложенности групп
     """
-    
+
     def get_urls(self):
         """Переопределяем URLs для корректной работы с DN как PK."""
         urls = super().get_urls()
@@ -2117,7 +2129,7 @@ class LdapGroupAdmin(admin.ModelAdmin):
     def group_display(self, obj):
         """Имя группы с иконкой."""
         cn = get_ldap_str(obj.cn) or ''
-        
+
         # Определяем тип по DN
         if 'OU=Groups' in obj.dn:
             icon = '🌐'  # Глобальная
@@ -2127,7 +2139,7 @@ class LdapGroupAdmin(admin.ModelAdmin):
             icon = '🏢'  # Отдел (хотя не должно быть здесь)
         else:
             icon = '👥'
-        
+
         return format_html('{} {}', icon, cn)
     group_display.short_description = 'Группа'
     group_display.admin_order_field = 'cn'
@@ -2136,7 +2148,7 @@ class LdapGroupAdmin(admin.ModelAdmin):
         """Тип группы по расположению."""
         cn = get_ldap_str(obj.cn) or ''
         dn = obj.dn or ''
-        
+
         if 'OU=Groups' in dn:
             return format_html(
                 '<span style="color:#0066cc;">🌐 Глобальная</span>'
@@ -2310,4 +2322,3 @@ class LdapGroupAdmin(admin.ModelAdmin):
         html += '</ul></div>'
         return format_html(html)
     member_of_list.short_description = 'Членство в группах'
-

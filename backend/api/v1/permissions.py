@@ -1,11 +1,9 @@
 # backend\api\v1\permissions.py
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, Optional, Tuple, Type
+from typing import Any, Dict, Iterable, Optional, Tuple
 
-from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
-from django.db.models import Model
-from employees.constants import DeptPerm
+from django.contrib.auth.models import AbstractBaseUser
 from employees.models import Department, EmployeeDepartment, RoleAssignment
 from rest_framework.permissions import (
     SAFE_METHODS,

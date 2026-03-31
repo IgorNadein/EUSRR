@@ -11,7 +11,7 @@ from .models import Notification, UserChannelPreferences
 @admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
     """Admin для модели Notification"""
-    
+
     list_display = [
         'id',
         'get_actor_display',
@@ -23,7 +23,7 @@ class NotificationAdmin(admin.ModelAdmin):
         'emailed',
         'timestamp',
     ]
-    
+
     list_filter = [
         'unread',
         'public',
@@ -32,7 +32,7 @@ class NotificationAdmin(admin.ModelAdmin):
         'verb',
         'timestamp',
     ]
-    
+
     search_fields = [
         'recipient__username',
         'recipient__first_name',
@@ -41,7 +41,7 @@ class NotificationAdmin(admin.ModelAdmin):
         'verb',
         'description',
     ]
-    
+
     readonly_fields = [
         'get_actor_info',
         'get_action_object_info',
@@ -49,7 +49,7 @@ class NotificationAdmin(admin.ModelAdmin):
         'timestamp',
         'timestamp_read',
     ]
-    
+
     fieldsets = (
         ('Основная информация', {
             'fields': (
@@ -88,16 +88,16 @@ class NotificationAdmin(admin.ModelAdmin):
             )
         }),
     )
-    
+
     date_hierarchy = 'timestamp'
-    
+
     actions = [
         'mark_as_read',
         'mark_as_unread',
         'mark_as_deleted',
         'mark_as_not_deleted',
     ]
-    
+
     def get_actor_display(self, obj):
         """Отображение актора в списке"""
         if obj.actor:
@@ -108,7 +108,7 @@ class NotificationAdmin(admin.ModelAdmin):
             )
         return '-'
     get_actor_display.short_description = 'Актор'
-    
+
     def get_recipient_display(self, obj):
         """Отображение получателя"""
         return format_html(
@@ -117,12 +117,12 @@ class NotificationAdmin(admin.ModelAdmin):
             obj.recipient.get_short_name()
         )
     get_recipient_display.short_description = 'Получатель'
-    
+
     def get_actor_info(self, obj):
         """Подробная информация об акторе"""
         if not obj.actor:
             return '-'
-        
+
         info = f"""
         <strong>Тип:</strong> {obj.actor_content_type.model}<br>
         <strong>ID:</strong> {obj.actor_object_id}<br>
@@ -130,12 +130,12 @@ class NotificationAdmin(admin.ModelAdmin):
         """
         return mark_safe(info)
     get_actor_info.short_description = 'Информация об акторе'
-    
+
     def get_action_object_info(self, obj):
         """Подробная информация об объекте действия"""
         if not obj.action_object:
             return '-'
-        
+
         info = f"""
         <strong>Тип:</strong> {obj.action_object_content_type.model}<br>
         <strong>ID:</strong> {obj.action_object_object_id}<br>
@@ -143,12 +143,12 @@ class NotificationAdmin(admin.ModelAdmin):
         """
         return mark_safe(info)
     get_action_object_info.short_description = 'Объект действия'
-    
+
     def get_target_info(self, obj):
         """Подробная информация о целевом объекте"""
         if not obj.target:
             return '-'
-        
+
         info = f"""
         <strong>Тип:</strong> {obj.target_content_type.model}<br>
         <strong>ID:</strong> {obj.target_object_id}<br>
@@ -156,9 +156,9 @@ class NotificationAdmin(admin.ModelAdmin):
         """
         return mark_safe(info)
     get_target_info.short_description = 'Целевой объект'
-    
+
     # === Actions ===
-    
+
     @admin.action(description='Отметить как прочитанные')
     def mark_as_read(self, request, queryset):
         """Отметить выбранные уведомления как прочитанные"""
@@ -167,9 +167,9 @@ class NotificationAdmin(admin.ModelAdmin):
             if notification.unread:
                 notification.mark_as_read()
                 count += 1
-        
+
         self.message_user(request, f'Отмечено как прочитанные: {count} уведомлений')
-    
+
     @admin.action(description='Отметить как непрочитанные')
     def mark_as_unread(self, request, queryset):
         """Отметить выбранные уведомления как непрочитанные"""
@@ -178,15 +178,15 @@ class NotificationAdmin(admin.ModelAdmin):
             if not notification.unread:
                 notification.mark_as_unread()
                 count += 1
-        
+
         self.message_user(request, f'Отмечено как непрочитанные: {count} уведомлений')
-    
+
     @admin.action(description='Пометить как удаленные')
     def mark_as_deleted(self, request, queryset):
         """Пометить как удаленные (мягкое удаление)"""
         count = queryset.filter(deleted=False).update(deleted=True)
         self.message_user(request, f'Помечено как удаленные: {count} уведомлений')
-    
+
     @admin.action(description='Восстановить удаленные')
     def mark_as_not_deleted(self, request, queryset):
         """Восстановить удаленные"""
@@ -197,7 +197,7 @@ class NotificationAdmin(admin.ModelAdmin):
 @admin.register(UserChannelPreferences)
 class UserChannelPreferencesAdmin(admin.ModelAdmin):
     """Admin для настроек каналов пользователя"""
-    
+
     list_display = [
         'user',
         'web_enabled',
@@ -207,7 +207,7 @@ class UserChannelPreferencesAdmin(admin.ModelAdmin):
         'dnd_enabled',
         'get_disabled_verbs_count',
     ]
-    
+
     list_filter = [
         'web_enabled',
         'email_enabled',
@@ -215,14 +215,14 @@ class UserChannelPreferencesAdmin(admin.ModelAdmin):
         'email_frequency',
         'dnd_enabled',
     ]
-    
+
     search_fields = [
         'user__username',
         'user__first_name',
         'user__last_name',
         'user__email',
     ]
-    
+
     fieldsets = (
         ('Пользователь', {
             'fields': ('user',)
@@ -253,9 +253,9 @@ class UserChannelPreferencesAdmin(admin.ModelAdmin):
             'classes': ('collapse',),
         }),
     )
-    
+
     readonly_fields = []
-    
+
     def get_disabled_verbs_count(self, obj):
         """Количество отключенных типов"""
         count = len(obj.disabled_verbs)

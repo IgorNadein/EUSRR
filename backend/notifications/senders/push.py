@@ -14,52 +14,53 @@ class PushNotificationSender(BaseNotificationSender):
     Отправитель Web Push уведомлений через django-push-notifications.
     Доставляет уведомления в браузер даже когда вкладка закрыта.
     """
-    
+
     def can_send(self, notification, user_preferences) -> bool:
         """Проверяет, включены ли push уведомления"""
         if not user_preferences.push_enabled:
             self.log_skip(notification, "push_enabled=False")
             return False
         return True
-    
+
     def send(self, notification, **kwargs) -> bool:
         """
         Отправляет Web Push уведомление.
-        
+
         Args:
             notification: Объект Notification
             **kwargs: Дополнительные параметры
-            
+
         Returns:
             True если отправлено успешно, False иначе
         """
         try:
             user = notification.recipient
-            
+
             # Получаем активные устройства через django-push-notifications
             devices = WebPushDevice.objects.filter(
                 user=user,
                 active=True
             )
-            
+
             if not devices.exists():
                 self.log_skip(notification, "no active push devices")
                 return False
-            
+
             # Формируем данные для push
             actor_str = str(notification.actor) if notification.actor else 'Система'
             title = f'{actor_str} {notification.verb}'
-            
+
             # Ограничиваем длину body (Web Push имеет лимит ~4KB на весь payload)
-            # Оставляем 300 символов для body, чтобы гарантировать что весь message поместится
+            # Оставляем 300 символов для body, чтобы гарантировать что весь message
+            # поместится
             body = notification.description or ''
             if len(body) > 300:
                 body = body[:297] + '...'
-            
+
             # Получаем иконки из конфигурации (None = browser default)
             default_icon = get('PUSH_DEFAULT_ICON')
             default_badge = get('PUSH_DEFAULT_BADGE')
-            
+
             # django-push-notifications использует другой формат
             # Формируем данные для Web Push API
             message_data = {
@@ -73,19 +74,19 @@ class PushNotificationSender(BaseNotificationSender):
                     'verb': notification.verb,
                 }
             }
-            
+
             # Добавляем иконки только если они настроены
             if default_icon:
                 message_data['icon'] = default_icon
             if default_badge:
                 message_data['badge'] = default_badge
-            
+
             # Преобразуем в JSON-строку для send_message()
             message = json.dumps(message_data)
-            
+
             sent_count = 0
             failed_count = 0
-            
+
             # Отправляем через все устройства пользователя
             for device in devices:
                 try:
@@ -107,7 +108,7 @@ class PushNotificationSender(BaseNotificationSender):
                         device.active = False
                         device.save()
                         self.logger.info(f"Device {device.id} деактивирован")
-            
+
             if sent_count > 0:
                 self.log_success(notification, f"{sent_count} devices")
                 if failed_count > 0:
@@ -117,9 +118,10 @@ class PushNotificationSender(BaseNotificationSender):
                     )
                 return True
             else:
-                self.log_skip(notification, f"no successful sends ({failed_count} failures)")
+                self.log_skip(notification,
+                              f"no successful sends ({failed_count} failures)")
                 return False
-            
+
         except ImportError:
             self.log_skip(notification, "django-push-notifications not installed")
             return False

@@ -2,8 +2,7 @@
 from __future__ import annotations
 from typing import Any
 from copy import deepcopy
-from django.contrib.auth.models import AbstractBaseUser
-from rest_framework.permissions import BasePermission, SAFE_METHODS
+from rest_framework.permissions import SAFE_METHODS
 from rest_framework.permissions import DjangoModelPermissions
 from rest_framework.request import Request
 from rest_framework.views import View
@@ -37,17 +36,24 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
 
     def has_permission(self, request: Request, view: View) -> bool:
         action = getattr(view, "action", None)
-        
+
         # SAFE + acknowledge/download → достаточно быть аутентифицированным
         if request.method in SAFE_METHODS or action in ("acknowledge", "download"):
             return bool(request.user and request.user.is_authenticated)
 
-        # CREATE → разрешаем всем аутентифицированным (документы создаются неопубликованными)
+        # CREATE → разрешаем всем аутентифицированным (документы создаются
+        # неопубликованными)
         if action == "create":
             return bool(request.user and request.user.is_authenticated)
 
         # update/destroy и related documents - проверяем на уровне объекта
-        if action in ("update", "partial_update", "destroy", "add_related", "remove_related", "revert"):
+        if action in (
+            "update",
+            "partial_update",
+            "destroy",
+            "add_related",
+            "remove_related",
+                "revert"):
             return bool(request.user and request.user.is_authenticated)
 
         # небезопасные → staff ИЛИ стандартные модельные права (add/change/delete)

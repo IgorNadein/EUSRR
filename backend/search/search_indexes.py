@@ -37,7 +37,7 @@ if Employee:
         Employee,
         fields=(
             "last_name",
-            "first_name", 
+            "first_name",
             "patronymic",
             "email",
             "phone_number",
@@ -85,14 +85,14 @@ if Message:
 CalendarEvent = get_model_safe("calendar_app", "CalendarEvent")
 if CalendarEvent:
     from watson.search import SearchAdapter
-    
+
     class CalendarEventAdapter(SearchAdapter):
         """Кастомный адаптер для CalendarEvent с правильным URL."""
-        
+
         def get_url(self, obj):
             """Возвращает URL календаря (общий календарь компании)."""
             return "/calendar/"
-    
+
     register(
         CalendarEvent,
         adapter_cls=CalendarEventAdapter,
@@ -104,14 +104,14 @@ if CalendarEvent:
 Event = get_model_safe("schedule", "Event")
 if Event:
     from watson.search import SearchAdapter
-    
+
     class ScheduleEventAdapter(SearchAdapter):
         """Кастомный адаптер для Event из django-scheduler."""
-        
+
         def get_url(self, obj):
             """Возвращает URL календаря."""
             return "/calendar/"
-    
+
     register(
         Event,
         adapter_cls=ScheduleEventAdapter,
@@ -141,24 +141,24 @@ if Equipment:
 Document = get_model_safe("documents", "Document")
 if Document:
     from watson.search import SearchAdapter
-    
+
     class DocumentAdapter(SearchAdapter):
         """Кастомный адаптер для Document с URL и расширенным поиском."""
-        
+
         def get_title(self, obj):
             """Возвращает заголовок для результатов поиска."""
             return obj.title
-        
+
         def get_description(self, obj):
             """Возвращает описание для результатов поиска."""
             # Возвращаем первые 200 символов extracted_text или description
             text = obj.extracted_text if obj.extracted_text else obj.description
             return text[:200] + '...' if len(text) > 200 else text
-        
+
         def get_url(self, obj):
             """Возвращает URL документа."""
             return f"/documents/{obj.id}/"
-    
+
     register(
         Document,
         adapter_cls=DocumentAdapter,

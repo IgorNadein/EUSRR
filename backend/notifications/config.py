@@ -15,35 +15,35 @@ DEFAULT_CONFIG = {
         'push': True,
         'websocket': True,
     },
-    
+
     # === Email настройки ===
     'EMAIL_RATE_LIMIT': '10/m',  # 10 писем в минуту
     'EMAIL_MAX_RETRIES': 3,
     'EMAIL_RETRY_DELAY': 300,  # 5 минут в секундах
     'EMAIL_DEFAULT_FREQUENCY': 'instant',  # instant, daily, weekly, disabled
-    
+
     # === Push настройки ===
     'PUSH_RATE_LIMIT': '50/m',  # 50 push в минуту
     'PUSH_MAX_RETRIES': 2,
     'PUSH_RETRY_DELAY': 60,  # 1 минута в секундах
     'PUSH_DEFAULT_ICON': None,  # URL иконки по умолчанию (None = browser default)
     'PUSH_DEFAULT_BADGE': None,  # URL badge по умолчанию (None = без badge)
-    
+
     # === WebSocket настройки ===
     'WEBSOCKET_MAX_RETRIES': 1,
     'WEBSOCKET_RETRY_DELAY': 5,  # 5 секунд
-    
+
     # === Digest настройки ===
     'DIGEST_DAILY_TIME': '09:00',  # Время отправки дейли дайджеста
     'DIGEST_WEEKLY_DAY': 'monday',  # День недели для weekly дайджеста
     'DIGEST_WEEKLY_TIME': '09:00',
-    
+
     # === Общие настройки ===
     'SITE_NAME': 'My Site',  # Название сайта для email
     'DEFAULT_FROM_EMAIL': None,  # None = использовать settings.DEFAULT_FROM_EMAIL
     'NOTIFICATION_MAX_AGE_DAYS': 90,  # Храним уведомления 90 дней
     'UNREAD_NOTIFICATIONS_LIMIT': 100,  # Максимум непрочитанных для показа
-    
+
     # === DND режим ===
     'DND_ENABLED': True,  # Включить поддержку "Не беспокоить"
     'DND_SILENT_CHANNELS': ['websocket'],  # В DND только silent websocket
@@ -54,35 +54,35 @@ def get_config():
     """
     Получить конфигурацию модуля.
     Объединяет DEFAULT_CONFIG с пользовательскими настройками из settings.NOTIFICATIONS_CONFIG
-    
+
     Returns:
         dict: Итоговая конфигурация
-        
+
     Usage:
         from notifications.config import get_config
         config = get_config()
         rate_limit = config['EMAIL_RATE_LIMIT']
     """
     config = DEFAULT_CONFIG.copy()
-    
+
     # Обновляем из settings проекта
     user_config = getattr(settings, 'NOTIFICATIONS_CONFIG', {})
     config.update(user_config)
-    
+
     return config
 
 
 def get(key, default=None):
     """
     Получить конкретную настройку по ключу
-    
+
     Args:
         key: Ключ настройки
         default: Значение по умолчанию если не найдено
-        
+
     Returns:
         Значение настройки
-        
+
     Usage:
         from notifications.config import get
         rate_limit = get('EMAIL_RATE_LIMIT', '10/m')

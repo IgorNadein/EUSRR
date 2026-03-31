@@ -144,7 +144,8 @@ class UserService(BaseService):
                         emp.save(update_fields=["password"])
 
                     # Запись employeeNumber в LDAP для связки через прямую модификацию
-                    # Используем ldap3 напрямую, т.к. ORM .save() пытается перестроить DN
+                    # Используем ldap3 напрямую, т.к. ORM .save() пытается перестроить
+                    # DN
                     from ldap3 import MODIFY_REPLACE
                     conn.modify(
                         dn,
@@ -321,7 +322,8 @@ class UserService(BaseService):
                     if saved_avatar_bytes and hasattr(emp, "avatar"):
                         from django.core.files.base import ContentFile
                         filename = f"avatar_{emp.pk}.jpg"
-                        emp.avatar.save(filename, ContentFile(saved_avatar_bytes), save=False)
+                        emp.avatar.save(
+                            filename, ContentFile(saved_avatar_bytes), save=False)
                         if "avatar" not in updated_fields:
                             updated_fields.append("avatar")
 

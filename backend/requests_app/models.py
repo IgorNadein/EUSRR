@@ -76,7 +76,7 @@ class Request(models.Model):
         blank=True,
         verbose_name=_("Согласующий"),
     )
-    
+
     # Устаревшее поле, сохранено для обратной совместимости
     department = models.ForeignKey(
         "employees.Department",
@@ -86,7 +86,7 @@ class Request(models.Model):
         verbose_name=_("Основной отдел (устар.)"),
         help_text=_("Устаревшее поле, используйте departments"),
     )
-    
+
     # Новые поля для множественных получателей
     departments = models.ManyToManyField(
         "employees.Department",
@@ -95,7 +95,7 @@ class Request(models.Model):
         related_name="received_requests",
         help_text=_("Заявка будет видна всем уполномоченным сотрудникам этих отделов")
     )
-    
+
     recipients = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         verbose_name=_("Получатели"),
@@ -103,7 +103,7 @@ class Request(models.Model):
         related_name="received_requests",
         help_text=_("Сотрудники, которым адресована заявка")
     )
-    
+
     cc_users = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         verbose_name=_("Копия (CC)"),
@@ -111,7 +111,7 @@ class Request(models.Model):
         related_name="requests_cc",
         help_text=_("Сотрудники в копии (уведомления без обязанности рассмотрения)")
     )
-    
+
     sent_to_all_department = models.BooleanField(
         _("Всем сотрудникам отделов"),
         default=False,
@@ -155,7 +155,8 @@ class Request(models.Model):
         verbose_name = _("Заявление")
         verbose_name_plural = _("Заявления")
         ordering = ["-created_at"]
-        # NOTE: проверь через EXPLAIN, не избыточны ли некоторые индексы для твоих кейсов
+        # NOTE: проверь через EXPLAIN, не избыточны ли некоторые индексы для твоих
+        # кейсов
         indexes = [
             models.Index(fields=["status", "created_at"]),
             models.Index(fields=["type", "created_at"]),
@@ -169,15 +170,22 @@ class Request(models.Model):
         constraints = [
             models.CheckConstraint(
                 name="request_date_range_valid",
-                condition=Q(date_to__isnull=True)
-                | Q(date_from__isnull=True)
-                | Q(date_from__lte=F("date_to")),
+                condition=Q(
+                    date_to__isnull=True) | Q(
+                    date_from__isnull=True) | Q(
+                    date_from__lte=F("date_to")),
             ),
             models.CheckConstraint(
                 name="request_approver_required_on_decision",
-                condition=Q(status__in=[RequestStatus.APPROVED, RequestStatus.REJECTED],
-                            approver__isnull=False)
-                | Q(status__in=[RequestStatus.DRAFT, RequestStatus.PENDING, RequestStatus.CANCELLED],
+                condition=Q(
+                    status__in=[
+                        RequestStatus.APPROVED,
+                        RequestStatus.REJECTED],
+                    approver__isnull=False) | Q(
+                    status__in=[
+                        RequestStatus.DRAFT,
+                        RequestStatus.PENDING,
+                        RequestStatus.CANCELLED],
                     approver__isnull=True),
             ),
         ]
@@ -190,7 +198,8 @@ class Request(models.Model):
             raise ValidationError(
                 _("Для выбранного типа укажите даты начала и окончания.")
             )
-        if self.type in {RequestType.TRANSFER, RequestType.DISMISSAL} and not self.date_from:
+        if self.type in {RequestType.TRANSFER,
+                         RequestType.DISMISSAL} and not self.date_from:
             raise ValidationError(_("Для перевода/увольнения укажите дату начала."))
 
         if self.approver_id and self.approver_id == self.employee_id:
@@ -204,23 +213,23 @@ class Request(models.Model):
     @property
     def is_final(self):
         return self.status in FINAL_STATUS
-    
+
     @property
     def all_recipients(self):
         """Все получатели: основные + CC"""
         User = settings.AUTH_USER_MODEL
         from django.apps import apps
         UserModel = apps.get_model(User)
-        
+
         recipient_ids = set(self.recipients.values_list('id', flat=True))
         cc_ids = set(self.cc_users.values_list('id', flat=True))
         return UserModel.objects.filter(id__in=recipient_ids | cc_ids)
-    
+
     @property
     def primary_recipients(self):
         """Только основные получатели (без CC)"""
         return self.recipients.all()
-    
+
     def is_recipient(self, user):
         """Проверка, является ли пользователь получателем"""
         # Прямой получатель или в копии
@@ -228,24 +237,23 @@ class Request(models.Model):
             return True
         if self.cc_users.filter(id=user.id).exists():
             return True
-        
+
         # Если sent_to_all_department и пользователь в одном из отделов
         if self.sent_to_all_department:
-            from employees.models import EmployeeDepartment
             return self.departments.filter(
                 employeedepartment__employee=user,
                 employeedepartment__is_active=True
             ).exists()
-        
+
         return False
-    
+
     def add_recipient(self, user, is_cc=False):
         """Добавить получателя"""
         if is_cc:
             self.cc_users.add(user)
         else:
             self.recipients.add(user)
-    
+
     def remove_recipient(self, user):
         """Удалить получателя из обеих групп"""
         self.recipients.remove(user)
@@ -278,7 +286,10 @@ class Request(models.Model):
         """
         if self.status in FINAL_STATUS and not self.decided_at:
             self.decided_at = timezone.now()
-        if self.status in {RequestStatus.DRAFT, RequestStatus.PENDING, RequestStatus.CANCELLED} and self.approver_id:
+        if self.status in {
+                RequestStatus.DRAFT,
+                RequestStatus.PENDING,
+                RequestStatus.CANCELLED} and self.approver_id:
             self.approver = None
         super().save(*args, **kwargs)
 

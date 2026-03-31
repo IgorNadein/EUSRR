@@ -450,7 +450,8 @@ AUTHENTICATION_BACKENDS = [
     "eusrr_backend.auth_backends.SuperuserOnlyBackend",  # экстренный доступ для админа
     # расчёт прав на основе должностей
     "eusrr_backend.auth_backends.PositionRoleBackend",
-    "rules.permissions.ObjectPermissionBackend",  # django-rules для object-level permissions
+    "rules.permissions.ObjectPermissionBackend",
+    # django-rules для object-level permissions
     "django.contrib.auth.backends.ModelBackend",  # стандартный Django бэкенд
 ]
 
@@ -485,7 +486,8 @@ LDAP_ATTR_MAIL = os.getenv("LDAP_ATTR_MAIL", "mail")
 LDAP_ATTR_GIVENNAME = os.getenv("LDAP_ATTR_GIVENNAME", "givenName")
 LDAP_ATTR_SN = os.getenv("LDAP_ATTR_SN", "sn")
 LDAP_ATTR_PHONE = os.getenv("LDAP_ATTR_PHONE", "telephoneNumber")
-# Атрибут LDAP для хранения Django pk сотрудника (employeeNumber по RFC 2798, employeeID для AD)
+# Атрибут LDAP для хранения Django pk сотрудника (employeeNumber по RFC
+# 2798, employeeID для AD)
 LDAP_EMPLOYEE_ID_ATTR = os.getenv("LDAP_EMPLOYEE_ID_ATTR", "employeeNumber")
 LDAP_PHONE_ATTRS = tuple(
     _split_env_list(os.getenv("LDAP_PHONE_ATTRS", "mobile,telephoneNumber"))
@@ -527,7 +529,10 @@ VAPID_PUBLIC_KEY = os.getenv(
 )
 VAPID_PRIVATE_KEY = os.getenv(
     "VAPID_PRIVATE_KEY",
-    "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgCNnpupg3xbtFUiOSUZ6L7s6puxuEjzR73kTL7v8bMvKhRANCAATE4rWcva-MoGCQYBnWmbgpG-68Ee4hyyb9A5DaWiTixEqLTjRE1rWQEMZyVVP2KPb_omKPu3VhHhdFRIzHBjJE"
+    (
+        "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgCNnpupg3xbtFUiOSUZ6L7s6puxuEjzR73kTL7v8bMvKh"
+        "RANCAATE4rWcva-MoGCQYBnWmbgpG-68Ee4hyyb9A5DaWiTixEqLTjRE1rWQEMZyVVP2KPb_omKPu3VhHhdFRIzHBjJE"
+    )
 )
 VAPID_ADMIN_EMAIL = os.getenv("VAPID_ADMIN_EMAIL", "robotail-info@yandex.ru")
 

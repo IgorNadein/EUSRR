@@ -61,7 +61,9 @@ def is_own_profile(user, employee):
 @rules.predicate
 def is_same_department(user, employee):
     """Пользователь и сотрудник в одном отделе"""
-    if employee is None or not hasattr(user, 'department') or not hasattr(employee, 'department'):
+    if employee is None or not hasattr(
+            user, 'department') or not hasattr(
+            employee, 'department'):
         return False
     return user.department == employee.department
 
@@ -139,15 +141,15 @@ from django.core.exceptions import PermissionDenied
 
 def employee_detail(request, pk):
     employee = get_object_or_404(Employee, pk=pk)
-    
+
     # Проверка через has_perm (если правило зарегистрировано через add_perm)
     if not request.user.has_perm('employees.view_employee', employee):
         raise PermissionDenied
-    
+
     # Или напрямую через rules.test_rule
     if not rules.test_rule('employees.view_employee', request.user, employee):
         raise PermissionDenied
-    
+
     return render(request, 'employees/detail.html', {'employee': employee})
 
 

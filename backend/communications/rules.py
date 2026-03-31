@@ -26,17 +26,17 @@ def is_chat_member(user, chat):
     """Пользователь является участником чата"""
     if chat is None:
         return False
-    
+
     # Используем прямые запросы к БД в обход prefetch cache
-    from .models import Chat, ChatMembership
-    
+    from .models import ChatMembership
+
     # Глобальный чат доступен всем
     if chat.type == "global":
         return True
-    
+
     return ChatMembership.objects.filter(
-        chat=chat, 
-        user=user, 
+        chat=chat,
+        user=user,
         is_active=True
     ).exists() or chat.participants.filter(pk=user.pk).exists()
 
@@ -45,22 +45,28 @@ def is_chat_member(user, chat):
 def is_chat_owner(user, chat):
     """Пользователь является владельцем/создателем чата"""
     if chat is None:
-        logger.warning(f"[is_chat_owner] chat is None")
+        logger.warning("[is_chat_owner] chat is None")
         return False
-    
+
     if hasattr(chat, 'owner'):
         owner = chat.owner
         result = owner.id == user.id if owner else False
-        logger.warning(f"[is_chat_owner] checking via owner: user={user.id}, owner={owner.id if owner else None}, result={result}")
+        logger.warning(
+            f"[is_chat_owner] checking via owner: user={
+                user.id}, owner={
+                owner.id if owner else None}, result={result}")
         return result
-    
+
     if hasattr(chat, 'created_by'):
         created_by = chat.created_by
         result = created_by.id == user.id if created_by else False
-        logger.warning(f"[is_chat_owner] checking via created_by: user={user.id}, created_by={created_by.id if created_by else None}, result={result}")
+        logger.warning(
+            f"[is_chat_owner] checking via created_by: user={
+                user.id}, created_by={
+                created_by.id if created_by else None}, result={result}")
         return result
-    
-    logger.warning(f"[is_chat_owner] no owner or created_by attribute")
+
+    logger.warning("[is_chat_owner] no owner or created_by attribute")
     return False
 
 
@@ -69,11 +75,11 @@ def is_chat_admin(user, chat):
     """Пользователь является администратором чата"""
     if chat is None:
         return False
-    
+
     # Проверка через admins
     if hasattr(chat, 'admins'):
         return user in chat.admins.all()
-    
+
     # Проверка через membership с ролью admin (только активные)
     if hasattr(chat, 'memberships'):
         result = chat.memberships.filter(
@@ -160,22 +166,22 @@ def can_pin_messages_flag(user, chat):
 def has_send_messages_permission(user, chat):
     """
     Пользователь имеет право отправлять сообщения в чат
-    
+
     Проверяет:
     1. Если НЕТ ChatMembership - разрешено (для обратной совместимости)
     2. Если ЕСТЬ ChatMembership - проверяется флаг can_send_messages
     """
     if chat is None:
         return False
-    
+
     # Для личных/глобальных чатов без ChatMembership - разрешено всем
     if chat.type in ['private', 'global']:
         return True
-    
+
     # Для чатов с ChatMembership проверяем флаг can_send_messages
     if hasattr(chat, 'memberships'):
         from .models import ChatMembership
-        
+
         # Проверяем, есть ли membership для пользователя
         try:
             membership = chat.memberships.get(
@@ -200,7 +206,7 @@ def has_send_messages_permission(user, chat):
                 f"user={user.id}, chat={chat.id}, denying access"
             )
             return False
-    
+
     # Если нет memberships (не должно быть после миграции) - запрещено
     return False
 
@@ -210,12 +216,12 @@ def is_direct_chat_participant(user, chat):
     """Пользователь участвует в личном чате"""
     if chat is None:
         return False
-    
+
     # Проверка типа чата
     chat_type = getattr(chat, 'chat_type', None) or getattr(chat, 'type', None)
     if chat_type not in ['direct', 'private', 'personal']:
         return False
-    
+
     return is_chat_member(user, chat)
 
 
@@ -224,7 +230,7 @@ def is_message_author(user, message):
     """Пользователь является автором сообщения"""
     if message is None:
         return False
-    
+
     return message.author == user or getattr(message, 'sender', None) == user
 
 
@@ -233,7 +239,7 @@ def can_access_message_chat(user, message):
     """Пользователь имеет доступ к чату, где находится сообщение"""
     if message is None or not hasattr(message, 'chat'):
         return False
-    
+
     return is_chat_member(user, message.chat)
 
 
@@ -242,7 +248,7 @@ def is_public_chat(user, chat):
     """Чат является публичным (доступен всем)"""
     if chat is None:
         return False
-    
+
     return getattr(chat, 'is_public', False)
 
 
@@ -251,7 +257,7 @@ def deprecated_is_department_chat(user, chat):
     """
     DEPRECATED: This predicate is deprecated.
     Use callback resolver pattern via get_participants() instead.
-    
+
     For backward compatibility, always returns False.
     Configure COMMUNICATIONS_PARTICIPANT_RESOLVER in settings.py.
     """
@@ -358,10 +364,10 @@ import rules
 
 def chat_detail(request, pk):
     chat = get_object_or_404(Chat, pk=pk)
-    
+
     if not rules.test_rule('communications.view_chat', request.user, chat):
         raise PermissionDenied("У вас нет доступа к этому чату")
-    
+
     messages = chat.messages.all()
     return render(request, 'communications/chat.html', {
         'chat': chat,
@@ -371,25 +377,25 @@ def chat_detail(request, pk):
 
 def send_message(request, chat_pk):
     chat = get_object_or_404(Chat, pk=chat_pk)
-    
+
     if not rules.test_rule('communications.send_message', request.user, chat):
         return JsonResponse({'error': 'Нет прав на отправку сообщений'}, status=403)
-    
+
     message = Message.objects.create(
         chat=chat,
         author=request.user,
         text=request.POST.get('text')
     )
-    
+
     return JsonResponse({'message_id': message.pk})
 
 
 def delete_message(request, pk):
     message = get_object_or_404(Message, pk=pk)
-    
+
     if not rules.test_rule('communications.delete_message', request.user, message):
         return JsonResponse({'error': 'Нет прав на удаление'}, status=403)
-    
+
     message.delete()
     return JsonResponse({'success': True})
 
@@ -411,7 +417,7 @@ def delete_message(request, pk):
 {% for message in messages %}
     <div class="message">
         <strong>{{ message.author }}</strong>: {{ message.text }}
-        
+
         {% has_rule 'communications.delete_message' user message as can_delete %}
         {% if can_delete %}
             <button class="btn btn-sm btn-danger" onclick="deleteMessage({{ message.pk }})">
@@ -456,38 +462,38 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
         chat_id = self.scope['url_route']['kwargs']['chat_id']
         chat = await database_sync_to_async(Chat.objects.get)(pk=chat_id)
-        
+
         # Проверка доступа
         if not await database_sync_to_async(rules.test_rule)(
             'communications.view_chat', self.scope['user'], chat
         ):
             await self.close()
             return
-        
+
         await self.accept()
         # Добавляем в группу чата
         await self.channel_layer.group_add(f'chat_{chat_id}', self.channel_name)
-    
+
     async def receive_json(self, content):
         action = content.get('action')
-        
+
         if action == 'send_message':
             chat = await database_sync_to_async(Chat.objects.get)(pk=self.chat_id)
-            
+
             # Проверка прав на отправку
             if not await database_sync_to_async(rules.test_rule)(
                 'communications.send_message', self.scope['user'], chat
             ):
                 await self.send_json({'error': 'Permission denied'})
                 return
-            
+
             # Сохранение сообщения
             message = await database_sync_to_async(Message.objects.create)(
                 chat=chat,
                 author=self.scope['user'],
                 text=content['text']
             )
-            
+
             # Рассылка всем участникам
             await self.channel_layer.group_send(
                 f'chat_{chat.pk}',

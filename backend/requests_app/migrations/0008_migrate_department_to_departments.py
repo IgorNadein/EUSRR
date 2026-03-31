@@ -8,12 +8,12 @@ def migrate_department_to_departments(apps, schema_editor):
     Переносим данные из единичного department в ManyToMany departments
     """
     Request = apps.get_model('requests_app', 'Request')
-    
+
     migrated_count = 0
     for request in Request.objects.filter(department__isnull=False):
         request.departments.add(request.department)
         migrated_count += 1
-    
+
     if migrated_count > 0:
         print(f"✓ Migrated {migrated_count} requests: department → departments")
 
@@ -23,7 +23,7 @@ def reverse_migration(apps, schema_editor):
     Обратная миграция: берем первый отдел из departments и ставим в department
     """
     Request = apps.get_model('requests_app', 'Request')
-    
+
     for request in Request.objects.prefetch_related('departments').all():
         if request.departments.exists() and not request.department:
             request.department = request.departments.first()

@@ -19,7 +19,7 @@ def test_ldap_connection():
                 attributes=['*']
             )
             assert conn.result['description'] == 'success'
-            print(f"\n✓ LDAP подключение успешно")
+            print("\n✓ LDAP подключение успешно")
             print(f"✓ Сервер: {conn.server}")
             print(f"✓ Пользователь: {conn.user}")
     except Exception as e:

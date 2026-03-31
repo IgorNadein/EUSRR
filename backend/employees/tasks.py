@@ -41,7 +41,9 @@ def _execute_employee_delete(payload: dict) -> None:
         model="employee", object_pk=payload["object_pk"]
     ).first()
     if not sync_state or not sync_state.ldap_dn:
-        logger.info("Employee %s already removed from LDAP sync state, skipping", payload["object_pk"])
+        logger.info(
+            "Employee %s already removed from LDAP sync state, skipping",
+            payload["object_pk"])
         return
 
     svc = UserService()
@@ -172,7 +174,6 @@ def _execute_group_delete(payload: dict) -> None:
 def _execute_group_members(payload: dict) -> None:
     """Повторяет синхронизацию участников Group → LDAP."""
     from employees.ldap import GroupService
-    from employees.models import LdapSyncState
 
     dn = payload.get("dn")
     if not dn:
@@ -251,7 +252,9 @@ def process_ldap_queue_item(self, queue_id: int):
         logger.warning("LdapSyncQueue item %d not found", queue_id)
         return
 
-    if item.status not in (LdapSyncQueue.Status.PENDING, LdapSyncQueue.Status.IN_PROGRESS):
+    if item.status not in (
+            LdapSyncQueue.Status.PENDING,
+            LdapSyncQueue.Status.IN_PROGRESS):
         return
 
     executor = _EXECUTORS.get(item.operation)

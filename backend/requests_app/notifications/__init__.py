@@ -37,12 +37,12 @@ __all__ = [
     'NotificationVerbs',
     'MessageTemplates',
     'ActionURLs',
-    
+
     # Handlers
     'notify_new_request',
     'notify_status_change',
     'notify_comment',
-    
+
     # Signals module (для импорта в AppConfig)
     'signals',
 ]

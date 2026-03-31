@@ -35,32 +35,32 @@ logger = logging.getLogger(__name__)
 def create_request_notifications(sender, instance, created, **kwargs):
     """
     Создает уведомления при создании или изменении заявки.
-    
+
     Обрабатывает:
     1. Новая заявка - уведомление руководителю отдела
     2. Изменение статуса - уведомления соответствующим получателям
     """
     try:
         request = instance
-        
+
         if created:
             # Новая заявка создана
             # WebSocket broadcast будет автоматически через notify.send()
             notify_new_request(request)
             return
-        
+
         # Проверяем изменение статуса
         if hasattr(request, '_original_status'):
             old_status = request._original_status
             new_status = request.status
-            
+
             if old_status == new_status:
                 return
-            
+
             # Обработка изменения статуса
             # WebSocket broadcast будет автоматически через notify.send()
             _handle_status_change(request, new_status)
-    
+
     except Exception as e:
         logger.exception(f"[SIGNAL ERROR] create_request_notifications: {e}")
 
@@ -68,7 +68,7 @@ def create_request_notifications(sender, instance, created, **kwargs):
 def _handle_status_change(request, new_status):
     """
     Обработать изменение статуса заявки.
-    
+
     Args:
         request: Объект ProcurementRequest
         new_status: Новый статус
@@ -76,24 +76,24 @@ def _handle_status_change(request, new_status):
     if new_status == ProcurementStatus.PENDING:
         # Заявка отправлена на согласование
         notify_approvers(request)
-    
+
     elif new_status == ProcurementStatus.APPROVED:
         # Заявка одобрена
         notify_request_approved(request)
-    
+
     elif new_status == ProcurementStatus.REJECTED:
         # Заявка отклонена
         notify_request_rejected(request)
-    
+
     elif new_status == ProcurementStatus.COMPLETED:
         # Заявка завершена
         notify_request_completed(request)
-    
+
     elif new_status == ProcurementStatus.IN_PROGRESS:
         # Заявка взята в работу
         executor = request.executor
         notify_request_in_progress(request, executor)
-    
+
     elif new_status == ProcurementStatus.CANCELLED:
         # Заявка отменена
         notify_request_cancelled(request)
@@ -103,7 +103,7 @@ def _handle_status_change(request, new_status):
 def create_approval_notifications(sender, instance, created, **kwargs):
     """
     Создает уведомления при создании или изменении согласования.
-    
+
     Обрабатывает:
     1. Новое согласование - уведомление согласующему
     2. Одобрение - уведомление создателю заявки
@@ -111,28 +111,28 @@ def create_approval_notifications(sender, instance, created, **kwargs):
     """
     try:
         approval = instance
-        
+
         if created:
             # Новое согласование создано
             from .handlers import notify_approver
             notify_approver(approval)
             return
-        
+
         # Проверяем изменение статуса согласования
         if hasattr(approval, '_original_approval_status'):
             old_status = approval._original_approval_status
             new_status = approval.status
-            
+
             if old_status == new_status:
                 return
-            
+
             # Обработка изменения статуса согласования
             if new_status == ApprovalStatus.APPROVED:
                 notify_stage_approved(approval)
-            
+
             elif new_status == ApprovalStatus.REJECTED:
                 notify_stage_rejected(approval)
-    
+
     except Exception as e:
         logger.exception(f"[SIGNAL ERROR] create_approval_notifications: {e}")
 

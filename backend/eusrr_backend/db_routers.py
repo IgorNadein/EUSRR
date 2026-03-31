@@ -14,10 +14,10 @@ from django.conf import settings
 class LdapRouter:
     """
     Database router для направления LDAP моделей в LDAP подключение.
-    
+
     LDAP модели (LdapUser, LdapGroup, LdapOrganizationalUnit) используются
     ТОЛЬКО для записи (POST/PUT/DELETE) в LDAP через ORM.
-    
+
     Чтение (GET) происходит из обычных Django моделей (Employee, Department и т.д.)
     которые хранятся в PostgreSQL.
     """

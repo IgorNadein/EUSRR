@@ -1,6 +1,6 @@
 # backend\employees\models.py
 from common.emails import send_templated_mail
-from django.contrib.auth.models import AbstractUser, BaseUserManager, Group, Permission
+from django.contrib.auth.models import AbstractUser, BaseUserManager, Group
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
 from django.db.models.functions import Lower
@@ -393,7 +393,8 @@ class Department(models.Model):
                     ).update(is_active=True, date_to=timezone.now().date())
             else:
                 # Смена A -> B: по текущей логике бывший остаётся сотрудником отдела (активным)
-                # Если хотите наоборот — поменяйте is_active=True на False и добавьте date_to.
+                # Если хотите наоборот — поменяйте is_active=True на False и добавьте
+                # date_to.
                 EmployeeDepartment.objects.get_or_create(
                     employee_id=old_head_id,
                     department_id=self.pk,

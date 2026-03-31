@@ -20,18 +20,16 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from ...models import Department, Employee, EmployeeDepartment, LdapSyncState
+from ...models import Department, Employee, LdapSyncState
 from ..config import SyncConfig
 from ..infrastructure.connections import _ldap
 from ..domain.dtos import (
-    DirectoryUserDTO,
-    DirectoryDepartmentDTO,
     LdapPersonDTO,
     _entry_to_dto,
 )
 from ..utils.ldap_utils import _paged_search, get_attr_str
 from .base_service import BaseService
-from .constants import SyncDirection, LdapFilter
+from .constants import SyncDirection
 from .user_service import UserService
 from .department_service import DepartmentService
 from .group_service import GroupService
@@ -41,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 class SyncService(BaseService):
     """Сервис синхронизации данных между Django и LDAP.
-    
+
     Координирует работу UserService, DepartmentService и GroupService
     для выполнения массовых операций импорта и экспорта.
     """
@@ -53,7 +51,7 @@ class SyncService(BaseService):
         group_service: Optional[GroupService] = None,
     ):
         """Инициализация SyncService.
-        
+
         Args:
             user_service: Сервис для работы с пользователями.
             department_service: Сервис для работы с отделами.
@@ -68,16 +66,16 @@ class SyncService(BaseService):
 
     def import_departments(self, cfg: SyncConfig) -> Tuple[int, int, int]:
         """Импорт OU отделов из LDAP в Django.
-        
+
         Читает organizational units из LDAP и создаёт/обновляет
         соответствующие записи Department в Django.
-        
+
         Args:
             cfg: Конфигурация синхронизации.
-            
+
         Returns:
             Tuple[int, int, int]: (created, updated, deleted).
-            
+
         Raises:
             RuntimeError: Если не задана база отделов.
         """
@@ -85,7 +83,7 @@ class SyncService(BaseService):
             settings, "LDAP_DEPARTMENTS_BASE", ""
         )
         base = raw_base.strip().strip('"').strip("'")
-        
+
         if not base:
             raise RuntimeError("departments_base_dn не задан.")
 
@@ -97,7 +95,7 @@ class SyncService(BaseService):
             entries = _paged_search(
                 conn, base, "(objectClass=organizationalUnit)"
             )
-            
+
             base_dn_lower = base.lower()
             root_ou_name = (
                 base.split(",", 1)[0][3:].strip()
@@ -111,7 +109,7 @@ class SyncService(BaseService):
                     attrs, "distinguishedName"
                 )
                 dn = (dn or "").strip()
-                
+
                 # Пропускаем корневой DN
                 if not dn or dn.lower() == base_dn_lower:
                     continue
@@ -119,7 +117,7 @@ class SyncService(BaseService):
                 name: str = (
                     get_attr_str(attrs, "ou") or get_attr_str(attrs, "name")
                 ).strip()
-                
+
                 if not name:
                     continue
 
@@ -132,10 +130,10 @@ class SyncService(BaseService):
                     pass
 
                 seen_names.add(name)
-                
+
                 # Создаём или обновляем отдел
                 dept, was_created = Department.objects.get_or_create(name=name)
-                
+
                 if was_created:
                     created += 1
                     if cfg.show_changes:
@@ -144,7 +142,7 @@ class SyncService(BaseService):
                 # Обновляем руководителя
                 head_dn: str = get_attr_str(attrs, "managedBy")
                 head_obj = None
-                
+
                 if head_dn:
                     head_pk = (
                         LdapSyncState.objects.filter(
@@ -182,15 +180,15 @@ class SyncService(BaseService):
 
             # Удаляем отделы, которых нет в LDAP
             to_delete_qs = Department.objects.exclude(name__in=seen_names)
-            
+
             if cfg.show_changes:
                 deleted_names = list(to_delete_qs.values_list("name", flat=True))
                 for name in deleted_names:
                     verb = "будет удалён" if cfg.dry_run else "удалён"
                     print(f"[CHG] - Dept: {name} ({verb})")
-            
+
             deleted_count = to_delete_qs.count()
-            
+
             if cfg.dry_run:
                 deleted = deleted_count
             else:
@@ -198,15 +196,15 @@ class SyncService(BaseService):
                 Department.objects.filter(
                     pk__in=to_delete_qs.values_list("pk", flat=True)
                 ).update(head=None)
-                
+
                 # Удаляем отделы
                 to_delete_qs.delete()
-                
+
                 # Очищаем старые sync states
                 LdapSyncState.objects.filter(model="department").exclude(
                     object_pk__in=Department.objects.values_list("pk", flat=True)
                 ).delete()
-                
+
                 deleted = deleted_count
 
         return created, updated, deleted
@@ -217,10 +215,10 @@ class SyncService(BaseService):
         self, dto: LdapPersonDTO
     ) -> Optional[Employee]:
         """Создаёт нового Employee по данным из LDAP.
-        
+
         Args:
             dto: Нормализованные данные из LDAP.
-            
+
         Returns:
             Optional[Employee]: Созданный пользователь или None.
         """
@@ -239,7 +237,7 @@ class SyncService(BaseService):
             is_active=dto.is_active,
             is_ldap_managed=True,
         )
-        
+
         # Контакты
         user.phone_number = dto.phone_e164
         if not (
@@ -267,16 +265,16 @@ class SyncService(BaseService):
         self, user: Employee, dto: LdapPersonDTO
     ) -> Employee:
         """Обновляет существующего Employee данными из LDAP.
-        
+
         Args:
             user: Существующий пользователь.
             dto: Новые данные из LDAP.
-            
+
         Returns:
             Employee: Обновлённый пользователь.
         """
         changed = False
-        
+
         for field, val in (
             ("email", dto.email),
             ("first_name", dto.given),
@@ -301,21 +299,21 @@ class SyncService(BaseService):
 
         if changed:
             user.save()
-            
+
         return user
 
     def import_users(self, cfg: SyncConfig) -> Tuple[int, int, int]:
         """Импорт пользователей из LDAP в Django.
-        
+
         Читает пользователей из LDAP и создаёт/обновляет
         соответствующие записи Employee в Django.
-        
+
         Args:
             cfg: Конфигурация синхронизации.
-            
+
         Returns:
             Tuple[int, int, int]: (created, updated, deleted).
-            
+
         Raises:
             RuntimeError: Если не заданы базовые DN.
         """
@@ -326,7 +324,7 @@ class SyncService(BaseService):
             cfg.departments_base_dn
             or getattr(settings, "LDAP_DEPARTMENTS_BASE", "")
         ).strip()
-        
+
         if not (base_users and base_deps):
             raise RuntimeError("LDAP_USERS_BASE/LDAP_DEPARTMENTS_BASE не заданы.")
 
@@ -359,9 +357,9 @@ class SyncService(BaseService):
                 _cleanup_absent_users,
             )
             from ..repositories.sync_state_repository import _touch_sync_state
-            
+
             by_guid, by_email = _load_existing_users_index(dtos)
-            
+
             # Разделяем на create/update
             to_create: List[LdapPersonDTO] = []
             to_update: List[Tuple[Employee, LdapPersonDTO]] = []
@@ -456,15 +454,15 @@ class SyncService(BaseService):
 
     def export_users(self, cfg: SyncConfig) -> Tuple[int, int, int, int, int]:
         """Экспорт пользователей из Django в LDAP.
-        
+
         Создаёт/обновляет пользователей в LDAP на основе данных из Django.
         Включает: логины/UPN, перемещение между отделами, аватары, группы.
-        
+
         Args:
             cfg: Конфигурация синхронизации.
-            
+
         Returns:
-            Tuple[int, int, int, int, int]: 
+            Tuple[int, int, int, int, int]:
                 (logins_set, moved, avatars_set, groups_added, groups_removed).
         """
         # TODO: Реализовать через UserService
@@ -477,18 +475,18 @@ class SyncService(BaseService):
         self, cfg: SyncConfig, employees: Iterable[Employee]
     ) -> int:
         """Удаляет учётные записи пользователей в LDAP.
-        
+
         Args:
             cfg: Конфигурация синхронизации.
             employees: Итератор пользователей для удаления.
-            
+
         Returns:
             int: Количество успешно удалённых DN.
         """
         do_write = not cfg.dry_run
         deleted = 0
 
-        with _ldap() as conn:
+        with _ldap():
             for emp in employees:
                 state_dn = (
                     LdapSyncState.objects.filter(
@@ -498,7 +496,7 @@ class SyncService(BaseService):
                     .first()
                 )
                 user_dn = (state_dn or "").strip()
-                
+
                 if not user_dn:
                     logger.warning(
                         "Пропуск удаления: у сотрудника pk=%s пустой ldap_dn",

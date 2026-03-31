@@ -33,7 +33,7 @@
     from employees.ldap import import_users
     config = SyncConfig(mode='ldap', scope='users', dry_run=False)
     created, updated, deleted = import_users(cfg=config)
-    
+
     # Синхронизация групп пользователя
     from employees.ldap import sync_user_groups_by_cns, _ldap
     with _ldap() as conn:
@@ -41,6 +41,8 @@
             conn, user_dn, target_cns=["IT Support"], do_write=True
         )
 """
+
+from importlib import import_module
 
 # Сервисы (прямой доступ)
 from .services.user_service import UserService
@@ -83,13 +85,14 @@ from .orm_models import (
 from .infrastructure.connections import LdapConfig, _ldap
 
 # Админка (автоматическая регистрация)
-from . import admin
+import_module("employees.ldap.admin")
 
 
 def export_users(cfg=None):
     """Обёртка для SyncService().export_users(cfg)."""
     svc = SyncService()
     return svc.export_users(cfg or SyncConfig())
+
 
 __all__ = [
     # Сервисы

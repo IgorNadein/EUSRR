@@ -10,7 +10,6 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.conf import settings
-from django.utils import timezone
 from filer.fields.file import FilerFileField
 import reversion
 
@@ -21,7 +20,7 @@ User = settings.AUTH_USER_MODEL  # 'employees.Employee'
 class Document(models.Model):
     """
     Документ с использованием django-filer для управления файлами.
-    
+
     Преимущества:
     - Поддержка папок и вложенной структуры
     - Автоматическая генерация thumbnails для изображений и PDF
@@ -29,9 +28,9 @@ class Document(models.Model):
     - Информация о размере, MIME-типе, метаданные
     - История версий через django-reversion
     """
-    
+
     title = models.CharField(_('Название'), max_length=255)
-    
+
     # Используем FilerFileField вместо FileField
     file = FilerFileField(
         verbose_name=_('Файл'),
@@ -41,7 +40,7 @@ class Document(models.Model):
         related_name='documents',
         help_text=_('Файл, загруженный через django-filer')
     )
-    
+
     # Папка для организации документов (иерархическая структура)
     folder = models.ForeignKey(
         'filer.Folder',
@@ -52,9 +51,9 @@ class Document(models.Model):
         related_name='documents',
         help_text=_('Папка для организации документов в иерархической структуре')
     )
-    
+
     description = models.TextField(_('Описание'), blank=True)
-    
+
     # Full-text search - извлеченный текст (OCR или парсинг PDF/DOCX)
     extracted_text = models.TextField(
         _('Извлеченный текст'),
@@ -62,7 +61,7 @@ class Document(models.Model):
         editable=False,
         help_text=_('Текст извлечен из файла для полнотекстового поиска')
     )
-    
+
     # Audit trail
     uploaded_by = models.ForeignKey(
         User,
@@ -73,7 +72,7 @@ class Document(models.Model):
         related_name='uploaded_documents'
     )
     uploaded_at = models.DateTimeField(_('Дата загрузки'), auto_now_add=True)
-    
+
     modified_by = models.ForeignKey(
         User,
         verbose_name=_('Последнее изменение'),
@@ -90,21 +89,20 @@ class Document(models.Model):
         default=True,
         help_text=_('Если включено — уведомление получат все активные сотрудники')
     )
-    
+
     # Требование ознакомления
     acknowledgement_required = models.BooleanField(
         _('Требуется ознакомление'),
         default=False,
         help_text=_('Если включено — сотрудники должны подтвердить ознакомление')
     )
-    
+
     departments = models.ManyToManyField(
         'employees.Department',
         verbose_name=_('Отделы-получатели'),
         blank=True,
         help_text=_('Документ будет доступен всем сотрудникам выбранных отделов (включая будущих)'),
-        related_name='documents'
-    )
+        related_name='documents')
     recipients = models.ManyToManyField(
         User,
         verbose_name=_('Получатели'),
@@ -112,7 +110,7 @@ class Document(models.Model):
         help_text=_('Если `Разослать всем` отключено, документ пойдет только этим'),
         related_name='document_recipients'
     )
-    
+
     # Связанные документы
     related_documents = models.ManyToManyField(
         'self',
@@ -161,61 +159,62 @@ class Document(models.Model):
     def get_thumbnail(self, size='medium'):
         """
         Получить thumbnail для файла (работает для изображений и PDF).
-        
+
         Args:
             size: 'small' (200x200), 'medium' (400x400), 'large' (800x800)
-        
+
         Returns:
             URL thumbnail или None
         """
         if not self.file:
             return None
-        
+
         try:
             from easy_thumbnails.files import get_thumbnailer
             thumbnailer = get_thumbnailer(self.file)
             thumbnail = thumbnailer[size]
             return thumbnail.url
         except Exception:
-            # Если thumbnail не удалось создать (не изображение), возвращаем иконку по типу
+            # Если thumbnail не удалось создать (не изображение), возвращаем иконку по
+            # типу
             return self.file.url
-    
+
     @property
     def folder_path(self):
         """
         Полный путь папки документа (breadcrumbs).
-        
+
         Returns:
             str: Путь вида "Корень / Папка1 / Папка2" или пустая строка
         """
         if not self.folder:
             return ''
-        
+
         # Собираем путь от корня до текущей папки
         path_parts = []
         current = self.folder
         while current:
             path_parts.insert(0, current.name)
             current = current.parent
-        
+
         return ' / '.join(path_parts)
-    
+
     def get_folder_hierarchy(self):
         """
         Получить иерархию папок от корня до текущей.
-        
+
         Returns:
             list: Список словарей [{id, name}, ...] от корня к текущей папке
         """
         if not self.folder:
             return []
-        
+
         hierarchy = []
         current = self.folder
         while current:
             hierarchy.insert(0, {'id': current.id, 'name': current.name})
             current = current.parent
-        
+
         return hierarchy
 
 
@@ -260,7 +259,7 @@ class DocumentType(models.Model):
     name = models.CharField(_('Название'), max_length=100)
     code = models.SlugField(_('Код'), unique=True, max_length=50)
     description = models.TextField(_('Описание'), blank=True)
-    
+
     # JSON Schema для валидации метаданных этого типа
     metadata_schema = models.JSONField(
         _('Схема метаданных'),
@@ -268,7 +267,7 @@ class DocumentType(models.Model):
         blank=True,
         help_text=_('JSON Schema для валидации метаданных документов этого типа')
     )
-    
+
     # Иконка для UI
     icon = models.CharField(
         _('Иконка'),
@@ -276,7 +275,7 @@ class DocumentType(models.Model):
         default='file-earmark-text',
         help_text=_('Bootstrap Icons класс')
     )
-    
+
     # Цвет для UI
     color = models.CharField(
         _('Цвет'),
@@ -284,15 +283,15 @@ class DocumentType(models.Model):
         default='#0d6efd',
         help_text=_('HEX цвет для UI')
     )
-    
+
     is_active = models.BooleanField(_('Активен'), default=True)
     order = models.IntegerField(_('Порядок'), default=0)
-    
+
     class Meta:
         verbose_name = _('Тип документа')
         verbose_name_plural = _('Типы документов')
         ordering = ['order', 'name']
-        
+
     def __str__(self):
         return self.name
 
@@ -310,7 +309,7 @@ class DocumentMetadata(models.Model):
     )
     key = models.CharField(_('Ключ'), max_length=100)
     value = models.TextField(_('Значение'))
-    
+
     # Тип значения для правильного отображения и валидации
     class ValueType(models.TextChoices):
         TEXT = 'text', _('Текст')
@@ -318,20 +317,20 @@ class DocumentMetadata(models.Model):
         DATE = 'date', _('Дата')
         BOOLEAN = 'boolean', _('Да/Нет')
         URL = 'url', _('Ссылка')
-    
+
     value_type = models.CharField(
         _('Тип значения'),
         max_length=20,
         choices=ValueType.choices,
         default=ValueType.TEXT
     )
-    
+
     class Meta:
         verbose_name = _('Метаданные документа')
         verbose_name_plural = _('Метаданные документов')
         unique_together = ('document', 'key')
         ordering = ['key']
-        
+
     def __str__(self):
         return f'{self.key}: {self.value}'
 
@@ -350,21 +349,21 @@ class DocumentTag(models.Model):
         help_text=_('HEX цвет для UI')
     )
     description = models.TextField(_('Описание'), blank=True)
-    
+
     documents = models.ManyToManyField(
         Document,
         related_name='tags',
         blank=True,
         verbose_name=_('Документы')
     )
-    
+
     created_at = models.DateTimeField(_('Создан'), auto_now_add=True)
-    
+
     class Meta:
         verbose_name = _('Тег')
         verbose_name_plural = _('Теги')
         ordering = ['name']
-        
+
     def __str__(self):
         return self.name
 
@@ -378,7 +377,7 @@ class Cabinet(models.Model):
     name = models.CharField(_('Название'), max_length=200)
     slug = models.SlugField(_('Слаг'), unique=True)
     description = models.TextField(_('Описание'), blank=True)
-    
+
     # Иерархическая структура кабинетов
     parent = models.ForeignKey(
         'self',
@@ -388,14 +387,14 @@ class Cabinet(models.Model):
         on_delete=models.CASCADE,
         related_name='children'
     )
-    
+
     documents = models.ManyToManyField(
         Document,
         related_name='cabinets',
         blank=True,
         verbose_name=_('Документы')
     )
-    
+
     # Иконка и цвет для UI
     icon = models.CharField(
         _('Иконка'),
@@ -409,7 +408,7 @@ class Cabinet(models.Model):
         default='#6c757d',
         help_text=_('HEX цвет для UI')
     )
-    
+
     created_by = models.ForeignKey(
         User,
         verbose_name=_('Создал'),
@@ -418,14 +417,14 @@ class Cabinet(models.Model):
         related_name='created_cabinets'
     )
     created_at = models.DateTimeField(_('Создан'), auto_now_add=True)
-    
+
     order = models.IntegerField(_('Порядок'), default=0)
-    
+
     class Meta:
         verbose_name = _('Кабинет')
         verbose_name_plural = _('Кабинеты')
         ordering = ['order', 'name']
-        
+
     def __str__(self):
         if self.parent:
             return f'{self.parent.name} / {self.name}'
@@ -453,7 +452,7 @@ class DocumentAuditLog(models.Model):
         null=True,
         verbose_name=_('Пользователь')
     )
-    
+
     class Action(models.TextChoices):
         CREATED = 'created', _('Создан')
         VIEWED = 'viewed', _('Просмотрен')
@@ -464,7 +463,7 @@ class DocumentAuditLog(models.Model):
         STATUS_CHANGED = 'status_changed', _('Изменен статус')
         PERMISSIONS_CHANGED = 'permissions_changed', _('Изменены права')
         SIGNED = 'signed', _('Подписан')
-    
+
     action = models.CharField(
         _('Действие'),
         max_length=50,
@@ -477,7 +476,7 @@ class DocumentAuditLog(models.Model):
         blank=True
     )
     user_agent = models.TextField(_('User Agent'), blank=True)
-    
+
     # Дополнительные данные о действии (JSON)
     metadata = models.JSONField(
         _('Метаданные'),
@@ -485,7 +484,7 @@ class DocumentAuditLog(models.Model):
         blank=True,
         help_text=_('Дополнительная информация о действии')
     )
-    
+
     class Meta:
         verbose_name = _('Запись аудита')
         verbose_name_plural = _('Записи аудита')
@@ -495,6 +494,10 @@ class DocumentAuditLog(models.Model):
             models.Index(fields=['user', '-timestamp']),
             models.Index(fields=['action', '-timestamp']),
         ]
-        
+
     def __str__(self):
-        return f'{self.user} {self.get_action_display()} {self.document} @ {self.timestamp:%d.%m.%Y %H:%M}'
+        return f'{
+            self.user} {
+            self.get_action_display()} {
+            self.document} @ {
+                self.timestamp:%d.%m.%Y %H:%M}'

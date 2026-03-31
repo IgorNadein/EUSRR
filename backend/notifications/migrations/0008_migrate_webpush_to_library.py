@@ -7,7 +7,7 @@ def migrate_webpush_subscriptions(apps, schema_editor):
     """Мигрировать существующие WebPushSubscription в WebPushDevice"""
     WebPushSubscription = apps.get_model('notifications', 'WebPushSubscription')
     WebPushDevice = apps.get_model('push_notifications', 'WebPushDevice')
-    
+
     migrated_count = 0
     for subscription in WebPushSubscription.objects.filter(is_active=True):
         try:
@@ -25,7 +25,7 @@ def migrate_webpush_subscriptions(apps, schema_editor):
             migrated_count += 1
         except Exception as e:
             print(f"Error migrating subscription {subscription.id}: {e}")
-    
+
     print(f"✅ Migrated {migrated_count} WebPush subscriptions to django-push-notifications")
 
 

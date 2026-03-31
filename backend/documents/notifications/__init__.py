@@ -9,7 +9,7 @@
 
 Использование:
     from documents.notifications import notify_document_ready
-    
+
     # В коде:
     notify_document_ready(document, user)
 """

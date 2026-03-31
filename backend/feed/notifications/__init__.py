@@ -9,7 +9,7 @@
 
 Использование:
     from feed.notifications import notify_post_reaction
-    
+
     # В view при добавлении лайка:
     notify_post_reaction(post, request.user)
 """

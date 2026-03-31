@@ -8,13 +8,13 @@ def migrate_edit_history(apps, schema_editor):
     """Перенос истории редактирования из JSON в MessageEditHistory"""
     Message = apps.get_model('communications', 'Message')
     MessageEditHistory = apps.get_model('communications', 'MessageEditHistory')
-    
+
     messages_with_history = Message.objects.filter(is_edited=True).exclude(edit_history=[])
-    
+
     for message in messages_with_history:
         if not message.edit_history:
             continue
-            
+
         # edit_history формат: [{"timestamp": "...", "old_content": "..."}, ...]
         for entry in message.edit_history:
             try:
@@ -26,7 +26,7 @@ def migrate_edit_history(apps, schema_editor):
                         edited_at = message.edited_at or message.created_at
                 else:
                     edited_at = entry.get('timestamp', message.edited_at or message.created_at)
-                
+
                 MessageEditHistory.objects.create(
                     message=message,
                     edited_at=edited_at,
@@ -42,14 +42,14 @@ def migrate_forward_metadata(apps, schema_editor):
     """Перенос метаданных пересылки из полей Message в MessageForwardMetadata"""
     Message = apps.get_model('communications', 'Message')
     MessageForwardMetadata = apps.get_model('communications', 'MessageForwardMetadata')
-    
+
     forwarded_messages = Message.objects.filter(is_forwarded=True)
-    
+
     for message in forwarded_messages:
         # Пропускаем если метаданные уже созданы
         if hasattr(message, 'forward_metadata'):
             continue
-            
+
         try:
             # Получаем оригинальное сообщение по ID
             original_message = None
@@ -58,7 +58,7 @@ def migrate_forward_metadata(apps, schema_editor):
                     original_message = Message.objects.get(id=message.forwarded_from_message_id)
                 except Message.DoesNotExist:
                     pass
-            
+
             MessageForwardMetadata.objects.create(
                 message=message,
                 original_message=original_message,
@@ -77,17 +77,17 @@ def reverse_migrate_edit_history(apps, schema_editor):
     """Откат: перенос MessageEditHistory обратно в JSON"""
     Message = apps.get_model('communications', 'Message')
     MessageEditHistory = apps.get_model('communications', 'MessageEditHistory')
-    
+
     for message in Message.objects.filter(is_edited=True):
         history_records = MessageEditHistory.objects.filter(message=message).order_by('edited_at')
-        
+
         edit_history = []
         for record in history_records:
             edit_history.append({
                 'timestamp': record.edited_at.isoformat(),
                 'old_content': record.previous_content
             })
-        
+
         message.edit_history = edit_history
         message.save(update_fields=['edit_history'])
 

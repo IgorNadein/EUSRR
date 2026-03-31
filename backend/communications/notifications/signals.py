@@ -31,23 +31,23 @@ _AUTO_NOTIFY_ENABLED = getattr(settings, 'COMMUNICATIONS_AUTO_NOTIFY', True)
 def create_message_notifications(sender, instance, created, **kwargs):
     """
     Создает уведомления при создании нового сообщения.
-    
+
     Обрабатывает:
     1. Новое сообщение в чате (для всех участников кроме автора)
     2. Упоминания (@username) в тексте
     3. Ответ на сообщение (reply_to)
-    
+
     ОПТИМИЗАЦИЯ: Уведомления отправляются через универсальную систему
     channels.py → Celery → WebSocket/Email/Push
-    
+
     NOTE: Можно отключить через COMMUNICATIONS_AUTO_NOTIFY = False
     """
     if not _AUTO_NOTIFY_ENABLED:
         return
-    
+
     if not created or instance.is_system or instance.is_deleted:
         return
-    
+
     # Отправляем через универсальную систему
     notify_new_message(instance)
 
@@ -56,28 +56,28 @@ def create_message_notifications(sender, instance, created, **kwargs):
 def create_chat_added_notifications(sender, instance, action, pk_set, **kwargs):
     """
     Создает уведомления когда пользователя добавляют в чат.
-    
+
     Args:
         instance: Chat объект
         action: Тип изменения ('post_add', 'post_remove', etc.)
         pk_set: Набор ID добавленных/удаленных пользователей
-    
+
     NOTE: Можно отключить через COMMUNICATIONS_AUTO_NOTIFY = False
     """
     if not _AUTO_NOTIFY_ENABLED:
         return
-    
+
     if action != 'post_add':
         return
-    
+
     chat = instance
-    
+
     # Получаем информацию о том, кто добавил (если доступно)
     # Это может быть последний изменивший или создатель чата
     added_by = getattr(chat, 'created_by', None) or chat.participants.first()
-    
+
     # ОПТИМИЗАЦИЯ: Получаем всех новых пользователей одним запросом
     new_users = User.objects.filter(id__in=pk_set)
-    
+
     # Отправляем уведомления через handlers
     notify_chat_added(chat, new_users, added_by=added_by)

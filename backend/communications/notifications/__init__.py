@@ -12,7 +12,7 @@
 
 Использование:
     from communications.notifications import extract_mentions, get_chat_name
-    
+
     # В коде:
     mentions = extract_mentions(message.content)
     chat_name = get_chat_name(chat)

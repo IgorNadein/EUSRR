@@ -113,7 +113,8 @@ class ChatViewSet(viewsets.ModelViewSet):
             # Prefetch ChatMembership с информацией о пользователе
             Prefetch(
                 'memberships',
-                queryset=ChatMembership.objects.select_related('user').filter(is_active=True)
+                queryset=ChatMembership.objects.select_related(
+                    'user').filter(is_active=True)
             ),
             # Prefetch ChatUserSettings для текущего пользователя
             Prefetch(
@@ -148,7 +149,8 @@ class ChatViewSet(viewsets.ModelViewSet):
             chat.include_all_users = True
             chat.save()
         else:
-            role = 'admin' if chat.type in ['group', 'channel', 'announcement'] else 'member'
+            role = 'admin' if chat.type in [
+                'group', 'channel', 'announcement'] else 'member'
             chat.participants.add(request.user)
             ChatMembership.objects.create(
                 chat=chat,
@@ -177,7 +179,9 @@ class ChatViewSet(viewsets.ModelViewSet):
                             }
                         )
                     except User.DoesNotExist:
-                        logger.warning(f"User {user_id} not found when creating chat {chat.id}")
+                        logger.warning(
+                            f"User {user_id} not found when creating chat {
+                                chat.id}")
 
         headers = self.get_success_headers(serializer.data)
         return Response(
@@ -409,15 +413,16 @@ class ChatViewSet(viewsets.ModelViewSet):
             )
 
         # Проверка прав (только владелец может менять роли)
-        can_change = rules.test_rule('communications.change_member_role', request.user, chat)
+        can_change = rules.test_rule(
+            'communications.change_member_role', request.user, chat)
 
         # Добавляем логирование для отладки
         logger.warning(
-            f"[change_role] User {request.user.id} trying to change role in chat {chat.id}. "
-            f"chat.created_by={chat.created_by.id if chat.created_by else None}, "
-            f"request.user.id={request.user.id}, "
-            f"can_change={can_change}"
-        )
+            f"[change_role] User {
+                request.user.id} trying to change role in chat {
+                chat.id}. " f"chat.created_by={
+                chat.created_by.id if chat.created_by else None}, " f"request.user.id={
+                    request.user.id}, " f"can_change={can_change}")
 
         if not can_change:
             return Response(
@@ -452,10 +457,10 @@ class ChatViewSet(viewsets.ModelViewSet):
         )
 
         logger.warning(
-            f"[change_role] membership found: created={created}, "
-            f"user_id={user_to_change.id}, old_role={membership.role}, new_role={new_role}, "
-            f"is_active={membership.is_active}"
-        )
+            f"[change_role] membership found: created={created}, " f"user_id={
+                user_to_change.id}, old_role={
+                membership.role}, new_role={new_role}, " f"is_active={
+                membership.is_active}")
 
         if not created:
             # Обновляем существующий membership
@@ -470,11 +475,11 @@ class ChatViewSet(viewsets.ModelViewSet):
             # Перезагружаем из БД чтобы убедиться что сохранилось
             membership.refresh_from_db()
             logger.warning(
-                f"[change_role] after save: user_id={user_to_change.id}, "
-                f"old_role={old_role}, new_role={membership.role}, "
-                f"old_is_active={old_is_active}, new_is_active={membership.is_active}, "
-                f"saved_correctly={membership.role == new_role and membership.is_active}"
-            )
+                f"[change_role] after save: user_id={
+                    user_to_change.id}, " f"old_role={old_role}, new_role={
+                    membership.role}, " f"old_is_active={old_is_active}, new_is_active={
+                    membership.is_active}, " f"saved_correctly={
+                    membership.role == new_role and membership.is_active}")
 
         return Response({
             'ok': True,
@@ -514,22 +519,34 @@ class ChatViewSet(viewsets.ModelViewSet):
 
         if created:
             logger.info(
-                f"[auto_mark_read] Created: user={user.id}, chat={chat.id}, msg={last_message.id}")
+                f"[auto_mark_read] Created: user={
+                    user.id}, chat={
+                    chat.id}, msg={
+                    last_message.id}")
             self._send_marked_read_event(user.id, chat.id, last_message.id)
             return
 
         # Защита от откатов: только если НОВЕЕ
         if read_state.last_read_message_id and last_message.id <= read_state.last_read_message_id:
             logger.debug(
-                f"[auto_mark_read] Skip: {last_message.id} <= {read_state.last_read_message_id}")
+                f"[auto_mark_read] Skip: {
+                    last_message.id} <= {
+                    read_state.last_read_message_id}")
             return
 
         read_state.last_read_message = last_message
         read_state.unread_count = 0  # Прочитали → обнуляем
-        read_state.save(update_fields=['last_read_message', 'unread_count', 'updated_at'])
+        read_state.save(
+            update_fields=[
+                'last_read_message',
+                'unread_count',
+                'updated_at'])
 
         logger.info(
-            f"[auto_mark_read] Updated: user={user.id}, chat={chat.id}, msg={last_message.id}")
+            f"[auto_mark_read] Updated: user={
+                user.id}, chat={
+                chat.id}, msg={
+                last_message.id}")
         self._send_marked_read_event(user.id, chat.id, last_message.id)
 
     def _send_marked_read_event(self, user_id, chat_id, message_id):
@@ -574,10 +591,12 @@ class ChatViewSet(viewsets.ModelViewSet):
 
         # Определяем порядок сортировки в зависимости от типа запроса
         if after_id or after_ts:
-            # Для загрузки новых сообщений - сортируем по возрастанию (от старых к новым)
+            # Для загрузки новых сообщений - сортируем по возрастанию (от старых к
+            # новым)
             queryset = queryset.order_by('created_at')
         else:
-            # Для загрузки старых или начальной загрузки - по убыванию (от новых к старым)
+            # Для загрузки старых или начальной загрузки - по убыванию (от новых к
+            # старым)
             queryset = queryset.order_by('-created_at')
 
         # Фильтрация по ID (приоритет) или timestamp
@@ -803,7 +822,8 @@ class ChatViewSet(viewsets.ModelViewSet):
         upto_ts = request.data.get('upto_ts')
 
         if not message_id and not upto_ts:
-            last_msg = chat.messages.filter(is_deleted=False).order_by('-created_at').first()
+            last_msg = chat.messages.filter(
+                is_deleted=False).order_by('-created_at').first()
             if not last_msg:
                 return Response({'ok': True, 'last_read_message_id': None})
 
@@ -918,9 +938,9 @@ class MessageViewSet(viewsets.ModelViewSet):
         Детальная проверка доступа выполняется через MessagePermission
         """
         user = self.request.user
-        from django.contrib.contenttypes.models import ContentType
 
-        # MIGRATION: Чаты где пользователь состоит через memberships (убрали participants)
+        # MIGRATION: Чаты где пользователь состоит через memberships (убрали
+        # participants)
         accessible_chats = Chat.objects.filter(
             Q(memberships__user=user, memberships__is_active=True)
             | Q(participants=user)
@@ -973,7 +993,8 @@ class MessageViewSet(viewsets.ModelViewSet):
         reply_to_message = None
         if reply_to_id:
             try:
-                reply_to_message = chat.messages.get(pk=int(reply_to_id), is_deleted=False)
+                reply_to_message = chat.messages.get(
+                    pk=int(reply_to_id), is_deleted=False)
             except (Message.DoesNotExist, ValueError):
                 return Response(
                     {'error': 'Reply target not found'},
@@ -1107,9 +1128,8 @@ class MessageViewSet(viewsets.ModelViewSet):
         # Валидация вложений
         current_attachments_count = instance.attachments.count()
         will_have_attachments = (
-            (existing_attachment_ids is not None and len(existing_attachment_ids) > 0) or
-            (existing_attachment_ids is None and current_attachments_count > 0)
-        )
+            (existing_attachment_ids is not None and len(existing_attachment_ids) > 0) or (
+                existing_attachment_ids is None and current_attachments_count > 0))
 
         if not new_content and not will_have_attachments:
             return Response(
@@ -1156,7 +1176,9 @@ class MessageViewSet(viewsets.ModelViewSet):
                     id__in=ids_to_add)
                 updated_count = attachments_to_move.update(message=instance)
                 logger.info(
-                    f"[update] Moved {updated_count} attachments to message {instance.id}: {list(ids_to_add)}")
+                    f"[update] Moved {updated_count} attachments to message {
+                        instance.id}: {
+                        list(ids_to_add)}")
 
         instance.save()
 
@@ -1288,7 +1310,7 @@ class MessageViewSet(viewsets.ModelViewSet):
             }
         )
 
-        logger.info(f"[react] WebSocket message sent successfully")
+        logger.info("[react] WebSocket message sent successfully")
 
         return Response({'ok': True, 'reactions_summary': reactions_summary})
 
@@ -1297,7 +1319,9 @@ class MessageViewSet(viewsets.ModelViewSet):
         """Убрать реакцию"""
         message = self.get_object()
         logger.info(
-            f"[unreact] User {request.user.id} removing reaction from message {message.id}")
+            f"[unreact] User {
+                request.user.id} removing reaction from message {
+                message.id}")
 
         serializer = ReactionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -1351,7 +1375,7 @@ class MessageViewSet(viewsets.ModelViewSet):
             }
         )
 
-        logger.info(f"[unreact] WebSocket message sent successfully")
+        logger.info("[unreact] WebSocket message sent successfully")
 
         return Response({'ok': True, 'reactions_summary': reactions_summary})
 
@@ -1519,7 +1543,8 @@ class PollViewSet(viewsets.ModelViewSet):
             )
 
         with transaction.atomic():
-            # Удаляем ВСЕ старые голоса пользователя (и для single и для multiple choice)
+            # Удаляем ВСЕ старые голоса пользователя (и для single и для multiple
+            # choice)
             PollVote.objects.filter(
                 poll=poll,
                 voter=request.user

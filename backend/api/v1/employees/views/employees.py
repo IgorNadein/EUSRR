@@ -3,29 +3,21 @@
 from __future__ import annotations
 
 import logging
-import traceback
 
 from common.emails import send_templated_mail
-from django.conf import settings
-from django.core.files.base import ContentFile
-from django.db import transaction
 from django.db.models import Exists, OuterRef, Prefetch, Q, Subquery
-from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from django.utils.crypto import get_random_string
 from employees.constants import ACTION_DISMISSED
 from employees.models import (Department, EmployeeAction, EmployeeDepartment,
-                              Position, RoleAssignment, Skill)
+                              RoleAssignment)
 from employees.utils import _to_bool
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from ...permissions import AdminOrActionOrModelPerms, IsSelfOrStaff
-from ..serializers import (EmployeeListSerializer, EmployeeSerializer,
-                           SkillSerializer)
+from ..serializers import (EmployeeListSerializer, EmployeeSerializer)
 from ._helpers import Employee
 
 logger = logging.getLogger(__name__)
@@ -187,7 +179,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """Создание сотрудника (административное, без пароля).
-        
+
         Создание LDAP пользователей с паролем - через RegisterAPIView.
         """
         instance = serializer.save()

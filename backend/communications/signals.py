@@ -17,13 +17,13 @@ logger = logging.getLogger(__name__)
 def _get_image_compressor():
     """
     Получает функцию сжатия изображений из настроек или использует дефолтную.
-    
+
     Settings:
         COMMUNICATIONS_IMAGE_COMPRESSOR (str): Путь к функции сжатия.
             По умолчанию: 'common.image_utils.compress_avatar' (проектно-специфичный)
             Для standalone: None (отключает сжатие)
             Пример: 'myapp.utils.compress_image'
-    
+
     Returns:
         callable or None: Функция сжатия или None если отключено
     """
@@ -32,10 +32,10 @@ def _get_image_compressor():
         'COMMUNICATIONS_IMAGE_COMPRESSOR',
         'common.image_utils.compress_avatar'  # backward compatibility
     )
-    
+
     if compressor_path is None:
         return None
-    
+
     try:
         return import_string(compressor_path)
     except (ImportError, AttributeError) as e:
@@ -51,13 +51,13 @@ def _get_image_compressor():
 def compress_and_cleanup_chat_avatar(sender, instance, **kwargs):
     """
     Сжимает новый аватар чата и удаляет старый файл.
-    
+
     Использует COMMUNICATIONS_IMAGE_COMPRESSOR из settings.
     Если compressor не настроен - пропускает сжатие.
     """
     if not instance.avatar:
         return
-    
+
     compress_avatar = _get_image_compressor()
 
     # Если это новый объект (нет pk), просто сжимаем
@@ -112,20 +112,20 @@ def increment_unread_count_on_new_message(sender, instance, created, **kwargs):
     """
     Инкрементирует unread_count для всех участников чата (кроме автора)
     при создании нового сообщения.
-    
+
     Денормализация: вместо подсчета COUNT(*) в реальном времени,
     обновляем кешированный счетчик инкрементом.
     """
     if not created or instance.is_deleted:
         return
-    
+
     from communications.models import ChatReadState
-    
+
     try:
         # Получаем всех участников чата
         chat = instance.chat
         participants = chat.get_participants().exclude(id=instance.author_id)
-        
+
         # Инкрементируем счетчик для существующих ChatReadState
         # Только для тех, кто еще не прочитал это сообщение
         updated_count = ChatReadState.objects.filter(
@@ -137,15 +137,15 @@ def increment_unread_count_on_new_message(sender, instance, created, **kwargs):
         ).update(
             unread_count=F('unread_count') + 1
         )
-        
+
         # Создаем ChatReadState для участников, у которых его еще нет
         existing_users = ChatReadState.objects.filter(
             chat=chat,
             user__in=participants
         ).values_list('user_id', flat=True)
-        
+
         new_users = participants.exclude(id__in=existing_users)
-        
+
         if new_users.exists():
             # Создаем ChatReadState с unread_count=1 для новых участников
             ChatReadState.objects.bulk_create([
@@ -157,14 +157,19 @@ def increment_unread_count_on_new_message(sender, instance, created, **kwargs):
                 )
                 for user in new_users
             ], ignore_conflicts=True)
-            
+
             logger.info(
-                f"[increment_unread] Created {new_users.count()} new ChatReadState for msg={instance.id}"
-            )
-        
+                f"[increment_unread] Created {
+                    new_users.count()} new ChatReadState for msg={
+                    instance.id}")
+
         logger.debug(
-            f"[increment_unread] Updated {updated_count} ChatReadState for msg={instance.id} in chat={chat.id}"
-        )
-        
+            f"[increment_unread] Updated {updated_count} ChatReadState for msg={
+                instance.id} in chat={
+                chat.id}")
+
     except Exception as e:
-        logger.error(f"Error incrementing unread_count for message {instance.id}: {e}", exc_info=True)
+        logger.error(
+            f"Error incrementing unread_count for message {
+                instance.id}: {e}",
+            exc_info=True)

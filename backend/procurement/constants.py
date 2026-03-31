@@ -25,7 +25,8 @@ class UrgencyLevel(models.TextChoices):
     CRITICAL = 'critical', 'Критическая'
 
 
-def get_default_approval_step_name(priority: int, resolver_type: str | None = None) -> str:
+def get_default_approval_step_name(priority: int,
+                                   resolver_type: str | None = None) -> str:
     if resolver_type == 'department_head':
         return 'Руководитель отдела'
     return f'Этап {priority}'

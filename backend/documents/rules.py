@@ -37,20 +37,20 @@ def has_document_access(user, document):
     """
     if document is None:
         return False
-    
+
     # Документ для всех
     if document.sent_to_all and user.is_active:
         return True
-    
+
     # Проверка через отделы
     if hasattr(user, 'department') and user.department:
         if document.departments.filter(id=user.department.id).exists():
             return True
-    
+
     # Прямой доступ через recipients
     if document.recipients.filter(id=user.id).exists():
         return True
-    
+
     return False
 
 
@@ -62,7 +62,7 @@ def can_manage_documents(user):
     """
     if not hasattr(user, 'position'):
         return False
-    
+
     position_name = getattr(user.position, 'name', '').lower()
     return any(keyword in position_name for keyword in [
         'руководитель', 'начальник', 'директор', 'заведующий', 'кадры'
@@ -74,7 +74,7 @@ def is_same_department(user, document):
     """Документ относится к отделу пользователя"""
     if document is None or not hasattr(user, 'department'):
         return False
-    
+
     return document.departments.filter(id=user.department.id).exists()
 
 
@@ -83,7 +83,7 @@ def has_acknowledged_document(user, document):
     """Пользователь уже ознакомился с документом"""
     if document is None:
         return False
-    
+
     from documents.models import DocumentAcknowledgement
     return DocumentAcknowledgement.objects.filter(
         document=document,
@@ -156,8 +156,10 @@ rules.add_rule(
 
 # Если вы хотите переопределить стандартные Django permissions:
 rules.add_perm('documents.view_document', is_superuser | has_document_access)
-rules.add_perm('documents.change_document', is_superuser | is_document_uploader | can_manage_documents)
-rules.add_perm('documents.delete_document', is_superuser | is_document_uploader | can_manage_documents)
+rules.add_perm('documents.change_document', is_superuser |
+               is_document_uploader | can_manage_documents)
+rules.add_perm('documents.delete_document', is_superuser |
+               is_document_uploader | can_manage_documents)
 # Создавать документы могут только superuser и те, у кого есть модельные права
 # (проверяется через DjangoModelPermissions в permission_classes ViewSet)
 # rules.add_perm('documents.add_document', is_superuser | can_manage_documents)
@@ -175,26 +177,26 @@ import rules
 
 def document_detail(request, pk):
     document = get_object_or_404(Document, pk=pk)
-    
+
     # Проверка доступа
     if not rules.test_rule('documents.view_document', request.user, document):
         raise PermissionDenied
-    
+
     return render(request, 'documents/detail.html', {'document': document})
 
 
 def document_approve(request, pk):
     document = get_object_or_404(Document, pk=pk)
-    
+
     # Проверка прав на согласование
     if not rules.test_rule('documents.approve_document', request.user, document):
         raise PermissionDenied
-    
+
     # Логика согласования
     document.status = 'approved'
     document.approved_by = request.user
     document.save()
-    
+
     return redirect('documents:detail', pk=document.pk)
 
 
@@ -252,13 +254,13 @@ def get_accessible_documents(user):
 class DocumentAccessMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
-    
+
     def __call__(self, request):
         if request.path.startswith('/media/documents/'):
             # Извлекаем документ по пути
             document = self.get_document_from_path(request.path)
             if document and not rules.test_rule('documents.view_document', request.user, document):
                 return HttpResponseForbidden("У вас нет доступа к этому документу")
-        
+
         return self.get_response(request)
 """

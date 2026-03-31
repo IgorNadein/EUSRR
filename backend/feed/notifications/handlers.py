@@ -15,7 +15,6 @@ from .config import (
     NotificationVerbs,
     MessageTemplates,
     ActionURLs,
-    truncate_text,
 )
 
 Employee = get_user_model()
@@ -24,15 +23,15 @@ Employee = get_user_model()
 def notify_new_post(post):
     """
     Отправляет уведомления о новой публикации.
-    
+
     Args:
         post: Экземпляр модели Post
     """
     recipients = get_post_recipients(post)
-    
+
     # Исключаем автора
     recipients = [r for r in recipients if r.id != post.author.id]
-    
+
     # Определяем заголовок в зависимости от типа публикации
     if post.type == TYPE_COMPANY:
         title = MessageTemplates.new_post_company()
@@ -41,7 +40,7 @@ def notify_new_post(post):
     else:
         author_name = post.author.get_full_name() or post.author.username
         title = MessageTemplates.new_post_employee(author_name)
-    
+
     # Отправляем уведомление каждому получателю
     for recipient in recipients:
         notify.send(
@@ -67,9 +66,9 @@ def notify_new_post(post):
 def notify_post_reaction(post, user):
     """
     Создает уведомление о реакции (лайке) на публикацию.
-    
+
     Вызывается вручную из view, так как лайки не имеют отдельной модели.
-    
+
     Args:
         post: Публикация, которую лайкнули
         user: Пользователь, который поставил лайк
@@ -77,9 +76,9 @@ def notify_post_reaction(post, user):
     # Уведомляем автора (если лайк не от него)
     if post.author.id == user.id:
         return
-    
+
     user_name = user.get_full_name() or user.username
-    
+
     notify.send(
         sender=user,
         recipient=post.author,
@@ -100,10 +99,10 @@ def notify_post_reaction(post, user):
 def get_post_recipients(post):
     """
     Возвращает список получателей уведомлений для публикации.
-    
+
     Args:
         post: Экземпляр модели Post
-    
+
     Returns:
         Список пользователей (Employee), которые должны получить уведомление:
         - TYPE_COMPANY - все активные сотрудники
@@ -113,15 +112,15 @@ def get_post_recipients(post):
     if post.type == TYPE_COMPANY:
         # Новость компании - всем активным сотрудникам
         return list(Employee.objects.filter(is_active=True))
-    
+
     elif post.type == TYPE_DEPARTMENT and post.department:
         # Новость отдела - сотрудникам отдела
         return list(post.department.employees.filter(is_active=True))
-    
+
     elif post.type == TYPE_EMPLOYEE:
         # Личная публикация - подписчикам
         # TODO: реализовать систему подписок
         # Пока возвращаем пустой список
         return []
-    
+
     return []

@@ -1,4 +1,6 @@
 # backend\communications\apps.py
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -7,14 +9,14 @@ class CommunicationsConfig(AppConfig):
     name = "communications"
 
     def ready(self):
-        import communications.signals
-        import communications.notifications  # Модуль уведомлений (signals регистрируются автоматически)
-        import communications.rules  # django-rules: регистрация предикатов и правил доступа
-        
+        import_module("communications.signals")
+        import_module("communications.notifications")
+        import_module("communications.rules")
+
         def create_main_global_chat(sender, **kwargs):
             """
             Создает главный глобальный чат при первом запуске.
-            
+
             Использует flags['is_primary'] вместо is_main.
             Для обратной совместимости также устанавливает is_main=True.
             """
@@ -34,4 +36,3 @@ class CommunicationsConfig(AppConfig):
                     # DEPRECATED: для обратной совместимости
                     is_main=True
                 )
-

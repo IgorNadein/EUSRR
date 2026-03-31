@@ -18,19 +18,19 @@ def mock_ldap_connection():
     conn = Mock()
     conn.result = {'description': 'success'}
     conn.entries = []
-    
+
     # Mock базовых операций
     conn.add = Mock(return_value=True)
     conn.delete = Mock(return_value=True)
     conn.modify = Mock(return_value=True)
     conn.modify_dn = Mock(return_value=True)
     conn.search = Mock(return_value=True)
-    
+
     # Mock extend для паролей
     conn.extend = Mock()
     conn.extend.microsoft = Mock()
     conn.extend.microsoft.modify_password = Mock(return_value=True)
-    
+
     return conn
 
 
@@ -86,7 +86,7 @@ def sample_position(db):
     """Создает тестовую должность (без LDAP синхронизации)."""
     from employees.signals.ldap.position import sync_position_to_ldap_on_save
     from django.db.models.signals import post_save
-    
+
     # Отключаем LDAP синхронизацию при создании Position
     post_save.disconnect(sync_position_to_ldap_on_save, sender=Position)
     try:
@@ -283,30 +283,30 @@ def ldap_test_settings(settings):
 def create_mock_ldap_entry(dn, attributes=None):
     """
     Создает mock LDAP entry с заданными атрибутами.
-    
+
     Args:
         dn: Distinguished Name
         attributes: Словарь атрибутов {attr_name: value}
-    
+
     Returns:
         Mock объект LDAP entry
     """
     entry = Mock()
     entry.entry_dn = dn
-    
+
     if attributes:
         for attr_name, attr_value in attributes.items():
             attr_mock = Mock()
             attr_mock.value = attr_value
             setattr(entry, attr_name, attr_mock)
-    
+
     return entry
 
 
 def assert_ldap_operation_called(mock_conn, operation, dn=None):
     """
     Проверяет, что LDAP операция была вызвана.
-    
+
     Args:
         mock_conn: Mock LDAP соединения
         operation: Название операции ('add', 'delete', 'modify', etc.)
@@ -314,7 +314,7 @@ def assert_ldap_operation_called(mock_conn, operation, dn=None):
     """
     op_mock = getattr(mock_conn, operation)
     assert op_mock.called, f"LDAP операция '{operation}' не была вызвана"
-    
+
     if dn and op_mock.call_args:
         called_dn = op_mock.call_args[0][0]
         assert called_dn == dn, f"Ожидался DN '{dn}', получен '{called_dn}'"

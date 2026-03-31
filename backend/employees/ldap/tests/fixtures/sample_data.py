@@ -173,19 +173,19 @@ def create_test_user_dto(
 ):
     """
     Создает тестовый DirectoryUserDTO с настраиваемыми параметрами.
-    
+
     Args:
         first_name: Имя
         last_name: Фамилия
         email: Email (по умолчанию генерируется из имени)
         **kwargs: Дополнительные параметры
-    
+
     Returns:
         DirectoryUserDTO
     """
     if email is None:
         email = f"{last_name.lower()}@example.com"
-    
+
     return DirectoryUserDTO(
         first_name=first_name,
         last_name=last_name,
@@ -205,18 +205,18 @@ def create_test_department_dto(
 ):
     """
     Создает тестовый DirectoryDepartmentDTO с настраиваемыми параметрами.
-    
+
     Args:
         name: Название отдела
         short_name: Короткое название (по умолчанию из name)
         **kwargs: Дополнительные параметры
-    
+
     Returns:
         DirectoryDepartmentDTO
     """
     if short_name is None:
         short_name = ''.join([w[0] for w in name.split()])
-    
+
     return DirectoryDepartmentDTO(
         name=name,
         parent=kwargs.get('parent'),
@@ -227,36 +227,36 @@ def create_test_department_dto(
 def create_test_ldap_entry(dn, attributes=None):
     """
     Создает mock LDAP entry с заданными атрибутами.
-    
+
     Args:
         dn: Distinguished Name
         attributes: Словарь атрибутов
-    
+
     Returns:
         Mock объект LDAP entry
     """
     from unittest.mock import Mock
-    
+
     entry = Mock()
     entry.entry_dn = dn
-    
+
     if attributes:
         for attr_name, attr_value in attributes.items():
             attr_mock = Mock()
             attr_mock.value = attr_value
             setattr(entry, attr_name, attr_mock)
-    
+
     return entry
 
 
 def generate_test_dns(count=10, ou='Users'):
     """
     Генерирует список тестовых DN.
-    
+
     Args:
         count: Количество DN
         ou: Organizational Unit
-    
+
     Returns:
         List[str]: Список DN
     """
@@ -269,10 +269,10 @@ def generate_test_dns(count=10, ou='Users'):
 def get_sample_user_attributes(index=0):
     """
     Возвращает атрибуты тестового пользователя.
-    
+
     Args:
         index: Индекс пользователя (0-2)
-    
+
     Returns:
         dict: Словарь LDAP атрибутов
     """
@@ -305,5 +305,5 @@ def get_sample_user_attributes(index=0):
             'telephoneNumber': '+79009876543',
         },
     ]
-    
+
     return users[index % len(users)]

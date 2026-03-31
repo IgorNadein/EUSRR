@@ -14,18 +14,18 @@ def in_list(value, csv):
 def format_iso_date(value, format_string="d.m.Y"):
     """
     Форматирует ISO дату из API в читаемый формат.
-    
+
     Args:
         value: строка ISO даты
                (например, "2025-12-03" или "2025-12-03T10:30:00Z")
         format_string: формат вывода ("d.m.Y", "H:i" и т.д.)
-    
+
     Returns:
         Отформатированная дата или исходная строка при ошибке
     """
     if not value:
         return ""
-    
+
     try:
         # Пробуем распарсить как полную ISO дату
         if 'T' in str(value):
@@ -33,7 +33,7 @@ def format_iso_date(value, format_string="d.m.Y"):
         else:
             # Только дата без времени
             dt = datetime.strptime(str(value)[:10], '%Y-%m-%d')
-        
+
         # Форматируем по шаблону Django
         format_map = {
             'd.m.Y': dt.strftime('%d.%m.%Y'),
@@ -41,9 +41,8 @@ def format_iso_date(value, format_string="d.m.Y"):
             'd.m.Y H:i': dt.strftime('%d.%m.%Y %H:%M'),
             'Y-m-d': dt.strftime('%Y-%m-%d'),
         }
-        
+
         return format_map.get(format_string, dt.strftime('%d.%m.%Y'))
     except (ValueError, AttributeError):
         # Если не удалось распарсить, возвращаем первые 10 символов
         return str(value)[:10] if value else ""
-

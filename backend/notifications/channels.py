@@ -3,7 +3,7 @@
 
 Слушают post_save сигнал от Notification и асинхронно отправляют через Celery:
 - WebSocket (realtime) - мгновенно
-- Email - с retry и rate limiting  
+- Email - с retry и rate limiting
 - Web Push - с автоматическим удалением неактивных устройств
 
 TODO: Добавить integration тесты:
@@ -26,25 +26,25 @@ def route_notification_to_channels(sender, instance, created, **kwargs):
     """
     Главный роутер уведомлений по каналам.
     Вызывается при создании нового уведомления.
-    
+
     Асинхронно отправляет в Celery очередь для каждого канала.
-    
+
     ВАЖНО: Использует transaction.on_commit() чтобы гарантировать,
     что уведомление сохранено в БД перед отправкой в Celery.
     """
     if not created:
         return  # Обрабатываем только новые уведомления
-    
+
     notification = instance
     user = notification.recipient
-    
+
     # Проверяем что получатель указан
     if not user:
         logger.warning(
             f'⚠️ Notification {notification.id} has no recipient, skipping delivery'
         )
         return
-    
+
     # Получаем настройки пользователя
     try:
         prefs = user.channel_preferences
@@ -52,43 +52,49 @@ def route_notification_to_channels(sender, instance, created, **kwargs):
         # Если настроек нет - создаем с дефолтными значениями
         from .models import UserChannelPreferences
         prefs = UserChannelPreferences.objects.create(user=user)
-    
+
     # Проверяем, не отключен ли этот тип уведомлений
     if not prefs.is_verb_enabled(notification.verb):
-        logger.debug(f'Notification verb "{notification.verb}" disabled for user {user.id}')
+        logger.debug(
+            f'Notification verb "{
+                notification.verb}" disabled for user {
+                user.id}')
         return
-    
+
     # Импортируем задачи
     from .tasks import (
         send_websocket_notification,
         send_email_notification,
         send_push_notification,
     )
-    
+
     # Проверяем режим "Не беспокоить"
     is_dnd = prefs.is_in_dnd_period()
-    
+
     # КРИТИЧНО: Отправляем задачи ПОСЛЕ коммита транзакции
     # Без этого Celery не найдет уведомление в БД (race condition)
-    # Django документация: https://docs.djangoproject.com/en/5.0/topics/db/transactions/#performing-actions-after-commit
+    # Django документация:
+    # https://docs.djangoproject.com/en/5.0/topics/db/transactions/#performing-actions-after-commit
     def send_to_channels():
         """Отправка по каналам после успешного коммита транзакции"""
         if is_dnd:
-            logger.debug(f'User {user.id} is in DND period, only web notifications (silent)')
+            logger.debug(
+                f'User {
+                    user.id} is in DND period, only web notifications (silent)')
             if prefs.web_enabled:
                 send_websocket_notification.delay(notification.id, silent=True)
             return
-        
+
         # Отправляем по каналам асинхронно через Celery
         if prefs.web_enabled:
             send_websocket_notification.delay(notification.id, silent=False)
-        
+
         if prefs.email_enabled and prefs.email_frequency == 'instant':
             send_email_notification.delay(notification.id)
-        
+
         if prefs.push_enabled:
             send_push_notification.delay(notification.id)
-    
+
     transaction.on_commit(send_to_channels)
 
 
@@ -97,7 +103,7 @@ def route_notification_to_channels(sender, instance, created, **kwargs):
 def send_email_digest(user, frequency='daily'):
     """
     Отправка дайджеста уведомлений
-    
+
     Args:
         user: User объект
         frequency: 'daily' или 'weekly'
@@ -106,7 +112,7 @@ def send_email_digest(user, frequency='daily'):
         from datetime import timedelta
         from django.utils import timezone
         from .models import Notification
-        
+
         # Определяем период
         if frequency == 'daily':
             since = timezone.now() - timedelta(days=1)
@@ -114,7 +120,7 @@ def send_email_digest(user, frequency='daily'):
             since = timezone.now() - timedelta(weeks=1)
         else:
             raise ValueError(f'Invalid frequency: {frequency}')
-        
+
         # Получаем неотправленные уведомления
         notifications = Notification.objects.filter(
             recipient=user,
@@ -122,20 +128,22 @@ def send_email_digest(user, frequency='daily'):
             emailed=False,
             deleted=False,
         ).order_by('-timestamp')
-        
+
         if not notifications.exists():
             logger.debug(f'No notifications to digest for user {user.id}')
             return
-        
+
         # Используем EmailNotificationSender для отправки дайджеста
+        from .senders import EmailNotificationSender
+
         sender = EmailNotificationSender()
         success = sender.send_digest(user, notifications, frequency)
-        
+
         if success:
             logger.info(
                 f'Email digest ({frequency}) sent to {user.email} '
                 f'with {notifications.count()} notifications'
             )
-        
+
     except Exception as e:
         logger.error(f'Failed to send email digest: {e}', exc_info=True)

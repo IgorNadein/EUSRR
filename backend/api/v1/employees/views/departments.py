@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import traceback
 from typing import Any, Dict
 
 from django.db.models import (Case, Count, Exists, F, IntegerField, OuterRef,
@@ -13,8 +12,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from employees.models import (Department, DepartmentRole, DeptPerm,
                               EmployeeDepartment, RoleAssignment)
-from employees.utils import (_build_links_for_dept, _head_choices_for_dept,
-                             _perm_choices_synced, _validate_head_active)
+from employees.utils import (_build_links_for_dept, _validate_head_active)
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -23,7 +21,7 @@ from rest_framework.response import Response
 from ...permissions import (AdminOrActionOrModelPerms, AdminOrDeptAllowed,
                             has_dept_perm)
 from ..serializers import (AddMemberInput, DepartmentBriefSerializer,
-                           DepartmentRoleSerializer, DepartmentSerializer,
+                           DepartmentSerializer,
                            EmployeeBriefSerializer, RemoveMemberInput,
                            SetHeadInput, SetMemberRoleInput)
 
@@ -147,7 +145,11 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 
     # --- частичное изменение ---
 
-    def _perform_set_head(self, instance: Department, desired_head_id: int | None, request) -> Response | Department:
+    def _perform_set_head(
+            self,
+            instance: Department,
+            desired_head_id: int | None,
+            request) -> Response | Department:
         """Общая логика назначения руководителя для set_head action и partial_update.
 
         Возвращает Response при ошибке или обновлённый Department при успехе.
@@ -368,7 +370,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         emp_id = payload.validated_data["employee_id"]
 
         employee_model = Department._meta.get_field("head").remote_field.model
-        employee = get_object_or_404(employee_model, id=emp_id)
+        get_object_or_404(employee_model, id=emp_id)
 
         link, created = EmployeeDepartment.objects.get_or_create(
             employee_id=emp_id, department_id=dept.id, defaults={"is_active": True}
@@ -396,7 +398,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         emp_id: int = payload.validated_data["employee_id"]
 
         employee_model = Department._meta.get_field("head").remote_field.model
-        employee = get_object_or_404(employee_model, id=emp_id)
+        get_object_or_404(employee_model, id=emp_id)
         if dept.head_id == emp_id:
             return Response(
                 {"detail": "Нельзя удалить руководителя отдела."},

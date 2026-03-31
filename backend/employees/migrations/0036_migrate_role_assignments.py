@@ -8,12 +8,12 @@ def migrate_role_data(apps, schema_editor):
     """Переносит назначения ролей из EmployeeDepartment.role в RoleAssignment."""
     EmployeeDepartment = apps.get_model('employees', 'EmployeeDepartment')
     RoleAssignment = apps.get_model('employees', 'RoleAssignment')
-    
+
     # Находим все связи с назначенными ролями
     links_with_roles = EmployeeDepartment.objects.filter(
         role__isnull=False
     ).select_related('employee', 'role')
-    
+
     created_count = 0
     for link in links_with_roles:
         # Создаём RoleAssignment если ещё нет
@@ -27,7 +27,7 @@ def migrate_role_data(apps, schema_editor):
         )
         if created:
             created_count += 1
-    
+
     if created_count > 0:
         print(f"Migrated {created_count} role assignments from EmployeeDepartment to RoleAssignment")
 
@@ -39,11 +39,11 @@ def reverse_migration(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-    
+
     dependencies = [
         ('employees', '0035_create_role_assignment'),
     ]
-    
+
     operations = [
         migrations.RunPython(migrate_role_data, reverse_migration),
     ]

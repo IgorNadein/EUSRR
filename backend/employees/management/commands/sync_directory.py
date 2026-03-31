@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal
 
 from django.conf import settings
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 from employees.ldap.config import SyncConfig
 from employees.ldap.services.sync_service import SyncService
 
@@ -103,9 +102,7 @@ class Command(BaseCommand):
 
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"[LDAP] Завершено. Итого изменений: {total_changes} (dry_run={dry_run})"
-                )
-            )
+                    f"[LDAP] Завершено. Итого изменений: {total_changes} (dry_run={dry_run})"))
         elif mode == "django":
             self.stdout.write(
                 self.style.NOTICE(
@@ -114,8 +111,7 @@ class Command(BaseCommand):
             )
             svc = SyncService()
             logins_set, moved, avatars_set, groups_added, groups_removed = svc.export_users(
-                cfg
-            )
+                cfg)
             self.stdout.write(
                 self.style.SUCCESS(
                     f"[DJANGO] Выполнено. sAM/UPN={logins_set}, MOVE={moved}, avatar={avatars_set}, "

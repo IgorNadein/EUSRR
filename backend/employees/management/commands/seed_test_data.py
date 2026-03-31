@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from employees.models import Department, Position, Employee, Skill
-from datetime import datetime, timedelta
+from datetime import datetime
 import random
 
 User = get_user_model()
@@ -48,8 +48,10 @@ class Command(BaseCommand):
             Skill.objects.all().delete()
 
         # 1. Создаем/обновляем администратора
-        self.stdout.write(self.style.SUCCESS(f'\n1. Создание администратора: {admin_email}'))
-        
+        self.stdout.write(
+            self.style.SUCCESS(
+                f'\n1. Создание администратора: {admin_email}'))
+
         admin_user, created = User.objects.update_or_create(
             email=admin_email,
             defaults={
@@ -63,7 +65,7 @@ class Command(BaseCommand):
                 'patronymic': 'Владимирович',
             }
         )
-        
+
         if created:
             admin_user.set_password('admin123')
             admin_user.save()
@@ -84,7 +86,7 @@ class Command(BaseCommand):
 
         # Убираем права администратора у всех остальных
         User.objects.exclude(email=admin_email).update(
-            is_staff=False, 
+            is_staff=False,
             is_superuser=False
         )
         self.stdout.write(self.style.SUCCESS(
@@ -102,7 +104,7 @@ class Command(BaseCommand):
             'Финансовый отдел',
             'Отдел продаж',
         ]
-        
+
         for name in dept_names:
             dept, created = Department.objects.get_or_create(
                 name=name,
@@ -127,7 +129,7 @@ class Command(BaseCommand):
             'Бухгалтер',
             'Менеджер по продажам',
         ]
-        
+
         for name in position_names:
             pos, created = Position.objects.get_or_create(name=name)
             positions.append(pos)
@@ -142,7 +144,7 @@ class Command(BaseCommand):
             'Docker', 'Git', 'REST API', 'WebSocket', 'Redis',
             'Celery', 'LDAP', 'Linux', 'HTML/CSS', 'SCSS',
         ]
-        
+
         for name in skill_names:
             skill, created = Skill.objects.get_or_create(name=name)
             skills.append(skill)
@@ -151,12 +153,12 @@ class Command(BaseCommand):
 
         # 5. Создаем сотрудников
         self.stdout.write(self.style.SUCCESS('\n5. Создание тестовых сотрудников'))
-        
+
         # Обновляем администратора - добавляем должность
         admin_user.position = positions[0]  # Директор
         admin_user.birth_date = datetime(1990, 1, 1).date()
         admin_user.save()
-        
+
         # Добавляем администратора в IT-отдел как руководителя
         from employees.models import EmployeeDepartment
         EmployeeDepartment.objects.get_or_create(
@@ -166,11 +168,11 @@ class Command(BaseCommand):
         )
         departments[0].head = admin_user
         departments[0].save()
-        
+
         # Добавляем навыки администратору
         admin_user.skills.set(random.sample(skills, min(5, len(skills))))
-        self.stdout.write(f'  ✓ Обновлен профиль администратора')
-        
+        self.stdout.write('  ✓ Обновлен профиль администратора')
+
         # Тестовые сотрудники
         test_employees = [
             ('Анна', 'Иванова', 'Петровна', 'anna.ivanova', '+79991234501'),
@@ -184,11 +186,11 @@ class Command(BaseCommand):
             ('Наталья', 'Соколова', 'Викторовна', 'natalia.sokolova', '+79991234509'),
             ('Андрей', 'Лебедев', 'Михайлович', 'andrey.lebedev', '+79991234510'),
         ]
-        
+
         created_count = 0
         for first_name, last_name, patronymic, username, phone in test_employees:
             email = f'{username}@example.com'
-            
+
             # Создаем User
             user, user_created = User.objects.get_or_create(
                 email=email,
@@ -199,7 +201,11 @@ class Command(BaseCommand):
                     'patronymic': patronymic,
                     'is_active': True,
                     'email_verified': True,
-                    'birth_date': datetime(1985 + random.randint(0, 20), random.randint(1, 12), random.randint(1, 28)).date(),
+                    'birth_date': datetime(
+                        1985 + random.randint(0, 20),
+                        random.randint(1, 12),
+                        random.randint(1, 28),
+                    ).date(),
                     'position': random.choice(positions[2:]),
                 }
             )
@@ -208,7 +214,7 @@ class Command(BaseCommand):
                 # Добавляем случайные навыки
                 user.skills.set(random.sample(skills, random.randint(3, 7)))
                 user.save()
-                
+
                 # Добавляем в случайный отдел
                 dept = random.choice(departments)
                 EmployeeDepartment.objects.create(
@@ -216,26 +222,26 @@ class Command(BaseCommand):
                     department=dept,
                     is_active=True
                 )
-                
+
                 created_count += 1
                 self.stdout.write(f'  ✓ {first_name} {last_name}')
 
         # Итоговая статистика
-        self.stdout.write(self.style.SUCCESS('\n' + '='*60))
+        self.stdout.write(self.style.SUCCESS('\n' + '=' * 60))
         self.stdout.write(self.style.SUCCESS('✓ Заполнение БД завершено!'))
-        self.stdout.write(self.style.SUCCESS('='*60))
-        self.stdout.write(f'\nСоздано объектов:')
+        self.stdout.write(self.style.SUCCESS('=' * 60))
+        self.stdout.write('\nСоздано объектов:')
         self.stdout.write(f'  • Отделов: {Department.objects.count()}')
         self.stdout.write(f'  • Должностей: {Position.objects.count()}')
         self.stdout.write(f'  • Навыков: {Skill.objects.count()}')
         self.stdout.write(f'  • Пользователей: {User.objects.count()}')
-        
-        self.stdout.write(self.style.SUCCESS(f'\n🔐 Администратор:'))
+
+        self.stdout.write(self.style.SUCCESS('\n🔐 Администратор:'))
         self.stdout.write(f'  Email (логин): {admin_email}')
         if created:
-            self.stdout.write(f'  Пароль: admin123')
-        
-        self.stdout.write(self.style.WARNING(f'\n👥 Тестовые пользователи:'))
-        self.stdout.write(f'  Логин: <username>@example.com')
-        self.stdout.write(f'  Пароль для всех: test123')
+            self.stdout.write('  Пароль: admin123')
+
+        self.stdout.write(self.style.WARNING('\n👥 Тестовые пользователи:'))
+        self.stdout.write('  Логин: <username>@example.com')
+        self.stdout.write('  Пароль для всех: test123')
         self.stdout.write('')

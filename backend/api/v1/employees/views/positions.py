@@ -5,7 +5,7 @@ from __future__ import annotations
 from django.contrib.auth.models import Group, Permission
 from django.db import transaction
 from employees.models import Position
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -44,7 +44,7 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
 
     def _validate_groups_payload(self, request):
         """Валидация payload с группами.
-        
+
         Returns:
             tuple: (QuerySet групп, Response с ошибкой или None)
         """
@@ -53,10 +53,10 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
             return None, Response(
                 {"detail": "Поле 'groups' должно быть списком id"}, status=400
             )
-        
+
         unique_ids = list(set(ids))
         qs = Group.objects.filter(id__in=unique_ids)
-        
+
         if qs.count() != len(unique_ids):
             found_ids = set(qs.values_list('id', flat=True))
             missing_ids = set(unique_ids) - found_ids
@@ -79,7 +79,7 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
     @transaction.atomic
     def set_groups(self, request, pk=None):
         """Заменяет все группы должности на указанные.
-        
+
         POS-группа должности автоматически вкладывается в соответствующие AD-группы
         через сигнал m2m_changed для Position.groups (см. signals/ldap/position.py).
         """
@@ -87,11 +87,11 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
         qs, err = self._validate_groups_payload(request)
         if err:
             return err
-        
+
         old_groups = set(pos.groups.values_list('id', flat=True))
         pos.groups.set(qs)
         new_groups = set(pos.groups.values_list('id', flat=True))
-        
+
         return Response({
             "ok": True,
             "position_id": pos.id,
@@ -105,7 +105,7 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
     @transaction.atomic
     def add_groups(self, request, pk=None):
         """Добавляет группы к должности.
-        
+
         POS-группа должности автоматически вкладывается в соответствующие AD-группы
         через сигнал m2m_changed для Position.groups (см. signals/ldap/position.py).
         """
@@ -113,11 +113,11 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
         qs, err = self._validate_groups_payload(request)
         if err:
             return err
-        
+
         old_groups = set(pos.groups.values_list('id', flat=True))
         pos.groups.add(*qs)
         new_groups = set(pos.groups.values_list('id', flat=True))
-        
+
         return Response({
             "ok": True,
             "position_id": pos.id,
@@ -130,7 +130,7 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
     @transaction.atomic
     def remove_groups(self, request, pk=None):
         """Удаляет группы у должности.
-        
+
         POS-группа должности автоматически удаляется из соответствующих AD-групп
         через сигнал m2m_changed для Position.groups (см. signals/ldap/position.py).
         """
@@ -138,11 +138,11 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
         qs, err = self._validate_groups_payload(request)
         if err:
             return err
-        
+
         old_groups = set(pos.groups.values_list('id', flat=True))
         pos.groups.remove(*qs)
         new_groups = set(pos.groups.values_list('id', flat=True))
-        
+
         return Response({
             "ok": True,
             "position_id": pos.id,

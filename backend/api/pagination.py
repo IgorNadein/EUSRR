@@ -5,7 +5,7 @@ from rest_framework.pagination import PageNumberPagination
 
 class StandardPagination(PageNumberPagination):
     """Стандартная пагинация с поддержкой параметра page_size.
-    
+
     Позволяет клиенту указывать размер страницы через параметр page_size,
     с ограничением максимального размера страницы.
     """

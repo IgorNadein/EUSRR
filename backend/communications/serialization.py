@@ -10,19 +10,19 @@ from django.conf import settings
 def _get_author_url(author) -> str:
     """
     Получает URL профиля автора используя настройку из settings.
-    
+
     Settings:
         COMMUNICATIONS_AUTHOR_URL_PATTERN (str): Шаблон URL для профиля автора.
             По умолчанию: '/api/v1/employees/{id}/' (проектно-специфичный)
             Для standalone: '/users/{id}/' или None (пустая строка)
             Должен содержать placeholder {id} для подстановки ID пользователя
-    
+
     Args:
         author: Объект пользователя (User model)
-    
+
     Returns:
         str: URL профиля автора или пустая строка
-    
+
     Examples:
         >>> # settings.py
         >>> COMMUNICATIONS_AUTHOR_URL_PATTERN = '/users/{id}/'
@@ -31,16 +31,16 @@ def _get_author_url(author) -> str:
     """
     if not author:
         return ""
-    
+
     url_pattern = getattr(
         settings,
         'COMMUNICATIONS_AUTHOR_URL_PATTERN',
         '/api/v1/employees/{id}/'  # backward compatibility
     )
-    
+
     if url_pattern is None:
         return ""
-    
+
     try:
         return url_pattern.format(id=author.id)
     except (KeyError, ValueError, AttributeError):
@@ -50,7 +50,7 @@ def _get_author_url(author) -> str:
 def serialize_message(m) -> dict:
     """
     Сериализация сообщения с поддержкой всех полей.
-    
+
     Поддерживаемые фичи:
     - Базовые поля (контент, автор, дата)
     - Редактирование и удаление
@@ -79,7 +79,7 @@ def serialize_message(m) -> dict:
         "avatar": avatar,
         "created": m.created_at.strftime("%d.%m.%Y %H:%M"),
         "created_ts": int(m.created_at.timestamp() * 1000),
-        
+
         # Статусные поля
         "is_edited": m.is_edited,
         "edited_at": m.edited_at.isoformat() if m.edited_at else None,
@@ -89,7 +89,7 @@ def serialize_message(m) -> dict:
         "is_system": m.is_system,
         "has_attachments": m.has_attachments,
     }
-    
+
     # Информация о пересылке (используем forward_metadata)
     if m.is_forwarded:
         try:
@@ -103,7 +103,7 @@ def serialize_message(m) -> dict:
                 ),
                 "message_id": metadata.original_message_id if metadata.original_message else None,
             }
-            
+
             # Добавляем дату оригинального сообщения
             if metadata.original_created_at:
                 forwarded_data["created_at"] = (
@@ -112,16 +112,16 @@ def serialize_message(m) -> dict:
                 forwarded_data["created_ts"] = int(
                     metadata.original_created_at.timestamp() * 1000
                 )
-            
+
             # Добавляем название исходного чата
             if metadata.original_chat_name:
                 forwarded_data["chat_name"] = metadata.original_chat_name
-            
+
             data["forwarded_from"] = forwarded_data
         except Exception:
             # Если метаданных нет, просто не добавляем информацию о пересылке
             pass
-    
+
     # Реакции - сериализуем из связанной модели MessageReaction
     reactions_summary = {}
     for reaction in m.reactions.select_related('user'):
@@ -138,7 +138,7 @@ def serialize_message(m) -> dict:
             reaction.user.get_full_name() or reaction.user.username
         )
     data["reactions_summary"] = reactions_summary
-    
+
     # Вложения - всегда включаем поле attachments
     attachments = []
     if m.has_attachments:
@@ -159,7 +159,7 @@ def serialize_message(m) -> dict:
                 ),
             })
     data["attachments"] = attachments
-    
+
     # Голосование
     if hasattr(m, 'poll'):
         poll = m.poll
@@ -183,7 +183,7 @@ def serialize_message(m) -> dict:
                 "percentage": 0  # Будет пересчитан на клиенте
             })
         data["poll"] = poll_data
-    
+
     # Ответ на сообщение
     if m.reply_to_id:
         try:
@@ -208,7 +208,7 @@ def serialize_message(m) -> dict:
         except Exception:
             # Если не удалось загрузить reply_to, просто пропускаем
             pass
-    
+
     # Информация о пересылке (legacy)
     if m.is_forwarded and hasattr(m, 'forward_info'):
         fw = m.forward_info
@@ -216,5 +216,5 @@ def serialize_message(m) -> dict:
             "original_author": fw.preserved_author_name,
             "forward_count": fw.forward_count,
         }
-    
+
     return data
