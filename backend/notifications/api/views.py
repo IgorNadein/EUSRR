@@ -6,11 +6,14 @@ API endpoints для системы уведомлений v2.0
 - verb вместо category/type
 - UserChannelPreferences для настроек каналов
 """
+from datetime import datetime
+
 from drf_spectacular.utils import OpenApiParameter, extend_schema
+from django.db.models import Count, Q
+from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework import status
 
 from ..models import Notification, UserChannelPreferences
 from .serializers import (
@@ -33,9 +36,21 @@ def _get_notification_title(notification):
     # Приоритет: title из data (задается при создании уведомления)
     if notification.data and 'title' in notification.data:
         return notification.data['title']
-    
+
     # Fallback: генерируем простой заголовок из verb
     return notification.verb.replace('_', ' ').title()
+
+
+def _format_time_or_none(value):
+    if value is None:
+        return None
+    return value.strftime('%H:%M')
+
+
+def _parse_time_or_none(value):
+    if not value:
+        return None
+    return datetime.strptime(value, '%H:%M').time()
 
 
 @extend_schema(
@@ -54,8 +69,8 @@ def _get_notification_title(notification):
 @permission_classes([IsAuthenticated])
 def get_notifications(request):
     """
-    Получить список уведомлений с пагинацией и фильтрами
-    
+    Получить список уведомлений с пагинацией и фильтрами.
+
     Query params:
         - page: номер страницы (default: 1)
         - page_size: размер страницы (default: 20)
@@ -84,10 +99,10 @@ def get_notifications(request):
     # Фильтры
     if verb:
         queryset = queryset.filter(verb=verb)
-    
+
     if unread_only:
         queryset = queryset.unread()
-    
+
     if search:
         queryset = queryset.filter(description__icontains=search)
 
@@ -110,8 +125,8 @@ def get_notifications(request):
                 'title': _get_notification_title(n),
                 'message': n.description,
                 'short_message': (
-                    n.description[:100] + '...' 
-                    if len(n.description) > 100 
+                    n.description[:100] + '...'
+                    if len(n.description) > 100
                     else n.description
                 ),
                 'is_read': not n.unread,
@@ -174,12 +189,12 @@ def mark_as_read(request, notification_id):
             recipient=request.user
         )
         notification.mark_as_read()
-        
+
         return Response({
             'status': 'success',
             'notification_id': notification_id
         })
-        
+
     except Notification.DoesNotExist:
         return Response(
             {'status': 'error', 'message': 'Notification not found'},
@@ -203,12 +218,12 @@ def mark_as_unread(request, notification_id):
             recipient=request.user
         )
         notification.mark_as_unread()
-        
+
         return Response({
             'status': 'success',
             'notification_id': notification_id
         })
-        
+
     except Notification.DoesNotExist:
         return Response(
             {'status': 'error', 'message': 'Notification not found'},
@@ -227,16 +242,16 @@ def mark_as_unread(request, notification_id):
 def mark_all_as_read(request):
     """Отметить все уведомления как прочитанные"""
     verb = request.data.get('verb')  # Опционально - только определенный тип
-    
+
     queryset = Notification.objects.filter(
         recipient=request.user,
         unread=True,
         deleted=False,
     )
-    
+
     if verb:
         queryset = queryset.filter(verb=verb)
-    
+
     count = queryset.mark_all_as_read()
 
     return Response({
@@ -309,9 +324,9 @@ def delete_notification(request, notification_id):
         )
         notification.deleted = True
         notification.save(update_fields=['deleted'])
-        
+
         return Response({'status': 'success'})
-        
+
     except Notification.DoesNotExist:
         return Response(
             {'status': 'error', 'message': 'Notification not found'},
@@ -349,12 +364,10 @@ def delete_all_read(request):
 @permission_classes([IsAuthenticated])
 def get_verb_types(request):
     """
-    Получить список типов (verb) уведомлений с количеством
-    
+    Получить список типов (verb) уведомлений с количеством.
+
     Возвращает статистику по типам уведомлений пользователя.
     """
-    from django.db.models import Count, Q
-    
     verb_stats = Notification.objects.filter(
         recipient=request.user,
         deleted=False,
@@ -394,11 +407,11 @@ def get_verb_types(request):
 @permission_classes([IsAuthenticated])
 def channel_preferences(request):
     """
-    Получить или обновить настройки каналов уведомлений
-    
+    Получить или обновить настройки каналов уведомлений.
+
     GET: Возвращает текущие настройки
     PUT: Обновляет настройки
-    
+
     Настройки:
         - web_enabled: WebSocket уведомления (bool)
         - email_enabled: Email уведомления (bool)
@@ -410,10 +423,10 @@ def channel_preferences(request):
         - disabled_verbs: Список отключенных типов (array)
     """
     # Получаем или создаем настройки
-    prefs, created = UserChannelPreferences.objects.get_or_create(
+    prefs, _created = UserChannelPreferences.objects.get_or_create(
         user=request.user
     )
-    
+
     if request.method == 'GET':
         data = {
             'web_enabled': prefs.web_enabled,
@@ -421,72 +434,76 @@ def channel_preferences(request):
             'email_frequency': prefs.email_frequency,
             'push_enabled': prefs.push_enabled,
             'dnd_enabled': prefs.dnd_enabled,
-            'dnd_start_time': prefs.dnd_start_time.strftime('%H:%M') if prefs.dnd_start_time else None,
-            'dnd_end_time': prefs.dnd_end_time.strftime('%H:%M') if prefs.dnd_end_time else None,
+            'dnd_start_time': _format_time_or_none(prefs.dnd_start_time),
+            'dnd_end_time': _format_time_or_none(prefs.dnd_end_time),
             'disabled_verbs': prefs.disabled_verbs,
         }
         return Response(data)
-    
-    elif request.method == 'PUT':
+
+    if request.method == 'PUT':
         # Обновляем настройки
         if 'web_enabled' in request.data:
             prefs.web_enabled = request.data.get('web_enabled')
-        
+
         if 'email_enabled' in request.data:
             prefs.email_enabled = request.data.get('email_enabled')
-        
+
         if 'email_frequency' in request.data:
             frequency = request.data.get('email_frequency')
             if frequency in ['instant', 'daily', 'weekly', 'disabled']:
                 prefs.email_frequency = frequency
-        
+
         if 'push_enabled' in request.data:
             prefs.push_enabled = request.data.get('push_enabled')
-        
+
         if 'dnd_enabled' in request.data:
             prefs.dnd_enabled = request.data.get('dnd_enabled')
-        
+
         if 'dnd_start_time' in request.data:
-            from datetime import datetime
             time_str = request.data.get('dnd_start_time')
-            if time_str:
-                prefs.dnd_start_time = datetime.strptime(time_str, '%H:%M').time()
-        
+            prefs.dnd_start_time = _parse_time_or_none(time_str)
+
         if 'dnd_end_time' in request.data:
-            from datetime import datetime
             time_str = request.data.get('dnd_end_time')
-            if time_str:
-                prefs.dnd_end_time = datetime.strptime(time_str, '%H:%M').time()
-        
+            prefs.dnd_end_time = _parse_time_or_none(time_str)
+
         if 'disabled_verbs' in request.data:
             prefs.disabled_verbs = request.data.get('disabled_verbs')
-        
+
         prefs.save()
-        
+
         return Response({
             'status': 'success',
             'message': 'Preferences updated'
         })
 
+    return Response(
+        {'status': 'error', 'message': 'Method not allowed'},
+        status=status.HTTP_405_METHOD_NOT_ALLOWED,
+    )
+
 
 @extend_schema(
     tags=["Notifications"],
     summary="Получить публичный VAPID ключ",
-    responses={200: VapidPublicKeyResponseSerializer, 503: VapidPublicKeyResponseSerializer},
+    responses={
+        200: VapidPublicKeyResponseSerializer,
+        503: VapidPublicKeyResponseSerializer,
+    },
 )
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_vapid_public_key(request):
     """
-    Получить публичный VAPID ключ для Web Push подписки
-    
+    Получить публичный VAPID ключ для Web Push подписки.
+
     Returns:
         - vapid_public_key: публичный ключ в формате base64url
     """
     from django.conf import settings
-    
+
     vapid_key = getattr(settings, 'VAPID_PUBLIC_KEY', None)
-    
+
     if not vapid_key:
         return Response(
             {
@@ -496,7 +513,7 @@ def get_vapid_public_key(request):
             },
             status=status.HTTP_503_SERVICE_UNAVAILABLE
         )
-    
+
     return Response({
         'status': 'success',
         'vapid_public_key': vapid_key
@@ -513,25 +530,25 @@ def get_vapid_public_key(request):
 @permission_classes([IsAuthenticated])
 def subscribe_push(request):
     """
-    Подписка на Web Push уведомления
-    
+    Подписка на Web Push уведомления.
+
     Body:
         - endpoint: URL для отправки push
         - keys: {p256dh, auth} ключи шифрования
         - device_name: название устройства/браузера (опционально)
     """
     from push_notifications.models import WebPushDevice
-    
+
     endpoint = request.data.get('endpoint')
     keys = request.data.get('keys', {})
     device_name = request.data.get('device_name', 'unknown')
-    
+
     if not endpoint or not keys:
         return Response(
             {'status': 'error', 'message': 'endpoint and keys required'},
             status=status.HTTP_400_BAD_REQUEST
         )
-    
+
     # Регистрируем устройство
     device, created = WebPushDevice.objects.update_or_create(
         user=request.user,
@@ -543,10 +560,14 @@ def subscribe_push(request):
             'active': True,
         }
     )
-    
+
     return Response({
         'status': 'success',
-        'message': 'Push subscription created' if created else 'Push subscription updated',
+        'message': (
+            'Push subscription created'
+            if created
+            else 'Push subscription updated'
+        ),
         'created': created,
         'device_id': device.id
     })
@@ -564,9 +585,9 @@ def subscribe_push(request):
 def unsubscribe_push(request):
     """Отписка от Web Push уведомлений"""
     from push_notifications.models import WebPushDevice
-    
+
     endpoint = request.data.get('endpoint')
-    
+
     if endpoint:
         deleted_count, _ = WebPushDevice.objects.filter(
             user=request.user,
@@ -577,7 +598,7 @@ def unsubscribe_push(request):
         deleted_count, _ = WebPushDevice.objects.filter(
             user=request.user
         ).delete()
-    
+
     return Response({
         'status': 'success',
         'message': f'Deleted {deleted_count} push subscription(s)',

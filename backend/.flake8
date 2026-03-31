@@ -1,0 +1,14 @@
+[flake8]
+max-line-length = 88
+exclude =
+    .git,
+    .venv,
+    __pycache__,
+    node_modules,
+    staticfiles,
+    media,
+    migrations
+extend-ignore =
+    W503
+per-file-ignores =
+    communications/api/viewsets.py:E501

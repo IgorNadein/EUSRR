@@ -568,9 +568,9 @@ class ScheduleEventRelationViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Фильтрация по событию."""
         qs = super().get_queryset()
-        
+
         event_id = self.request.query_params.get('event')
         if event_id:
             qs = qs.filter(event_id=event_id)
-        
-        return qs
+
+        return qs.order_by('id')

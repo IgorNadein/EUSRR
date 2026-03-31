@@ -22,7 +22,6 @@ def test_ldap_connection():
             print(f"\n✓ LDAP подключение успешно")
             print(f"✓ Сервер: {conn.server}")
             print(f"✓ Пользователь: {conn.user}")
-            return True
     except Exception as e:
         pytest.fail(f"Не удалось подключиться к LDAP: {e}")
 

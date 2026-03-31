@@ -19,16 +19,9 @@ from datetime import timezone as dt_tz
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from ..models import (Chat, ChatMembership, ChatReadState,
-                                   ChatUserSettings, Message,
-                                   MessageAttachment, MessageReaction, Poll,
-                                   PollOption, PollVote)
-from communications.serialization import serialize_message
-from ..utils import _coerce_ts, user_can_access_chat
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Subquery
-from django.db.models.functions import Coalesce
+from django.db.models import Prefetch, Q
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -36,13 +29,32 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .serializers import (BulkDeleteSerializer, ChatDetailSerializer,
-                          ChatListSerializer, ForwardMessageSerializer,
-                          MessageAttachmentSerializer, MessageCreateSerializer,
-                          MessageDetailSerializer, MessageEditSerializer,
-                          MessageListSerializer, PollSerializer,
-                          ReactionSerializer)
 from .permissions import ChatPermission, MessagePermission
+from .serializers import (
+    BulkDeleteSerializer,
+    ChatDetailSerializer,
+    ChatListSerializer,
+    ForwardMessageSerializer,
+    MessageCreateSerializer,
+    MessageDetailSerializer,
+    MessageEditSerializer,
+    MessageListSerializer,
+    PollSerializer,
+    ReactionSerializer,
+)
+from ..models import (
+    Chat,
+    ChatMembership,
+    ChatReadState,
+    ChatUserSettings,
+    Message,
+    MessageAttachment,
+    MessageReaction,
+    Poll,
+    PollVote,
+)
+from ..utils import _coerce_ts, user_can_access_chat
+from communications.serialization import serialize_message
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -80,15 +92,14 @@ class ChatViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """
         Чаты доступные пользователю с аннотацией непрочитанных.
-        
+
         ОПТИМИЗИРОВАНО: Используем денормализованное поле unread_count из ChatReadState
         вместо подзапросов COUNT(*). Это убирает N+1 проблему и ускоряет в ~100x.
-        
+
         ФИЛЬТРАЦИЯ: Чаты типа 'comments' исключены из списка (list action),
         но доступны по прямой ссылке (retrieve action).
         """
         user = self.request.user
-        from django.contrib.contenttypes.models import ContentType
 
         queryset = Chat.objects.filter(
             Q(memberships__user=user, memberships__is_active=True)
@@ -117,12 +128,12 @@ class ChatViewSet(viewsets.ModelViewSet):
                 to_attr='my_read_state'
             )
         ).distinct()
-        
+
         # Исключаем чаты-комментарии из общего списка
         # Они доступны только через прямой запрос (retrieve) или через контекст поста
         if self.action == 'list':
             queryset = queryset.exclude(type='comments')
-        
+
         return queryset.order_by('-created_at')
 
     def create(self, request, *args, **kwargs):
@@ -211,29 +222,29 @@ class ChatViewSet(viewsets.ModelViewSet):
     def leave(self, request, pk=None):
         """Покинуть чат (выход пользователя из чата)"""
         import rules
-        
+
         chat = self.get_object()
-        
+
         # Проверка прав через django-rules
         if not rules.test_rule('communications.leave_chat', request.user, chat):
             return Response(
                 {'error': 'Permission denied'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
+
         # Нельзя покинуть чат, если ты его владелец
         if chat.created_by == request.user:
             return Response(
                 {'error': 'Chat owner cannot leave the chat'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # MIGRATION: Убрали participants.remove, только деактивируем membership
         membership = ChatMembership.objects.filter(
             chat=chat,
             user=request.user
         ).first()
-        
+
         if membership:
             membership.is_active = False
             membership.left_at = timezone.now()
@@ -244,7 +255,7 @@ class ChatViewSet(viewsets.ModelViewSet):
                 {'error': 'You are not a member of this chat'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         return Response({
             'ok': True,
             'message': 'Successfully left the chat'
@@ -254,23 +265,23 @@ class ChatViewSet(viewsets.ModelViewSet):
     def add_member(self, request, pk=None):
         """Добавить участника в чат"""
         import rules
-        
+
         chat = self.get_object()
         user_id = request.data.get('user_id')
-        
+
         if not user_id:
             return Response(
                 {'error': 'user_id is required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Проверка прав
         if not rules.test_rule('communications.add_members', request.user, chat):
             return Response(
                 {'error': 'Permission denied'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
+
         try:
             user_to_add = User.objects.get(pk=user_id)
         except User.DoesNotExist:
@@ -278,7 +289,7 @@ class ChatViewSet(viewsets.ModelViewSet):
                 {'error': 'User not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
         # MIGRATION: Проверяем через memberships вместо participants
         if ChatMembership.objects.filter(
             chat=chat,
@@ -289,7 +300,7 @@ class ChatViewSet(viewsets.ModelViewSet):
                 {'error': 'User is already a member'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Создаем или восстанавливаем membership для чатов с управлением участниками
         if chat.type in ['group', 'channel', 'announcement']:
             membership, created = ChatMembership.objects.get_or_create(
@@ -301,7 +312,7 @@ class ChatViewSet(viewsets.ModelViewSet):
                     'is_active': True
                 }
             )
-            
+
             # Если membership уже существовал (например, пользователь раньше покинул чат),
             # восстанавливаем его активность
             if not created and not membership.is_active:
@@ -310,7 +321,7 @@ class ChatViewSet(viewsets.ModelViewSet):
                 membership.invited_by = request.user  # Обновляем кто пригласил повторно
                 membership.save()
             chat.participants.add(user_to_add)
-        
+
         return Response({
             'ok': True,
             'message': 'User added successfully'
@@ -320,23 +331,23 @@ class ChatViewSet(viewsets.ModelViewSet):
     def remove_member(self, request, pk=None):
         """Удалить участника из чата"""
         import rules
-        
+
         chat = self.get_object()
         user_id = request.data.get('user_id')
-        
+
         if not user_id:
             return Response(
                 {'error': 'user_id is required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Проверка прав
         if not rules.test_rule('communications.remove_members', request.user, chat):
             return Response(
                 {'error': 'Permission denied'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
+
         try:
             user_to_remove = User.objects.get(pk=user_id)
         except User.DoesNotExist:
@@ -344,31 +355,31 @@ class ChatViewSet(viewsets.ModelViewSet):
                 {'error': 'User not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
         # Нельзя удалить владельца
         if chat.created_by == user_to_remove:
             return Response(
                 {'error': 'Cannot remove chat owner'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # MIGRATION: Убрали participants.remove, только деактивируем membership
         membership = ChatMembership.objects.filter(
             chat=chat,
             user=user_to_remove
         ).first()
-        
+
         if not membership:
             return Response(
                 {'error': 'User is not a member'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         membership.is_active = False
         membership.left_at = timezone.now()
         membership.save(update_fields=['is_active', 'left_at'])
         chat.participants.remove(user_to_remove)
-        
+
         return Response({
             'ok': True,
             'message': 'User removed successfully'
@@ -378,17 +389,17 @@ class ChatViewSet(viewsets.ModelViewSet):
     def change_role(self, request, pk=None):
         """Изменить роль участника чата"""
         import rules
-        
+
         chat = self.get_object()
         user_id = request.data.get('user_id')
         new_role = request.data.get('role')
-        
+
         if not user_id or not new_role:
             return Response(
                 {'error': 'user_id and role are required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Проверка валидности роли
         valid_roles = ['admin', 'moderator', 'member', 'guest']
         if new_role not in valid_roles:
@@ -396,10 +407,10 @@ class ChatViewSet(viewsets.ModelViewSet):
                 {'error': f'Invalid role. Must be one of: {", ".join(valid_roles)}'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Проверка прав (только владелец может менять роли)
         can_change = rules.test_rule('communications.change_member_role', request.user, chat)
-        
+
         # Добавляем логирование для отладки
         logger.warning(
             f"[change_role] User {request.user.id} trying to change role in chat {chat.id}. "
@@ -407,13 +418,13 @@ class ChatViewSet(viewsets.ModelViewSet):
             f"request.user.id={request.user.id}, "
             f"can_change={can_change}"
         )
-        
+
         if not can_change:
             return Response(
                 {'error': 'Permission denied. Only chat owner can change roles.'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
+
         try:
             user_to_change = User.objects.get(pk=user_id)
         except User.DoesNotExist:
@@ -421,14 +432,14 @@ class ChatViewSet(viewsets.ModelViewSet):
                 {'error': 'User not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
         # Нельзя изменить роль владельца
         if chat.created_by == user_to_change:
             return Response(
                 {'error': 'Cannot change role of chat owner'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Получаем или создаем membership
         membership, created = ChatMembership.objects.get_or_create(
             chat=chat,
@@ -439,13 +450,13 @@ class ChatViewSet(viewsets.ModelViewSet):
                 'is_active': True  # Явно устанавливаем is_active при создании
             }
         )
-        
+
         logger.warning(
             f"[change_role] membership found: created={created}, "
             f"user_id={user_to_change.id}, old_role={membership.role}, new_role={new_role}, "
             f"is_active={membership.is_active}"
         )
-        
+
         if not created:
             # Обновляем существующий membership
             old_role = membership.role
@@ -455,7 +466,7 @@ class ChatViewSet(viewsets.ModelViewSet):
             membership.left_at = None  # Сбрасываем left_at если был
             membership.set_permissions_for_role()
             membership.save()
-            
+
             # Перезагружаем из БД чтобы убедиться что сохранилось
             membership.refresh_from_db()
             logger.warning(
@@ -464,7 +475,7 @@ class ChatViewSet(viewsets.ModelViewSet):
                 f"old_is_active={old_is_active}, new_is_active={membership.is_active}, "
                 f"saved_correctly={membership.role == new_role and membership.is_active}"
             )
-        
+
         return Response({
             'ok': True,
             'message': f'User role changed to {new_role}',
@@ -897,13 +908,13 @@ class MessageViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """
         Сообщения доступные пользователю
-        
+
         Включает сообщения из чатов:
         - где user в participants (прямое участие)
         - где user в ChatMembership (роли)
         - где include_all_users=True (открытые чаты)
         - context-based чаты (type=comments с context_object)
-        
+
         Детальная проверка доступа выполняется через MessagePermission
         """
         user = self.request.user
@@ -915,13 +926,13 @@ class MessageViewSet(viewsets.ModelViewSet):
             | Q(participants=user)
             | Q(include_all_users=True)
         ).distinct()
-        
+
         # Context-based чаты (комментарии к постам и т.д.)
         # Проверка доступа к context_object будет в permissions
         context_based_chats = Chat.objects.filter(
             Q(type='comments') & ~Q(context_object_id=None)
         ).distinct()
-        
+
         # Объединяем оба набора
         all_chats = accessible_chats | context_based_chats
 
