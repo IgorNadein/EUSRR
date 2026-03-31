@@ -1,6 +1,8 @@
 # backend/api/v1/feed/serializers.py
 from __future__ import annotations
 
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
@@ -19,12 +21,14 @@ class AuthorMiniSerializer(serializers.ModelSerializer):
         model = Employee
         fields = ["id", "first_name", "last_name", "full_name", "avatar"]
 
+    @extend_schema_field(serializers.CharField())
     def get_full_name(self, obj):
         fn = (obj.first_name or "").strip()
         ln = (obj.last_name or "").strip()
         nm = f"{fn} {ln}".strip()
         return nm
     
+    @extend_schema_field(OpenApiTypes.URI)
     def get_avatar(self, obj):
         """Возвращает полный URL для аватара"""
         request = self.context.get('request')
@@ -82,11 +86,13 @@ class PostListSerializer(serializers.ModelSerializer):
             "is_liked",
         )
 
+    @extend_schema_field(OpenApiTypes.URI)
     def get_image(self, obj):
         """Возвращает полный URL для изображения"""
         request = self.context.get('request')
         return build_media_url(obj.image, request)
     
+    @extend_schema_field(OpenApiTypes.URI)
     def get_attachment(self, obj):
         """Возвращает полный URL для вложения"""
         request = self.context.get('request')
@@ -102,6 +108,7 @@ class PostSerializer(PostListSerializer):
             "user_has_liked"
         ]
 
+    @extend_schema_field(serializers.BooleanField())
     def get_user_has_liked(self, obj):
         """Проверяет, лайкнул ли текущий пользователь этот пост"""
         request = self.context.get("request")

@@ -1,8 +1,23 @@
 """Сериализаторы для ролей и групп."""
 
+from drf_spectacular.utils import extend_schema_field
 from django.contrib.auth.models import Group, Permission
 from employees.models import DepartmentPermission, DepartmentRole
 from rest_framework import serializers
+
+
+class DepartmentPermissionVerboseSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    code = serializers.CharField()
+    name = serializers.CharField()
+
+
+class GroupPermissionVerboseSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    codename = serializers.CharField()
+    name = serializers.CharField()
+    app = serializers.CharField()
+    model = serializers.CharField()
 
 
 class DepartmentRoleSerializer(serializers.ModelSerializer):
@@ -77,9 +92,11 @@ class DepartmentRoleSerializer(serializers.ModelSerializer):
 
         return role
 
+    @extend_schema_field(serializers.ListField(child=serializers.IntegerField()))
     def get_permissions(self, obj: DepartmentRole):
         return list(obj.scoped_permissions.values_list("id", flat=True))
 
+    @extend_schema_field(DepartmentPermissionVerboseSerializer(many=True))
     def get_permissions_verbose(self, obj: DepartmentRole):
         return [
             {"id": p.id, "code": p.code, "name": p.name}
@@ -97,6 +114,7 @@ class GroupSerializer(serializers.ModelSerializer):
         model = Group
         fields = ["id", "name", "permissions", "permissions_verbose"]
 
+    @extend_schema_field(GroupPermissionVerboseSerializer(many=True))
     def get_permissions_verbose(self, obj):
         qs = obj.permissions.select_related("content_type").all()
         return [

@@ -3,6 +3,8 @@
 from collections import defaultdict
 from typing import Any, Dict
 
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 from django.contrib.auth import get_user_model
 from employees.models import EmployeeDepartment, Position, Skill
 from eusrr_backend.auth_backends import PHONE_FIELD as DETECTED_PHONE_FIELD
@@ -13,6 +15,22 @@ from api.v1.serializers import Base64ImageField
 from .shared import EmployeeActionSerializer, PositionBriefSerializer, SkillSerializer
 
 Employee = get_user_model()
+
+
+class EmployeeDepartmentSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField(allow_null=True)
+    role_id = serializers.IntegerField(allow_null=True)
+    role_name = serializers.CharField(allow_null=True)
+    is_head = serializers.BooleanField()
+    via_assignment = serializers.BooleanField(required=False)
+
+
+class EmployeeDepartmentRelationSerializer(serializers.Serializer):
+    is_member = serializers.BooleanField()
+    is_head = serializers.BooleanField()
+    has_role_only = serializers.BooleanField()
+    role_names = serializers.ListField(child=serializers.CharField())
 
 
 class EmployeeSerializer(serializers.ModelSerializer):
@@ -100,6 +118,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             instance.skills.set(skills)
         return instance
 
+    @extend_schema_field(EmployeeDepartmentSerializer(many=True))
     def get_departments(self, obj):
         from employees.models import RoleAssignment
 
@@ -176,6 +195,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
         return fields
 
+    @extend_schema_field(OpenApiTypes.OBJECT)
     def get_auth(self, obj):
         req = self.context.get("request")
         if not req or not getattr(req.user, "is_authenticated", False):
@@ -224,6 +244,7 @@ class EmployeeBriefSerializer(serializers.ModelSerializer):
             "avatar",
         )
 
+    @extend_schema_field(serializers.CharField())
     def get_display_name(self, obj) -> str:
         parts = [obj.last_name or "", obj.first_name or "", obj.patronymic or ""]
         fio = " ".join(p.strip() for p in parts if p)
@@ -235,6 +256,7 @@ class EmployeeBriefSerializer(serializers.ModelSerializer):
             return obj.phone_number
         return f"Сотрудник #{obj.id}"
 
+    @extend_schema_field(serializers.CharField())
     def get_full_name(self, obj: Employee) -> str:
         parts = [
             obj.last_name or "",
@@ -276,6 +298,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
             "department_relation",
         )
 
+    @extend_schema_field(EmployeeDepartmentRelationSerializer(allow_null=True))
     def get_department_relation(self, obj):
         is_member = getattr(obj, "_is_dept_member", None)
         is_head = getattr(obj, "_is_dept_head", None)
@@ -305,6 +328,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
             "role_names": role_names,
         }
 
+    @extend_schema_field(EmployeeDepartmentSerializer(many=True))
     def get_departments(self, obj):
         links = getattr(obj, "dept_links", None)
         if links is None:
@@ -325,12 +349,14 @@ class EmployeeListSerializer(serializers.ModelSerializer):
             )
         return out
 
+    @extend_schema_field(serializers.CharField())
     def get_full_name(self, obj):
         fn = (obj.first_name or "").strip()
         ln = (obj.last_name or "").strip()
         pt = (obj.patronymic or "").strip()
         return f"{ln} {fn} {pt}".strip()
 
+    @extend_schema_field(serializers.CharField())
     def get_display_name(self, obj: Employee) -> str:
         parts = [obj.last_name or "", obj.first_name or "", obj.patronymic or ""]
         fio = " ".join(p.strip() for p in parts if p).strip()

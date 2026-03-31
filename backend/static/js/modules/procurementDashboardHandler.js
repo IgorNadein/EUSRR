@@ -5,7 +5,7 @@
 
 export class ProcurementDashboardHandler {
   constructor(options = {}) {
-    this.apiBase = options.apiBase || '/api/procurement';
+    this.apiBase = options.apiBase || '/api/v1/procurement';
     this.statsContainer = options.statsContainer || '#procDashboardStats';
     this.recentRequestsContainer = options.recentRequestsContainer || '#recentRequests';
     this.recentEquipmentContainer = options.recentEquipmentContainer || '#recentEquipment';

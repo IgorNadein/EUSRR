@@ -10,6 +10,21 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 User = get_user_model()
 
 
+class TokenPairResponseSerializer(serializers.Serializer):
+    refresh = serializers.CharField(read_only=True)
+    access = serializers.CharField(read_only=True)
+
+
+class TokenRefreshRequestSerializer(serializers.Serializer):
+    refresh = serializers.CharField(
+        help_text="Refresh token, полученный при логине."
+    )
+
+
+class TokenRefreshResponseSerializer(serializers.Serializer):
+    access = serializers.CharField(read_only=True)
+
+
 class PhoneOrEmailTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
     Принимает email ИЛИ phone/phone_number + password.
@@ -20,12 +35,26 @@ class PhoneOrEmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         super().__init__(*args, **kwargs)
         # <- КЛЮЧЕВОЕ: email (username_field) не обязателен
         self.fields[self.username_field].required = False
+        self.fields[self.username_field].help_text = (
+            "Email пользователя. Можно передать либо email, либо телефон."
+        )
         # добавляем телефонные поля
-        self.fields["phone"] = serializers.CharField(required=False, allow_blank=True)
-        self.fields["phone_number"] = serializers.CharField(required=False, allow_blank=True)
+        self.fields["phone"] = serializers.CharField(
+            required=False,
+            allow_blank=True,
+            help_text="Номер телефона пользователя в произвольном формате.",
+        )
+        self.fields["phone_number"] = serializers.CharField(
+            required=False,
+            allow_blank=True,
+            help_text="Альтернативное имя поля для номера телефона.",
+        )
 
     def validate(self, attrs):
-        raw_phone = self.initial_data.get("phone") or self.initial_data.get("phone_number")
+        raw_phone = (
+            self.initial_data.get("phone")
+            or self.initial_data.get("phone_number")
+        )
         if raw_phone and not attrs.get(self.username_field):
             qfield = PHONE_FIELD or "phone_number"
             norm = _normalize_phone(raw_phone) or str(raw_phone).strip()
@@ -47,6 +76,9 @@ class PhoneOrEmailTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         # не выдаём токены, если email не подтверждён/аккаунт не активен
         if not self.user.email_verified or not self.user.is_active:
-            raise AuthenticationFailed("email_not_verified", code="email_not_verified")
+            raise AuthenticationFailed(
+                "email_not_verified",
+                code="email_not_verified",
+            )
 
         return data

@@ -5,7 +5,7 @@
 
 export class EquipmentListHandler {
   constructor(options = {}) {
-    this.apiBase = options.apiBase || '/api/procurement';
+    this.apiBase = options.apiBase || '/api/v1/procurement';
     this.container = options.container || '#equipmentList';
     this.filterForm = options.filterForm || '#filterForm';
     this.searchInput = options.searchInput || '#searchInput';
@@ -219,7 +219,7 @@ export class EquipmentListHandler {
                 <i class="bi-eye me-1"></i>Подробнее
               </a>
               <button class="btn btn-outline-secondary btn-sm" 
-                      data-qr-url="/api/procurement/equipment/${eq.id}/qr_code/"
+                      data-qr-url="/api/v1/procurement/equipment/${eq.id}/qr_code/"
                       data-qr-name="${this.escapeHtml(eq.name)}"
                       title="QR-код">
                 <i class="bi-qr-code"></i>

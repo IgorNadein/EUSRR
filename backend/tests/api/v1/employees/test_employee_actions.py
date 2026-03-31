@@ -6,7 +6,7 @@ from rest_framework import status
 from unittest.mock import patch, Mock
 
 from employees.models import Employee, Department, EmployeeDepartment, EmployeeAction
-from employees.constants import ACTION_DISMISSED, ACTION_CHOICES
+from employees.constants import ACTION_DISMISSED, ACTION_CHOICES, ACTION_HIRED
 
 # helpers
 _seq = 1
@@ -70,10 +70,10 @@ def _grant(user: Employee, code: str):
 
 
 def _any_non_dismissed():
-    for k, _ in ACTION_CHOICES:
+    for k, _ in list(ACTION_CHOICES):
         if k != ACTION_DISMISSED:
             return k
-    pytest.skip("No non-dismissed action in ACTION_CHOICES")
+    return ACTION_HIRED
 
 
 @pytest.mark.django_db

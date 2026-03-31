@@ -357,18 +357,13 @@ class TestRuleAPI:
             "name": "Каждый день",
             "description": "Ежедневное повторение",
             "frequency": "DAILY",
-            "params": "{}"  # JSON строка, не объект
+            "params": {}
         }
         
         response = authenticated_client.post(
             '/api/v1/schedule/rules/',
             data,
             format='json'
-        )
-        
-        # Если 400, пропускаем - возможно требуются дополнительные поля
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
-            pytest.skip(f"Rule creation требует дополнительных полей: {response.data}"    format='json'
         )
         
         assert response.status_code == status.HTTP_201_CREATED

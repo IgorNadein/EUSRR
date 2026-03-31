@@ -1,4 +1,7 @@
-"""Auth-related views: регистрация, подтверждение email, повторная отправка кода."""
+"""Auth-related views.
+
+Регистрация, подтверждение email и повторная отправка кода.
+"""
 
 from __future__ import annotations
 
@@ -6,13 +9,14 @@ import logging
 from datetime import timedelta
 
 from common.emails import send_templated_mail
+from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from employees.models import Position, Skill
 from employees.utils import _normalize_phone
-from rest_framework import status
+from rest_framework import serializers, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -40,6 +44,19 @@ class AnonymousAPIView(APIView):
 class ResendEmailAPIView(AnonymousAPIView):
     """POST /api/v1/auth/resend-email/  body: {"email": "..."}"""
 
+    @extend_schema(
+        tags=["Auth"],
+        summary="Повторно отправить код подтверждения email",
+        request=EmailSerializer,
+        responses={
+            200: inline_serializer(
+                "ResendEmailResponse",
+                {"ok": serializers.BooleanField()},
+            ),
+            400: OpenApiResponse(description="Email уже подтвержден."),
+            404: OpenApiResponse(description="Пользователь не найден."),
+        },
+    )
     def post(self, request):
         ser = EmailSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -64,6 +81,22 @@ class ResendEmailAPIView(AnonymousAPIView):
 
 
 class VerifyEmailAPIView(AnonymousAPIView):
+    @extend_schema(
+        tags=["Auth"],
+        summary="Подтвердить email кодом",
+        request=EmailVerifySerializer,
+        responses={
+            200: inline_serializer(
+                "VerifyEmailResponse",
+                {
+                    "ok": serializers.BooleanField(),
+                    "user_id": serializers.IntegerField(),
+                },
+            ),
+            400: OpenApiResponse(description="Код пустой, неверный или истек."),
+            404: OpenApiResponse(description="Пользователь не найден."),
+        },
+    )
     def post(self, request):
         """Подтверждает email и активирует пользователя.
         
@@ -106,6 +139,31 @@ class RegisterAPIView(LdapUserCreationMixin, AnonymousAPIView):
     """
     parser_classes = (JSONParser, FormParser, MultiPartParser)
 
+    @extend_schema(
+        tags=["Auth"],
+        summary="Зарегистрировать нового пользователя",
+        request=RegisterSerializer,
+        responses={
+            201: inline_serializer(
+                "RegisterResponse",
+                {
+                    "id": serializers.IntegerField(),
+                    "email": serializers.EmailField(),
+                    "email_verified": serializers.BooleanField(),
+                    "is_active": serializers.BooleanField(),
+                },
+            ),
+            200: inline_serializer(
+                "RegisterPendingVerificationResponse",
+                {
+                    "ok": serializers.BooleanField(),
+                    "pending_verification": serializers.BooleanField(),
+                    "user_id": serializers.IntegerField(),
+                },
+            ),
+            400: OpenApiResponse(description="Ошибка валидации или занятый email/телефон."),
+        },
+    )
     @transaction.atomic
     def post(self, request):
         # Логируем входящие данные для диагностики

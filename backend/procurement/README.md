@@ -127,61 +127,61 @@ Real-time обновления через `realtime.consumers.UserConsumer`:
 ### API Endpoints:
 
 **Заявки на закупку:**
-- `GET /api/procurement/requests/` - список заявок
-- `POST /api/procurement/requests/` - создать заявку
-- `GET /api/procurement/requests/{id}/` - детали заявки
-- `PUT/PATCH /api/procurement/requests/{id}/` - обновить заявку
-- `DELETE /api/procurement/requests/{id}/` - удалить заявку
-- `POST /api/procurement/requests/{id}/submit/` - отправить на согласование
-- `POST /api/procurement/requests/{id}/approve/` - одобрить
-- `POST /api/procurement/requests/{id}/reject/` - отклонить
-- `GET /api/procurement/requests/my_requests/` - мои заявки
-- `GET /api/procurement/requests/pending_approvals/` - на согласовании
+- `GET /api/v1/procurement/requests/` - список заявок
+- `POST /api/v1/procurement/requests/` - создать заявку
+- `GET /api/v1/procurement/requests/{id}/` - детали заявки
+- `PUT/PATCH /api/v1/procurement/requests/{id}/` - обновить заявку
+- `DELETE /api/v1/procurement/requests/{id}/` - удалить заявку
+- `POST /api/v1/procurement/requests/{id}/submit/` - отправить на согласование
+- `POST /api/v1/procurement/requests/{id}/approve/` - одобрить
+- `POST /api/v1/procurement/requests/{id}/reject/` - отклонить
+- `GET /api/v1/procurement/requests/my_requests/` - мои заявки
+- `GET /api/v1/procurement/requests/pending_approvals/` - на согласовании
 
 **Позиции заявок:**
-- `GET /api/procurement/items/` - список позиций
-- `POST /api/procurement/items/` - создать позицию
-- `GET /api/procurement/items/{id}/` - детали позиции
-- `PUT/PATCH /api/procurement/items/{id}/` - обновить
-- `DELETE /api/procurement/items/{id}/` - удалить
+- `GET /api/v1/procurement/items/` - список позиций
+- `POST /api/v1/procurement/items/` - создать позицию
+- `GET /api/v1/procurement/items/{id}/` - детали позиции
+- `PUT/PATCH /api/v1/procurement/items/{id}/` - обновить
+- `DELETE /api/v1/procurement/items/{id}/` - удалить
 
 **Оборудование:**
-- `GET /api/procurement/equipment/` - список оборудования
-- `POST /api/procurement/equipment/` - добавить оборудование
-- `GET /api/procurement/equipment/{id}/` - детали
-- `PUT/PATCH /api/procurement/equipment/{id}/` - обновить
-- `DELETE /api/procurement/equipment/{id}/` - удалить
-- `GET /api/procurement/equipment/my_equipment/` - мое оборудование
-- `GET /api/procurement/equipment/warranty_expiring/` - истекающие гарантии
+- `GET /api/v1/procurement/equipment/` - список оборудования
+- `POST /api/v1/procurement/equipment/` - добавить оборудование
+- `GET /api/v1/procurement/equipment/{id}/` - детали
+- `PUT/PATCH /api/v1/procurement/equipment/{id}/` - обновить
+- `DELETE /api/v1/procurement/equipment/{id}/` - удалить
+- `GET /api/v1/procurement/equipment/my_equipment/` - мое оборудование
+- `GET /api/v1/procurement/equipment/warranty_expiring/` - истекающие гарантии
 
 **Категории оборудования:**
-- `GET /api/procurement/equipment-categories/` - список категорий
-- `POST /api/procurement/equipment-categories/` - создать категорию
-- `GET /api/procurement/equipment-categories/tree/` - дерево категорий
-- `GET /api/procurement/equipment-categories/{id}/children/` - подкатегории
+- `GET /api/v1/procurement/equipment-categories/` - список категорий
+- `POST /api/v1/procurement/equipment-categories/` - создать категорию
+- `GET /api/v1/procurement/equipment-categories/tree/` - дерево категорий
+- `GET /api/v1/procurement/equipment-categories/{id}/children/` - подкатегории
 
 **Техническое обслуживание:**
-- `GET /api/procurement/maintenance/` - записи обслуживания
-- `POST /api/procurement/maintenance/` - создать запись
-- `GET /api/procurement/maintenance/{id}/` - детали
-- `PUT/PATCH /api/procurement/maintenance/{id}/` - обновить
-- `DELETE /api/procurement/maintenance/{id}/` - удалить
+- `GET /api/v1/procurement/maintenance/` - записи обслуживания
+- `POST /api/v1/procurement/maintenance/` - создать запись
+- `GET /api/v1/procurement/maintenance/{id}/` - детали
+- `PUT/PATCH /api/v1/procurement/maintenance/{id}/` - обновить
+- `DELETE /api/v1/procurement/maintenance/{id}/` - удалить
 
 **Бюджеты:**
-- `GET /api/procurement/budgets/` - список бюджетов
-- `POST /api/procurement/budgets/` - создать бюджет
-- `GET /api/procurement/budgets/{id}/` - детали
-- `PUT/PATCH /api/procurement/budgets/{id}/` - обновить
-- `DELETE /api/procurement/budgets/{id}/` - удалить
-- `GET /api/procurement/budgets/current_quarter/` - текущий квартал
+- `GET /api/v1/procurement/budgets/` - список бюджетов
+- `POST /api/v1/procurement/budgets/` - создать бюджет
+- `GET /api/v1/procurement/budgets/{id}/` - детали
+- `PUT/PATCH /api/v1/procurement/budgets/{id}/` - обновить
+- `DELETE /api/v1/procurement/budgets/{id}/` - удалить
+- `GET /api/v1/procurement/budgets/current_quarter/` - текущий квартал
 
 **Поставщики:**
-- `GET /api/procurement/suppliers/` - список поставщиков
-- `POST /api/procurement/suppliers/` - создать поставщика
-- `GET /api/procurement/suppliers/{id}/` - детали
-- `PUT/PATCH /api/procurement/suppliers/{id}/` - обновить
-- `DELETE /api/procurement/suppliers/{id}/` - удалить
-- `GET /api/procurement/suppliers/top_rated/` - лучшие поставщики
+- `GET /api/v1/procurement/suppliers/` - список поставщиков
+- `POST /api/v1/procurement/suppliers/` - создать поставщика
+- `GET /api/v1/procurement/suppliers/{id}/` - детали
+- `PUT/PATCH /api/v1/procurement/suppliers/{id}/` - обновить
+- `DELETE /api/v1/procurement/suppliers/{id}/` - удалить
+- `GET /api/v1/procurement/suppliers/top_rated/` - лучшие поставщики
 
 ### Фильтрация и поиск:
 

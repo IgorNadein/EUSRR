@@ -1,6 +1,8 @@
 """
 Serializers for Communications API
 """
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
@@ -12,6 +14,25 @@ from ..models import (
 from ..serialization import serialize_message
 
 User = get_user_model()
+
+
+class ChatLastMessageSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    content = serializers.CharField()
+    author_name = serializers.CharField()
+    created_at = serializers.DateTimeField()
+
+
+class ChatParticipantPreviewSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    avatar = serializers.CharField(allow_null=True)
+
+
+class PollVoterSerializer(serializers.Serializer):
+    voter__first_name = serializers.CharField()
+    voter__last_name = serializers.CharField()
+    voter__id = serializers.IntegerField()
 
 
 class ChatUserSettingsSerializer(serializers.ModelSerializer):
@@ -65,6 +86,7 @@ class ChatListSerializer(serializers.ModelSerializer):
             'is_pinned', 'notifications_enabled', 'last_read_message_id'
         ]
     
+    @extend_schema_field(serializers.IntegerField())
     def get_unread_count(self, obj):
         """
         Количество непрочитанных из денормализованного поля.
@@ -75,6 +97,7 @@ class ChatListSerializer(serializers.ModelSerializer):
             return obj.my_read_state[0].unread_count
         return 0
     
+    @extend_schema_field(ChatLastMessageSerializer)
     def get_last_message(self, obj):
         """Последнее сообщение в чате"""
         last_msg = obj.messages.filter(is_deleted=False).order_by('-created_at').first()
@@ -87,6 +110,7 @@ class ChatListSerializer(serializers.ModelSerializer):
             }
         return None
     
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_participant_names(self, obj):
         """Имена участников (для приватных чатов)"""
         if obj.type == 'private':
@@ -94,24 +118,28 @@ class ChatListSerializer(serializers.ModelSerializer):
             return [m.user.get_full_name() for m in active_members]
         return []
 
+    @extend_schema_field(serializers.ListField(child=serializers.IntegerField()))
     def get_member_ids(self, obj):
         """ID участников (из prefetch, для поиска существующего чата)"""
         return list(
             obj.memberships.filter(is_active=True).values_list('user_id', flat=True)
         )
     
+    @extend_schema_field(serializers.BooleanField())
     def get_is_pinned(self, obj):
         """Закреплен ли чат для текущего пользователя (из prefetch)"""
         if hasattr(obj, 'my_settings') and obj.my_settings:
             return obj.my_settings[0].is_pinned
         return False
     
+    @extend_schema_field(serializers.BooleanField())
     def get_notifications_enabled(self, obj):
         """Включены ли уведомления (из prefetch)"""
         if hasattr(obj, 'my_settings') and obj.my_settings:
             return obj.my_settings[0].notifications_enabled
         return True
     
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_last_read_message_id(self, obj):
         """ID последнего прочитанного сообщения (из prefetch)"""
         if hasattr(obj, 'my_read_state') and obj.my_read_state:
@@ -170,6 +198,7 @@ class ChatDetailSerializer(serializers.ModelSerializer):
             validated_data['include_all_users'] = include_all_employees
         return super().update(instance, validated_data)
     
+    @extend_schema_field(ChatParticipantPreviewSerializer(many=True))
     def get_participant_details(self, obj):
         """Детали участников
         MIGRATION: Используем memberships вместо participants
@@ -186,24 +215,28 @@ class ChatDetailSerializer(serializers.ModelSerializer):
             'avatar': m.user.avatar.url if m.user.avatar else None
         } for m in active_memberships]
     
+    @extend_schema_field(ChatUserSettingsSerializer)
     def get_user_settings(self, obj):
         """Настройки текущего пользователя для чата (из prefetch)"""
         if hasattr(obj, 'my_settings') and obj.my_settings:
             return ChatUserSettingsSerializer(obj.my_settings[0]).data
         return {'is_pinned': False, 'notifications_enabled': True}
     
+    @extend_schema_field(serializers.BooleanField())
     def get_is_pinned(self, obj):
         """Закреплен ли чат для текущего пользователя (из prefetch)"""
         if hasattr(obj, 'my_settings') and obj.my_settings:
             return obj.my_settings[0].is_pinned
         return False
     
+    @extend_schema_field(serializers.BooleanField())
     def get_notifications_enabled(self, obj):
         """Включены ли уведомления для текущего пользователя (из prefetch)"""
         if hasattr(obj, 'my_settings') and obj.my_settings:
             return obj.my_settings[0].notifications_enabled
         return True
     
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_last_read_message_id(self, obj):
         """ID последнего прочитанного сообщения (из prefetch)"""
         if hasattr(obj, 'my_read_state') and obj.my_read_state:
@@ -243,12 +276,14 @@ class PollOptionSerializer(serializers.ModelSerializer):
         model = PollOption
         fields = ['id', 'text', 'position', 'vote_count', 'percentage', 'voters']
     
+    @extend_schema_field(serializers.FloatField())
     def get_percentage(self, obj):
         """Процент голосов"""
         if obj.poll and obj.poll.total_voters > 0:
             return round((obj.vote_count / obj.poll.total_voters) * 100, 1)
         return 0
     
+    @extend_schema_field(PollVoterSerializer(many=True))
     def get_voters(self, obj):
         """Список проголосовавших (если не анонимное)"""
         if obj.poll and obj.poll.is_anonymous:
@@ -293,6 +328,7 @@ class PollSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'message', 'is_closed', 'total_voters']
     
+    @extend_schema_field(serializers.ListField(child=serializers.IntegerField()))
     def get_user_voted_option_ids(self, obj):
         """ID опций за которые проголосовал текущий пользователь"""
         request = self.context.get('request')
@@ -394,11 +430,13 @@ class MessageListSerializer(serializers.ModelSerializer):
             'is_pinned', 'has_attachments', 'reactions_summary'
         ]
     
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_author_avatar(self, obj):
         if obj.author and obj.author.avatar:
             return obj.author.avatar.url
         return None
     
+    @extend_schema_field(OpenApiTypes.OBJECT)
     def get_reactions_summary(self, obj):
         """Суммарная информация о реакциях"""
         reactions = {}

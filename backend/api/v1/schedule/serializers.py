@@ -3,10 +3,26 @@
 Serializers для django-scheduler.
 Чистые, проверенные временем модели.
 """
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from schedule.models import Calendar, Event, Rule, Occurrence, EventRelation, CalendarRelation
 from django.contrib.contenttypes.models import ContentType
 import pytz
+
+
+class RelatedUserSummarySerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    username = serializers.CharField()
+    first_name = serializers.CharField(required=False, allow_blank=True)
+    last_name = serializers.CharField(required=False, allow_blank=True)
+    full_name = serializers.CharField(required=False)
+    role = serializers.CharField(required=False)
+
+
+class EventRuleDataSerializer(serializers.Serializer):
+    frequency = serializers.CharField()
+    params = serializers.DictField()
+    description = serializers.CharField(allow_blank=True, allow_null=True)
 
 
 class CalendarRelationSerializer(serializers.ModelSerializer):
@@ -20,6 +36,7 @@ class CalendarRelationSerializer(serializers.ModelSerializer):
         fields = ['id', 'calendar', 'user_id', 'user', 'distinction', 'inheritable']
         read_only_fields = ['id']
     
+    @extend_schema_field(RelatedUserSummarySerializer(allow_null=True))
     def get_user(self, obj):
         """Информация о связанном пользователе."""
         if obj.content_object:
@@ -74,10 +91,12 @@ class CalendarSerializer(serializers.ModelSerializer):
             'slug': {'required': False},  # Сделаем auto-generated если не указан
         }
     
+    @extend_schema_field(serializers.IntegerField())
     def get_events_count(self, obj):
         """Количество событий в календаре."""
         return obj.event_set.count()
     
+    @extend_schema_field(RelatedUserSummarySerializer(allow_null=True))
     def get_owner(self, obj):
         """Получить владельца календаря."""
         try:
@@ -101,6 +120,7 @@ class CalendarSerializer(serializers.ModelSerializer):
             pass
         return None
     
+    @extend_schema_field(RelatedUserSummarySerializer(many=True))
     def get_participants(self, obj):
         """Список всех участников календаря."""
         from django.contrib.auth import get_user_model
@@ -123,6 +143,7 @@ class CalendarSerializer(serializers.ModelSerializer):
                 })
         return participants
     
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_user_role(self, obj):
         """Роль текущего пользователя для этого календаря."""
         request = self.context.get('request')
@@ -332,6 +353,7 @@ class EventSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_on', 'updated_on']
     
+    @extend_schema_field(EventRuleDataSerializer(allow_null=True))
     def get_rule_data(self, obj):
         """Возвращает детальную информацию о правиле повторения."""
         if not obj.rule:
@@ -426,6 +448,7 @@ class EventRelationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id']
     
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_user_name(self, obj):
         """Имя связанного объекта."""
         if obj.content_object:

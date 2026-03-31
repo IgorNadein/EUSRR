@@ -1,23 +1,52 @@
 # backend\api\urls.py
 
 from django.urls import include, path
-from rest_framework_simplejwt.views import TokenRefreshView
+from drf_spectacular.views import (
+    SpectacularAPIView,
+    SpectacularRedocView,
+    SpectacularSwaggerView,
+)
+from rest_framework.permissions import AllowAny
 
-from .auth.views import PhoneOrEmailTokenObtainPairView
+from .auth.views import JWTTokenRefreshView, PhoneOrEmailTokenObtainPairView
 app_name = "api"
 
 urlpatterns = [
-    path("v1/", include(("api.v1.urls", "v1"), namespace="v1")),
-    # Legacy namespace for older tests and clients that still reverse
-    # procurement routes without the api:v1 prefix.
     path(
-        "procurement/",
-        include(("api.v1.procurement.urls", "procurement"), namespace="procurement"),
+        "schema/",
+        SpectacularAPIView.as_view(
+            permission_classes=[AllowAny],
+            authentication_classes=[],
+        ),
+        name="schema",
     ),
+    path(
+        "docs/",
+        SpectacularSwaggerView.as_view(
+            url_name="api:schema",
+            permission_classes=[AllowAny],
+            authentication_classes=[],
+        ),
+        name="swagger-ui",
+    ),
+    path(
+        "redoc/",
+        SpectacularRedocView.as_view(
+            url_name="api:schema",
+            permission_classes=[AllowAny],
+            authentication_classes=[],
+        ),
+        name="redoc",
+    ),
+    path("v1/", include(("api.v1.urls", "v1"), namespace="v1")),
     path(
         "auth/token/",
         PhoneOrEmailTokenObtainPairView.as_view(),
         name="token_obtain_pair",
     ),
-    path("auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    path(
+        "auth/token/refresh/",
+        JWTTokenRefreshView.as_view(),
+        name="token_refresh",
+    ),
 ]

@@ -1,5 +1,6 @@
 """ViewSets для API модуля закупок."""
 
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from django.db.models import Q
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
@@ -36,6 +37,8 @@ from .serializers import (
     EquipmentDetailSerializer,
     EquipmentListSerializer,
     MaintenanceRecordSerializer,
+    ProcurementDepartmentStatsSerializer,
+    ProcurementOverviewStatsSerializer,
     ProcurementItemSerializer,
     ProcurementRequestCreateSerializer,
     ProcurementRequestDetailSerializer,
@@ -1227,6 +1230,16 @@ class EquipmentViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name='comment_id',
+                type=int,
+                location=OpenApiParameter.PATH,
+                description='ID комментария в чате комментариев оборудования.',
+            )
+        ]
+    )
     @action(
         detail=True,
         methods=['delete'],
@@ -1317,6 +1330,11 @@ class ProcurementStatsViewSet(viewsets.ViewSet):
 
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        tags=["Procurement"],
+        summary="Получить общую статистику закупок",
+        responses=ProcurementOverviewStatsSerializer,
+    )
     @action(detail=False, methods=['get'])
     def overview(self, request):
         """Общая статистика закупок."""
@@ -1380,6 +1398,11 @@ class ProcurementStatsViewSet(viewsets.ViewSet):
             'by_urgency': by_urgency,
         })
 
+    @extend_schema(
+        tags=["Procurement"],
+        summary="Получить статистику закупок по отделам",
+        responses=ProcurementDepartmentStatsSerializer(many=True),
+    )
     @action(detail=False, methods=['get'], url_path='by-department')
     def by_department(self, request):
         """Статистика по отделам."""

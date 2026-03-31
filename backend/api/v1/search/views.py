@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 from collections import Counter
 
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -260,6 +261,15 @@ def _is_hr(user: Any) -> bool:
     )
 
 
+@extend_schema(
+    tags=["Search"],
+    summary="Глобальный поиск по системе",
+    parameters=[
+        OpenApiParameter("q", str, OpenApiParameter.QUERY, required=True),
+        OpenApiParameter("limit", int, OpenApiParameter.QUERY),
+    ],
+    responses=SearchResponseSerializer,
+)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def search_api_view(request: DRFRequest) -> Response:

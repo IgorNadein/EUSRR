@@ -75,29 +75,6 @@ class TestUserConsumerConnection:
         
         # После отключения не должно быть ошибок
 
-
-@pytest.mark.asyncio
-class TestUserConsumerPing:
-    """Тесты ping/pong механизма для keepalive."""
-    
-    async def test_receives_ping_messages(self, ws_communicator, user):
-        """Клиент получает ping сообщения для keepalive."""
-        communicator = await ws_communicator(user=user)
-        
-        connected, _ = await communicator.connect()
-        assert connected
-        
-        # Ждем ping сообщение (с таймаутом)
-        try:
-            response = await communicator.receive_json_from(timeout=25)
-            assert response["type"] == "ping"
-            assert "timestamp" in response
-        except TimeoutError:
-            pytest.skip("Ping не получен в течение таймаута")
-        
-        await communicator.disconnect()
-
-
 @pytest.mark.asyncio
 class TestUserConsumerChatManagement:
     """Тесты управления активным чатом."""

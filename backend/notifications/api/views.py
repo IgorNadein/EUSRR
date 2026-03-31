@@ -6,12 +6,26 @@ API endpoints для системы уведомлений v2.0
 - verb вместо category/type
 - UserChannelPreferences для настроек каналов
 """
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
 from ..models import Notification, UserChannelPreferences
+from .serializers import (
+    ChannelPreferencesSerializer,
+    CountResponseSerializer,
+    MarkAllAsReadRequestSerializer,
+    MarkCategoryAsReadRequestSerializer,
+    NotificationsListResponseSerializer,
+    StatusResponseSerializer,
+    SubscribePushRequestSerializer,
+    UnsubscribePushRequestSerializer,
+    UpdateChannelPreferencesSerializer,
+    VapidPublicKeyResponseSerializer,
+    VerbTypesResponseSerializer,
+)
 
 
 def _get_notification_title(notification):
@@ -24,6 +38,18 @@ def _get_notification_title(notification):
     return notification.verb.replace('_', ' ').title()
 
 
+@extend_schema(
+    tags=["Notifications"],
+    summary="Получить список уведомлений",
+    parameters=[
+        OpenApiParameter("page", int, OpenApiParameter.QUERY),
+        OpenApiParameter("page_size", int, OpenApiParameter.QUERY),
+        OpenApiParameter("verb", str, OpenApiParameter.QUERY),
+        OpenApiParameter("unread_only", bool, OpenApiParameter.QUERY),
+        OpenApiParameter("search", str, OpenApiParameter.QUERY),
+    ],
+    responses=NotificationsListResponseSerializer,
+)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_notifications(request):
@@ -114,6 +140,11 @@ def get_notifications(request):
     return Response(data)
 
 
+@extend_schema(
+    tags=["Notifications"],
+    summary="Получить количество непрочитанных уведомлений",
+    responses=CountResponseSerializer,
+)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_unread_count(request):
@@ -127,6 +158,12 @@ def get_unread_count(request):
     return Response({'count': count})
 
 
+@extend_schema(
+    tags=["Notifications"],
+    summary="Отметить уведомление как прочитанное",
+    request=None,
+    responses={200: StatusResponseSerializer, 404: StatusResponseSerializer},
+)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def mark_as_read(request, notification_id):
@@ -150,6 +187,12 @@ def mark_as_read(request, notification_id):
         )
 
 
+@extend_schema(
+    tags=["Notifications"],
+    summary="Отметить уведомление как непрочитанное",
+    request=None,
+    responses={200: StatusResponseSerializer, 404: StatusResponseSerializer},
+)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def mark_as_unread(request, notification_id):
@@ -173,6 +216,12 @@ def mark_as_unread(request, notification_id):
         )
 
 
+@extend_schema(
+    tags=["Notifications"],
+    summary="Отметить все уведомления как прочитанные",
+    request=MarkAllAsReadRequestSerializer,
+    responses=StatusResponseSerializer,
+)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def mark_all_as_read(request):
@@ -196,6 +245,12 @@ def mark_all_as_read(request):
     })
 
 
+@extend_schema(
+    tags=["Notifications"],
+    summary="Отметить группу уведомлений как прочитанную",
+    request=MarkCategoryAsReadRequestSerializer,
+    responses={200: StatusResponseSerializer, 400: StatusResponseSerializer},
+)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def mark_category_as_read(request):
@@ -238,6 +293,11 @@ def mark_category_as_read(request):
     })
 
 
+@extend_schema(
+    tags=["Notifications"],
+    summary="Удалить уведомление",
+    responses={200: StatusResponseSerializer, 404: StatusResponseSerializer},
+)
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def delete_notification(request, notification_id):
@@ -259,6 +319,11 @@ def delete_notification(request, notification_id):
         )
 
 
+@extend_schema(
+    tags=["Notifications"],
+    summary="Удалить все прочитанные уведомления",
+    responses=StatusResponseSerializer,
+)
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def delete_all_read(request):
@@ -275,6 +340,11 @@ def delete_all_read(request):
     })
 
 
+@extend_schema(
+    tags=["Notifications"],
+    summary="Получить статистику по типам уведомлений",
+    responses=VerbTypesResponseSerializer,
+)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_verb_types(request):
@@ -307,6 +377,19 @@ def get_verb_types(request):
     return Response({'verb_types': data})
 
 
+@extend_schema(
+    methods=['GET'],
+    tags=["Notifications"],
+    summary="Получить настройки каналов уведомлений",
+    responses=ChannelPreferencesSerializer,
+)
+@extend_schema(
+    methods=['PUT'],
+    tags=["Notifications"],
+    summary="Обновить настройки каналов уведомлений",
+    request=UpdateChannelPreferencesSerializer,
+    responses=StatusResponseSerializer,
+)
 @api_view(['GET', 'PUT'])
 @permission_classes([IsAuthenticated])
 def channel_preferences(request):
@@ -386,6 +469,11 @@ def channel_preferences(request):
         })
 
 
+@extend_schema(
+    tags=["Notifications"],
+    summary="Получить публичный VAPID ключ",
+    responses={200: VapidPublicKeyResponseSerializer, 503: VapidPublicKeyResponseSerializer},
+)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_vapid_public_key(request):
@@ -415,6 +503,12 @@ def get_vapid_public_key(request):
     })
 
 
+@extend_schema(
+    tags=["Notifications"],
+    summary="Подписаться на Web Push",
+    request=SubscribePushRequestSerializer,
+    responses={200: StatusResponseSerializer, 400: StatusResponseSerializer},
+)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def subscribe_push(request):
@@ -458,6 +552,13 @@ def subscribe_push(request):
     })
 
 
+@extend_schema(
+    methods=['POST', 'DELETE'],
+    tags=["Notifications"],
+    summary="Отписаться от Web Push",
+    request=UnsubscribePushRequestSerializer,
+    responses=StatusResponseSerializer,
+)
 @api_view(['POST', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def unsubscribe_push(request):

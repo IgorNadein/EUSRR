@@ -3,6 +3,9 @@
 Кастомные serializer fields для работы с django-filer.
 """
 
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
+
 from rest_framework import serializers
 from django.core.files.uploadedfile import UploadedFile
 from filer.models import File as FilerFile
@@ -11,6 +14,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+@extend_schema_field(OpenApiTypes.URI)
 class FilerFileField(serializers.Field):
     """
     Serializer field для работы с django-filer FilerFileField.

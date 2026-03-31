@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from drf_spectacular.utils import extend_schema_field
 from django.contrib.auth import get_user_model
 from django.db import models
 from employees.models import Department
@@ -136,6 +137,7 @@ class RequestReadSerializer(serializers.ModelSerializer):
             "comments_count",
         )
 
+    @extend_schema_field(serializers.IntegerField())
     def get_recipient_count(self, obj):
         """Количество получателей"""
         if obj.sent_to_all_department:
@@ -153,10 +155,12 @@ class RequestReadSerializer(serializers.ModelSerializer):
             return count
         return obj.recipients.count()
 
+    @extend_schema_field(serializers.IntegerField())
     def get_cc_count(self, obj):
         """Количество пользователей в копии"""
         return obj.cc_users.count()
 
+    @extend_schema_field(serializers.BooleanField())
     def get_is_recipient(self, obj):
         """Является ли текущий пользователь получателем"""
         request = self.context.get("request")

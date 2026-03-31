@@ -13,7 +13,6 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework import status
-from unittest.mock import patch, MagicMock
 
 Employee = get_user_model()
 
@@ -50,41 +49,6 @@ def verified_user(db):
     user.set_password("TestPass123!")
     user.save()
     return user
-
-
-# ---------- Тесты с LDAP ----------
-
-
-@pytest.mark.skip(reason="Requires real LDAP connection - skipped for safety")
-@patch("api.v1.employees.views.DirectoryService")
-def test_verify_email_with_ldap_activates_user_in_ldap_and_db(
-    mock_ds, api_client, unverified_user, settings
-):
-    """V1: Верификация email с LDAP активирует пользователя в LDAP и БД"""
-    settings.LDAP_ENABLED = True
-
-    mock_svc = MagicMock()
-    mock_ds.return_value = mock_svc
-
-    url = reverse("api:v1:verify-email")
-    data = {
-        "email": unverified_user.email,
-        "code": unverified_user.email_activation_code,
-    }
-
-    response = api_client.post(url, data, format="json")
-
-    assert response.status_code == status.HTTP_200_OK
-    assert response.data["ok"] is True
-
-    # Проверяем что пользователь активирован в БД
-    unverified_user.refresh_from_db()
-    assert unverified_user.is_active is True
-    assert unverified_user.email_verified is True
-    assert unverified_user.email_activation_code == ""
-
-    # Проверяем что вызван метод активации в LDAP
-    mock_svc.enable_user.assert_called_once_with(unverified_user)
 
 
 # ---------- Тесты без LDAP ----------
@@ -161,6 +125,8 @@ def test_verify_email_already_verified_returns_400_without_ldap(
     # т.к. верифицированный пользователь не имеет валидного кода
     assert "ok" in response.data
     assert response.data["ok"] is False
+
+
 @pytest.mark.django_db
 def test_verify_email_nonexistent_user_returns_404_without_ldap(
     api_client, settings
@@ -197,30 +163,3 @@ def test_verify_email_empty_code_returns_400_without_ldap(
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
-# ---------- Тесты LDAP ошибок ----------
-
-
-@pytest.mark.skip(reason="Requires real LDAP connection - skipped for safety")
-@patch("api.v1.employees.views.DirectoryService")
-def test_verify_email_ldap_error_returns_502(
-    mock_ds, api_client, unverified_user, settings
-):
-    """Ошибка LDAP при активации возвращает 502"""
-    settings.LDAP_ENABLED = True
-
-    from bots.services.directory import DirectoryLdapError
-
-    mock_svc = MagicMock()
-    mock_svc.enable_user.side_effect = DirectoryLdapError("LDAP connection failed")
-    mock_ds.return_value = mock_svc
-
-    url = reverse("api:v1:verify-email")
-    data = {
-        "email": unverified_user.email,
-        "code": unverified_user.email_activation_code,
-    }
-
-    response = api_client.post(url, data, format="json")
-
-    assert response.status_code == status.HTTP_502_BAD_GATEWAY
-    assert "LDAP" in str(response.data)

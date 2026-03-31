@@ -2,6 +2,7 @@
 Сериализаторы для модуля закупок.
 """
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from procurement.constants import get_default_approval_step_name
@@ -72,6 +73,7 @@ class ApprovalSerializer(serializers.ModelSerializer):
     )
     step_label = serializers.SerializerMethodField()
 
+    @extend_schema_field(serializers.CharField())
     def get_step_label(self, obj):
         return obj.step_name or get_default_approval_step_name(obj.priority)
 
@@ -324,6 +326,7 @@ class EquipmentCategorySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'full_path']
 
+    @extend_schema_field(serializers.IntegerField())
     def get_children_count(self, obj):
         """Количество подкатегорий."""
         return obj.children.count()
@@ -719,6 +722,7 @@ class EquipmentDetailSerializer(serializers.ModelSerializer):
             'maintenance_count',
         ]
 
+    @extend_schema_field(serializers.IntegerField())
     def get_maintenance_count(self, obj):
         """Количество записей обслуживания."""
         return obj.maintenance_history.count()
@@ -792,3 +796,19 @@ class SupplierSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class ProcurementOverviewStatsSerializer(serializers.Serializer):
+    total_requests = serializers.IntegerField()
+    pending_requests = serializers.IntegerField()
+    approved_this_month = serializers.IntegerField()
+    completed_this_month = serializers.IntegerField()
+    total_spent_this_year = serializers.CharField()
+    by_status = serializers.DictField(child=serializers.IntegerField())
+    by_urgency = serializers.DictField(child=serializers.IntegerField())
+
+
+class ProcurementDepartmentStatsSerializer(serializers.Serializer):
+    department = serializers.DictField()
+    total_requests = serializers.IntegerField()
+    total_spent = serializers.CharField()

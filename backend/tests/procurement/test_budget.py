@@ -146,7 +146,7 @@ class TestBudgetMyDepartmentEndpoint:
         """Тест: получение бюджета своего отдела."""
         self.client.force_authenticate(user=self.user)
         
-        response = self.client.get('/api/procurement/budgets/my-department/')
+        response = self.client.get('/api/v1/procurement/budgets/my-department/')
         
         assert response.status_code == status.HTTP_200_OK
         assert response.data['department'] == self.department.id
@@ -168,7 +168,7 @@ class TestBudgetMyDepartmentEndpoint:
         )
         self.client.force_authenticate(user=user_no_dept)
         
-        response = self.client.get('/api/procurement/budgets/my-department/')
+        response = self.client.get('/api/v1/procurement/budgets/my-department/')
         
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -179,7 +179,7 @@ class TestBudgetMyDepartmentEndpoint:
         
         self.client.force_authenticate(user=self.user)
         
-        response = self.client.get('/api/procurement/budgets/my-department/')
+        response = self.client.get('/api/v1/procurement/budgets/my-department/')
         
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -227,7 +227,7 @@ class TestProcurementStatsEndpoints:
         """Тест: получение общей статистики."""
         self.client.force_authenticate(user=self.user)
         
-        response = self.client.get('/api/procurement/stats/overview/')
+        response = self.client.get('/api/v1/procurement/stats/overview/')
         
         assert response.status_code == status.HTTP_200_OK
         assert 'total_requests' in response.data
@@ -239,7 +239,7 @@ class TestProcurementStatsEndpoints:
         """Тест: статистика по отделам для staff."""
         self.client.force_authenticate(user=self.staff_user)
         
-        response = self.client.get('/api/procurement/stats/by-department/')
+        response = self.client.get('/api/v1/procurement/stats/by-department/')
         
         assert response.status_code == status.HTTP_200_OK
         assert isinstance(response.data, list)
@@ -248,7 +248,7 @@ class TestProcurementStatsEndpoints:
         """Тест: 403 для обычного пользователя."""
         self.client.force_authenticate(user=self.user)
         
-        response = self.client.get('/api/procurement/stats/by-department/')
+        response = self.client.get('/api/v1/procurement/stats/by-department/')
         
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
@@ -260,7 +260,7 @@ class TestProcurementStatsEndpoints:
         
         self.client.force_authenticate(user=self.user)
         
-        response = self.client.get('/api/procurement/stats/by-department/')
+        response = self.client.get('/api/v1/procurement/stats/by-department/')
         
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data) == 1

@@ -130,12 +130,12 @@ def make_procurement_request(
 
 def request_list_url() -> str:
     """URL для списка/создания заявок."""
-    return reverse("procurement:procurementrequest-list")
+    return reverse("api:v1:procurement:procurementrequest-list")
 
 
 def request_detail_url(pk: int) -> str:
     """URL для конкретной заявки."""
-    return reverse("procurement:procurementrequest-detail", args=[pk])
+    return reverse("api:v1:procurement:procurementrequest-detail", args=[pk])
 
 
 def valid_request_data(dept: Department, title: str = "Тестовая заявка") -> dict:

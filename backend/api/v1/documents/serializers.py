@@ -4,6 +4,7 @@ import json
 import logging
 from typing import Any, Dict, Sequence, Iterable
 
+from drf_spectacular.utils import extend_schema_field
 from django.conf import settings
 from django.http import QueryDict
 from django.contrib.auth import get_user_model
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
+@extend_schema_field(serializers.ListField(child=serializers.IntegerField()))
 class RecipientIDsField(serializers.Field):
     """Принимает recipient_ids в форматах: список, JSON-строка или CSV.
 
@@ -220,6 +222,7 @@ class DocumentReadSerializer(serializers.ModelSerializer):
     folder = FolderBriefSerializer(read_only=True)
     folder_path = serializers.CharField(read_only=True)
     tags = DocumentTagSerializer(many=True, read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
     file_url = FilerFileSerializerField(source="file", read_only=True)
     file_name = serializers.CharField(source='file.name', read_only=True, allow_null=True)
     file_size = serializers.IntegerField(source='file.size', read_only=True, allow_null=True)

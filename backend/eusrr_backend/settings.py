@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "widget_tweaks",
     "simple_history",
     "rest_framework",
+    "drf_spectacular",
     "rules",  # django-rules для декларативных permissions
     # django-filer и зависимости
     "easy_thumbnails",
@@ -348,6 +349,7 @@ REST_FRAMEWORK = {
         "rest_framework_simplejwt.authentication.JWTAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
         "rest_framework.permissions.DjangoModelPermissions",
@@ -356,6 +358,69 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {"anon": "60/min"},
     "DEFAULT_PAGINATION_CLASS": "api.pagination.StandardPagination",
     "PAGE_SIZE": 20,
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": f"{SITE_NAME} API",
+    "DESCRIPTION": (
+        "OpenAPI-документация backend API EUSRR. "
+        "Включает JWT-аутентификацию, session auth и основные REST endpoints."
+    ),
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SCHEMA_PATH_PREFIX": r"/api(?:/v1)?",
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SORT_OPERATIONS": True,
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,
+        "displayRequestDuration": True,
+        "filter": True,
+        "persistAuthorization": True,
+    },
+    "ENUM_NAME_OVERRIDES": {
+        "ProcurementStatusEnum": [
+            ("draft", "Черновик"),
+            ("pending", "На согласовании"),
+            ("approved", "Одобрено"),
+            ("rejected", "Отклонено"),
+            ("in_progress", "В работе"),
+            ("completed", "Завершено"),
+            ("cancelled", "Отменено"),
+        ],
+        "EquipmentStatusEnum": [
+            ("available", "Доступно"),
+            ("in_use", "В использовании"),
+            ("maintenance", "На обслуживании"),
+            ("repair", "В ремонте"),
+            ("retired", "Списано"),
+            ("lost", "Утеряно"),
+        ],
+        "RequestTypeEnum": [
+            ("vacation", "Отпуск"),
+            ("sick_leave", "Больничный"),
+            ("day_off", "Отгул"),
+            ("transfer", "Перевод"),
+            ("dismissal", "Увольнение"),
+            ("other", "Другое"),
+        ],
+        "FeedPostTypeEnum": [
+            ("company", "Новость компании"),
+            ("department", "Новость отдела"),
+            ("employee", "Публикация сотрудника"),
+        ],
+        "ChatTypeEnum": [
+            ("private", "Личный"),
+            ("group", "Групповой"),
+            ("channel", "Канал"),
+            ("announcement", "Объявления"),
+            ("global", "Глобальный"),
+            ("comments", "Комментарии"),
+        ],
+    },
+    "POSTPROCESSING_HOOKS": [
+        "drf_spectacular.hooks.postprocess_schema_enums",
+        "api.schema.assign_operation_tags",
+    ],
 }
 
 SIMPLE_JWT = {

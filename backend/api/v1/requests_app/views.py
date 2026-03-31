@@ -9,6 +9,7 @@ from employees.models import Department, EmployeeDepartment  # добавлен 
 from requests_app.enums import RequestStatus
 from requests_app.models import Request as EmployeeRequest
 from communications import comments_helpers
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 # from django.shortcuts import get_object_or_404  # <- не используется
 from rest_framework import status, viewsets
@@ -426,6 +427,16 @@ class RequestViewSet(viewsets.ModelViewSet):
         logger.info(f"[RequestViewSet.comments] POST: comment created id={message.id}")
         return Response(response_data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="comment_id",
+                type=int,
+                location=OpenApiParameter.PATH,
+                description="ID комментария в треде заявки.",
+            )
+        ]
+    )
     @action(detail=True, methods=["delete"], url_path="comments/(?P<comment_id>[^/.]+)")
     def delete_comment(self, request: DRFRequest, pk: int | str | None = None, comment_id: int | str | None = None) -> Response:
         """Удаление комментария.

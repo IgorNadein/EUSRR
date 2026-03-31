@@ -69,6 +69,7 @@ class ChatViewSet(viewsets.ModelViewSet):
     Ручной вызов /mark-read/ больше не требуется.
     """
 
+    queryset = Chat.objects.none()
     permission_classes = [ChatPermission]
 
     def get_serializer_class(self):
@@ -880,6 +881,7 @@ class MessageViewSet(viewsets.ModelViewSet):
     - upload: POST /api/v1/communications/messages/upload/ - загрузить с вложениями
     """
 
+    queryset = Message.objects.none()
     permission_classes = [MessagePermission]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
