@@ -1,15 +1,11 @@
 # eusrr_backend/channels_jwt.py
 from __future__ import annotations
+
 from typing import Optional
 from urllib.parse import parse_qs
 
 from channels.db import database_sync_to_async
 from channels.middleware import BaseMiddleware
-from django.contrib.auth import get_user_model
-from rest_framework_simplejwt.tokens import UntypedToken
-from rest_framework_simplejwt.authentication import JWTAuthentication
-
-User = get_user_model()
 
 
 class JWTAuthMiddleware(BaseMiddleware):
@@ -32,7 +28,9 @@ class JWTAuthMiddleware(BaseMiddleware):
         return None
 
     @database_sync_to_async
-    def _get_user(self, validated_token) -> Optional[User]:
+    def _get_user(self, validated_token):
+        from rest_framework_simplejwt.authentication import JWTAuthentication
+
         auth = JWTAuthentication()
         user = auth.get_user(validated_token)
         return user
@@ -41,6 +39,8 @@ class JWTAuthMiddleware(BaseMiddleware):
         try:
             raw = self._get_raw_token(scope)
             if raw:
+                from rest_framework_simplejwt.tokens import UntypedToken
+
                 token = UntypedToken(raw)  # валидация подписи/срока
                 user = await self._get_user(token)
                 scope["user"] = user
