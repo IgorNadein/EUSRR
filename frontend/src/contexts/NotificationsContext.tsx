@@ -4,11 +4,19 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import apiClient from '@/lib/api';
 import wsManager from '@/lib/websocketManager';
 
-type NotificationItem = {
+export type NotificationItem = {
   id: number;
   is_read?: boolean;
   unread?: boolean;
   category?: string;
+  title?: string;
+  verb?: string;
+  description?: string;
+  short_message?: string;
+  message?: string;
+  timestamp?: string;
+  created_at?: string;
+  action_url?: string;
   [key: string]: unknown;
 };
 
@@ -101,15 +109,17 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         return;
       }
 
-      if (data.type === 'notification' && data.notification) {
+      const incomingNotification = data.notification;
+
+      if (data.type === 'notification' && incomingNotification) {
         setNotifications(prev => {
-          if (prev.some(n => n.id === data.notification.id)) {
+          if (prev.some(n => n.id === incomingNotification.id)) {
             return prev;
           }
-          return [data.notification, ...prev];
+          return [incomingNotification, ...prev];
         });
 
-        const isRead = data.notification.is_read ?? !data.notification.unread;
+        const isRead = incomingNotification.is_read ?? !incomingNotification.unread;
         if (!isRead) {
           setUnreadCount(prev => prev + 1);
         }

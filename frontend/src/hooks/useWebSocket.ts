@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { getWebSocketUrl } from '@/lib/url';
+import type { Message } from '@/types/api';
+
+type ReactionsSummary = Record<string, { count: number; users?: number[]; user_names?: string[] }>;
 
 interface WebSocketMessage {
   type: string;
   payload?: Record<string, unknown>;
+  message?: Message;
   message_id?: number;
   user_id?: number;
+  chat_id?: number;
+  last_read_message_id?: number;
+  reactions_summary?: ReactionsSummary;
   [key: string]: unknown;
 }
 

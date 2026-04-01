@@ -252,6 +252,10 @@ export default function MessageDialogPage() {
     handlers.current.onMessage = (data) => {
       if (data.type === 'new_message') {
         // Новое сообщение
+        if (!data.message) {
+          return;
+        }
+
         const newMsg = data.message;
         const isMyMessage = newMsg.author_id === user?.id;
         const wasNearBottom = isNearBottom();
@@ -313,6 +317,10 @@ export default function MessageDialogPage() {
       } 
       else if (data.type === 'message_edited') {
         // Редактирование сообщения
+        if (!data.message) {
+          return;
+        }
+
         const editedMsg = data.message;
         setMessages(prev => prev.map(m => 
           m.id === editedMsg.id ? { ...m, ...editedMsg } : m
@@ -347,22 +355,24 @@ export default function MessageDialogPage() {
       }
       else if (data.type === 'reaction_added') {
         // Реакция добавлена
-        if (data.reactions_summary && data.message_id) {
+        if (data.reactions_summary && typeof data.message_id === 'number') {
           updateMessageReactionsSummary(data.message_id, data.reactions_summary);
         }
       }
       else if (data.type === 'reaction_removed') {
         // Реакция удалена
-        if (data.reactions_summary && data.message_id) {
+        if (data.reactions_summary && typeof data.message_id === 'number') {
           updateMessageReactionsSummary(data.message_id, data.reactions_summary);
         }
       }
       else if (data.type === 'marked_read' && data.chat_id === chatId && typeof data.last_read_message_id === 'number') {
+        const lastReadMessageId = data.last_read_message_id;
+
         setChat((prev) =>
           prev
             ? {
                 ...prev,
-                last_read_message_id: Math.max(prev.last_read_message_id ?? 0, data.last_read_message_id),
+                last_read_message_id: Math.max(prev.last_read_message_id ?? 0, lastReadMessageId),
               }
             : prev
         );
