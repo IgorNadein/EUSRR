@@ -20,75 +20,14 @@ import {
 } from "lucide-react";
 import { AppShell } from "../../../../components/AppShell";
 import { apiClient } from "@/lib/api";
-import type { Chat } from "@/types/api";
+import { getChatAvatar, getChatInitials, getChatTitle, getUserFullName } from "@/lib/messages/chatUtils";
+import type { Chat, User } from "@/types/api";
 import { useUser } from "@/contexts/UserContext";
 import { resolveMediaUrl } from "@/lib/url";
 
-function getUserFullName(lastName?: string, firstName?: string): string {
-  return `${lastName || ""} ${firstName || ""}`.trim();
-}
-
-function getInterlocutorFromParticipants(chat: Chat, currentUserId?: number) {
-  const participants = (chat.participants || []).filter(
-    (p): p is Exclude<typeof p, number> => typeof p === "object" && p !== null
-  );
-  return participants.find((p) => p.id !== currentUserId);
-}
-
-function getInterlocutorFromParticipantDetails(chat: Chat, currentUserId?: number) {
-  return (chat.participant_details || []).find((p) => p.id !== currentUserId);
-}
-
-function getChatTitle(chat: Chat, currentUserId?: number): string {
-  const chatKind = chat.chat_type || chat.type;
-  const rawName = (chat.name || "").trim();
-
-  if (chatKind === "direct" || chatKind === "private" || !rawName || rawName.toLowerCase() === "диалог") {
-    if (chat.interlocutor?.name?.trim()) {
-      return chat.interlocutor.name.trim();
-    }
-
-    const detailsOther = getInterlocutorFromParticipantDetails(chat, currentUserId);
-    if (detailsOther?.name?.trim()) {
-      return detailsOther.name.trim();
-    }
-
-    const other = getInterlocutorFromParticipants(chat, currentUserId);
-    if (other && typeof other === "object") {
-      const name = getUserFullName(other.last_name, other.first_name);
-      if (name) return name;
-      if (other.email) return other.email;
-    }
-  }
-
-  return rawName || "Диалог";
-}
-
-function getChatAvatar(chat: Chat, currentUserId?: number): string {
-  const chatKind = chat.chat_type || chat.type;
-  if (chatKind === "direct" || chatKind === "private" || (chat.name || "").trim().toLowerCase() === "диалог") {
-    if (chat.interlocutor?.avatar) return chat.interlocutor.avatar;
-
-    const detailsOther = getInterlocutorFromParticipantDetails(chat, currentUserId);
-    if (detailsOther?.avatar) return detailsOther.avatar;
-
-    const other = getInterlocutorFromParticipants(chat, currentUserId);
-    if (other?.avatar) return other.avatar;
-  }
-  return chat.avatar || "";
-}
-
-function getChatInitials(chat: Chat, currentUserId?: number): string {
-  const title = getChatTitle(chat, currentUserId);
-  return (
-    title
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((p) => p[0]?.toUpperCase() || "")
-      .join("") || "Ч"
-  );
-}
+type MemberSearchResult = Pick<User, "id" | "first_name" | "last_name" | "email" | "avatar"> & {
+  name?: string;
+};
 
 function getChatTypeLabel(chat: Chat): string {
   const type = chat.chat_type || chat.type;
@@ -137,7 +76,7 @@ export default function ChatSettingsPage() {
   // Состояние модала добавления участников
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState("");
-  const [memberSearchResults, setMemberSearchResults] = useState<any[]>([]);
+  const [memberSearchResults, setMemberSearchResults] = useState<MemberSearchResult[]>([]);
   const [memberSearchLoading, setMemberSearchLoading] = useState(false);
   
   // Состояние для отображения полного списка участников
@@ -314,7 +253,7 @@ export default function ChatSettingsPage() {
     setActionLoading("edit");
     try {
       // Обновляем название и описание
-      const updatedChat = await apiClient.updateChat(chatId, {
+      await apiClient.updateChat(chatId, {
         name: editName.trim() || undefined,
         description: editDescription.trim() || undefined,
       });
@@ -366,7 +305,7 @@ export default function ChatSettingsPage() {
       const currentMemberIds = new Set(
         chat?.participant_details?.map(p => p.id) || []
       );
-      const filtered = results.filter((r: any) => !currentMemberIds.has(r.id));
+      const filtered = (results as MemberSearchResult[]).filter((result) => !currentMemberIds.has(result.id));
       
       setMemberSearchResults(filtered);
     } catch (e) {
@@ -397,9 +336,9 @@ export default function ChatSettingsPage() {
         
         // Используем свежие данные чата для фильтрации
         const currentMemberIds = new Set(
-          refreshedChat?.participant_details?.map((p: any) => p.id) || []
+          refreshedChat?.participant_details?.map((participant) => participant.id) || []
         );
-        const filtered = results.filter((r: any) => !currentMemberIds.has(r.id));
+        const filtered = (results as MemberSearchResult[]).filter((result) => !currentMemberIds.has(result.id));
         
         setMemberSearchResults(filtered);
       }
@@ -509,11 +448,8 @@ export default function ChatSettingsPage() {
   }
 
   const chatType = chat.chat_type || chat.type;
-  const isPrivateChat = chatType === "private" || chatType === "direct";
-  const isGroupChat = chatType === "group";
   // Чаты с управлением участниками (группы, каналы, объявления)
   const hasMembers = chatType === "group" || chatType === "channel" || chatType === "announcement";
-  const canManageChat = chat.can_manage ?? false;
   
   // Проверка прав: владелец или админ
   const isOwner = chat.created_by === currentUserId;

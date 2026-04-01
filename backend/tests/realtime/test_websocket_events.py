@@ -544,3 +544,70 @@ class TestChatMarkedReadEvent:
         import asyncio
         with pytest.raises(asyncio.TimeoutError):
             await comm2.receive_json_from(timeout=2)
+        await comm1.disconnect()
+        await comm2.disconnect()
+
+class TestNotificationStateEvents:
+    """Тесты синхронизации состояния уведомлений через user channel."""
+
+    @pytest.mark.asyncio
+    async def test_notification_read_sync_between_sessions(self, ws_communicator, user):
+        comm1 = await ws_communicator(user=user)
+        comm2 = await ws_communicator(user=user)
+
+        connected1, _ = await comm1.connect()
+        connected2, _ = await comm2.connect()
+        assert connected1 and connected2
+
+        channel_layer = get_channel_layer()
+        await channel_layer.group_send(
+            f'user_{user.id}',
+            {
+                'type': 'notification_read',
+                'notification_id': 321,
+                'unread_count': 4,
+            }
+        )
+
+        response1 = await comm1.receive_json_from(timeout=5)
+        response2 = await comm2.receive_json_from(timeout=5)
+
+        assert response1['type'] == 'notification_read'
+        assert response1['notification_id'] == 321
+        assert response1['unread_count'] == 4
+        assert response2['type'] == 'notification_read'
+
+        await comm1.disconnect()
+        await comm2.disconnect()
+
+    @pytest.mark.asyncio
+    async def test_notifications_read_all_sync_between_sessions(self, ws_communicator, user):
+        comm1 = await ws_communicator(user=user)
+        comm2 = await ws_communicator(user=user)
+
+        connected1, _ = await comm1.connect()
+        connected2, _ = await comm2.connect()
+        assert connected1 and connected2
+
+        channel_layer = get_channel_layer()
+        await channel_layer.group_send(
+            f'user_{user.id}',
+            {
+                'type': 'notifications_read_all',
+                'notification_ids': [11, 12, 13],
+                'category': 'Заявки',
+                'unread_count': 0,
+            }
+        )
+
+        response1 = await comm1.receive_json_from(timeout=5)
+        response2 = await comm2.receive_json_from(timeout=5)
+
+        assert response1['type'] == 'notifications_read_all'
+        assert response1['notification_ids'] == [11, 12, 13]
+        assert response1['category'] == 'Заявки'
+        assert response1['unread_count'] == 0
+        assert response2['type'] == 'notifications_read_all'
+
+        await comm1.disconnect()
+        await comm2.disconnect()

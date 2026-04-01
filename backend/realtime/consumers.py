@@ -215,6 +215,27 @@ class UserConsumer(ChatConsumerMixin, AsyncJsonWebsocketConsumer):
             {"type": "unread_count", "count": event.get("count", 0)}
         )
 
+    async def notification_read(self, event):
+        """Синхронизация прочтения одного уведомления между сессиями."""
+        await self.send_json(
+            {
+                "type": "notification_read",
+                "notification_id": event.get("notification_id"),
+                "unread_count": event.get("unread_count"),
+            }
+        )
+
+    async def notifications_read_all(self, event):
+        """Синхронизация массового прочтения уведомлений между сессиями."""
+        await self.send_json(
+            {
+                "type": "notifications_read_all",
+                "notification_ids": event.get("notification_ids", []),
+                "category": event.get("category"),
+                "unread_count": event.get("unread_count"),
+            }
+        )
+
     # ==================== Обработка событий закупок ====================
 
     async def poll_update(self, event):

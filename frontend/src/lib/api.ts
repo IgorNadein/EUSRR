@@ -1537,6 +1537,7 @@ class ApiClient {
             limit?: number; 
             before_id?: number; 
             after_id?: number;
+            mark_read?: boolean;
             before?: string;
             after?: string;
         }
@@ -1545,6 +1546,7 @@ class ApiClient {
         if (params?.limit) queryParams.append('limit', params.limit.toString());
         if (params?.before_id) queryParams.append('before_id', params.before_id.toString());
         if (params?.after_id) queryParams.append('after_id', params.after_id.toString());
+        if (typeof params?.mark_read === 'boolean') queryParams.append('mark_read', String(params.mark_read));
         if (params?.before) queryParams.append('before', params.before);
         if (params?.after) queryParams.append('after', params.after);
         
