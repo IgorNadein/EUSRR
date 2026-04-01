@@ -17,6 +17,8 @@ import type {
   User,
 } from "@/types/api";
 import { Archive, ArrowRightLeft, ArrowUpDown, ChevronDown, Filter, MessageSquare, Monitor, Pencil, Plus, QrCode, Search, Shield, Trash2, Wrench, X } from "lucide-react";
+import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
+import { formatDate as sharedFormatDate, formatMoney as sharedFormatMoney, displayUserName as sharedDisplayUserName, extractNextPage as sharedExtractNextPage, loadAllPages } from "@/lib/shared";
 
 /* ──── form state ──── */
 type EquipmentFormState = {
@@ -117,19 +119,8 @@ const defaultStatusMeta = {
   surfaceClass: "border-gray-200",
 };
 
-function formatDate(value?: string | null): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
-}
-
-function formatMoney(value?: string | number | null): string {
-  if (value === null || value === undefined || value === "") return "—";
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return "—";
-  return `${amount.toLocaleString("ru-RU")} ₽`;
-}
+const formatDate = sharedFormatDate;
+const formatMoney = sharedFormatMoney;
 
 /* ──── main page ──── */
 export default function EquipmentPage() {
@@ -188,22 +179,9 @@ export default function EquipmentPage() {
   const isCreateMode = createOpen && editingId === null;
 
   /* ──── helpers ──── */
-  const displayUserName = (person?: User | null) => {
-    if (!person) return "—";
-    const full = `${person.last_name || ""} ${person.first_name || ""}`.trim();
-    return full || (person as any)?.full_name || (person as any)?.display_name || person.email || "Пользователь";
-  };
+  const displayUserName = (person?: User | null) => sharedDisplayUserName(person);
 
-  const extractNextPage = (nextUrl?: string | null): number | null => {
-    if (!nextUrl) return null;
-    try {
-      const parsed = new URL(nextUrl, window.location.origin);
-      const num = Number(parsed.searchParams.get("page"));
-      return Number.isFinite(num) && num > 0 ? num : null;
-    } catch {
-      return null;
-    }
-  };
+  const extractNextPage = sharedExtractNextPage;
 
   const buildParams = (page: number): Record<string, string | number> => {
     const p: Record<string, string | number> = { page };
@@ -437,19 +415,6 @@ export default function EquipmentPage() {
   ]);
 
   useEffect(() => {
-    async function loadAllPages<T extends { id: number }>(fetcher: (params: any) => Promise<any>): Promise<T[]> {
-      const all: T[] = [];
-      let page = 1;
-      while (true) {
-        const res = await fetcher({ page, limit: 200 });
-        const results = Array.isArray(res) ? res : (res.results || []);
-        all.push(...results);
-        if (Array.isArray(res) || !res.next) break;
-        page++;
-      }
-      return all;
-    }
-
     (async () => {
       try {
         const [allEmployees, allDepartments, allCategories] = await Promise.all([
@@ -757,76 +722,6 @@ export default function EquipmentPage() {
     } finally {
       setBusyKey(null);
     }
-  };
-
-  /* ──── SearchableSelect (single) ──── */
-  const SearchableSelectSingle = ({ label, items: selectItems, selectedId, onSelect, placeholder, disabled = false }: {
-    label: string;
-    items: { id: number; name: string }[];
-    selectedId: number | null;
-    onSelect: (id: number | null) => void;
-    placeholder?: string;
-    disabled?: boolean;
-  }) => {
-    const [open, setOpen] = useState(false);
-    const [q, setQ] = useState("");
-    const ref = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-      const handler = (e: MouseEvent) => {
-        if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-      };
-      document.addEventListener("mousedown", handler);
-      return () => document.removeEventListener("mousedown", handler);
-    }, []);
-
-    const filtered = selectItems.filter((i) => i.name.toLowerCase().includes(q.toLowerCase()));
-    const selectedName = selectItems.find((i) => i.id === selectedId)?.name;
-
-    return (
-      <div ref={ref} className="relative">
-        <label className="mb-1 block text-xs font-medium text-gray-500">{label}</label>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => setOpen((v) => !v)}
-          className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-800 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
-        >
-          <span className="truncate">
-            {selectedName ? selectedName : <span className="text-gray-400">{placeholder || "Выбрать..."}</span>}
-          </span>
-          <ChevronDown size={14} className={`ml-2 shrink-0 text-gray-400 transition ${open ? "rotate-180" : ""}`} />
-        </button>
-        {open && (
-          <div className="absolute z-50 mt-1 max-h-56 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
-            <div className="border-b border-gray-100 p-2">
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск..." className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm focus:border-sky-400 focus:outline-none" autoFocus />
-            </div>
-            <div className="max-h-40 overflow-y-auto p-1">
-              {selectedId && (
-                <button type="button" onClick={() => { onSelect(null); setOpen(false); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-400 hover:bg-gray-50">
-                  Сбросить
-                </button>
-              )}
-              {filtered.length === 0 ? (
-                <p className="px-2 py-1.5 text-xs text-gray-400">Ничего не найдено</p>
-              ) : (
-                filtered.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => { onSelect(item.id); setOpen(false); }}
-                    className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50 ${selectedId === item.id ? "bg-sky-50 text-sky-700 font-medium" : ""}`}
-                  >
-                    {item.name}
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    );
   };
 
   const modalMode: "create" | "edit" = editingId ? "edit" : "create";

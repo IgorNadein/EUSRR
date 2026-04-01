@@ -35,6 +35,8 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
+import { formatDate, formatMoney, displayUserName as sharedDisplayUserName, extractNextPage as sharedExtractNextPage, loadAllPages } from "@/lib/shared";
 
 /* ══════════════════════════════════════════════════════
    Constants & helpers
@@ -84,16 +86,8 @@ const periodOptions = [
   { value: "quarter", label: "90 дней" },
 ];
 
-function fmt(d?: string | null) {
-  if (!d) return "";
-  const dt = new Date(d);
-  return Number.isNaN(dt.getTime()) ? "" : dt.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
-}
-
-function money(v?: string | number | null) {
-  if (v === null || v === undefined || v === "") return "—";
-  return Number(v).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " ₽";
-}
+const fmt = formatDate;
+const money = formatMoney;
 
 /* ══════════════════════════════════════════════════════
    Item row (позиция заявки) — for inline editing
@@ -181,13 +175,7 @@ export default function ProcurementPage() {
     return typeof person === "number" ? person : person.id;
   };
 
-  const displayUserName = (person?: User | number | null, fallbackName?: string | null, fallbackEmail?: string | null) => {
-    if (fallbackName) return fallbackName;
-    if (!person) return fallbackEmail || "—";
-    if (typeof person === "number") return fallbackEmail || `Пользователь #${person}`;
-    const full = `${person.last_name || ""} ${person.first_name || ""}`.trim();
-    return full || (person as any)?.full_name || person.email || fallbackEmail || "Пользователь";
-  };
+  const displayUserName = (person?: User | number | null, fallbackName?: string | null, fallbackEmail?: string | null) => sharedDisplayUserName(person, fallbackName, fallbackEmail);
 
   const userLink = (person?: User | number | null) => {
     const personId = resolveUserId(person);
@@ -195,14 +183,7 @@ export default function ProcurementPage() {
     return user?.id && personId === user.id ? "/profile" : `/users/${personId}`;
   };
 
-  const extractNextPage = (nextUrl?: string | null): number | null => {
-    if (!nextUrl) return null;
-    try {
-      const u = new URL(nextUrl, window.location.origin);
-      const n = Number(u.searchParams.get("page"));
-      return Number.isFinite(n) && n > 0 ? n : null;
-    } catch { return null; }
-  };
+  const extractNextPage = sharedExtractNextPage;
 
   const getDeptName = (req: ProcurementRequest) => {
     if (req.department_name) return req.department_name;
@@ -257,15 +238,7 @@ export default function ProcurementPage() {
   useEffect(() => {
     (async () => {
       try {
-        const all: Department[] = [];
-        let pg = 1;
-        while (true) {
-          const res = await apiClient.getDepartments({ page: pg, limit: 200 });
-          const chunk = Array.isArray(res) ? res : (res.results || []);
-          all.push(...chunk);
-          if (Array.isArray(res) || !res.next) break;
-          pg++;
-        }
+        const all = await loadAllPages<Department>((p) => apiClient.getDepartments(p));
         setDepartments(all);
       } catch { /* silent */ }
     })();
@@ -512,58 +485,6 @@ export default function ProcurementPage() {
   const removeItemRow = (idx: number) => setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
   const updateItemRow = (idx: number, patch: Partial<ItemDraft>) =>
     setForm((f) => ({ ...f, items: f.items.map((it, i) => (i === idx ? { ...it, ...patch } : it)) }));
-
-  /* ══════════ SearchableSelect ══════════ */
-
-  const SearchableSelectSingle = ({ label, items: selectItems, selectedId, onSelect, placeholder }: {
-    label: string;
-    items: { id: number; name: string }[];
-    selectedId: number | null;
-    onSelect: (id: number | null) => void;
-    placeholder?: string;
-  }) => {
-    const [open, setOpen] = useState(false);
-    const [q, setQ] = useState("");
-    const ref = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-      const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-      document.addEventListener("mousedown", handler);
-      return () => document.removeEventListener("mousedown", handler);
-    }, []);
-
-    const filtered = selectItems.filter((i) => i.name.toLowerCase().includes(q.toLowerCase()));
-    const selectedName = selectItems.find((i) => i.id === selectedId)?.name;
-
-    return (
-      <div ref={ref} className="relative">
-        <label className="mb-1 block text-xs font-medium text-gray-500">{label}</label>
-        <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-800">
-          <span className="truncate">{selectedName || <span className="text-gray-400">{placeholder || "Выбрать..."}</span>}</span>
-          <ChevronDown size={14} className={`ml-2 shrink-0 text-gray-400 transition ${open ? "rotate-180" : ""}`} />
-        </button>
-        {open && (
-          <div className="absolute z-50 mt-1 max-h-56 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
-            <div className="border-b border-gray-100 p-2">
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск..." className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm focus:border-sky-400 focus:outline-none" autoFocus />
-            </div>
-            <div className="max-h-40 overflow-y-auto p-1">
-              {selectedId && (
-                <button type="button" onClick={() => { onSelect(null); setOpen(false); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-400 hover:bg-gray-50">Сбросить</button>
-              )}
-              {filtered.length === 0 ? (
-                <p className="px-2 py-1.5 text-xs text-gray-400">Ничего не найдено</p>
-              ) : filtered.map((item) => (
-                <button key={item.id} type="button" onClick={() => { onSelect(item.id); setOpen(false); }} className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50 ${selectedId === item.id ? "bg-sky-50 text-sky-700 font-medium" : ""}`}>
-                  {item.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const activeFilterCount = [statusFilter, urgencyFilter, departmentFilter, periodFilter].filter(Boolean).length;
   const isFinal = (s?: string) => ["completed", "rejected", "cancelled"].includes(String(s || "").toLowerCase());
