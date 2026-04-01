@@ -544,8 +544,16 @@ class TestChatMarkedReadEvent:
         import asyncio
         with pytest.raises(asyncio.TimeoutError):
             await comm2.receive_json_from(timeout=2)
-        await comm1.disconnect()
-        await comm2.disconnect()
+
+        # Cleanup: after TimeoutError, communicator may be in cancelled state
+        try:
+            await comm2.disconnect()
+        except asyncio.CancelledError:
+            pass
+        try:
+            await comm1.disconnect()
+        except asyncio.CancelledError:
+            pass
 
 class TestNotificationStateEvents:
     """Тесты синхронизации состояния уведомлений через user channel."""

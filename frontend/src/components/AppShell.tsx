@@ -1,22 +1,17 @@
 "use client";
 
-import { Bell, Building2, CalendarDays, ChevronDown, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Monitor, Search, ShoppingCart, Users, Wallet, X, Sparkles } from "lucide-react";
+import { Building2, CalendarDays, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Monitor, Search, ShoppingCart, Users, Wallet } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { apiClient } from "@/lib/api";
+import { ReactNode, startTransition, useEffect, useRef, useState, useMemo } from "react";
 import { useUser } from "@/contexts/UserContext";
 import { useNotifications } from "@/hooks/useApi";
 import { getVerbCategory } from "@/lib/verbTranslations";
-import { CalendarModal } from "@/components/CalendarModal";
-import CalendarParticipantsModal from "@/components/CalendarParticipantsModal";
 import { NotificationCenter, NotificationPanel } from "@/components/NotificationCenter";
-import { EventModal } from "@/components/EventModal";
-import { ViewDayEventsModal } from "@/components/ViewDayEventsModal";
-import { ViewEventDetailsModal } from "@/components/ViewEventDetailsModal";
 import { CalendarSidebar } from "@/components/calendar/CalendarSidebar";
-import { CalendarCard } from "@/components/calendar/CalendarCard";
-import type { CalendarEvent } from "@/services/calendarService";
+import { useCalendarModals } from "@/hooks/useCalendarModals";
+import { CalendarModals } from "@/components/layout/CalendarModals";
+import { MobileLeftDrawer, MobileCalendarDrawer } from "@/components/layout/MobileDrawers";
 
 type AppShellProps = {
   children: ReactNode;
@@ -259,13 +254,13 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
 function LeftNavContent({ onNavigate }: LeftNavContentProps) {
   const pathname = usePathname();
   const { notifications: notificationsData, markCategoryAsRead } = useNotifications();
-  const notifications = Array.isArray(notificationsData) ? notificationsData : [];
+  const notifications = useMemo(() => Array.isArray(notificationsData) ? notificationsData : [], [notificationsData]);
 
   // Подсчет уведомлений по категориям
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     
-    notifications.forEach((n: any) => {
+    notifications.forEach((n: { verb?: string; is_read?: boolean }) => {
       // Пропускаем прочитанные
       if (!n.verb || n.is_read) return;
       const category = getVerbCategory(n.verb);
@@ -349,145 +344,19 @@ export function PageHeader({ title, subtitle, badge, eyebrow = "Раздел" }:
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const { user, loading, logout } = useUser();
+  const { user, loading } = useUser();
   const router = useRouter();
   const pathname = usePathname();
   const isMessageDialogPage = pathname.startsWith('/messages/') && 
     pathname !== '/messages' && 
     !pathname.includes('/settings');
 
-  // Вычисляем данные пользователя один раз на уровне AppShell
-  const userInitials = user
-    ? `${user.last_name?.[0] || ''}${user.first_name?.[0] || ''}`
-    : 'Г';
-  const userName = user
-    ? `${user.last_name} ${user.first_name}`.trim()
-    : 'Гость';
-
   const [isMobileLeftNavOpen, setIsMobileLeftNavOpen] = useState(false);
   const [isMobileCalendarOpen, setIsMobileCalendarOpen] = useState(false);
-  const [isProfileExpanded, setIsProfileExpanded] = useState(false);
 
-  // Состояния модалов календаря
-  const [showCalendarModal, setShowCalendarModal] = useState(false);
-  const [showEventModal, setShowEventModal] = useState(false);
-  const [showParticipantsModal, setShowParticipantsModal] = useState(false);
-  const [editingCalendar, setEditingCalendar] = useState<{ id?: number; name: string } | null>(null);
-  const [editingEvent, setEditingEvent] = useState<any>(null);
-  const [participantsCalendar, setParticipantsCalendar] = useState<{ id: number; name: string; user_role?: string } | null>(null);
-  const [eventsRefreshTrigger, setEventsRefreshTrigger] = useState(0);
-  
-  // Новые модалы для просмотра
-  const [showDayEventsModal, setShowDayEventsModal] = useState(false);
-  const [selectedDateForModal, setSelectedDateForModal] = useState<Date | null>(null);
-  const [showEventDetailsModal, setShowEventDetailsModal] = useState(false);
-  const [viewingEvent, setViewingEvent] = useState<any>(null);
-  const [sidebarEvents, setSidebarEvents] = useState<CalendarEvent[]>([]);
-  const [currentSelectedCalendarId, setCurrentSelectedCalendarId] = useState<number | null>(null);
+  const prevPathnameRef = useRef(pathname);
 
-  // Мемоизированные callback'и для предотвращения ререндеров CalendarCard
-  const handleSetSidebarEvents = useCallback((events: CalendarEvent[]) => {
-    setSidebarEvents(events);
-  }, []);
-
-  const handleCalendarChange = useCallback((calendarId: number | null) => {
-    setCurrentSelectedCalendarId(calendarId);
-  }, []);
-
-  const handleSetEventsRefreshTrigger = useCallback((value: number | ((prev: number) => number)) => {
-    setEventsRefreshTrigger(value);
-  }, []);
-
-  // Обработчики модалов (мемоизированные для предотвращения ререндеров)
-  const handleOpenCalendarModal = useCallback((calendar?: { id?: number; name: string }) => {
-    setEditingCalendar(calendar || { name: "" });
-    setShowCalendarModal(true);
-  }, []);
-
-  const handleOpenEventModal = useCallback((event: any, date?: Date) => {
-    // Если передана дата (клик на дату), открываем модал просмотра дня
-    if (date && !event.id) {
-      setSelectedDateForModal(date);
-      setShowDayEventsModal(true);
-    } 
-    // Если передано событие с id (клик на событие), открываем детали
-    else if (event.id) {
-      setViewingEvent(event);
-      setShowEventDetailsModal(true);
-    }
-    // Fallback - создание нового события
-    else {
-      setEditingEvent(event);
-      setShowEventModal(true);
-    }
-  }, []);
-
-  // Создание события из модала просмотра дня
-  const handleCreateEventFromDay = useCallback(() => {
-    if (!currentSelectedCalendarId) {
-      alert("Сначала выберите календарь");
-      return;
-    }
-
-    if (!selectedDateForModal) return;
-
-    const startDate = new Date(selectedDateForModal);
-    startDate.setHours(10, 0, 0, 0);
-    const endDate = new Date(selectedDateForModal);
-    endDate.setHours(11, 0, 0, 0);
-
-    setEditingEvent({
-      title: "",
-      description: "",
-      start: startDate.toISOString(),
-      end: endDate.toISOString(),
-      calendar: currentSelectedCalendarId,
-      color_event: "#3498db",
-    });
-    
-    setShowDayEventsModal(false);
-    setShowEventModal(true);
-  }, [currentSelectedCalendarId, selectedDateForModal]);
-
-  // Переход к редактированию из модала просмотра
-  const handleEditFromDetails = useCallback(() => {
-    setEditingEvent(viewingEvent);
-    setShowEventDetailsModal(false);
-    setShowEventModal(true);
-  }, [viewingEvent]);
-
-  // Клик на событие из модала просмотра дня
-  const handleEventClickFromDay = useCallback(async (event: any) => {
-    setShowDayEventsModal(false);
-    
-    // Если это occurrence, загружаем базовое событие
-    if (event.is_recurring && event.event_id) {
-      try {
-        const fullEvent = await apiClient.getEvent(event.event_id);
-        setViewingEvent({
-          ...fullEvent,
-          start: event.start,
-          end: event.end,
-        });
-        setShowEventDetailsModal(true);
-      } catch (err) {
-        console.error("Ошибка загрузки события:", err);
-      }
-    } else {
-      setViewingEvent(event);
-      setShowEventDetailsModal(true);
-    }
-  }, []);
-
-  const handleEventSaved = useCallback(() => {
-    // Обновляем список событий в CalendarCard
-    setEventsRefreshTrigger(prev => prev + 1);
-  }, []);
-
-  const handleOpenParticipantsModal = useCallback((calendar: { id: number; name: string; user_role?: string }) => {
-    setParticipantsCalendar(calendar);
-    setShowParticipantsModal(true);
-  }, []);
+  const cal = useCalendarModals();
 
   useEffect(() => {
     // Если загрузка завершена и пользователь не авторизован - редирект на логин
@@ -496,9 +365,15 @@ export function AppShell({ children }: AppShellProps) {
     }
   }, [user, loading, router]);
 
+  // Close mobile drawers on route change
   useEffect(() => {
-    setIsMobileLeftNavOpen(false);
-    setIsMobileCalendarOpen(false);
+    if (prevPathnameRef.current !== pathname) {
+      prevPathnameRef.current = pathname;
+      startTransition(() => {
+        setIsMobileLeftNavOpen(false);
+        setIsMobileCalendarOpen(false);
+      });
+    }
   }, [pathname]);
 
   useEffect(() => {
@@ -554,192 +429,36 @@ export function AppShell({ children }: AppShellProps) {
           <LeftNav />
           <main className={`flex-1 min-w-0 min-h-0 space-y-6 ${isMessageDialogPage ? 'overflow-visible' : ''}`}>{children}</main>
           <CalendarSidebar
-            onOpenCalendarModal={handleOpenCalendarModal}
-            onOpenEventModal={handleOpenEventModal}
-            onOpenParticipantsModal={handleOpenParticipantsModal}
-            eventsRefreshTrigger={eventsRefreshTrigger}
-            setEventsRefreshTrigger={handleSetEventsRefreshTrigger}
-            setSidebarEvents={handleSetSidebarEvents}
-            onCalendarChange={handleCalendarChange}
+            onOpenCalendarModal={cal.handleOpenCalendarModal}
+            onOpenEventModal={cal.handleOpenEventModal}
+            onOpenParticipantsModal={cal.handleOpenParticipantsModal}
+            eventsRefreshTrigger={cal.eventsRefreshTrigger}
+            setEventsRefreshTrigger={cal.handleSetEventsRefreshTrigger}
+            setSidebarEvents={cal.handleSetSidebarEvents}
+            onCalendarChange={cal.handleCalendarChange}
           />
         </div>
 
-        <div className={`fixed inset-0 z-[100] lg:hidden ${isMobileLeftNavOpen ? "pointer-events-auto" : "pointer-events-none"}`}>
-          <button
-            type="button"
-            className={`absolute inset-0 bg-black/40 transition-opacity ${isMobileLeftNavOpen ? "opacity-100" : "opacity-0"}`}
-            onClick={() => setIsMobileLeftNavOpen(false)}
-            aria-label="Закрыть левое меню"
-          />
-          <div
-            className={`absolute inset-y-0 left-0 w-full overflow-y-auto bg-white p-4 transition-transform duration-300 ${isMobileLeftNavOpen ? "translate-x-0" : "-translate-x-full"
-              }`}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <p className="text-sm font-semibold text-gray-900">Меню</p>
-              <button
-                type="button"
-                onClick={() => setIsMobileLeftNavOpen(false)}
-                className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100"
-                aria-label="Закрыть меню"
-              >
-                <X size={20} className="text-gray-700" />
-              </button>
-            </div>
+        <MobileLeftDrawer
+          isOpen={isMobileLeftNavOpen}
+          onClose={() => setIsMobileLeftNavOpen(false)}
+        >
+          <LeftNavContent onNavigate={() => setIsMobileLeftNavOpen(false)} />
+        </MobileLeftDrawer>
 
-            {/* Профиль пользователя */}
-            <div className="mb-6 rounded-xl bg-gradient-to-br from-sky-50 to-sky-100 ring-1 ring-sky-100 overflow-hidden">
-              <button
-                onClick={() => setIsProfileExpanded(!isProfileExpanded)}
-                className="w-full flex items-center gap-3 p-4 hover:bg-sky-200/50 transition-colors"
-              >
-                <div className="h-12 w-12 overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white flex items-center justify-center flex-shrink-0">
-                  {user?.avatar ? (
-                    <img src={user.avatar} alt={userName} className="h-full w-full object-cover" />
-                  ) : (
-                    userInitials
-                  )}
-                </div>
-                <div className="min-w-0 flex-1 text-left">
-                  <p className="text-sm font-semibold text-gray-900">{userName}</p>
-                </div>
-                <ChevronDown
-                  size={20}
-                  className={`text-gray-700 transition-transform flex-shrink-0 ${isProfileExpanded ? "rotate-180" : ""}`}
-                />
-              </button>
-              {isProfileExpanded && (
-                <div className="border-t border-sky-200 p-2 space-y-2">
-                  <button
-                    className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-white text-gray-700"
-                    onClick={() => { setIsMobileLeftNavOpen(false); router.push('/profile'); }}
-                  >Мой профиль</button>
-                  <button
-                    className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-white text-gray-700"
-                    onClick={() => { setIsMobileLeftNavOpen(false); router.push('/settings'); }}
-                  >Настройки</button>
-                  <button
-                    className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-red-50 text-red-600"
-                    onClick={() => { setIsMobileLeftNavOpen(false); logout(); }}
-                  >Выйти</button>
-                </div>
-              )}
-            </div>
-
-            <LeftNavContent onNavigate={() => setIsMobileLeftNavOpen(false)} />
-          </div>
-        </div>
-
-        <div className={`fixed inset-0 z-[100] lg:hidden ${isMobileCalendarOpen ? "pointer-events-auto" : "pointer-events-none"}`}>
-          <button
-            type="button"
-            className={`absolute inset-0 bg-black/40 transition-opacity ${isMobileCalendarOpen ? "opacity-100" : "opacity-0"}`}
-            onClick={() => setIsMobileCalendarOpen(false)}
-            aria-label="Закрыть календарь"
-          />
-          <div
-            className={`absolute inset-y-0 right-0 w-full overflow-y-auto bg-white p-4 transition-transform duration-300 ${isMobileCalendarOpen ? "translate-x-0" : "translate-x-full"
-              }`}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <p className="text-sm font-semibold text-gray-900">Календарь</p>
-              <button
-                type="button"
-                onClick={() => setIsMobileCalendarOpen(false)}
-                className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100"
-                aria-label="Закрыть календарь"
-              >
-                <X size={20} className="text-gray-700" />
-              </button>
-            </div>
-            {isMobileCalendarOpen && (
-              <CalendarCard
-                onOpenCalendarModal={handleOpenCalendarModal}
-                onOpenEventModal={handleOpenEventModal}
-                onOpenParticipantsModal={handleOpenParticipantsModal}
-                eventsRefreshTrigger={eventsRefreshTrigger}
-                setEventsRefreshTrigger={handleSetEventsRefreshTrigger}
-                setSidebarEvents={handleSetSidebarEvents}
-                onCalendarChange={handleCalendarChange}
-              />
-            )}
-          </div>
-        </div>
-
-        {/* Модалы календаря - рендерятся на верхнем уровне */}
-        <CalendarModal
-          isOpen={showCalendarModal}
-          onClose={() => {
-            setShowCalendarModal(false);
-            setEditingCalendar(null);
-          }}
-          calendar={editingCalendar}
+        <MobileCalendarDrawer
+          isOpen={isMobileCalendarOpen}
+          onClose={() => setIsMobileCalendarOpen(false)}
+          onOpenCalendarModal={cal.handleOpenCalendarModal}
+          onOpenEventModal={cal.handleOpenEventModal}
+          onOpenParticipantsModal={cal.handleOpenParticipantsModal}
+          eventsRefreshTrigger={cal.eventsRefreshTrigger}
+          setEventsRefreshTrigger={cal.handleSetEventsRefreshTrigger}
+          setSidebarEvents={cal.handleSetSidebarEvents}
+          onCalendarChange={cal.handleCalendarChange}
         />
 
-        {/* Модальное окно участников календаря */}
-        {participantsCalendar && (
-          <CalendarParticipantsModal
-            isOpen={showParticipantsModal}
-            onClose={() => {
-              setShowParticipantsModal(false);
-              setParticipantsCalendar(null);
-            }}
-            calendarId={participantsCalendar.id}
-            calendarName={participantsCalendar.name}
-            userRole={participantsCalendar.user_role}
-          />
-        )}
-
-        {/* Модальное окно события */}
-        <EventModal
-          isOpen={showEventModal}
-          onClose={() => {
-            setShowEventModal(false);
-            setEditingEvent(null);
-          }}
-          event={editingEvent}
-          onSave={handleEventSaved}
-          showParticipants={true}
-        />
-
-        {/* Модальное окно просмотра событий дня */}
-        <ViewDayEventsModal
-          isOpen={showDayEventsModal}
-          onClose={() => {
-            setShowDayEventsModal(false);
-            setSelectedDateForModal(null);
-          }}
-          date={selectedDateForModal}
-          events={sidebarEvents}
-          onEventClick={handleEventClickFromDay}
-          onCreateEvent={handleCreateEventFromDay}
-        />
-
-        {/* Модальное окно просмотра деталей события */}
-        <ViewEventDetailsModal
-          isOpen={showEventDetailsModal}
-          onClose={() => {
-            setShowEventDetailsModal(false);
-            setViewingEvent(null);
-          }}
-          event={viewingEvent}
-          onEdit={handleEditFromDetails}
-          onDelete={async () => {
-            if (!viewingEvent?.id) return;
-            if (!confirm("Удалить это событие?")) return;
-            
-            try {
-              await apiClient.deleteEvent(viewingEvent.id);
-              setShowEventDetailsModal(false);
-              setViewingEvent(null);
-              handleEventSaved(); // Обновляем список событий
-            } catch (err) {
-              console.error("Ошибка удаления события:", err);
-              alert("Не удалось удалить событие");
-            }
-          }}
-          showParticipants={true}
-        />
+        <CalendarModals {...cal} />
       </div>
   );
 }
