@@ -1,74 +1,18 @@
 "use client";
 
 import { AppShell } from "../../components/AppShell";
-import { apiClient } from "@/lib/api";
 import { useUser } from "@/contexts/UserContext";
-import { canManageEquipment } from "@/lib/permissions";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import type {
-  Department,
-  Equipment,
-  EquipmentCategory,
-  EquipmentComment,
-  EquipmentCreateOptions,
-  EquipmentTransferHistoryEntry,
-  MaintenanceRecord,
-  User,
-} from "@/types/api";
 import { Archive, ArrowRightLeft, ArrowUpDown, ChevronDown, Filter, MessageSquare, Monitor, Pencil, Plus, QrCode, Search, Shield, Trash2, Wrench, X } from "lucide-react";
 import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
-import { formatDate as sharedFormatDate, formatMoney as sharedFormatMoney, displayUserName as sharedDisplayUserName, extractNextPage as sharedExtractNextPage, loadAllPages } from "@/lib/shared";
+import { formatDate, formatMoney } from "@/lib/shared";
+import { useEquipmentPage } from "@/hooks/useEquipmentPage";
 
-/* ──── form state ──── */
-type EquipmentFormState = {
-  name: string;
-  notes: string;
-  category: number | null;
-  department: number | null;
-  responsible_person: number | null;
-  quantity: number;
-  serial_number: string;
-  purchase_date: string;
-  purchase_cost: string;
-  location: string;
-};
-
-const emptyForm: EquipmentFormState = {
-  name: "",
-  notes: "",
-  category: null,
-  department: null,
-  responsible_person: null,
-  quantity: 1,
-  serial_number: "",
-  purchase_date: "",
-  purchase_cost: "",
-  location: "",
-};
-
-type EquipmentListMode = "all" | "mine" | "warranty";
-
-type OperationModal = "transfer" | "writeoff" | "maintenance" | null;
-
-type TransferFormState = {
-  to_department: number | null;
-  to_person: number | null;
-  reason: string;
-};
-
-type MaintenanceFormState = {
-  type: string;
-  description: string;
-  cost: string;
-  date: string;
-};
-
-const listModeMeta: Array<{ value: EquipmentListMode; label: string }> = [
+const listModeMeta = [
   { value: "all", label: "Весь реестр" },
   { value: "mine", label: "Мое оборудование" },
   { value: "warranty", label: "Истекает гарантия" },
-];
+] as const;
 
 const orderingOptions = [
   { value: "-created_at", label: "Сначала новые" },
@@ -119,622 +63,91 @@ const defaultStatusMeta = {
   surfaceClass: "border-gray-200",
 };
 
-const formatDate = sharedFormatDate;
-const formatMoney = sharedFormatMoney;
-
 /* ──── main page ──── */
 export default function EquipmentPage() {
   const { user } = useUser();
-  const [items, setItems] = useState<Equipment[]>([]);
-  const [detailsMap, setDetailsMap] = useState<Record<number, Equipment>>({});
-  const [transferHistoryMap, setTransferHistoryMap] = useState<Record<number, EquipmentTransferHistoryEntry[]>>({});
-  const [maintenanceMap, setMaintenanceMap] = useState<Record<number, MaintenanceRecord[]>>({});
-  const [employees, setEmployees] = useState<User[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
-  const [categories, setCategories] = useState<EquipmentCategory[]>([]);
-  const [createOptions, setCreateOptions] = useState<EquipmentCreateOptions | null>(null);
-  const [previewInventoryNumber, setPreviewInventoryNumber] = useState<string>("");
-  const [commentsMap, setCommentsMap] = useState<Record<number, EquipmentComment[]>>({});
-  const [expandedRows, setExpandedRows] = useState<Record<number, boolean>>({});
-  const [expandedComments, setExpandedComments] = useState<Record<number, boolean>>({});
-  const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
-  const [loadingRowDetails, setLoadingRowDetails] = useState<Record<number, boolean>>({});
-
-  const [createOpen, setCreateOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState<EquipmentFormState>(emptyForm);
-  const [listMode, setListMode] = useState<EquipmentListMode>("all");
-  const [ordering, setOrdering] = useState("-created_at");
-  const [operationModal, setOperationModal] = useState<OperationModal>(null);
-  const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null);
-  const [writeOffReason, setWriteOffReason] = useState("");
-  const [transferForm, setTransferForm] = useState<TransferFormState>({ to_department: null, to_person: null, reason: "" });
-  const [maintenanceForm, setMaintenanceForm] = useState<MaintenanceFormState>({
-    type: "repair",
-    description: "",
-    cost: "",
-    date: new Date().toISOString().slice(0, 10),
-  });
-
-  const [searchQuery, setSearch] = useState("");
-  const deferredSearchQuery = useDeferredValue(searchQuery);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [departmentFilter, setDepartmentFilter] = useState("");
-  const [responsibleFilter, setResponsibleFilter] = useState("");
-  const [dateFromFilter, setDateFromFilter] = useState("");
-  const [dateToFilter, setDateToFilter] = useState("");
-  const [filtersOpen, setFiltersOpen] = useState(false);
-
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [nextPage, setNextPage] = useState<number | null>(null);
-
-  const auth = user?.auth;
-  const canManage = canManageEquipment(user);
-  const isCreateMode = createOpen && editingId === null;
-
-  /* ──── helpers ──── */
-  const displayUserName = (person?: User | null) => sharedDisplayUserName(person);
-
-  const extractNextPage = sharedExtractNextPage;
-
-  const buildParams = (page: number): Record<string, string | number> => {
-    const p: Record<string, string | number> = { page };
-    if (deferredSearchQuery.trim()) p.search = deferredSearchQuery.trim();
-    if (ordering) p.ordering = ordering;
-    if (statusFilter) p.status = statusFilter;
-    if (categoryFilter) p.category = categoryFilter;
-    if (departmentFilter) p.department = departmentFilter;
-    if (responsibleFilter) p.responsible_person = responsibleFilter;
-    if (dateFromFilter) p.purchase_date__gte = dateFromFilter;
-    if (dateToFilter) p.purchase_date__lte = dateToFilter;
-    return p;
-  };
-
-  const getCategoryName = (eq: Equipment): string => {
-    if (eq.category_name) return eq.category_name;
-    const cat = categories.find((c) => c.id === Number(eq.category));
-    return cat?.name || "—";
-  };
-
-  const getDepartmentName = (eq: Equipment): string => {
-    if (eq.department_name) return eq.department_name;
-    const dep = departments.find((d) => d.id === Number(eq.department));
-    return dep?.name || "—";
-  };
-
-  const getResponsibleName = (eq: Equipment): string => {
-    if (eq.responsible_name) return eq.responsible_name;
-    if (eq.responsible_person && typeof eq.responsible_person === "number") {
-      const emp = employees.find((e) => e.id === eq.responsible_person);
-      return emp ? displayUserName(emp) : "—";
-    }
-    return "—";
-  };
-
-  const getResponsibleLink = (eq: Equipment): string => {
-    if (!eq.responsible_person || typeof eq.responsible_person !== "number") return "";
-    if (eq.responsible_person === user?.id) return "/profile";
-    return `/users/${eq.responsible_person}`;
-  };
-
-  const getEquipmentMeta = (eq: Equipment) => {
-    return [
-      { label: "Категория", value: getCategoryName(eq) },
-      { label: "Отдел", value: getDepartmentName(eq) },
-      { label: "Ответственный", value: getResponsibleName(eq) },
-      { label: "Серийный номер", value: eq.serial_number || "—" },
-      { label: "Расположение", value: eq.location || "—" },
-      { label: "Гарантия до", value: formatDate(eq.warranty_until) || "—" },
-      { label: "Обслуживаний", value: String(eq.maintenance_count ?? "—") },
-      { label: "Стоимость", value: formatMoney(eq.purchase_cost) },
-      { label: "Добавлено", value: formatDate(eq.created_at) || "—" },
-    ];
-  };
-
-  const filteredDepartmentsForForm = useMemo(() => {
-    if (!createOptions || !isCreateMode || createOptions.allowed_departments.length === 0) {
-      return departments;
-    }
-    const allowedIds = new Set(createOptions.allowed_departments.map((dept) => dept.id));
-    return departments.filter((dept) => allowedIds.has(dept.id));
-  }, [createOptions, departments, isCreateMode]);
-
-  const filteredEmployeesForForm = useMemo(() => {
-    if (!isCreateMode || !createOptions || createOptions.can_choose_responsible) {
-      return employees;
-    }
-    if (!createOptions.default_responsible) {
-      return [];
-    }
-    return employees.filter((employee) => employee.id === createOptions.default_responsible?.id);
-  }, [createOptions, employees, isCreateMode]);
-
-  const applyCreateDefaults = (options: EquipmentCreateOptions | null) => {
-    if (!options) return;
-
-    setForm((prev) => {
-      const nextDepartment = options.can_choose_department
-        ? prev.department
-        : options.allowed_departments[0]?.id ?? prev.department;
-      const nextResponsible = options.can_choose_responsible
-        ? prev.responsible_person
-        : options.default_responsible?.id ?? prev.responsible_person;
-
-      return {
-        ...prev,
-        department: nextDepartment,
-        responsible_person: nextResponsible,
-      };
-    });
-  };
-
-  const loadRowDetails = async (equipmentId: number) => {
-    if (loadingRowDetails[equipmentId]) return;
-
-    try {
-      setLoadingRowDetails((prev) => ({ ...prev, [equipmentId]: true }));
-      const results = await Promise.allSettled([
-        detailsMap[equipmentId] ? Promise.resolve(detailsMap[equipmentId]) : apiClient.getEquipmentDetail(equipmentId),
-        transferHistoryMap[equipmentId] ? Promise.resolve(transferHistoryMap[equipmentId]) : apiClient.getEquipmentTransferHistory(equipmentId),
-        maintenanceMap[equipmentId] ? Promise.resolve(maintenanceMap[equipmentId]) : apiClient.getMaintenanceRecords({ equipment: equipmentId }),
-      ]);
-
-      const [detailResult, transferResult, maintenanceResult] = results;
-
-      if (detailResult.status === "fulfilled") {
-        setDetailsMap((prev) => ({ ...prev, [equipmentId]: detailResult.value }));
-      }
-
-      if (transferResult.status === "fulfilled") {
-        setTransferHistoryMap((prev) => ({ ...prev, [equipmentId]: Array.isArray(transferResult.value) ? transferResult.value : transferResult.value.results || [] }));
-      }
-
-      if (maintenanceResult.status === "fulfilled") {
-        setMaintenanceMap((prev) => ({
-          ...prev,
-          [equipmentId]: Array.isArray(maintenanceResult.value) ? maintenanceResult.value : maintenanceResult.value.results || [],
-        }));
-      }
-    } catch (error) {
-      console.error("Ошибка загрузки деталей оборудования:", error);
-    } finally {
-      setLoadingRowDetails((prev) => ({ ...prev, [equipmentId]: false }));
-    }
-  };
-
-  const openCreateModal = async () => {
-    setEditingId(null);
-    resetForm();
-    setActionError(null);
-    setActionSuccess(null);
-    setCreateOpen(true);
-
-    try {
-      const [options, inventoryPreview] = await Promise.all([
-        apiClient.getEquipmentCreateOptions(),
-        apiClient.generateEquipmentInventoryNumber(),
-      ]);
-      setCreateOptions(options);
-      setPreviewInventoryNumber(inventoryPreview.inventory_number || "");
-      applyCreateDefaults(options);
-    } catch (error) {
-      console.error("Ошибка загрузки опций создания оборудования:", error);
-    }
-  };
-
-  const openOperationModal = (type: Exclude<OperationModal, null>, equipment: Equipment) => {
-    setSelectedEquipment(equipment);
-    setOperationModal(type);
-    setActionError(null);
-
-    if (type === "transfer") {
-      setTransferForm({
-        to_department: equipment.department ?? null,
-        to_person: typeof equipment.responsible_person === "number" ? equipment.responsible_person : null,
-        reason: "",
-      });
-    }
-
-    if (type === "writeoff") {
-      setWriteOffReason("");
-    }
-
-    if (type === "maintenance") {
-      setMaintenanceForm({
-        type: "repair",
-        description: "",
-        cost: "",
-        date: new Date().toISOString().slice(0, 10),
-      });
-    }
-  };
-
-  const closeOperationModal = () => {
-    setOperationModal(null);
-    setSelectedEquipment(null);
-    setWriteOffReason("");
-    setTransferForm({ to_department: null, to_person: null, reason: "" });
-    setMaintenanceForm({ type: "repair", description: "", cost: "", date: new Date().toISOString().slice(0, 10) });
-  };
-
-  /* ──── load data ──── */
-  const fetchEquipmentPage = async (page: number) => {
-    if (listMode === "mine") {
-      return apiClient.getMyEquipment({ page });
-    }
-
-    if (listMode === "warranty") {
-      if (page > 1) {
-        return { results: [], next: null };
-      }
-      return apiClient.getWarrantyExpiringEquipment();
-    }
-
-    return apiClient.getEquipment(buildParams(page));
-  };
-
-  const reloadEquipmentList = async () => {
-    const res = await fetchEquipmentPage(1);
-    const results = Array.isArray(res) ? res : (res.results || []);
-    setItems(results);
-    setNextPage(extractNextPage((res as { next?: string | null }).next));
-  };
-
-  useEffect(() => {
-    (async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const res = await fetchEquipmentPage(1);
-        const results = Array.isArray(res) ? res : (res.results || []);
-        setItems(results);
-        setNextPage(extractNextPage(res.next));
-      } catch (e: any) {
-        console.error("Ошибка загрузки оборудования:", e);
-        setError("Не удалось загрузить оборудование");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [
-    listMode,
-    deferredSearchQuery,
-    ordering,
-    statusFilter,
-    categoryFilter,
-    departmentFilter,
-    responsibleFilter,
-    dateFromFilter,
-    dateToFilter,
-  ]);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const [allEmployees, allDepartments, allCategories] = await Promise.all([
-          loadAllPages<User>((p) => apiClient.getEmployees(p)),
-          loadAllPages<Department>((p) => apiClient.getDepartments(p)),
-          loadAllPages<EquipmentCategory>((p) => apiClient.getEquipmentCategories(p)),
-        ]);
-        setEmployees(allEmployees);
-        setDepartments(allDepartments);
-        setCategories(allCategories);
-      } catch (e) {
-        console.error("Ошибка загрузки справочников:", e);
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const options = await apiClient.getEquipmentCreateOptions();
-        setCreateOptions(options);
-      } catch (error) {
-        console.error("Ошибка загрузки create options:", error);
-      }
-    })();
-  }, []);
-
-  /* ──── filtered ──── */
-  const sortItemsLocally = (source: Equipment[]) => {
-    const sorted = [...source];
-
-    sorted.sort((left, right) => {
-      switch (ordering) {
-        case "name":
-          return (left.name || "").localeCompare(right.name || "", "ru");
-        case "purchase_date":
-          return new Date(left.purchase_date || 0).getTime() - new Date(right.purchase_date || 0).getTime();
-        case "-purchase_date":
-          return new Date(right.purchase_date || 0).getTime() - new Date(left.purchase_date || 0).getTime();
-        case "created_at":
-          return new Date(left.created_at || 0).getTime() - new Date(right.created_at || 0).getTime();
-        case "-created_at":
-        default:
-          return new Date(right.created_at || 0).getTime() - new Date(left.created_at || 0).getTime();
-      }
-    });
-
-    return sorted;
-  };
-
-  const filteredItems = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    let scopedItems = [...items];
-
-    if (listMode !== "all") {
-      scopedItems = scopedItems.filter((item) => {
-        const itemDate = item.purchase_date || "";
-        if (statusFilter && item.status !== statusFilter) return false;
-        if (categoryFilter && Number(item.category) !== Number(categoryFilter)) return false;
-        if (departmentFilter && Number(item.department) !== Number(departmentFilter)) return false;
-        if (responsibleFilter && Number(item.responsible_person) !== Number(responsibleFilter)) return false;
-        if (dateFromFilter && itemDate && itemDate < dateFromFilter) return false;
-        if (dateToFilter && itemDate && itemDate > dateToFilter) return false;
-        return true;
-      });
-    }
-
-    const sorted = listMode === "all" ? items : sortItemsLocally(scopedItems);
-    if (!q) return sorted;
-    return sorted.filter((item) => {
-      const name = (item.name || "").toLowerCase();
-      const notes = (item.notes || "").toLowerCase();
-      const sn = (item.serial_number || "").toLowerCase();
-      const inv = (item.inventory_number || "").toLowerCase();
-      const responsible = getResponsibleName(item).toLowerCase();
-      const cat = getCategoryName(item).toLowerCase();
-      return name.includes(q) || notes.includes(q) || sn.includes(q) || inv.includes(q) || responsible.includes(q) || cat.includes(q);
-    });
-  }, [
-    items,
-    listMode,
-    ordering,
-    searchQuery,
-    statusFilter,
-    categoryFilter,
-    departmentFilter,
-    responsibleFilter,
-    dateFromFilter,
-    dateToFilter,
-    employees,
+  const {
+    auth,
+    actionError,
+    actionSuccess,
+    activeFilterCount,
+    busyKey,
+    canManage,
     categories,
+    categoryFilter,
+    closeModal,
+    closeOperationModal,
+    commentDrafts,
+    commentsMap,
+    createOptions,
+    dateFromFilter,
+    dateToFilter,
+    departmentFilter,
     departments,
-  ]);
-
-  /* ──── form ──── */
-  const resetForm = () => setForm(emptyForm);
-
-  const openEdit = (eq: Equipment) => {
-    setEditingId(eq.id);
-    setCreateOpen(false);
-    setActionError(null);
-    setActionSuccess(null);
-    setPreviewInventoryNumber(eq.inventory_number || "");
-    setForm({
-      name: eq.name || "",
-      notes: eq.notes || "",
-      category: eq.category ?? null,
-      department: eq.department ?? null,
-      responsible_person: typeof eq.responsible_person === "number" ? eq.responsible_person : null,
-      quantity: 1,
-      serial_number: eq.serial_number || "",
-      purchase_date: eq.purchase_date || "",
-      purchase_cost: String(eq.purchase_cost || ""),
-      location: eq.location || "",
-    });
-  };
-
-  const handleSave = async (mode: "create" | "edit") => {
-    try {
-      setBusyKey(`${mode}-save`);
-      setActionError(null);
-      setActionSuccess(null);
-
-      if (!form.name.trim()) { setActionError("Укажите название оборудования."); return; }
-      if (!form.category) { setActionError("Выберите категорию."); return; }
-      if (!form.department) { setActionError("Выберите отдел."); return; }
-      if (!form.purchase_date) { setActionError("Укажите дату покупки."); return; }
-      if (!form.purchase_cost) { setActionError("Укажите стоимость."); return; }
-
-      const payload: Record<string, any> = {
-        name: form.name,
-        notes: form.notes,
-        category: form.category,
-        department: form.department,
-        purchase_date: form.purchase_date,
-        purchase_cost: form.purchase_cost,
-      };
-
-      if (form.responsible_person) payload.responsible_person = form.responsible_person;
-      if (mode === "create" && form.quantity > 1) payload.quantity = form.quantity;
-      if (form.serial_number) payload.serial_number = form.serial_number;
-      if (form.location) payload.location = form.location;
-
-      if (mode === "create") {
-        await apiClient.createEquipment(payload);
-        setActionSuccess("Оборудование добавлено.");
-        setCreateOpen(false);
-      } else if (editingId) {
-        await apiClient.updateEquipment(editingId, payload);
-        setActionSuccess("Оборудование обновлено.");
-        setEditingId(null);
-      }
-
-      resetForm();
-      await reloadEquipmentList();
-    } catch (e: any) {
-      const raw = String(e?.message || "Не удалось сохранить");
-      let readable = raw;
-      try {
-        const parsed = JSON.parse(raw);
-        readable = Object.entries(parsed).map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(", ") : val}`).join(". ");
-      } catch {}
-      setActionError(readable);
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const handleLoadMore = async () => {
-    if (!nextPage || loadingMore) return;
-    try {
-      setLoadingMore(true);
-      const res = await fetchEquipmentPage(nextPage);
-      const chunk = Array.isArray(res) ? res : (res.results || []);
-      setItems((prev) => {
-        const known = new Set(prev.map((r) => r.id));
-        return [...prev, ...chunk.filter((r: Equipment) => !known.has(r.id))];
-      });
-      setNextPage(extractNextPage(res.next));
-    } catch {
-      setError("Не удалось загрузить ещё");
-    } finally {
-      setLoadingMore(false);
-    }
-  };
-
-  /* ──── actions ──── */
-  const handleDelete = async (id: number) => {
-    if (!confirm("Удалить это оборудование?")) return;
-    try { setBusyKey(`delete-${id}`); await apiClient.deleteEquipment(id); setItems((p) => p.filter((r) => r.id !== id)); } catch { setActionError("Не удалось удалить"); } finally { setBusyKey(null); } };
-
-  const toggleRow = (equipmentId: number) => {
-    setExpandedRows((prev) => {
-      const nextOpen = !prev[equipmentId];
-      if (nextOpen) {
-        void loadRowDetails(equipmentId);
-      }
-      return { ...prev, [equipmentId]: nextOpen };
-    });
-  };
-
-  const handleTransfer = async () => {
-    if (!selectedEquipment) return;
-    try {
-      setBusyKey(`transfer-${selectedEquipment.id}`);
-      await apiClient.transferEquipment(selectedEquipment.id, {
-        to_department: transferForm.to_department,
-        to_person: transferForm.to_person,
-        reason: transferForm.reason,
-      });
-      setActionSuccess("Оборудование переведено.");
-      closeOperationModal();
-      await reloadEquipmentList();
-      await loadRowDetails(selectedEquipment.id);
-    } catch (error: any) {
-      setActionError(String(error?.message || "Не удалось выполнить перевод"));
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const handleWriteOff = async () => {
-    if (!selectedEquipment) return;
-    try {
-      setBusyKey(`writeoff-${selectedEquipment.id}`);
-      await apiClient.writeOffEquipment(selectedEquipment.id, writeOffReason);
-      setActionSuccess("Оборудование списано.");
-      closeOperationModal();
-      await reloadEquipmentList();
-      await loadRowDetails(selectedEquipment.id);
-    } catch (error: any) {
-      setActionError(String(error?.message || "Не удалось списать оборудование"));
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const handleMaintenance = async () => {
-    if (!selectedEquipment) return;
-    try {
-      setBusyKey(`maintenance-${selectedEquipment.id}`);
-      await apiClient.addEquipmentMaintenance(selectedEquipment.id, {
-        type: maintenanceForm.type,
-        description: maintenanceForm.description,
-        cost: maintenanceForm.cost || undefined,
-        date: maintenanceForm.date,
-      });
-      setActionSuccess("Запись обслуживания добавлена.");
-      closeOperationModal();
-      await loadRowDetails(selectedEquipment.id);
-    } catch (error: any) {
-      setActionError(String(error?.message || "Не удалось добавить обслуживание"));
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const handleOpenQr = async (equipmentId: number) => {
-    try {
-      setBusyKey(`qr-${equipmentId}`);
-      const blobUrl = await apiClient.getEquipmentQrCodeBlobUrl(equipmentId);
-      window.open(blobUrl, "_blank", "noopener,noreferrer");
-    } catch (error: any) {
-      setActionError(String(error?.message || "Не удалось получить QR-код"));
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const toggleComments = async (eqId: number) => {
-    const isOpen = Boolean(expandedComments[eqId]);
-    setExpandedComments((p) => ({ ...p, [eqId]: !isOpen }));
-    if (!isOpen && !commentsMap[eqId]) {
-      try {
-        const c = await apiClient.getEquipmentComments(eqId);
-        setCommentsMap((p) => ({ ...p, [eqId]: Array.isArray(c) ? c : c.results || [] }));
-      } catch {
-        setCommentsMap((p) => ({ ...p, [eqId]: [] }));
-      }
-    }
-  };
-
-  const handleAddComment = async (eqId: number) => {
-    const text = (commentDrafts[eqId] || "").trim();
-    if (!text) return;
-    try {
-      setBusyKey(`comment-${eqId}`);
-      const saved = await apiClient.addEquipmentComment(eqId, text);
-      setCommentsMap((p) => ({ ...p, [eqId]: [...(p[eqId] || []), saved] }));
-      setCommentDrafts((p) => ({ ...p, [eqId]: "" }));
-    } catch {
-      setActionError("Не удалось добавить комментарий");
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const handleDeleteComment = async (eqId: number, commentId: number) => {
-    try {
-      setBusyKey(`comment-delete-${commentId}`);
-      await apiClient.deleteEquipmentComment(eqId, commentId);
-      setCommentsMap((p) => ({ ...p, [eqId]: (p[eqId] || []).filter((c) => c.id !== commentId) }));
-    } catch {
-      setActionError("Не удалось удалить комментарий");
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const modalMode: "create" | "edit" = editingId ? "edit" : "create";
-  const isModalOpen = createOpen || editingId !== null;
-
-  const closeModal = () => {
-    setCreateOpen(false);
-    setEditingId(null);
-    resetForm();
-    setActionError(null);
-  };
-
-  const activeFilterCount = [statusFilter, categoryFilter, departmentFilter, responsibleFilter, dateFromFilter, dateToFilter].filter(Boolean).length;
+    detailsMap,
+    displayUserName,
+    employees,
+    error,
+    expandedComments,
+    expandedRows,
+    filteredDepartmentsForForm,
+    filteredEmployeesForForm,
+    filteredItems,
+    filtersOpen,
+    form,
+    getEquipmentMeta,
+    getResponsibleLink,
+    getResponsibleName,
+    handleAddComment,
+    handleDelete,
+    handleDeleteComment,
+    handleLoadMore,
+    handleMaintenance,
+    handleOpenQr,
+    handleSave,
+    handleTransfer,
+    handleWriteOff,
+    isCreateMode,
+    isModalOpen,
+    listMode,
+    loading,
+    loadingMore,
+    loadingRowDetails,
+    maintenanceForm,
+    maintenanceMap,
+    modalMode,
+    nextPage,
+    openCreateModal,
+    openEdit,
+    openOperationModal,
+    operationModal,
+    ordering,
+    previewInventoryNumber,
+    responsibleFilter,
+    searchQuery,
+    selectedEquipment,
+    setCategoryFilter,
+    setCommentDrafts,
+    setDateFromFilter,
+    setDateToFilter,
+    setDepartmentFilter,
+    setFiltersOpen,
+    setForm,
+    setListMode,
+    setMaintenanceForm,
+    setOrdering,
+    setResponsibleFilter,
+    setSearchQuery,
+    setStatusFilter,
+    setTransferForm,
+    setWriteOffReason,
+    statusFilter,
+    transferForm,
+    transferHistoryMap,
+    toggleComments,
+    toggleRow,
+    writeOffReason,
+  } = useEquipmentPage(user);
   /* ──── render ──── */
   return (
     <AppShell>
@@ -770,7 +183,7 @@ export default function EquipmentPage() {
               <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 value={searchQuery}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Поиск по оборудованию"
                 className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
               />
