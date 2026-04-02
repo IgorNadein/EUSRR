@@ -22,6 +22,7 @@ import { apiClient } from '@/lib/api';
 import { useUser } from '@/contexts/UserContext';
 import { resolveMediaUrl, getWebSocketUrl } from '@/lib/url';
 import NewChatModal from '@/components/NewChatModal';
+import wsManager from '@/lib/websocketManager';
 import type { Chat as ChatType, Message as MessageType } from '@/types/api';
 
 function getChatTitle(chat: ChatType, currentUserId?: number): string {
@@ -144,6 +145,16 @@ export default function ChatscapeMessenger() {
   }, [selectedChatId]);
 
   // WebSocket для real-time обновлений
+  useEffect(() => {
+    if (!selectedChatId) return;
+
+    wsManager.setActiveChat(selectedChatId);
+
+    return () => {
+      wsManager.clearActiveChat(selectedChatId);
+    };
+  }, [selectedChatId]);
+
   useEffect(() => {
     if (!selectedChatId) return;
 

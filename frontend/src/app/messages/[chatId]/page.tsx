@@ -18,6 +18,7 @@ import { useSilentChatReloadGuard } from "@/hooks/useSilentChatReloadGuard";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { uniqueMessagesById } from "@/lib/messages/chatUtils";
 import { formatDayDivider, getMessagePreviewText, getReplyToId } from "@/lib/messages/messageUtils";
+import wsManager from "@/lib/websocketManager";
 import ScrollableMessageList, { ScrollableMessageListInner } from "@/components/ScrollableMessageList";
 
 type ReplyTarget = {
@@ -154,6 +155,18 @@ export default function MessageDialogPage() {
     autoConnect: true,
     onReconnectExhausted: handleReconnectExhausted,
   });
+
+  useEffect(() => {
+    if (!chatId || Number.isNaN(chatId)) {
+      return;
+    }
+
+    wsManager.setActiveChat(chatId);
+
+    return () => {
+      wsManager.clearActiveChat(chatId);
+    };
+  }, [chatId]);
 
   useEffect(() => {
     if (!isConnected) {

@@ -21,6 +21,7 @@ class WebSocketManager {
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
+  private activeChatId: number | null = null;
   private messageHandlers: Set<MessageHandler> = new Set();
   private statusHandlers: Set<StatusHandler> = new Set();
   private isConnecting = false;
@@ -55,6 +56,27 @@ class WebSocketManager {
       } catch (error) {
         console.error('[WS Manager] Status handler error:', error);
       }
+    });
+  }
+
+  private sendJson(payload: Record<string, unknown>) {
+    if (this.ws?.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+
+    this.ws.send(JSON.stringify(payload));
+    return true;
+  }
+
+  private syncActiveChatOnSocket() {
+    if (this.activeChatId === null) {
+      return;
+    }
+
+    this.sendJson({
+      action: 'open_chat',
+      chat_id: this.activeChatId,
+      load_history: false,
     });
   }
 
@@ -109,6 +131,7 @@ class WebSocketManager {
         console.log('[WS Manager] Connected');
         this.isConnecting = false;
         this.reconnectAttempts = 0;
+        this.syncActiveChatOnSocket();
         this.notifyStatus();
       };
 
@@ -178,6 +201,46 @@ class WebSocketManager {
     this.isConnecting = false;
     this.reconnectAttempts = 0;
     this.notifyStatus();
+  }
+
+  setActiveChat(chatId: number) {
+    if (!Number.isFinite(chatId) || chatId <= 0) {
+      return;
+    }
+
+    if (this.activeChatId === chatId) {
+      return;
+    }
+
+    const previousChatId = this.activeChatId;
+    this.activeChatId = chatId;
+
+    if (previousChatId !== null) {
+      this.sendJson({
+        action: 'close_chat',
+        chat_id: previousChatId,
+      });
+    }
+
+    this.syncActiveChatOnSocket();
+  }
+
+  clearActiveChat(chatId?: number) {
+    if (this.activeChatId === null) {
+      return;
+    }
+
+    if (typeof chatId === 'number' && this.activeChatId !== chatId) {
+      return;
+    }
+
+    const chatToClose = this.activeChatId;
+    this.activeChatId = null;
+
+    this.sendJson({
+      action: 'close_chat',
+      chat_id: chatToClose,
+    });
   }
 
   subscribe(handler: MessageHandler) {
