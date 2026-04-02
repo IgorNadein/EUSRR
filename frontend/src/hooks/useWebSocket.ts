@@ -1,12 +1,19 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { getWebSocketUrl } from '@/lib/url';
+import type { Message } from '@/types/api';
+
+type ReactionsSummary = Record<string, { count: number; users?: number[]; user_names?: string[] }>;
 
 interface WebSocketMessage {
   type: string;
-  payload?: any;
+  payload?: Record<string, unknown>;
+  message?: Message;
   message_id?: number;
   user_id?: number;
-  [key: string]: any;
+  chat_id?: number;
+  last_read_message_id?: number;
+  reactions_summary?: ReactionsSummary;
+  [key: string]: unknown;
 }
 
 interface WebSocketHandlers {
@@ -22,19 +29,27 @@ interface UseWebSocketOptions {
   autoConnect?: boolean;
   reconnectInterval?: number;
   maxReconnectAttempts?: number;
+  onReconnectExhausted?: (details: {
+    chatId: number | null;
+    reconnectAttempts: number;
+  }) => void;
 }
 
 export function useWebSocket({
   chatId,
   autoConnect = true,
   reconnectInterval = 3000,
-  maxReconnectAttempts = 5
+  maxReconnectAttempts = 5,
+  onReconnectExhausted,
 }: UseWebSocketOptions) {
   const [isConnected, setIsConnected] = useState(false);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isConnectingRef = useRef(false);
+  const reconnectAttemptsRef = useRef(0);
+  const shouldReconnectRef = useRef(autoConnect);
+  const connectRef = useRef<() => void>(() => {});
 
   const handlers = useRef<WebSocketHandlers>({
     onMessage: () => {},
@@ -47,6 +62,13 @@ export function useWebSocket({
   const connect = useCallback(() => {
     if (!chatId || isConnectingRef.current || wsRef.current?.readyState === WebSocket.OPEN) {
       return;
+    }
+
+    shouldReconnectRef.current = autoConnect;
+
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
 
     isConnectingRef.current = true;
@@ -73,6 +95,7 @@ export function useWebSocket({
 
       ws.onopen = () => {
         setIsConnected(true);
+        reconnectAttemptsRef.current = 0;
         setReconnectAttempts(0);
         isConnectingRef.current = false;
 
@@ -105,8 +128,6 @@ export function useWebSocket({
 
       ws.onerror = (error) => {
         console.error('❌ WebSocket error:', error);
-        console.warn('⚠️  WebSocket не может подключиться. Убедитесь что backend запущен через Daphne:');
-        console.warn('   cd backend && c:/Users/igor_/Dev/EUSRR/.venv/Scripts/python -m daphne -p 9000 eusrr_backend.asgi:application');
         handlers.current.onError(error);
         isConnectingRef.current = false;
       };
@@ -114,29 +135,39 @@ export function useWebSocket({
       ws.onclose = () => {
         setIsConnected(false);
         isConnectingRef.current = false;
+        wsRef.current = null;
         handlers.current.onDisconnect();
 
         // Автоматическое переподключение
-        if (autoConnect && reconnectAttempts < maxReconnectAttempts) {
-          console.log(`🔄 Reconnecting... (attempt ${reconnectAttempts + 1}/${maxReconnectAttempts})`);
+        if (shouldReconnectRef.current && reconnectAttemptsRef.current < maxReconnectAttempts) {
+          const nextAttempt = reconnectAttemptsRef.current + 1;
+          reconnectAttemptsRef.current = nextAttempt;
+          setReconnectAttempts(nextAttempt);
+          console.log(`🔄 Reconnecting... (attempt ${nextAttempt}/${maxReconnectAttempts})`);
           reconnectTimeoutRef.current = setTimeout(() => {
-            setReconnectAttempts(prev => prev + 1);
-            connect();
+            connectRef.current();
           }, reconnectInterval);
-        } else if (reconnectAttempts >= maxReconnectAttempts) {
+        } else if (shouldReconnectRef.current && reconnectAttemptsRef.current >= maxReconnectAttempts) {
           console.error('❌ Max reconnection attempts reached. Backend may not support WebSocket.');
-          console.warn('⚠️  Запустите backend через Daphne для WebSocket:');
-          console.warn('   cd C:/Users/igor_/Dev/EUSRR/backend');
-          console.warn('   c:/Users/igor_/Dev/EUSRR/.venv/Scripts/python -m daphne -p 9000 eusrr_backend.asgi:application');
+          onReconnectExhausted?.({
+            chatId,
+            reconnectAttempts: reconnectAttemptsRef.current,
+          });
         }
       };
     } catch (error) {
       console.error('Failed to create WebSocket:', error);
       isConnectingRef.current = false;
     }
-  }, [chatId, autoConnect, reconnectInterval, maxReconnectAttempts, reconnectAttempts]);
+  }, [chatId, autoConnect, reconnectInterval, maxReconnectAttempts, onReconnectExhausted]);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   const disconnect = useCallback(() => {
+    shouldReconnectRef.current = false;
+
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
@@ -157,6 +188,7 @@ export function useWebSocket({
     }
 
     setIsConnected(false);
+    reconnectAttemptsRef.current = 0;
     setReconnectAttempts(0);
     isConnectingRef.current = false;
   }, [chatId]);
@@ -169,7 +201,7 @@ export function useWebSocket({
     }
   }, []);
 
-  const sendMessage = useCallback((message: any) => {
+  const sendMessage = useCallback((message: Record<string, unknown>) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(message));
     } else {
@@ -179,6 +211,8 @@ export function useWebSocket({
 
   // Подключение при монтировании или изменении chatId
   useEffect(() => {
+    shouldReconnectRef.current = autoConnect;
+
     if (autoConnect && chatId) {
       connect();
     }
@@ -186,7 +220,7 @@ export function useWebSocket({
     return () => {
       disconnect();
     };
-  }, [chatId, autoConnect]);
+  }, [chatId, autoConnect, connect, disconnect]);
 
   // Очистка при размонтировании
   useEffect(() => {

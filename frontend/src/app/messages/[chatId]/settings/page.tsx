@@ -10,106 +10,19 @@ import {
   BellOff, 
   Pin, 
   Trash2, 
-  UserPlus, 
   UserMinus,
-  Users,
-  Pencil,
-  ChevronDown,
-  Shield,
-  ShieldCheck
+  Pencil
 } from "lucide-react";
 import { AppShell } from "../../../../components/AppShell";
 import { apiClient } from "@/lib/api";
+import { getChatAvatar, getChatInitials, getChatTitle } from "@/lib/messages/chatUtils";
+import ChatParticipantsSection from "@/components/messages/ChatParticipantsSection";
+import EditChatModal from "@/components/messages/EditChatModal";
+import AddChatMemberModal from "@/components/messages/AddChatMemberModal";
+import { getChatTypeLabel, type MemberSearchResult } from "@/lib/messages/chatSettingsUtils";
 import type { Chat } from "@/types/api";
 import { useUser } from "@/contexts/UserContext";
 import { resolveMediaUrl } from "@/lib/url";
-
-function getUserFullName(lastName?: string, firstName?: string): string {
-  return `${lastName || ""} ${firstName || ""}`.trim();
-}
-
-function getInterlocutorFromParticipants(chat: Chat, currentUserId?: number) {
-  const participants = (chat.participants || []).filter(
-    (p): p is Exclude<typeof p, number> => typeof p === "object" && p !== null
-  );
-  return participants.find((p) => p.id !== currentUserId);
-}
-
-function getInterlocutorFromParticipantDetails(chat: Chat, currentUserId?: number) {
-  return (chat.participant_details || []).find((p) => p.id !== currentUserId);
-}
-
-function getChatTitle(chat: Chat, currentUserId?: number): string {
-  const chatKind = chat.chat_type || chat.type;
-  const rawName = (chat.name || "").trim();
-
-  if (chatKind === "direct" || chatKind === "private" || !rawName || rawName.toLowerCase() === "диалог") {
-    if (chat.interlocutor?.name?.trim()) {
-      return chat.interlocutor.name.trim();
-    }
-
-    const detailsOther = getInterlocutorFromParticipantDetails(chat, currentUserId);
-    if (detailsOther?.name?.trim()) {
-      return detailsOther.name.trim();
-    }
-
-    const other = getInterlocutorFromParticipants(chat, currentUserId);
-    if (other && typeof other === "object") {
-      const name = getUserFullName(other.last_name, other.first_name);
-      if (name) return name;
-      if (other.email) return other.email;
-    }
-  }
-
-  return rawName || "Диалог";
-}
-
-function getChatAvatar(chat: Chat, currentUserId?: number): string {
-  const chatKind = chat.chat_type || chat.type;
-  if (chatKind === "direct" || chatKind === "private" || (chat.name || "").trim().toLowerCase() === "диалог") {
-    if (chat.interlocutor?.avatar) return chat.interlocutor.avatar;
-
-    const detailsOther = getInterlocutorFromParticipantDetails(chat, currentUserId);
-    if (detailsOther?.avatar) return detailsOther.avatar;
-
-    const other = getInterlocutorFromParticipants(chat, currentUserId);
-    if (other?.avatar) return other.avatar;
-  }
-  return chat.avatar || "";
-}
-
-function getChatInitials(chat: Chat, currentUserId?: number): string {
-  const title = getChatTitle(chat, currentUserId);
-  return (
-    title
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((p) => p[0]?.toUpperCase() || "")
-      .join("") || "Ч"
-  );
-}
-
-function getChatTypeLabel(chat: Chat): string {
-  const type = chat.chat_type || chat.type;
-  switch (type) {
-    case "global":
-      return "Глобальный чат";
-    case "channel":
-      return "Канал";
-    case "private":
-    case "direct":
-      return "Личный чат";
-    case "group":
-      return "Групповой чат";
-    case "announcement":
-      return "Канал объявлений";
-    case "comments":
-      return "Комментарии";
-    default:
-      return "Диалог";
-  }
-}
 
 export default function ChatSettingsPage() {
   const params = useParams<{ chatId: string }>();
@@ -137,7 +50,7 @@ export default function ChatSettingsPage() {
   // Состояние модала добавления участников
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState("");
-  const [memberSearchResults, setMemberSearchResults] = useState<any[]>([]);
+  const [memberSearchResults, setMemberSearchResults] = useState<MemberSearchResult[]>([]);
   const [memberSearchLoading, setMemberSearchLoading] = useState(false);
   
   // Состояние для отображения полного списка участников
@@ -314,7 +227,7 @@ export default function ChatSettingsPage() {
     setActionLoading("edit");
     try {
       // Обновляем название и описание
-      const updatedChat = await apiClient.updateChat(chatId, {
+      await apiClient.updateChat(chatId, {
         name: editName.trim() || undefined,
         description: editDescription.trim() || undefined,
       });
@@ -325,7 +238,7 @@ export default function ChatSettingsPage() {
       }
 
       // Перезагружаем данные чата
-      const refreshedChat = await apiClient.getChat(chatId);
+      const refreshedChat: Chat = await apiClient.getChat(chatId);
       setChat(refreshedChat);
       
       handleCloseEditModal();
@@ -366,7 +279,7 @@ export default function ChatSettingsPage() {
       const currentMemberIds = new Set(
         chat?.participant_details?.map(p => p.id) || []
       );
-      const filtered = results.filter((r: any) => !currentMemberIds.has(r.id));
+      const filtered = (results as MemberSearchResult[]).filter((result) => !currentMemberIds.has(result.id));
       
       setMemberSearchResults(filtered);
     } catch (e) {
@@ -384,7 +297,7 @@ export default function ChatSettingsPage() {
       await apiClient.addChatMember(chatId, userId);
       
       // Перезагружаем данные чата
-      const refreshedChat = await apiClient.getChat(chatId);
+      const refreshedChat: Chat = await apiClient.getChat(chatId);
       setChat(refreshedChat);
       
       // Обновляем результаты поиска с учетом новых данных
@@ -397,9 +310,9 @@ export default function ChatSettingsPage() {
         
         // Используем свежие данные чата для фильтрации
         const currentMemberIds = new Set(
-          refreshedChat?.participant_details?.map((p: any) => p.id) || []
+          refreshedChat?.participant_details?.map((participant) => participant.id) || []
         );
-        const filtered = results.filter((r: any) => !currentMemberIds.has(r.id));
+        const filtered = (results as MemberSearchResult[]).filter((result) => !currentMemberIds.has(result.id));
         
         setMemberSearchResults(filtered);
       }
@@ -451,7 +364,7 @@ export default function ChatSettingsPage() {
       });
       
       // Перезагружаем данные чата с сервера для синхронизации
-      const refreshedChat = await apiClient.getChat(chatId);
+      const refreshedChat: Chat = await apiClient.getChat(chatId);
       console.log('[handleChangeRole] Refreshed chat from server:', refreshedChat);
       console.log('[handleChangeRole] Refreshed memberships:', refreshedChat.memberships);
       setChat(refreshedChat);
@@ -509,11 +422,8 @@ export default function ChatSettingsPage() {
   }
 
   const chatType = chat.chat_type || chat.type;
-  const isPrivateChat = chatType === "private" || chatType === "direct";
-  const isGroupChat = chatType === "group";
   // Чаты с управлением участниками (группы, каналы, объявления)
   const hasMembers = chatType === "group" || chatType === "channel" || chatType === "announcement";
-  const canManageChat = chat.can_manage ?? false;
   
   // Проверка прав: владелец или админ
   const isOwner = chat.created_by === currentUserId;
@@ -521,37 +431,6 @@ export default function ChatSettingsPage() {
     (m) => m.user === currentUserId && m.role === 'admin'
   ) ?? false;
   const canEdit = isOwner || isAdmin;
-
-  // Получить роль участника
-  const getMemberRole = (userId: number): 'admin' | 'moderator' | 'member' | 'guest' | null => {
-    if (chat.created_by === userId) return null; // Владелец не имеет роли в membership
-    const membership = chat.memberships?.find(m => m.user === userId);
-    return membership?.role || 'member';
-  };
-
-  // Получить отображаемое имя роли
-  const getRoleLabel = (role: 'admin' | 'moderator' | 'member' | 'guest' | null): string => {
-    if (role === null) return 'Владелец';
-    switch (role) {
-      case 'admin': return 'Админ';
-      case 'moderator': return 'Модератор';
-      case 'member': return 'Участник';
-      case 'guest': return 'Гость';
-      default: return 'Участник';
-    }
-  };
-
-  // Цвет бейджа роли
-  const getRoleBadgeColor = (role: 'admin' | 'moderator' | 'member' | 'guest' | null): string => {
-    if (role === null) return 'bg-purple-100 text-purple-700 ring-purple-200'; // Владелец
-    switch (role) {
-      case 'admin': return 'bg-red-100 text-red-700 ring-red-200';
-      case 'moderator': return 'bg-blue-100 text-blue-700 ring-blue-200';
-      case 'member': return 'bg-gray-100 text-gray-700 ring-gray-200';
-      case 'guest': return 'bg-amber-100 text-amber-700 ring-amber-200';
-      default: return 'bg-gray-100 text-gray-700 ring-gray-200';
-    }
-  };
 
   return (
     <AppShell>
@@ -670,219 +549,21 @@ export default function ChatSettingsPage() {
 
         {/* Участники (для групповых чатов, каналов и объявлений) */}
         {hasMembers && (
-          <section className="mb-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-gray-700">Участники</h3>
-                {isOwner && (
-                  <p className="mt-0.5 text-xs text-gray-500">
-                    Вы можете изменять роли участников
-                  </p>
-                )}
-              </div>
-              {canEdit && (
-                <button
-                  type="button"
-                  onClick={handleOpenAddMemberModal}
-                  className="flex items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 transition hover:bg-sky-100"
-                >
-                  <UserPlus size={14} />
-                  <span>Добавить</span>
-                </button>
-              )}
-            </div>
-            
-            <div className="space-y-2">
-              {(chat.participant_details || [])
-                .slice(0, showAllParticipants ? undefined : 5)
-                .map((participant) => {
-                  const memberRole = getMemberRole(participant.id);
-                  const roleLabel = getRoleLabel(memberRole);
-                  const roleBadgeColor = getRoleBadgeColor(memberRole);
-                  const isCurrentUserOwner = chat.created_by === participant.id;
-                  
-                  return (
-                    <div
-                      key={participant.id}
-                      className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3"
-                    >
-                      <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-xs font-semibold text-white">
-                        {participant.avatar ? (
-                          <Image
-                            src={resolveMediaUrl(participant.avatar)}
-                            alt={participant.name || "User"}
-                            width={40}
-                            height={40}
-                            unoptimized
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <span>
-                            {(participant.name || "?")
-                              .split(" ")
-                              .filter(Boolean)
-                              .slice(0, 2)
-                              .map((p) => p[0])
-                              .join("")
-                              .toUpperCase()}
-                          </span>
-                        )}
-                      </div>
-                      
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900">
-                          {participant.name || "Без имени"}
-                          {participant.id === currentUserId && (
-                            <span className="ml-1.5 text-xs text-gray-500">(вы)</span>
-                          )}
-                        </p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ${roleBadgeColor}`}>
-                            {isCurrentUserOwner && <ShieldCheck size={10} />}
-                            {!isCurrentUserOwner && memberRole === 'admin' && <Shield size={10} />}
-                            {roleLabel}
-                          </span>
-                        </div>
-                      </div>
-                      
-                      {/* Управление ролью (только для владельца) */}
-                      {isOwner && !isCurrentUserOwner && participant.id !== currentUserId && (
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => setRoleDropdownOpen(roleDropdownOpen === participant.id ? null : participant.id)}
-                            disabled={actionLoading?.startsWith(`change-role-${participant.id}`) || actionLoading === `remove-member-${participant.id}`}
-                            className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
-                            title="Изменить роль"
-                          >
-                            <span>Роль</span>
-                            <ChevronDown size={12} />
-                          </button>
-                          
-                          {roleDropdownOpen === participant.id && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => setRoleDropdownOpen(null)}
-                                className="fixed inset-0 z-40"
-                                aria-label="Закрыть меню"
-                              />
-                              <div className="absolute right-0 top-full z-50 mt-1 w-36 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-                                <button
-                                  type="button"
-                                  onClick={() => handleChangeRole(participant.id, 'admin')}
-                                  disabled={memberRole === 'admin'}
-                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  <Shield size={12} className="text-red-600" />
-                                  <span>Админ</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleChangeRole(participant.id, 'moderator')}
-                                  disabled={memberRole === 'moderator'}
-                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  <Shield size={12} className="text-blue-600" />
-                                  <span>Модератор</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleChangeRole(participant.id, 'member')}
-                                  disabled={memberRole === 'member'}
-                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  <Users size={12} className="text-gray-600" />
-                                  <span>Участник</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleChangeRole(participant.id, 'guest')}
-                                  disabled={memberRole === 'guest'}
-                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  <Users size={12} className="text-amber-600" />
-                                  <span>Гость</span>
-                                </button>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      )}
-                      
-                      {/* Кнопка удаления */}
-                      {canEdit && !isCurrentUserOwner && participant.id !== currentUserId && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveMember(participant.id)}
-                          disabled={actionLoading === `remove-member-${participant.id}` || actionLoading?.startsWith(`change-role-${participant.id}`)}
-                          className="text-gray-400 hover:text-red-600 disabled:opacity-50"
-                          title="Удалить из чата"
-                        >
-                          <UserMinus size={16} />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-            </div>
-            
-            {/* Кнопка показать всех участников */}
-            {(chat.participant_details || []).length > 5 && (
-              <button
-                type="button"
-                onClick={() => setShowAllParticipants(!showAllParticipants)}
-                className="mt-3 w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
-              >
-                {showAllParticipants 
-                  ? "Свернуть" 
-                  : `Посмотреть всех (${chat.participant_details?.length || 0})`
-                }
-              </button>
-            )}
-            
-            {/* Легенда ролей */}
-            {isOwner && (
-              <div className="mt-4 rounded-lg bg-gray-50 p-3">
-                <p className="mb-2 text-xs font-semibold text-gray-700">Роли участников:</p>
-                <div className="space-y-1 text-xs text-gray-600">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 ring-1 ring-purple-200">
-                      <ShieldCheck size={10} />
-                      Владелец
-                    </span>
-                    <span>— полный контроль над чатом</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-red-100 text-red-700 ring-1 ring-red-200">
-                      <Shield size={10} />
-                      Админ
-                    </span>
-                    <span>— управление участниками, редактирование</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-blue-100 text-blue-700 ring-1 ring-blue-200">
-                      <Shield size={10} />
-                      Модератор
-                    </span>
-                    <span>— закрепление и удаление сообщений</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-700 ring-1 ring-gray-200">
-                      Участник
-                    </span>
-                    <span>— отправка сообщений</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 ring-1 ring-amber-200">
-                      Гость
-                    </span>
-                    <span>— только чтение</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </section>
+          <ChatParticipantsSection
+            chat={chat}
+            currentUserId={currentUserId}
+            isOwner={isOwner}
+            canEdit={canEdit}
+            showAllParticipants={showAllParticipants}
+            roleDropdownOpen={roleDropdownOpen}
+            actionLoading={actionLoading}
+            onOpenAddMemberModal={handleOpenAddMemberModal}
+            onToggleShowAllParticipants={() => setShowAllParticipants((prev) => !prev)}
+            onToggleRoleDropdown={(participantId) => setRoleDropdownOpen((prev) => prev === participantId ? null : participantId)}
+            onCloseRoleDropdown={() => setRoleDropdownOpen(null)}
+            onChangeRole={handleChangeRole}
+            onRemoveMember={handleRemoveMember}
+          />
         )}
 
         {/* Опасная зона */}
@@ -933,207 +614,31 @@ export default function ChatSettingsPage() {
         )}
       </div>
 
-      {/* Модал редактирования чата */}
-      {isEditModalOpen && chat && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <h2 className="mb-4 text-xl font-bold text-gray-900">Редактировать чат</h2>
-            
-            <div className="space-y-4">
-              {/* Аватар */}
-              <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
-                  Аватар
-                </label>
-                <div className="flex items-center gap-4">
-                  <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-lg font-semibold text-white">
-                    {editAvatarPreview ? (
-                      <img
-                        src={editAvatarPreview || ""}
-                        alt="Preview"
-                        className="h-full w-full object-cover"
-                      />
-                    ) : getChatAvatar(chat, currentUserId) ? (
-                      <Image
-                        src={resolveMediaUrl(getChatAvatar(chat, currentUserId))}
-                        alt="Avatar"
-                        width={64}
-                        height={64}
-                        unoptimized
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      getChatInitials(chat, currentUserId)
-                    )}
-                  </div>
-                  <label className="cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleAvatarChange}
-                      className="hidden"
-                    />
-                    Загрузить
-                  </label>
-                </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  Максимальный размер: 5MB. Форматы: JPG, PNG, GIF
-                </p>
-              </div>
+      <EditChatModal
+        chat={chat}
+        open={isEditModalOpen}
+        currentUserId={currentUserId}
+        editName={editName}
+        editDescription={editDescription}
+        editAvatarPreview={editAvatarPreview}
+        actionLoading={actionLoading}
+        onClose={handleCloseEditModal}
+        onNameChange={setEditName}
+        onDescriptionChange={setEditDescription}
+        onAvatarChange={handleAvatarChange}
+        onSave={handleSaveEdit}
+      />
 
-              {/* Название */}
-              <div>
-                <label htmlFor="edit-name" className="mb-2 block text-sm font-medium text-gray-700">
-                  Название чата
-                </label>
-                <input
-                  id="edit-name"
-                  type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  placeholder="Введите название чата"
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-                  maxLength={100}
-                />
-              </div>
-
-              {/* Описание */}
-              <div>
-                <label htmlFor="edit-description" className="mb-2 block text-sm font-medium text-gray-700">
-                  Описание
-                </label>
-                <textarea
-                  id="edit-description"
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  placeholder="Введите описание чата (необязательно)"
-                  rows={3}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-                  maxLength={500}
-                />
-              </div>
-            </div>
-
-            {/* Кнопки */}
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={handleCloseEditModal}
-                disabled={actionLoading === "edit"}
-                className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50"
-              >
-                Отмена
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveEdit}
-                disabled={actionLoading === "edit" || !editName.trim()}
-                className="flex-1 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-sky-700 disabled:opacity-50"
-              >
-                {actionLoading === "edit" ? "Сохранение..." : "Сохранить"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Модал добавления участника */}
-      {isAddMemberModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">Добавить участника</h2>
-              <button
-                type="button"
-                onClick={handleCloseAddMemberModal}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            
-            {/* Поиск */}
-            <div className="mb-4">
-              <input
-                type="text"
-                value={memberSearchQuery}
-                onChange={(e) => handleMemberSearch(e.target.value)}
-                placeholder="Введите имя или email..."
-                className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-                autoFocus
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                Минимум 2 символа для поиска
-              </p>
-            </div>
-
-            {/* Результаты поиска */}
-            <div className="max-h-96 overflow-y-auto">
-              {memberSearchLoading ? (
-                <div className="py-8 text-center">
-                  <div className="mx-auto mb-2 h-6 w-6 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
-                  <p className="text-sm text-gray-500">Поиск...</p>
-                </div>
-              ) : memberSearchQuery.trim().length < 2 ? (
-                <div className="py-8 text-center">
-                  <Users className="mx-auto mb-2 h-12 w-12 text-gray-300" />
-                  <p className="text-sm text-gray-500">
-                    Начните вводить имя или email для поиска
-                  </p>
-                </div>
-              ) : memberSearchResults.length === 0 ? (
-                <div className="py-8 text-center">
-                  <p className="text-sm text-gray-500">Пользователи не найдены</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {memberSearchResults.map((result) => (
-                    <div
-                      key={result.id}
-                      className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 transition hover:bg-gray-50"
-                    >
-                      <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white">
-                        {result.avatar ? (
-                          <Image
-                            src={resolveMediaUrl(result.avatar)}
-                            alt={result.name || ""}
-                            width={40}
-                            height={40}
-                            unoptimized
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <span>
-                            {result.name ? result.name.split(" ").map((n: string) => n[0]).join("") : "?"}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">
-                          {result.name || getUserFullName(result.last_name, result.first_name)}
-                        </p>
-                        {result.email && (
-                          <p className="text-xs text-gray-500">{result.email}</p>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleAddMember(result.id)}
-                        disabled={actionLoading === `add-member-${result.id}`}
-                        className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-sky-700 disabled:opacity-50"
-                      >
-                        {actionLoading === `add-member-${result.id}` ? "..." : "Добавить"}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <AddChatMemberModal
+        open={isAddMemberModalOpen}
+        memberSearchQuery={memberSearchQuery}
+        memberSearchResults={memberSearchResults}
+        memberSearchLoading={memberSearchLoading}
+        actionLoading={actionLoading}
+        onClose={handleCloseAddMemberModal}
+        onSearchChange={handleMemberSearch}
+        onAddMember={handleAddMember}
+      />
     </AppShell>
   );
 }

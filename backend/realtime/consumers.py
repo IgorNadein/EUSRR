@@ -186,6 +186,30 @@ class UserConsumer(ChatConsumerMixin, AsyncJsonWebsocketConsumer):
         elif action == "vote_poll":
             await self._handle_vote_poll(content)
 
+    @staticmethod
+    def _extract_notification_chat_id(notification):
+        """Достаёт chat_id из payload уведомления, если он есть."""
+        if not isinstance(notification, dict):
+            return None
+
+        data = notification.get("data")
+        if not isinstance(data, dict):
+            return None
+
+        chat_id = data.get("chat_id")
+        try:
+            return int(chat_id)
+        except (TypeError, ValueError):
+            return None
+
+    def _should_suppress_active_chat_notification(self, notification):
+        """Не показываем уведомление о сообщении в уже открытом чате."""
+        if self.active_chat_id is None:
+            return False
+
+        notification_chat_id = self._extract_notification_chat_id(notification)
+        return notification_chat_id == self.active_chat_id
+
     # ==================== Обработчики уведомлений ====================
 
     async def notification_message(self, event):
@@ -193,16 +217,36 @@ class UserConsumer(ChatConsumerMixin, AsyncJsonWebsocketConsumer):
         Новое уведомление от WebSocketNotificationSender.
         Вызывается из notifications/senders/websocket.py
         """
+        notification = event.get("message", {})
+
+        if self._should_suppress_active_chat_notification(notification):
+            logger.info(
+                "[UserWS] Suppressed notification for active chat %s in session %s",
+                self.active_chat_id,
+                self.channel_name,
+            )
+            return
+
         await self.send_json(
-            {"type": "notification", "notification": event.get("message", {})}
+            {"type": "notification", "notification": notification}
         )
 
     async def notification_new(self, event):
         """Новое уведомление (вызывается из notifications/services.py)"""
+        notification = event.get("notification", {})
+
+        if self._should_suppress_active_chat_notification(notification):
+            logger.info(
+                "[UserWS] Suppressed notification_new for active chat %s in session %s",
+                self.active_chat_id,
+                self.channel_name,
+            )
+            return
+
         await self.send_json(
             {
                 "type": "notification",
-                "notification": event.get("notification", {}),
+                "notification": notification,
             }
         )
 
@@ -213,6 +257,27 @@ class UserConsumer(ChatConsumerMixin, AsyncJsonWebsocketConsumer):
         """
         await self.send_json(
             {"type": "unread_count", "count": event.get("count", 0)}
+        )
+
+    async def notification_read(self, event):
+        """Синхронизация прочтения одного уведомления между сессиями."""
+        await self.send_json(
+            {
+                "type": "notification_read",
+                "notification_id": event.get("notification_id"),
+                "unread_count": event.get("unread_count"),
+            }
+        )
+
+    async def notifications_read_all(self, event):
+        """Синхронизация массового прочтения уведомлений между сессиями."""
+        await self.send_json(
+            {
+                "type": "notifications_read_all",
+                "notification_ids": event.get("notification_ids", []),
+                "category": event.get("category"),
+                "unread_count": event.get("unread_count"),
+            }
         )
 
     # ==================== Обработка событий закупок ====================

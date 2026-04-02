@@ -1,0 +1,32 @@
+/**
+ * API Client — assembled from domain modules.
+ * Import: import { apiClient } from "@/lib/api"
+ */
+import { ApiClientBase } from './client';
+import { createEmployeesApi } from './employees';
+import { createDocumentsApi } from './documents';
+import { createMessagesApi } from './messages';
+import { createNotificationsApi } from './notifications';
+import { createCalendarApi } from './calendar';
+import { createFeedApi } from './feed';
+import { createRequestsApi } from './requests';
+import { createEquipmentApi } from './equipment';
+import { createProcurementApi } from './procurement';
+
+const base = new ApiClientBase();
+const req = base.request.bind(base);
+const tok = base.getToken.bind(base);
+
+export const apiClient = Object.assign(base, {
+    ...createEmployeesApi(req),
+    ...createDocumentsApi(req),
+    ...createMessagesApi(req, tok),
+    ...createNotificationsApi(req),
+    ...createCalendarApi(req, tok),
+    ...createFeedApi(req, tok),
+    ...createRequestsApi(req, tok),
+    ...createEquipmentApi(req, tok),
+    ...createProcurementApi(req),
+});
+
+export default apiClient;

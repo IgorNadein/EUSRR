@@ -1,19 +1,11 @@
 "use client";
 
 import { AppShell } from "../../components/AppShell";
-import { apiClient } from "@/lib/api";
 import { useUser } from "@/contexts/UserContext";
-import { canManageRequests, canManageSupplier } from "@/lib/permissions";
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import ProcurementStatsPanel from "@/components/procurement/ProcurementStatsPanel";
 import ProcurementSuppliersPanel from "@/components/procurement/ProcurementSuppliersPanel";
-import type {
-  ProcurementRequest,
-  User,
-  Department,
-  UrgencyLevel,
-} from "@/types/api";
+import type { UrgencyLevel } from "@/types/api";
 import {
   ArrowUpDown,
   Check,
@@ -35,6 +27,9 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
+import { formatDate, formatMoney } from "@/lib/shared";
+import { useProcurementPage } from "@/hooks/useProcurementPage";
 
 /* ══════════════════════════════════════════════════════
    Constants & helpers
@@ -84,53 +79,8 @@ const periodOptions = [
   { value: "quarter", label: "90 дней" },
 ];
 
-function fmt(d?: string | null) {
-  if (!d) return "";
-  const dt = new Date(d);
-  return Number.isNaN(dt.getTime()) ? "" : dt.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
-}
-
-function money(v?: string | number | null) {
-  if (v === null || v === undefined || v === "") return "—";
-  return Number(v).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " ₽";
-}
-
-/* ══════════════════════════════════════════════════════
-   Item row (позиция заявки) — for inline editing
-   ══════════════════════════════════════════════════════ */
-
-type ItemDraft = {
-  name: string;
-  description: string;
-  quantity: string;
-  unit: string;
-  estimated_unit_price: string;
-  supplier_info: string;
-};
-
-const emptyItem: ItemDraft = { name: "", description: "", quantity: "1", unit: "шт", estimated_unit_price: "", supplier_info: "" };
-
-/* ══════════════════════════════════════════════════════
-   Form state
-   ══════════════════════════════════════════════════════ */
-
-type FormState = {
-  title: string;
-  description: string;
-  department: number | null;
-  urgency: UrgencyLevel;
-  items: ItemDraft[];
-};
-
-const emptyForm: FormState = {
-  title: "",
-  description: "",
-  department: null,
-  urgency: "medium",
-  items: [{ ...emptyItem }],
-};
-
-type ProcurementSection = "requests" | "stats" | "suppliers";
+const fmt = formatDate;
+const money = formatMoney;
 
 /* ══════════════════════════════════════════════════════
    Main page component
@@ -138,435 +88,67 @@ type ProcurementSection = "requests" | "stats" | "suppliers";
 
 export default function ProcurementPage() {
   const { user } = useUser();
-  const canManage = canManageRequests(user);
-  const canSupplierManage = canManageSupplier(user);
-
-  /* ── data ── */
-  const [requests, setRequests] = useState<ProcurementRequest[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
-
-  /* ── UI flags ── */
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [nextPage, setNextPage] = useState<number | null>(null);
-
-  /* ── scope / filters ── */
-  const [scope, setScope] = useState<ScopeTab>("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [urgencyFilter, setUrgencyFilter] = useState("");
-  const [departmentFilter, setDepartmentFilter] = useState("");
-  const [periodFilter, setPeriodFilter] = useState("");
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [ordering, setOrdering] = useState("-created_at");
-  const [activeSection, setActiveSection] = useState<ProcurementSection>("requests");
-
-  /* ── form modal ── */
-  const [createOpen, setCreateOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState<FormState>(emptyForm);
-
-  /* ── expanded details ── */
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
-  const [detailsCache, setDetailsCache] = useState<Record<number, ProcurementRequest>>({});
-
-  /* ══════════ helpers ══════════ */
-
-  const resolveUserId = (person?: User | number | null) => {
-    if (!person) return null;
-    return typeof person === "number" ? person : person.id;
-  };
-
-  const displayUserName = (person?: User | number | null, fallbackName?: string | null, fallbackEmail?: string | null) => {
-    if (fallbackName) return fallbackName;
-    if (!person) return fallbackEmail || "—";
-    if (typeof person === "number") return fallbackEmail || `Пользователь #${person}`;
-    const full = `${person.last_name || ""} ${person.first_name || ""}`.trim();
-    return full || (person as any)?.full_name || person.email || fallbackEmail || "Пользователь";
-  };
-
-  const userLink = (person?: User | number | null) => {
-    const personId = resolveUserId(person);
-    if (!personId) return "";
-    return user?.id && personId === user.id ? "/profile" : `/users/${personId}`;
-  };
-
-  const extractNextPage = (nextUrl?: string | null): number | null => {
-    if (!nextUrl) return null;
-    try {
-      const u = new URL(nextUrl, window.location.origin);
-      const n = Number(u.searchParams.get("page"));
-      return Number.isFinite(n) && n > 0 ? n : null;
-    } catch { return null; }
-  };
-
-  const getDeptName = (req: ProcurementRequest) => {
-    if (req.department_name) return req.department_name;
-    if (req.department_details?.name) return req.department_details.name;
-    const d = departments.find((dep) => dep.id === Number(req.department));
-    return d?.name || "—";
-  };
-
-  const getRequestAmount = (req: ProcurementRequest) => req.total_cost ?? req.total_estimated_cost;
-
-  /* ══════════ data loading ══════════ */
-
-  const buildParams = useCallback((page: number): Record<string, string | number> => {
-    const p: Record<string, string | number> = { page };
-    if (scope === "mine") p.scope = "mine";
-    else if (scope === "department") p.scope = "department";
-    else if (scope === "my_work") p.scope = "my_work";
-    else if (scope === "available") p.scope = "available";
-    if (statusFilter) p.status = statusFilter;
-    if (urgencyFilter) p.urgency = urgencyFilter;
-    if (departmentFilter) p.department = departmentFilter;
-    if (periodFilter) p.period = periodFilter;
-    if (searchQuery.trim()) p.search = searchQuery.trim();
-    return p;
-  }, [scope, statusFilter, urgencyFilter, departmentFilter, periodFilter, searchQuery]);
-
-  const loadPage1 = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      let res: any;
-      if (scope === "pending_approvals") {
-        res = await apiClient.getPendingApprovals(buildParams(1));
-      } else {
-        res = await apiClient.getProcurementRequests(buildParams(1));
-      }
-      const results = Array.isArray(res) ? res : (res.results || []);
-      setRequests(results);
-      setNextPage(extractNextPage(res.next));
-    } catch (e: any) {
-      console.error("Load procurement error:", e);
-      setError("Не удалось загрузить заявки на закупку");
-    } finally {
-      setLoading(false);
-    }
-  }, [buildParams, scope]);
-
-  useEffect(() => { loadPage1(); }, [loadPage1]);
-
-  // Load departments once
-  useEffect(() => {
-    (async () => {
-      try {
-        const all: Department[] = [];
-        let pg = 1;
-        while (true) {
-          const res = await apiClient.getDepartments({ page: pg, limit: 200 });
-          const chunk = Array.isArray(res) ? res : (res.results || []);
-          all.push(...chunk);
-          if (Array.isArray(res) || !res.next) break;
-          pg++;
-        }
-        setDepartments(all);
-      } catch { /* silent */ }
-    })();
-  }, []);
-
-  /* ══════════ load more ══════════ */
-
-  const handleLoadMore = async () => {
-    if (!nextPage || loadingMore) return;
-    try {
-      setLoadingMore(true);
-      let res: any;
-      if (scope === "pending_approvals") {
-        res = await apiClient.getPendingApprovals(buildParams(nextPage));
-      } else {
-        res = await apiClient.getProcurementRequests(buildParams(nextPage));
-      }
-      const chunk = Array.isArray(res) ? res : (res.results || []);
-      setRequests((prev) => {
-        const known = new Set(prev.map((r) => r.id));
-        return [...prev, ...chunk.filter((r: ProcurementRequest) => !known.has(r.id))];
-      });
-      setNextPage(extractNextPage(res.next));
-    } catch {
-      setError("Не удалось загрузить ещё");
-    } finally {
-      setLoadingMore(false);
-    }
-  };
-
-  /* ══════════ expand detail ══════════ */
-
-  const toggleExpand = async (id: number) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) { next.delete(id); } else { next.add(id); }
-      return next;
-    });
-    if (!detailsCache[id]) {
-      try {
-        const detail = await apiClient.getProcurementRequest(id);
-        setDetailsCache((p) => ({ ...p, [id]: detail }));
-      } catch { /* silent */ }
-    }
-  };
-
-  /* ══════════ client-side filter ══════════ */
-
-  const filteredRequests = useMemo(() => {
-    const urgencyRank: Record<string, number> = {
-      low: 1,
-      medium: 2,
-      high: 3,
-      critical: 4,
-    };
-
-    return [...requests].sort((a, b) => {
-      switch (ordering) {
-        case "created_at":
-          return (new Date(a.created_at).getTime() || 0) - (new Date(b.created_at).getTime() || 0);
-        case "title":
-          return String(a.title || "").localeCompare(String(b.title || ""), "ru", { sensitivity: "base" });
-        case "urgency":
-          return (urgencyRank[a.urgency || "medium"] || 0) - (urgencyRank[b.urgency || "medium"] || 0);
-        case "-urgency":
-          return (urgencyRank[b.urgency || "medium"] || 0) - (urgencyRank[a.urgency || "medium"] || 0);
-        case "-created_at":
-        default:
-          return (new Date(b.created_at).getTime() || 0) - (new Date(a.created_at).getTime() || 0);
-      }
-    });
-  }, [ordering, requests]);
-
-  /* ══════════ form ══════════ */
-
-  const resetForm = () => setForm({ ...emptyForm, items: [{ ...emptyItem }] });
-
-  const openCreate = () => {
-    setEditingId(null);
-    resetForm();
-    setActionError(null);
-    setActionSuccess(null);
-    setCreateOpen(true);
-  };
-
-  const openEdit = (req: ProcurementRequest) => {
-    setCreateOpen(false);
-    setEditingId(req.id);
-    setActionError(null);
-    setActionSuccess(null);
-    const detail = detailsCache[req.id] || req;
-    setForm({
-      title: detail.title || "",
-      description: detail.description || "",
-      department: detail.department ?? null,
-      urgency: detail.urgency || "medium",
-      items: (detail.items && detail.items.length > 0)
-        ? detail.items.map((it) => ({
-            name: it.name || "",
-            description: it.description || "",
-            quantity: String(it.quantity || "1"),
-            unit: it.unit || "шт",
-            estimated_unit_price: String(it.estimated_unit_price || ""),
-            supplier_info: it.supplier_info || "",
-          }))
-        : [{ ...emptyItem }],
-    });
-  };
-
-  const closeModal = () => {
-    setCreateOpen(false);
-    setEditingId(null);
-    resetForm();
-    setActionError(null);
-  };
-
-  const modalMode: "create" | "edit" = editingId ? "edit" : "create";
-  const isModalOpen = createOpen || editingId !== null;
-
-  /* ── save ── */
-  const handleSave = async () => {
-    try {
-      setBusyKey("save");
-      setActionError(null);
-
-      if (!form.title.trim()) { setActionError("Укажите название заявки."); return; }
-      if (!form.description.trim()) { setActionError("Укажите описание и обоснование."); return; }
-      if (!form.department) { setActionError("Выберите отдел."); return; }
-
-      // Filter out empty item rows
-      const validItems = form.items.filter((it) => it.name.trim());
-      if (validItems.length === 0) { setActionError("Добавьте хотя бы одну позицию."); return; }
-      for (const it of validItems) {
-        if (!it.quantity || Number(it.quantity) <= 0) { setActionError(`Позиция «${it.name}»: укажите количество.`); return; }
-        if (!it.estimated_unit_price || Number(it.estimated_unit_price) <= 0) { setActionError(`Позиция «${it.name}»: укажите цену за единицу.`); return; }
-      }
-
-      const payload: any = {
-        title: form.title,
-        description: form.description,
-        department: form.department,
-        urgency: form.urgency,
-        items: validItems.map((it) => ({
-          name: it.name,
-          description: it.description || undefined,
-          quantity: it.quantity,
-          unit: it.unit || "шт",
-          estimated_unit_price: it.estimated_unit_price,
-          supplier_info: it.supplier_info || undefined,
-        })),
-      };
-
-      if (modalMode === "create") {
-        await apiClient.createProcurementRequest(payload);
-        setActionSuccess("Заявка создана (черновик).");
-        setCreateOpen(false);
-      } else if (editingId) {
-        await apiClient.updateProcurementRequest(editingId, {
-          title: payload.title,
-          description: payload.description,
-          urgency: payload.urgency,
-        });
-        setActionSuccess("Заявка обновлена.");
-        setEditingId(null);
-      }
-
-      resetForm();
-      await loadPage1();
-    } catch (e: any) {
-      const raw = String(e?.message || "Ошибка сохранения");
-      let readable = raw;
-      try {
-        const parsed = JSON.parse(raw);
-        readable = Object.entries(parsed).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`).join(". ");
-      } catch { /* keep raw */ }
-      setActionError(readable);
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  /* ══════════ workflow actions ══════════ */
-
-  const refreshOne = async (id: number) => {
-    try {
-      const updated = await apiClient.getProcurementRequest(id);
-      setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
-      setDetailsCache((p) => ({ ...p, [id]: updated }));
-    } catch { /* reload all */ await loadPage1(); }
-  };
-
-  const doAction = async (key: string, fn: () => Promise<any>, id: number, successMsg: string) => {
-    try {
-      setBusyKey(key);
-      setActionError(null);
-      await fn();
-      setActionSuccess(successMsg);
-      await refreshOne(id);
-    } catch (e: any) {
-      const raw = String(e?.message || "Ошибка");
-      let readable = raw;
-      try { const p = JSON.parse(raw); readable = typeof p === "object" ? Object.entries(p).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`).join(". ") : raw; } catch {}
-      setActionError(readable);
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const handleSubmit  = (id: number) => doAction(`submit-${id}`,  () => apiClient.submitProcurementRequest(id),  id, "Заявка отправлена на согласование.");
-  const handleApprove = (id: number) => {
-    const comment = window.prompt("Комментарий к одобрению (необязательно)", "");
-    if (comment === null) return;
-    return doAction(`approve-${id}`, () => apiClient.approveProcurementRequest(id, comment), id, "Заявка одобрена.");
-  };
-  const handleReject  = (id: number) => {
-    const comment = window.prompt("Комментарий к отклонению", "");
-    if (comment === null) return;
-    return doAction(`reject-${id}`, () => apiClient.rejectProcurementRequest(id, comment), id, "Заявка отклонена.");
-  };
-  const handleStart   = (id: number) => doAction(`start-${id}`,   () => apiClient.startWorkProcurementRequest(id), id, "Вы взяли заявку в работу.");
-  const handleComplete= (id: number) => doAction(`complete-${id}`,() => apiClient.completeProcurementRequest(id), id, "Заявка завершена.");
-  const handleCancel  = (id: number) => {
-    const reason = window.prompt("Причина отмены", "");
-    if (reason === null) return;
-    return doAction(`cancel-${id}`, () => apiClient.cancelProcurementRequest(id, reason), id, "Заявка отменена.");
-  };
-
-  const handleDelete = async (id: number) => {
-    if (!confirm("Удалить эту заявку? Доступно только для черновиков.")) return;
-    try {
-      setBusyKey(`delete-${id}`);
-      await apiClient.deleteProcurementRequest(id);
-      setRequests((p) => p.filter((r) => r.id !== id));
-    } catch (e: any) {
-      setActionError(String(e?.message || "Не удалось удалить"));
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  /* ══════════ form helpers ══════════ */
-
-  const addItemRow = () => setForm((f) => ({ ...f, items: [...f.items, { ...emptyItem }] }));
-  const removeItemRow = (idx: number) => setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
-  const updateItemRow = (idx: number, patch: Partial<ItemDraft>) =>
-    setForm((f) => ({ ...f, items: f.items.map((it, i) => (i === idx ? { ...it, ...patch } : it)) }));
-
-  /* ══════════ SearchableSelect ══════════ */
-
-  const SearchableSelectSingle = ({ label, items: selectItems, selectedId, onSelect, placeholder }: {
-    label: string;
-    items: { id: number; name: string }[];
-    selectedId: number | null;
-    onSelect: (id: number | null) => void;
-    placeholder?: string;
-  }) => {
-    const [open, setOpen] = useState(false);
-    const [q, setQ] = useState("");
-    const ref = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-      const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-      document.addEventListener("mousedown", handler);
-      return () => document.removeEventListener("mousedown", handler);
-    }, []);
-
-    const filtered = selectItems.filter((i) => i.name.toLowerCase().includes(q.toLowerCase()));
-    const selectedName = selectItems.find((i) => i.id === selectedId)?.name;
-
-    return (
-      <div ref={ref} className="relative">
-        <label className="mb-1 block text-xs font-medium text-gray-500">{label}</label>
-        <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-800">
-          <span className="truncate">{selectedName || <span className="text-gray-400">{placeholder || "Выбрать..."}</span>}</span>
-          <ChevronDown size={14} className={`ml-2 shrink-0 text-gray-400 transition ${open ? "rotate-180" : ""}`} />
-        </button>
-        {open && (
-          <div className="absolute z-50 mt-1 max-h-56 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
-            <div className="border-b border-gray-100 p-2">
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск..." className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm focus:border-sky-400 focus:outline-none" autoFocus />
-            </div>
-            <div className="max-h-40 overflow-y-auto p-1">
-              {selectedId && (
-                <button type="button" onClick={() => { onSelect(null); setOpen(false); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-400 hover:bg-gray-50">Сбросить</button>
-              )}
-              {filtered.length === 0 ? (
-                <p className="px-2 py-1.5 text-xs text-gray-400">Ничего не найдено</p>
-              ) : filtered.map((item) => (
-                <button key={item.id} type="button" onClick={() => { onSelect(item.id); setOpen(false); }} className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50 ${selectedId === item.id ? "bg-sky-50 text-sky-700 font-medium" : ""}`}>
-                  {item.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const activeFilterCount = [statusFilter, urgencyFilter, departmentFilter, periodFilter].filter(Boolean).length;
-  const isFinal = (s?: string) => ["completed", "rejected", "cancelled"].includes(String(s || "").toLowerCase());
+  const {
+    activeFilterCount,
+    activeSection,
+    actionError,
+    actionSuccess,
+    addItemRow,
+    busyKey,
+    canManage,
+    canSupplierManage,
+    closeModal,
+    departmentFilter,
+    departments,
+    detailsCache,
+    displayUserName,
+    error,
+    expandedIds,
+    filteredRequests,
+    filtersOpen,
+    form,
+    getDeptName,
+    getRequestAmount,
+    handleApprove,
+    handleCancel,
+    handleComplete,
+    handleDelete,
+    handleLoadMore,
+    handleReject,
+    handleSave,
+    handleStart,
+    handleSubmit,
+    isFinal,
+    isModalOpen,
+    loadPage1,
+    loading,
+    loadingMore,
+    modalMode,
+    nextPage,
+    openCreate,
+    openEdit,
+    ordering,
+    periodFilter,
+    removeItemRow,
+    resolveUserId,
+    searchQuery,
+    setActiveSection,
+    setDepartmentFilter,
+    setFiltersOpen,
+    setForm,
+    setOrdering,
+    setPeriodFilter,
+    setScope,
+    setSearchQuery,
+    setStatusFilter,
+    setUrgencyFilter,
+    statusFilter,
+    toggleExpand,
+    updateItemRow,
+    urgencyFilter,
+    userLink,
+    scope,
+  } = useProcurementPage(user);
 
   /* ══════════════════════════════════════════════════════
      RENDER

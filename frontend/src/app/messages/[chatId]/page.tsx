@@ -1,222 +1,35 @@
 "use client";
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
-import { MessageCircle, Send, ArrowLeft, Paperclip, X, FileText, ChevronRight, ChevronDown, Reply, Pencil, Trash2, Smile, Pin, Bell, BellOff } from "lucide-react";
+import { MessageCircle, ChevronDown } from "lucide-react";
 import { AppShell } from "../../../components/AppShell";
+import ChatDialogHeader from "@/components/messages/ChatDialogHeader";
+import ChatMediaPreviewModal from "@/components/messages/ChatMediaPreviewModal";
+import ChatMessageItem, { MediaPreview } from "@/components/messages/ChatMessageItem";
+import MessageActionsMenu from "@/components/messages/MessageActionsMenu";
+import MessageComposer from "@/components/messages/MessageComposer";
+import ReactionPickerModal from "@/components/messages/ReactionPickerModal";
 import { apiClient } from "@/lib/api";
-import type { Chat, Message, MessageAttachment } from "@/types/api";
+import type { Chat, Message } from "@/types/api";
 import { useUser } from "@/contexts/UserContext";
+import { useChatFallbackSync } from "@/hooks/useChatFallbackSync";
+import { useSilentChatReloadGuard } from "@/hooks/useSilentChatReloadGuard";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { uniqueMessagesById } from "@/lib/messages/chatUtils";
+import { formatDayDivider, getMessagePreviewText, getReplyToId } from "@/lib/messages/messageUtils";
+import wsManager from "@/lib/websocketManager";
 import ScrollableMessageList, { ScrollableMessageListInner } from "@/components/ScrollableMessageList";
-import { resolveMediaUrl } from "@/lib/url";
-
-function getUserFullName(lastName?: string, firstName?: string): string {
-  return `${lastName || ""} ${firstName || ""}`.trim();
-}
-
-function getInterlocutorFromParticipants(chat: Chat, currentUserId?: number) {
-  const participants = (chat.participants || []).filter(
-    (p): p is Exclude<typeof p, number> => typeof p === "object" && p !== null
-  );
-  return participants.find((p) => p.id !== currentUserId);
-}
-
-function getInterlocutorFromParticipantDetails(chat: Chat, currentUserId?: number) {
-  return (chat.participant_details || []).find((p) => p.id !== currentUserId);
-}
-
-function getChatTitle(chat: Chat, currentUserId?: number): string {
-  const chatKind = chat.chat_type || chat.type;
-  const rawName = (chat.name || "").trim();
-
-  if (chatKind === "direct" || chatKind === "private" || !rawName || rawName.toLowerCase() === "диалог") {
-    if (chat.interlocutor?.name?.trim()) {
-      return chat.interlocutor.name.trim();
-    }
-
-    const detailsOther = getInterlocutorFromParticipantDetails(chat, currentUserId);
-    if (detailsOther?.name?.trim()) {
-      return detailsOther.name.trim();
-    }
-
-    const other = getInterlocutorFromParticipants(chat, currentUserId);
-    if (other && typeof other === "object") {
-      const name = getUserFullName(other.last_name, other.first_name);
-      if (name) return name;
-      if (other.email) return other.email;
-    }
-  }
-
-  return rawName || "Диалог";
-}
-
-function getChatAvatar(chat: Chat, currentUserId?: number): string {
-  const chatKind = chat.chat_type || chat.type;
-  if (chatKind === "direct" || chatKind === "private" || (chat.name || "").trim().toLowerCase() === "диалог") {
-    if (chat.interlocutor?.avatar) return chat.interlocutor.avatar;
-
-    const detailsOther = getInterlocutorFromParticipantDetails(chat, currentUserId);
-    if (detailsOther?.avatar) return detailsOther.avatar;
-
-    const other = getInterlocutorFromParticipants(chat, currentUserId);
-    if (other?.avatar) return other.avatar;
-  }
-  return chat.avatar || "";
-}
-
-function getChatInitials(chat: Chat, currentUserId?: number): string {
-  const title = getChatTitle(chat, currentUserId);
-  return (
-    title
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((p) => p[0]?.toUpperCase() || "")
-      .join("") || "Ч"
-  );
-}
-
-function getMessageInitials(message: Message): string {
-  const name = (message.author_name || "").trim();
-  if (!name) return "С";
-  const parts = name.split(" ").filter(Boolean);
-  if (parts.length === 1) {
-    return parts[0].slice(0, 2).toUpperCase();
-  }
-  return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
-}
-
-function formatTime(date?: string): string {
-  if (!date) return "";
-  const d = new Date(date);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-}
-
-function getMessageDate(message: Message): Date | null {
-  if (message.created_at) {
-    const d = new Date(message.created_at);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-
-  if (message.created_ts) {
-    const d = new Date(message.created_ts);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-
-  return null;
-}
-
-function formatDayDivider(date: Date): string {
-  return date.toLocaleDateString("ru-RU", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
-}
-
-function messageTime(message: Message): string {
-  const d = getMessageDate(message);
-  if (!d) return "";
-
-  const now = new Date();
-  const isToday = d.toDateString() === now.toDateString();
-  if (isToday) {
-    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-  }
-
-  return d.toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function isSameDay(a: Date | null, b: Date | null): boolean {
-  if (!a || !b) return false;
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
-
-function formatFileSize(size?: number): string {
-  if (!size || size <= 0) return "";
-  const kb = size / 1024;
-  if (kb < 1024) return `${Math.round(kb)} КБ`;
-  const mb = kb / 1024;
-  return `${mb.toFixed(1)} МБ`;
-}
-
-function isImageAttachment(att: MessageAttachment): boolean {
-  const mime = (att.mime_type || "").toLowerCase();
-  const type = (att.file_type || "").toLowerCase();
-  const name = (att.file_name || "").toLowerCase();
-  const byExt = /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(name);
-  return mime.startsWith("image/") || type === "image" || byExt;
-}
-
-function isVideoAttachment(att: MessageAttachment): boolean {
-  const mime = (att.mime_type || "").toLowerCase();
-  const type = (att.file_type || "").toLowerCase();
-  const name = (att.file_name || "").toLowerCase();
-  const byExt = /\.(mp4|webm|mov|m4v|avi|mkv|3gp|mpeg|mpg)$/i.test(name);
-  return mime.startsWith("video/") || type === "video" || byExt;
-}
-
-function isAudioAttachment(att: MessageAttachment): boolean {
-  const mime = (att.mime_type || "").toLowerCase();
-  const type = (att.file_type || "").toLowerCase();
-  return mime.startsWith("audio/") || type === "audio";
-}
-
-function normalizePossiblyEncodedUrl(value: string): string {
-  const input = (value || "").trim();
-  if (!input) return "";
-
-  try {
-    // В API URL может приходить уже закодированным (%D0...).
-    // Декодируем один раз и кодируем обратно, чтобы избежать %25D0... (double-encoding).
-    return encodeURI(decodeURI(input));
-  } catch {
-    return encodeURI(input);
-  }
-}
-
-function uniqueMessagesById(items: Message[]): Message[] {
-  const map = new Map<number, Message>();
-  items.forEach((msg) => {
-    map.set(msg.id, msg);
-  });
-  return Array.from(map.values());
-}
-
-function getMessagePreviewText(message: Message): string {
-  if (message.content?.trim()) return message.content.trim();
-  if (message.attachments?.length) return "[Вложение]";
-  return "[Сообщение]";
-}
-
-function getReplyToId(message: Message): number | null {
-  if (typeof message.reply_to_id === "number") return message.reply_to_id;
-  if (typeof message.reply_to === "number") return message.reply_to;
-  if (message.reply_to && typeof message.reply_to === "object" && typeof message.reply_to.id === "number") {
-    return message.reply_to.id;
-  }
-  if (message.reply_to_message && typeof message.reply_to_message.id === "number") {
-    return message.reply_to_message.id;
-  }
-  return null;
-}
 
 type ReplyTarget = {
   id: number;
   author: string;
   preview: string;
+};
+
+type MessageActionsAnchor = {
+  x: number;
+  y: number;
 };
 
 const RECENT_REACTIONS_KEY = "eusrr_recent_reactions";
@@ -245,6 +58,7 @@ export default function MessageDialogPage() {
   const params = useParams<{ chatId: string }>();
   const chatId = Number(params.chatId);
   const { user, loading: userLoading } = useUser();
+  const { handleReconnectExhausted, resetReloadGuard } = useSilentChatReloadGuard(chatId || null);
 
   const [chat, setChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -263,7 +77,7 @@ export default function MessageDialogPage() {
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [brokenMedia, setBrokenMedia] = useState<Record<number, boolean>>({});
   const [useOriginalImage, setUseOriginalImage] = useState<Record<number, boolean>>({});
-  const [mediaPreview, setMediaPreview] = useState<{ type: "image" | "video"; src: string; name: string } | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<MediaPreview | null>(null);
   const [floatingDate, setFloatingDate] = useState<string | null>(null);
   const [showFloatingDate, setShowFloatingDate] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -285,6 +99,7 @@ export default function MessageDialogPage() {
   const anchorOlderLoadAttemptsRef = useRef(0);
   const [anchorRetryTick, setAnchorRetryTick] = useState(0);
   const hasMoreNewerRef = useRef(false);
+  const fallbackSyncInFlightRef = useRef(false);
   
   // Локальное состояние для настроек чата
   const [isPinned, setIsPinned] = useState(false);
@@ -335,10 +150,31 @@ export default function MessageDialogPage() {
   );
 
   // WebSocket для real-time обновлений
-  const { isConnected, sendTyping, handlers, reconnectAttempts } = useWebSocket({ 
+  const { isConnected, sendTyping, handlers } = useWebSocket({ 
     chatId: chatId || null,
-    autoConnect: true 
+    autoConnect: true,
+    onReconnectExhausted: handleReconnectExhausted,
   });
+
+  useEffect(() => {
+    if (!chatId || Number.isNaN(chatId)) {
+      return;
+    }
+
+    wsManager.setActiveChat(chatId);
+
+    return () => {
+      wsManager.clearActiveChat(chatId);
+    };
+  }, [chatId]);
+
+  useEffect(() => {
+    if (!isConnected) {
+      return;
+    }
+
+    resetReloadGuard();
+  }, [isConnected, resetReloadGuard]);
 
   // Проверка, находится ли пользователь внизу списка
   const isNearBottom = useCallback(() => {
@@ -359,6 +195,62 @@ export default function MessageDialogPage() {
     component.scrollToBottom(smooth ? 'smooth' : 'auto');
   }, []);
 
+  const syncLatestMessages = useCallback(async (
+    options: { limit?: number; scrollOnSync?: boolean } = {}
+  ) => {
+    if (
+      !chatId ||
+      Number.isNaN(chatId) ||
+      messagesLoading ||
+      messages.length === 0 ||
+      fallbackSyncInFlightRef.current
+    ) {
+      return;
+    }
+
+    const newestMessage = messages[messages.length - 1];
+    const shouldMarkRead = isNearBottom();
+
+    fallbackSyncInFlightRef.current = true;
+
+    try {
+      const response = await apiClient.getChatMessages(chatId, {
+        limit: options.limit ?? 20,
+        after_id: newestMessage.id,
+        mark_read: shouldMarkRead,
+      });
+
+      const newerMessages = response.messages || [];
+      if (newerMessages.length > 0) {
+        setMessages((prev) => uniqueMessagesById([...prev, ...newerMessages]));
+
+        if (shouldMarkRead) {
+          const lastLoadedMessage = newerMessages[newerMessages.length - 1];
+          setChat((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  last_read_message_id: Math.max(prev.last_read_message_id ?? 0, lastLoadedMessage.id),
+                }
+              : prev
+          );
+        }
+
+        if (shouldMarkRead && options.scrollOnSync) {
+          requestAnimationFrame(() => {
+            scrollToBottom(false);
+          });
+        }
+      }
+
+      setHasMoreNewer(Boolean(response.has_more));
+    } catch (e) {
+      console.error("Ошибка тихой синхронизации сообщений:", e);
+    } finally {
+      fallbackSyncInFlightRef.current = false;
+    }
+  }, [chatId, isNearBottom, messages, messagesLoading, scrollToBottom]);
+
   // Обновление reactions_summary для конкретного сообщения
   const updateMessageReactionsSummary = useCallback((
     messageId: number,
@@ -373,6 +265,10 @@ export default function MessageDialogPage() {
     handlers.current.onMessage = (data) => {
       if (data.type === 'new_message') {
         // Новое сообщение
+        if (!data.message) {
+          return;
+        }
+
         const newMsg = data.message;
         const isMyMessage = newMsg.author_id === user?.id;
         const wasNearBottom = isNearBottom();
@@ -434,6 +330,10 @@ export default function MessageDialogPage() {
       } 
       else if (data.type === 'message_edited') {
         // Редактирование сообщения
+        if (!data.message) {
+          return;
+        }
+
         const editedMsg = data.message;
         setMessages(prev => prev.map(m => 
           m.id === editedMsg.id ? { ...m, ...editedMsg } : m
@@ -468,20 +368,35 @@ export default function MessageDialogPage() {
       }
       else if (data.type === 'reaction_added') {
         // Реакция добавлена
-        if (data.reactions_summary && data.message_id) {
+        if (data.reactions_summary && typeof data.message_id === 'number') {
           updateMessageReactionsSummary(data.message_id, data.reactions_summary);
         }
       }
       else if (data.type === 'reaction_removed') {
         // Реакция удалена
-        if (data.reactions_summary && data.message_id) {
+        if (data.reactions_summary && typeof data.message_id === 'number') {
           updateMessageReactionsSummary(data.message_id, data.reactions_summary);
         }
+      }
+      else if (data.type === 'marked_read' && data.chat_id === chatId && typeof data.last_read_message_id === 'number') {
+        const lastReadMessageId = data.last_read_message_id;
+
+        setChat((prev) =>
+          prev
+            ? {
+                ...prev,
+                last_read_message_id: Math.max(prev.last_read_message_id ?? 0, lastReadMessageId),
+              }
+            : prev
+        );
       }
     };
 
     handlers.current.onConnect = () => {
-      // WebSocket подключен
+      void syncLatestMessages({
+        limit: 30,
+        scrollOnSync: isNearBottom(),
+      });
     };
 
     handlers.current.onDisconnect = () => {
@@ -491,7 +406,7 @@ export default function MessageDialogPage() {
     handlers.current.onError = (error) => {
       console.error('❌ WebSocket error:', error);
     };
-  }, [user?.id, chatId, isNearBottom, scrollToBottom, updateMessageReactionsSummary]);
+  }, [handlers, user?.id, chatId, isNearBottom, scrollToBottom, syncLatestMessages, updateMessageReactionsSummary]);
 
   // Очистка таймаута при размонтировании
   useEffect(() => {
@@ -594,7 +509,7 @@ export default function MessageDialogPage() {
         setError(null);
         const loadedChat = await apiClient.getChat(chatId);
         setChat(loadedChat);
-      } catch (e: any) {
+      } catch {
         setChat(null);
         setError("Не удалось загрузить чат. Проверьте подключение и попробуйте снова.");
       } finally {
@@ -603,7 +518,7 @@ export default function MessageDialogPage() {
     }
 
     loadChats();
-  }, [chatId, userLoading, user?.id]);
+  }, [chatId, userLoading, user, user?.id]);
 
   useEffect(() => {
     async function loadMessages() {
@@ -666,12 +581,13 @@ export default function MessageDialogPage() {
         anchorScrollAttemptsRef.current = 0;
         anchorOlderLoadAttemptsRef.current = 0;
         setAnchorRetryTick(0);
-      } catch (e: any) {
-        if (String(e?.message || "").includes("403")) {
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (errorMessage.includes("403")) {
           setError("Нет доступа к этому чату");
           setMessages([]);
         } else {
-          console.error("Ошибка загрузки сообщений:", e);
+          console.error("Ошибка загрузки сообщений:", error);
         }
         setHasMoreOlder(false);
         setHasMoreNewer(false);
@@ -688,7 +604,7 @@ export default function MessageDialogPage() {
     }
 
     loadMessages();
-  }, [chatId, userLoading, user?.id]);
+  }, [chatId, userLoading, user, user?.id]);
 
   // Скролл к якорю или вниз после загрузки сообщений
   // Anchor scroll используется при переходе по прямой ссылке на сообщение (например, из уведомления)
@@ -761,7 +677,7 @@ export default function MessageDialogPage() {
   // ScrollableMessageList уже корректирует позицию автоматически через getSnapshotBeforeUpdate
   // Дублирующая корректировка вызывала "подергивание" при загрузке старых сообщений
 
-  const loadOlderMessages = async () => {
+  const loadOlderMessages = useCallback(async () => {
     if (!chatId || Number.isNaN(chatId) || loadingOlder || messagesLoading || messages.length === 0) {
       return;
     }
@@ -795,25 +711,39 @@ export default function MessageDialogPage() {
     } finally {
       setLoadingOlder(false);
     }
-  };
+  }, [allowOneOlderProbe, chatId, hasMoreOlder, loadingOlder, messages, messagesLoading]);
 
-  const loadNewerMessages = async () => {
+  const loadNewerMessages = useCallback(async () => {
     if (!chatId || Number.isNaN(chatId) || loadingNewer || messagesLoading || !hasMoreNewer || messages.length === 0) {
       return;
     }
 
     const newestMessage = messages[messages.length - 1];
+    const shouldMarkRead = isNearBottom();
 
     try {
       setLoadingNewer(true);
       const response = await apiClient.getChatMessages(chatId, {
         limit: 10,  // Ограничено для минимальной погрешности автоотметки (было 40)
         after_id: newestMessage.id,
+        mark_read: shouldMarkRead,
       });
 
       const newerMessages = response.messages || [];
       if (newerMessages.length > 0) {
         setMessages((prev) => uniqueMessagesById([...prev, ...newerMessages]));
+
+        if (shouldMarkRead) {
+          const lastLoadedMessage = newerMessages[newerMessages.length - 1];
+          setChat((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  last_read_message_id: Math.max(prev.last_read_message_id ?? 0, lastLoadedMessage.id),
+                }
+              : prev
+          );
+        }
         
         // НЕ делаем автоскролл - ScrollableMessageList сам решит:
         // - Если был внизу (sticky) → автоматически проскроллит вниз
@@ -827,7 +757,18 @@ export default function MessageDialogPage() {
     } finally {
       setLoadingNewer(false);
     }
-  };
+  }, [chatId, hasMoreNewer, isNearBottom, loadingNewer, messages, messagesLoading]);
+
+  useChatFallbackSync({
+    chatId: chatId || null,
+    isConnected,
+    userLoading,
+    hasUser: Boolean(user),
+    messagesLoading,
+    hasMessages: messages.length > 0,
+    isNearBottom,
+    syncLatestMessages,
+  });
 
   useEffect(() => {
     const component = messagesViewportRef.current;
@@ -884,7 +825,7 @@ export default function MessageDialogPage() {
 
     viewport.addEventListener("scroll", onScroll, { passive: true });
     return () => viewport.removeEventListener("scroll", onScroll);
-  }, [chatId, hasMoreOlder, hasMoreNewer, loadingOlder, loadingNewer, messagesLoading, messages]);
+  }, [chatId, hasMoreOlder, hasMoreNewer, isNearBottom, loadNewerMessages, loadOlderMessages, loadingOlder, loadingNewer, messagesLoading, messages]);
 
   const handleSend = async () => {
     const text = messageText.trim();
@@ -1026,6 +967,33 @@ export default function MessageDialogPage() {
     }
   };
 
+  const handleToggleMessageActions = useCallback((messageId: number, anchor: MessageActionsAnchor) => {
+    setExpandedReplyActionForId((prev) => {
+      if (prev === messageId) {
+        setActionsMenuAnchor(null);
+        return null;
+      }
+
+      setReactionPickerForMessageId(null);
+      setShowComposerEmojiPicker(false);
+      setActionsMenuAnchor(anchor);
+      return messageId;
+    });
+  }, []);
+
+  const handleAttachmentLoad = useCallback((attachmentId: number) => {
+    setBrokenMedia((prev) => ({ ...prev, [attachmentId]: false }));
+    messagesViewportRef.current?.updateScrollPosition();
+  }, []);
+
+  const handleAttachmentError = useCallback((attachmentId: number) => {
+    setBrokenMedia((prev) => ({ ...prev, [attachmentId]: true }));
+  }, []);
+
+  const handleUseOriginalImage = useCallback((attachmentId: number) => {
+    setUseOriginalImage((prev) => ({ ...prev, [attachmentId]: true }));
+  }, []);
+
   const handleTogglePin = async () => {
     if (!chatId) return;
     
@@ -1152,91 +1120,18 @@ export default function MessageDialogPage() {
         </div>
       ) : (
         <div className="min-h-0 h-full lg:sticky lg:top-22 lg:h-[calc(100dvh-7.5rem)]">
-        {/* Предупреждение о WebSocket */}
-        {!isConnected && reconnectAttempts > 2 && (
-          <div className="mb-4 rounded-2xl bg-amber-50 border border-amber-200 p-4 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-amber-900">⚠️ Real-time обновления отключены</p>
-                <p className="mt-1 text-xs text-amber-800">
-                  Backend не поддерживает WebSocket. Запустите через Daphne:
-                </p>
-                <code className="mt-2 block rounded bg-amber-100 px-2 py-1 text-xs text-amber-900">
-                  cd backend && ..\\.venv\\Scripts\\daphne -p 9000 eusrr_backend.asgi:application
-                </code>
-              </div>
-              <button
-                onClick={() => window.location.reload()}
-                className="text-xs text-amber-700 hover:text-amber-900 underline"
-              >
-                Обновить
-              </button>
-            </div>
-          </div>
-        )}
-        
         <section className="flex h-full min-h-0 flex-col overflow-hidden lg:bg-white lg:rounded-2xl lg:p-5 lg:shadow-sm lg:ring-1 lg:ring-gray-100">
           {chat ? (
             <>
-              <header className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-100 pb-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white">
-                    {getChatAvatar(chat, user?.id) ? (
-                      <img src={resolveMediaUrl(getChatAvatar(chat, user?.id))} alt={getChatTitle(chat, user?.id)} className="h-full w-full object-cover" />
-                    ) : (
-                      getChatInitials(chat, user?.id)
-                    )}
-                  </div>
-                  <Link href={`/messages/${chatId}/settings`} className="hover:opacity-80 transition">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">{getChatTitle(chat, user?.id)}</p>
-                    </div>
-                    <p className="text-xs text-gray-500">{(chat.type || chat.chat_type) === "group" ? "Групповой чат" : "Диалог"}</p>
-                  </Link>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {/* Кнопка закрепления чата */}
-                  <button
-                    type="button"
-                    onClick={handleTogglePin}
-                    className={`flex h-10 w-10 items-center justify-center rounded-full border transition ${
-                      isPinned
-                        ? "border-sky-500 bg-sky-50 text-sky-700 hover:bg-sky-100"
-                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-sky-700"
-                    }`}
-                    title={isPinned ? "Открепить чат" : "Закрепить чат"}
-                    aria-label={isPinned ? "Открепить чат" : "Закрепить чат"}
-                  >
-                    <Pin size={16} className={isPinned ? "fill-current" : ""} />
-                  </button>
-                  
-                  {/* Кнопка управления уведомлениями */}
-                  <button
-                    type="button"
-                    onClick={handleToggleNotifications}
-                    className={`flex h-10 w-10 items-center justify-center rounded-full border transition ${
-                      notificationsEnabled
-                        ? "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-sky-700"
-                        : "border-amber-500 bg-amber-50 text-amber-700 hover:bg-amber-100"
-                    }`}
-                    title={notificationsEnabled ? "Отключить уведомления" : "Включить уведомления"}
-                    aria-label={notificationsEnabled ? "Отключить уведомления" : "Включить уведомления"}
-                  >
-                    {notificationsEnabled ? <Bell size={16} /> : <BellOff size={16} />}
-                  </button>
-                  
-                  {/* Кнопка возврата к списку */}
-                  <Link
-                    href="/messages"
-                    aria-label="К списку чатов"
-                    title="К списку чатов"
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 hover:text-sky-700"
-                  >
-                    <ArrowLeft size={16} />
-                  </Link>
-                </div>
-              </header>
+              <ChatDialogHeader
+                chat={chat}
+                chatId={chatId}
+                currentUserId={user?.id}
+                isPinned={isPinned}
+                notificationsEnabled={notificationsEnabled}
+                onTogglePin={handleTogglePin}
+                onToggleNotifications={handleToggleNotifications}
+              />
 
               <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
                 {/* Плавающая дата */}
@@ -1266,269 +1161,29 @@ export default function MessageDialogPage() {
                       {loadingOlder ? (
                         <p className="mb-3 text-center text-xs text-gray-500">Подгружаем старые сообщения...</p>
                       ) : null}
-                      {messages.map((message, index) => {
-                        const currentDate = getMessageDate(message);
-                        const prevDate = index > 0 ? getMessageDate(messages[index - 1]) : null;
-                        const showDayDivider = index === 0 || !isSameDay(currentDate, prevDate);
+                      {messages.map((message) => {
                         const replyToId = getReplyToId(message);
                         const repliedMessage = replyToId ? messagesById.get(replyToId) : null;
-                        const isReplyMenuOpen = expandedReplyActionForId === message.id;
-
-                        const isMine =
-                          user?.id &&
-                          (message.author_id === user.id || message.author?.id === user.id || message.sender?.id === user.id);
-                        const canManage = canManageMessage(message);
-                        const canReply = !message.is_deleted;
-                        const hasActions = canReply || canManage;
 
                         return (
-                          <React.Fragment key={message.id}>
-                          <div data-message-id={message.id} data-message-date={currentDate?.toISOString() || ''} className="mb-3 last:mb-0">
-                            <div className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-                              {!isMine ? (
-                                <div className="relative mr-2 mt-1 h-8 w-8 shrink-0">
-                                  <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-[10px] font-semibold text-white">
-                                    {message.avatar || message.author?.avatar ? (
-                                      <img
-                                        src={resolveMediaUrl(message.avatar || message.author?.avatar || "")}
-                                        alt={message.author_name || "Автор"}
-                                        className="h-full w-full object-cover"
-                                      />
-                                    ) : (
-                                      getMessageInitials(message)
-                                    )}
-                                  </div>
-                                </div>
-                              ) : null}
-
-                              <div
-                                className={`flex min-w-0 items-start gap-1 ${
-                                  isMine ? "max-w-[88%] flex-row-reverse" : "max-w-[calc(100%-2.5rem)]"
-                                }`}
-                              >
-                                <div
-                                  className={`relative min-w-0 rounded-2xl px-3 py-2 pr-9 ${
-                                    isMine ? "bg-sky-500 text-white" : "bg-white text-gray-900 ring-1 ring-gray-100"
-                                  }`}
-                                >
-                                  {hasActions ? (
-                                    <div className="absolute right-1 top-1 z-20">
-                                      <button
-                                        type="button"
-                                        data-actions-trigger="true"
-                                        onClick={(e) => {
-                                          const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                                          setExpandedReplyActionForId((prev) => {
-                                            if (prev === message.id) {
-                                              setActionsMenuAnchor(null);
-                                              return null;
-                                            }
-
-                                            setReactionPickerForMessageId(null);
-                                            setShowComposerEmojiPicker(false);
-                                            setActionsMenuAnchor({ x: rect.right, y: rect.top });
-                                            return message.id;
-                                          });
-                                        }}
-                                        className={`inline-flex h-6 w-6 items-center justify-center rounded-full border border-transparent bg-transparent text-gray-500 transition hover:text-sky-600 ${
-                                          isReplyMenuOpen ? "rotate-90" : ""
-                                        }`}
-                                        title="Действия"
-                                        aria-label="Действия сообщения"
-                                      >
-                                        <ChevronRight size={14} />
-                                      </button>
-                                    </div>
-                                  ) : null}
-
-                                  {!isMine ? (
-                                    <p className="mb-1 text-[11px] font-medium text-gray-500">
-                                      {message.author_name || message.author?.last_name || message.sender?.last_name || "Сотрудник"}
-                                    </p>
-                                  ) : null}
-
-                                  {replyToId ? (
-                                    <div
-                                      className={`mb-2 rounded-lg border-l-2 px-2 py-1 text-xs ${
-                                        isMine
-                                          ? "border-sky-200 bg-sky-400/30 text-sky-50"
-                                          : "border-gray-300 bg-gray-100 text-gray-600"
-                                      }`}
-                                    >
-                                      <p className="font-medium">{repliedMessage?.author_name || "Ответ на сообщение"}</p>
-                                      <p className="truncate">{repliedMessage ? getMessagePreviewText(repliedMessage) : `Сообщение #${replyToId}`}</p>
-                                    </div>
-                                  ) : null}
-
-                                  {message.is_deleted ? (
-                                    <p className={`italic text-sm ${isMine ? "text-sky-100" : "text-gray-500"}`}>Сообщение удалено</p>
-                                  ) : message.content ? (
-                                    <p className="whitespace-pre-wrap break-words text-sm leading-5">{message.content}</p>
-                                  ) : null}
-
-                                  {message.attachments && message.attachments.length > 0 ? (
-                                    <div className="mt-2 space-y-2">
-                                      {message.attachments.map((att) => (
-                                        <div key={att.id}>
-                                          {isImageAttachment(att) ? (
-                                            brokenMedia[att.id] ? (
-                                              <a
-                                                href={resolveMediaUrl(att.file_url)}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
-                                              >
-                                                <FileText size={16} className="shrink-0" />
-                                                <span className="min-w-0 flex-1 truncate">Предпросмотр недоступен — открыть файл</span>
-                                              </a>
-                                            ) : (
-                                              <button
-                                                type="button"
-                                                onClick={() => setMediaPreview({ type: "image", src: resolveMediaUrl(att.file_url), name: att.file_name })}
-                                                className="block w-full overflow-hidden rounded-lg"
-                                              >
-                                                {(() => {
-                                                  const hasThumbnail = Boolean(att.thumbnail);
-                                                  const src = useOriginalImage[att.id]
-                                                    ? resolveMediaUrl(att.file_url)
-                                                    : resolveMediaUrl(att.thumbnail || att.file_url);
-
-                                                  return (
-                                                <img
-                                                  src={src}
-                                                  alt={att.file_name}
-                                                  width={att.width || undefined}
-                                                  height={att.height || undefined}
-                                                  className="max-h-64 w-full rounded-lg object-cover"
-                                                  onError={() => {
-                                                    if (hasThumbnail && !useOriginalImage[att.id]) {
-                                                      setUseOriginalImage((prev) => ({ ...prev, [att.id]: true }));
-                                                      return;
-                                                    }
-                                                    setBrokenMedia((prev) => ({ ...prev, [att.id]: true }));
-                                                  }}
-                                                  onLoad={() => {
-                                                    setBrokenMedia((prev) => ({ ...prev, [att.id]: false }));
-                                                    // Корректируем позицию скролла после загрузки изображения
-                                                    messagesViewportRef.current?.updateScrollPosition();
-                                                  }}
-                                                />
-                                                  );
-                                                })()}
-                                              </button>
-                                            )
-                                          ) : isVideoAttachment(att) ? (
-                                            brokenMedia[att.id] ? (
-                                              <a
-                                                href={resolveMediaUrl(att.file_url)}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
-                                              >
-                                                <FileText size={16} className="shrink-0" />
-                                                <span className="min-w-0 flex-1 truncate">
-                                                  Видео не поддерживается в браузере — открыть файл
-                                                </span>
-                                              </a>
-                                            ) : (
-                                              <button
-                                                type="button"
-                                                onClick={() => setMediaPreview({ type: "video", src: resolveMediaUrl(att.file_url), name: att.file_name })}
-                                                className="block w-full overflow-hidden rounded-lg"
-                                              >
-                                                <video
-                                                  preload="metadata"
-                                                  playsInline
-                                                  muted
-                                                  src={resolveMediaUrl(att.file_url)}
-                                                  width={att.width || undefined}
-                                                  height={att.height || undefined}
-                                                  className="max-h-64 w-full rounded-lg bg-black"
-                                                  onError={() => setBrokenMedia((prev) => ({ ...prev, [att.id]: true }))}
-                                                  onLoadedData={() => {
-                                                    setBrokenMedia((prev) => ({ ...prev, [att.id]: false }));
-                                                    // Корректируем позицию скролла после загрузки видео
-                                                    messagesViewportRef.current?.updateScrollPosition();
-                                                  }}
-                                                />
-                                              </button>
-                                            )
-                                          ) : isAudioAttachment(att) ? (
-                                            brokenMedia[att.id] ? (
-                                              <a
-                                                href={resolveMediaUrl(att.file_url)}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
-                                              >
-                                                <FileText size={16} className="shrink-0" />
-                                                <span className="min-w-0 flex-1 truncate">Аудио не поддерживается — открыть файл</span>
-                                              </a>
-                                            ) : (
-                                              <audio
-                                                controls
-                                                preload="metadata"
-                                                className="w-full"
-                                                onError={() => setBrokenMedia((prev) => ({ ...prev, [att.id]: true }))}
-                                                onCanPlay={() => {
-                                                  setBrokenMedia((prev) => ({ ...prev, [att.id]: false }));
-                                                  // Корректируем позицию скролла после загрузки аудио
-                                                  messagesViewportRef.current?.updateScrollPosition();
-                                                }}
-                                              >
-                                                <source src={resolveMediaUrl(att.file_url)} type={att.mime_type || "audio/mpeg"} />
-                                              </audio>
-                                            )
-                                          ) : (
-                                            <a
-                                              href={resolveMediaUrl(att.file_url)}
-                                              target="_blank"
-                                              rel="noreferrer"
-                                              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-sm text-sky-700 hover:bg-white"
-                                            >
-                                              <FileText size={16} className="shrink-0" />
-                                              <span className="min-w-0 flex-1 truncate">{att.file_name}</span>
-                                              <span className="shrink-0 text-xs text-gray-500">{formatFileSize(att.file_size)}</span>
-                                            </a>
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : null}
-
-                                  <p className={`mt-1 text-right text-[11px] ${isMine ? "text-sky-100" : "text-gray-400"}`}>
-                                    {messageTime(message)}
-                                  </p>
-
-                                  {Object.keys(message.reactions_summary || {}).length > 0 ? (
-                                    <div className="mt-2 flex flex-wrap gap-1">
-                                      {Object.entries(message.reactions_summary || {}).map(([emoji, meta]) => {
-                                        const mine = hasMyReaction(message, emoji);
-                                        return (
-                                          <button
-                                            key={`${message.id}-${emoji}`}
-                                            type="button"
-                                            onClick={() => handleReact(message, emoji)}
-                                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition ${
-                                              mine
-                                                ? "bg-sky-100 text-sky-700 ring-1 ring-sky-300"
-                                                : "bg-white/80 text-gray-700 ring-1 ring-gray-200 hover:bg-white"
-                                            }`}
-                                            title="Реакция"
-                                          >
-                                            <span>{emoji}</span>
-                                            <span>{meta.count}</span>
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                  ) : null}
-                                </div>
-
-                              </div>
-                            </div>
-                          </div>
-                          </React.Fragment>
+                          <ChatMessageItem
+                            key={message.id}
+                            message={message}
+                            currentUserId={user?.id}
+                            repliedMessage={repliedMessage}
+                            isActionsOpen={expandedReplyActionForId === message.id}
+                            canManage={canManageMessage(message)}
+                            canReply={!message.is_deleted}
+                            brokenMedia={brokenMedia}
+                            useOriginalImage={useOriginalImage}
+                            onToggleActions={handleToggleMessageActions}
+                            onOpenMediaPreview={setMediaPreview}
+                            onAttachmentLoad={handleAttachmentLoad}
+                            onAttachmentError={handleAttachmentError}
+                            onUseOriginalImage={handleUseOriginalImage}
+                            onReact={handleReact}
+                            hasMyReaction={hasMyReaction}
+                          />
                         );
                       })}
                     </div>
@@ -1556,7 +1211,6 @@ export default function MessageDialogPage() {
                 )}
 
                 <div className="shrink-0 border-t border-gray-100 bg-white pt-3">
-                  {/* Индикатор "печатает..." */}
                   {isTyping && (
                     <div className="mb-2 flex items-center gap-2 text-xs text-gray-500 italic">
                       <div className="flex gap-1">
@@ -1568,155 +1222,38 @@ export default function MessageDialogPage() {
                     </div>
                   )}
 
-                  {editingMessageId ? (
-                    <div className="mb-2 flex items-start justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                      <div className="min-w-0">
-                        <p className="font-semibold">Режим редактирования</p>
-                        <p className="truncate">Измените текст сообщения и отправьте</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleCancelEdit}
-                        className="rounded-full p-0.5 text-amber-700 hover:bg-amber-100"
-                        aria-label="Отменить редактирование"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ) : null}
-
-                  {replyTo ? (
-                    <div className="mb-2 flex items-start justify-between gap-2 rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-                      <div className="min-w-0">
-                        <p className="font-semibold">Ответ: {replyTo.author}</p>
-                        <p className="truncate">{replyTo.preview}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setReplyTo(null)}
-                        className="rounded-full p-0.5 text-sky-700 hover:bg-sky-100"
-                        aria-label="Отменить ответ"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ) : null}
-
-                  {attachedFiles.length > 0 ? (
-                    <div className="mb-2 flex flex-wrap gap-2">
-                      {attachedFiles.map((file, index) => (
-                        <span
-                          key={`${file.name}-${file.size}-${index}`}
-                          className="inline-flex max-w-full items-center gap-1 rounded-full bg-sky-50 px-3 py-1 text-xs text-sky-700 ring-1 ring-sky-100"
-                        >
-                          <span className="truncate max-w-[180px]">{file.name}</span>
-                          <button
-                            type="button"
-                            onClick={() => removeAttachedFile(index)}
-                            className="rounded-full p-0.5 hover:bg-sky-100"
-                            aria-label="Удалить файл"
-                          >
-                            <X size={12} />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  {canSendMessages ? (
-                    <div className="flex items-start gap-2">
-                      <input
-                        ref={fileInputRef}
-                        multiple
-                        type="file"
-                        className="hidden"
-                        onChange={handleFilesChange}
-                      />
-                      <button
-                        type="button"
-                        onClick={handlePickFiles}
-                        disabled={Boolean(editingMessageId)}
-                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 leading-none transition hover:bg-gray-50 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
-                        title={editingMessageId ? "При редактировании вложения недоступны" : "Добавить файлы"}
-                      >
-                        <Paperclip size={15} />
-                      </button>
-
-                      <div className="relative w-full" data-composer-emoji="true">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowComposerEmojiPicker((prev) => !prev);
-                            setExpandedReplyActionForId(null);
-                            setActionsMenuAnchor(null);
-                            setReactionPickerForMessageId(null);
-                          }}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 z-10 inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-sky-600"
-                          title="Смайлы"
-                        >
-                          <Smile size={14} />
-                        </button>
-
-                        {showComposerEmojiPicker ? (
-                          <div className="absolute bottom-full right-0 z-20 mb-2 w-[260px] rounded-lg border border-gray-200 bg-white p-2 shadow-xl">
-                            <div className="grid max-h-48 grid-cols-8 gap-1 overflow-y-auto">
-                              {ALL_REACTIONS.map((emoji) => (
-                                <button
-                                  key={`composer-${emoji}`}
-                                  type="button"
-                                  onClick={() => {
-                                    appendEmojiToComposer(emoji);
-                                    setShowComposerEmojiPicker(false);
-                                  }}
-                                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-base hover:bg-sky-50"
-                                >
-                                  {emoji}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-
-                        <textarea
-                          ref={messageInputRef}
-                          value={messageText}
-                          onChange={(e) => {
-                            setMessageText(e.target.value);
-                            // Отправляем индикатор "печатает..."
-                            sendTyping();
-                          }}
-                          onClick={() => setShowComposerEmojiPicker(false)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault();
-                              handleSend();
-                            }
-                          }}
-                          rows={1}
-                          placeholder={editingMessageId ? "Редактируйте сообщение..." : "Введите сообщение..."}
-                          className="w-full resize-none rounded-lg border border-gray-200 bg-white h-9 px-3 py-2 pr-10 text-sm text-gray-900 outline-none ring-0 transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleSend}
-                        disabled={sending || (editingMessageId ? !messageText.trim() : (!messageText.trim() && attachedFiles.length === 0))}
-                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-500 text-white leading-none transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-                        title={editingMessageId ? "Сохранить" : "Отправить"}
-                      >
-                        <Send size={15} />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-800">
-                      <p className="font-medium">У вас нет прав на отправку сообщений</p>
-                      <p className="mt-1 text-xs text-amber-700">
-                        {myMembership?.role === 'guest' 
-                          ? 'Гости могут только просматривать сообщения и отправлять реакции' 
-                          : 'Обратитесь к администратору чата для получения прав'}
-                      </p>
-                    </div>
-                  )}
+                  <MessageComposer
+                    canSendMessages={canSendMessages}
+                    membershipRole={myMembership?.role}
+                    editingMessageId={editingMessageId}
+                    replyTo={replyTo}
+                    attachedFiles={attachedFiles}
+                    messageText={messageText}
+                    sending={sending}
+                    showEmojiPicker={showComposerEmojiPicker}
+                    allReactions={ALL_REACTIONS}
+                    fileInputRef={fileInputRef}
+                    messageInputRef={messageInputRef}
+                    onPickFiles={handlePickFiles}
+                    onFilesChange={handleFilesChange}
+                    onRemoveFile={removeAttachedFile}
+                    onToggleEmojiPicker={() => {
+                      setShowComposerEmojiPicker((prev) => !prev);
+                      setExpandedReplyActionForId(null);
+                      setActionsMenuAnchor(null);
+                      setReactionPickerForMessageId(null);
+                    }}
+                    onSelectEmoji={(emoji) => {
+                      appendEmojiToComposer(emoji);
+                      setShowComposerEmojiPicker(false);
+                    }}
+                    onInputClick={() => setShowComposerEmojiPicker(false)}
+                    onChangeMessage={setMessageText}
+                    onTyping={sendTyping}
+                    onSend={handleSend}
+                    onCancelEdit={handleCancelEdit}
+                    onCancelReply={() => setReplyTo(null)}
+                  />
                 </div>
               </div>
             </>
@@ -1732,139 +1269,41 @@ export default function MessageDialogPage() {
         </div>
       )}
 
-      {mediaPreview ? (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
-          onClick={() => setMediaPreview(null)}
-        >
-          <button
-            type="button"
-            onClick={() => setMediaPreview(null)}
-            className="absolute right-4 top-4 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
-            aria-label="Закрыть предпросмотр"
-          >
-            <X size={18} />
-          </button>
-
-          <div className="max-h-full max-w-[92vw]" onClick={(e) => e.stopPropagation()}>
-            {mediaPreview.type === "image" ? (
-              <img src={mediaPreview.src} alt={mediaPreview.name} className="max-h-[88vh] max-w-[92vw] rounded-lg object-contain" />
-            ) : (
-              <video controls autoPlay className="max-h-[88vh] max-w-[92vw] rounded-lg bg-black" src={mediaPreview.src} />
-            )}
-          </div>
-        </div>
-      ) : null}
+      {mediaPreview ? <ChatMediaPreviewModal preview={mediaPreview} onClose={() => setMediaPreview(null)} /> : null}
 
       {expandedReplyActionForId && actionsMenuAnchor && selectedActionMessage ? (
-        <div
-          data-actions-menu="true"
-          className="fixed z-[60] flex min-w-[176px] flex-col gap-1 rounded-lg border border-gray-200 bg-white p-1 shadow-xl"
-          style={{
-            left: actionsMenuAnchor.x,
-            top: actionsMenuAnchor.y - 6,
-            transform: "translate(-100%, -100%)",
+        <MessageActionsMenu
+          anchor={actionsMenuAnchor}
+          message={selectedActionMessage}
+          canReply={selectedActionCanReply}
+          canManage={selectedActionCanManage}
+          recentReactions={selectedActionRecentReactions}
+          onQuickReact={(emoji) => {
+            handleReact(selectedActionMessage, emoji);
+            setExpandedReplyActionForId(null);
+            setActionsMenuAnchor(null);
           }}
-        >
-          {selectedActionCanReply ? (
-            <div className="mb-1 flex items-center gap-1 rounded-md bg-gray-50 p-1">
-              {selectedActionRecentReactions.map((emoji) => (
-                <button
-                  key={`recent-${emoji}`}
-                  type="button"
-                  onClick={() => {
-                    handleReact(selectedActionMessage, emoji);
-                    setExpandedReplyActionForId(null);
-                    setActionsMenuAnchor(null);
-                  }}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white text-base hover:bg-sky-50"
-                  title="Быстрая реакция"
-                >
-                  {emoji}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setReactionPickerForMessageId(selectedActionMessage.id)}
-                className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-white text-gray-600 hover:bg-sky-50 hover:text-sky-700"
-                title="Все смайлы"
-              >
-                <Smile size={14} />
-              </button>
-            </div>
-          ) : null}
-
-          {selectedActionCanReply ? (
-            <button
-              type="button"
-              onClick={() => handleReplyToMessage(selectedActionMessage)}
-              className="inline-flex w-full items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-700 hover:bg-sky-100"
-            >
-              <Reply size={12} />
-              Ответить
-            </button>
-          ) : null}
-
-          {selectedActionCanManage ? (
-            <>
-              <button
-                type="button"
-                onClick={() => handleStartEditMessage(selectedActionMessage)}
-                className="inline-flex w-full items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
-              >
-                <Pencil size={12} />
-                Редактировать
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleDeleteMessage(selectedActionMessage)}
-                className="inline-flex w-full items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
-              >
-                <Trash2 size={12} />
-                Удалить
-              </button>
-            </>
-          ) : null}
-        </div>
+          onOpenReactionPicker={() => setReactionPickerForMessageId(selectedActionMessage.id)}
+          onReply={() => handleReplyToMessage(selectedActionMessage)}
+          onEdit={() => handleStartEditMessage(selectedActionMessage)}
+          onDelete={() => handleDeleteMessage(selectedActionMessage)}
+        />
       ) : null}
 
       {reactionPickerForMessageId ? (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-2 sm:p-4" data-reaction-picker="true">
-          <div className="w-full max-w-[95vw] sm:max-w-md rounded-xl sm:rounded-2xl bg-white p-4 sm:p-6 shadow-xl">
-            <div className="mb-3 sm:mb-4 flex items-center justify-between">
-              <h3 className="text-base sm:text-lg font-semibold text-gray-900">Выберите реакцию</h3>
-              <button
-                type="button"
-                onClick={() => setReactionPickerForMessageId(null)}
-                className="rounded-full p-1 hover:bg-gray-100"
-                aria-label="Закрыть"
-              >
-                <X size={18} className="text-gray-600 sm:w-5 sm:h-5" />
-              </button>
-            </div>
-            <div className="grid max-h-[60vh] sm:max-h-[55vh] grid-cols-6 sm:grid-cols-8 gap-1.5 sm:gap-2 overflow-y-auto">
-              {ALL_REACTIONS.map((emoji) => (
-                <button
-                  key={`picker-${emoji}`}
-                  type="button"
-                  onClick={() => {
-                    const msg = messagesById.get(reactionPickerForMessageId);
-                    if (msg) {
-                      handleReact(msg, emoji);
-                    }
-                    setReactionPickerForMessageId(null);
-                    setExpandedReplyActionForId(null);
-                    setActionsMenuAnchor(null);
-                  }}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-md text-lg hover:bg-sky-50"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+        <ReactionPickerModal
+          allReactions={ALL_REACTIONS}
+          onClose={() => setReactionPickerForMessageId(null)}
+          onSelect={(emoji) => {
+            const message = messagesById.get(reactionPickerForMessageId);
+            if (message) {
+              void handleReact(message, emoji);
+            }
+            setReactionPickerForMessageId(null);
+            setExpandedReplyActionForId(null);
+            setActionsMenuAnchor(null);
+          }}
+        />
       ) : null}
     </AppShell>
   );

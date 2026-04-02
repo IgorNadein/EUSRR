@@ -4,112 +4,22 @@ import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/url";
+import { ChatIdentity, getChatAvatar, getChatInitials, getChatTitle } from "@/lib/messages/chatUtils";
 import type { Chat } from "@/types/api";
-import { Search, MessageCircle, Pin, BellOff, Filter, Plus, X, Users, Globe, Radio, Upload, Image as ImageIcon, Megaphone, MessageSquare } from "lucide-react";
+import { Search, MessageCircle, Pin, BellOff, Filter, Plus, X, Users, Globe, Radio, Image as ImageIcon, Megaphone, MessageSquare } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useUser } from "@/contexts/UserContext";
 import { useRouter } from "next/navigation";
 
-function getUserFullName(lastName?: string, firstName?: string): string {
-  return `${lastName || ""} ${firstName || ""}`.trim();
-}
-
-function normalizeName(value?: string | null): string {
-  return (value || "").replace(/\s+/g, " ").trim().toLowerCase();
-}
-
-function isLikelyCurrentUserName(candidate: string, user?: { first_name?: string; last_name?: string; patronymic?: string; email?: string } | null): boolean {
-  if (!user) return false;
-
-  const c = normalizeName(candidate);
-  if (!c) return false;
-
-  const fn = normalizeName(user.first_name);
-  const ln = normalizeName(user.last_name);
-  const pn = normalizeName(user.patronymic);
-  const email = normalizeName(user.email);
-
-  if (email && c === email) return true;
-
-  const variants = new Set<string>([
-    normalizeName(`${ln} ${fn}`),
-    normalizeName(`${fn} ${ln}`),
-    normalizeName(`${ln} ${fn} ${pn}`),
-    normalizeName(`${fn} ${pn} ${ln}`),
-    normalizeName(`${fn} ${pn}`),
-  ]);
-
-  if (variants.has(c)) return true;
-
-  if (fn && ln && c.includes(fn) && c.includes(ln)) return true;
-
-  return false;
-}
-
-function getInterlocutorFromParticipants(chat: Chat, currentUserId?: number) {
-  const participants = (chat.participants || []).filter(
-    (p): p is Exclude<typeof p, number> => typeof p === "object" && p !== null
-  );
-  return participants.find((p) => p.id !== currentUserId);
-}
-
-function getInterlocutorFromParticipantDetails(chat: Chat, currentUserId?: number) {
-  return (chat.participant_details || []).find((p) => p.id !== currentUserId);
-}
-
-function getInterlocutorNameFromParticipantNames(chat: Chat, currentUser?: { first_name?: string; last_name?: string; patronymic?: string; email?: string } | null): string {
-  const names = (chat.participant_names || []).map((n) => (n || "").trim()).filter(Boolean);
-  if (!names.length) return "";
-  const other = names.find((n) => !isLikelyCurrentUserName(n, currentUser));
-  return other || names[0] || "";
-}
-
-function getChatTitle(chat: Chat, currentUserId?: number, currentUser?: { first_name?: string; last_name?: string; patronymic?: string; email?: string } | null): string {
-  const chatKind = chat.chat_type || chat.type;
-  const rawName = (chat.name || "").trim();
-
-  if (chatKind === "direct" || chatKind === "private" || !rawName || rawName.toLowerCase() === "диалог") {
-    const detailsOther = getInterlocutorFromParticipantDetails(chat, currentUserId);
-    if (detailsOther?.name?.trim()) {
-      return detailsOther.name.trim();
-    }
-
-    const other = getInterlocutorFromParticipants(chat, currentUserId);
-    if (other && typeof other === "object") {
-      const name = getUserFullName(other.last_name, other.first_name);
-      if (name) return name;
-      if (other.email) return other.email;
-    }
-
-    const namesFallback = getInterlocutorNameFromParticipantNames(chat, currentUser);
-    if (namesFallback) return namesFallback;
-  }
-
-  return rawName || "Диалог";
-}
-
-function getChatAvatar(chat: Chat, currentUserId?: number): string {
-  const chatKind = chat.chat_type || chat.type;
-  if (chatKind === "direct" || chatKind === "private" || (chat.name || "").trim().toLowerCase() === "диалог") {
-    const detailsOther = getInterlocutorFromParticipantDetails(chat, currentUserId);
-    if (detailsOther?.avatar) return detailsOther.avatar;
-
-    const other = getInterlocutorFromParticipants(chat, currentUserId);
-    if (other?.avatar) return other.avatar;
-  }
-  return chat.avatar || "";
-}
-
-function getChatInitials(chat: Chat, currentUserId?: number, currentUser?: { first_name?: string; last_name?: string; patronymic?: string; email?: string } | null): string {
-  const title = getChatTitle(chat, currentUserId, currentUser);
-  return title
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() || "")
-    .join("") || "Ч";
-}
+type UnreadFilter = "all" | "unread" | "read";
+type PinnedFilter = "all" | "pinned" | "unpinned";
+type CreateChatPayload = {
+  type: string;
+  name: string;
+  description?: string;
+  avatar?: File;
+};
 
 function getChatTypeIcon(chat: Chat) {
   const chatType = chat.chat_type || chat.type;
@@ -170,7 +80,7 @@ export default function MessagesPage() {
   const currentUserPatronymic = user?.patronymic;
   const currentUserEmail = user?.email;
 
-  const currentUserForMatch = useMemo(
+  const currentUserForMatch = useMemo<ChatIdentity>(
     () => ({
       first_name: currentUserFirstName,
       last_name: currentUserLastName,
@@ -182,8 +92,8 @@ export default function MessagesPage() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [search, setSearch] = useState("");
   const [chatTypeFilter, setChatTypeFilter] = useState<string>("all");
-  const [filterUnread, setFilterUnread] = useState<'all' | 'unread' | 'read'>('all');
-  const [filterPinned, setFilterPinned] = useState<'all' | 'pinned' | 'unpinned'>('all');
+  const [filterUnread, setFilterUnread] = useState<UnreadFilter>('all');
+  const [filterPinned, setFilterPinned] = useState<PinnedFilter>('all');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -343,7 +253,7 @@ export default function MessagesPage() {
     
     setCreating(true);
     try {
-      const chatData: any = {
+      const chatData: CreateChatPayload = {
         type: newChatType,
         name: newChatName.trim(),
       };
@@ -462,7 +372,7 @@ export default function MessagesPage() {
             <div className="mb-4 flex flex-col gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
               <select
                 value={filterUnread}
-                onChange={(e) => setFilterUnread(e.target.value as any)}
+                onChange={(e) => setFilterUnread(e.target.value as UnreadFilter)}
                 className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
               >
                 <option value="all">Все чаты</option>
@@ -472,7 +382,7 @@ export default function MessagesPage() {
 
               <select
                 value={filterPinned}
-                onChange={(e) => setFilterPinned(e.target.value as any)}
+                onChange={(e) => setFilterPinned(e.target.value as PinnedFilter)}
                 className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
               >
                 <option value="all">Все чаты</option>

@@ -60,6 +60,18 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
+def _parse_bool_query_param(value, default=True):
+    if value is None:
+        return default
+
+    normalized = str(value).strip().lower()
+    if normalized in {'1', 'true', 'yes', 'on'}:
+        return True
+    if normalized in {'0', 'false', 'no', 'off'}:
+        return False
+    return default
+
+
 class ChatViewSet(viewsets.ModelViewSet):
     """
     ViewSet для управления чатами
@@ -563,7 +575,12 @@ class ChatViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def messages(self, request, pk=None):
-        """Загрузка сообщений чата (пагинация по времени)"""
+        """Загрузка сообщений чата (пагинация по времени).
+
+        Query params:
+        - mark_read=false: не обновлять last_read_message при after_id/after_ts.
+          Нужен для тихой синхронизации клиента после разрыва WebSocket.
+        """
         chat = self.get_object()
 
         # Проверка доступа
@@ -582,6 +599,10 @@ class ChatViewSet(viewsets.ModelViewSet):
             limit = min(int(request.query_params.get('limit', 50)), 100)
         except (ValueError, TypeError):
             limit = 50
+        mark_read = _parse_bool_query_param(
+            request.query_params.get('mark_read'),
+            default=True,
+        )
 
         queryset = chat.messages.filter(is_deleted=False).select_related(
             'author', 'reply_to', 'reply_to__author', 'poll'
@@ -633,7 +654,7 @@ class ChatViewSet(viewsets.ModelViewSet):
 
         # Автоотметка при загрузке НОВЫХ сообщений (after_id/after_ts)
         # При scroll вверх (before_id) - не отмечаем
-        if (after_id or after_ts) and messages:
+        if mark_read and (after_id or after_ts) and messages:
             self._auto_mark_read(chat, request.user, messages)
 
         return Response({

@@ -1,11 +1,36 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import apiClient from '@/lib/api';
 import wsManager from '@/lib/websocketManager';
 
+export type NotificationItem = {
+  id: number;
+  is_read?: boolean;
+  unread?: boolean;
+  category?: string;
+  title?: string;
+  verb?: string;
+  description?: string;
+  short_message?: string;
+  message?: string;
+  timestamp?: string;
+  created_at?: string;
+  action_url?: string;
+  [key: string]: unknown;
+};
+
+type NotificationSocketEvent = {
+  type: string;
+  notification?: NotificationItem;
+  notification_id?: number;
+  notification_ids?: number[];
+  unread_count?: number;
+  count?: number;
+};
+
 interface NotificationsContextType {
-  notifications: any[];
+  notifications: NotificationItem[];
   unreadCount: number;
   loading: boolean;
   error: Error | null;
@@ -19,33 +44,56 @@ interface NotificationsContextType {
 const NotificationsContext = createContext<NotificationsContextType | undefined>(undefined);
 
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [isWsConnected, setIsWsConnected] = useState(
+    typeof window !== 'undefined' && wsManager.getState() === WebSocket.OPEN
+  );
+  const fetchInFlightRef = useRef<Promise<void> | null>(null);
 
-  // Загрузка начальных данных
-  useEffect(() => {
-    async function fetchNotifications() {
+  const syncUnreadNotifications = useCallback(async (showLoader = false) => {
+    if (fetchInFlightRef.current) {
+      return fetchInFlightRef.current;
+    }
+
+    const request = (async () => {
+      if (showLoader) {
+        setLoading(true);
+      }
+
       try {
-        const data = await apiClient.getNotifications({ 
-          page_size: 50, 
-          unread_only: true 
+        const data = await apiClient.getNotifications({
+          page_size: 50,
+          unread_only: true,
         });
         const notifs = data.notifications || data.results || data;
         const notificationsArray = Array.isArray(notifs) ? notifs : [];
         setNotifications(notificationsArray);
         setUnreadCount(data.unread_count ?? notificationsArray.length);
+        setError(null);
       } catch (err) {
         setError(err as Error);
-        setNotifications([]);
+        if (showLoader) {
+          setNotifications([]);
+        }
       } finally {
-        setLoading(false);
+        if (showLoader) {
+          setLoading(false);
+        }
+        fetchInFlightRef.current = null;
       }
-    }
+    })();
 
-    fetchNotifications();
+    fetchInFlightRef.current = request;
+    return request;
   }, []);
+
+  // Загрузка начальных данных
+  useEffect(() => {
+    void syncUnreadNotifications(true);
+  }, [syncUnreadNotifications]);
 
   // ЕДИНСТВЕННЫЙ WebSocket через singleton manager
   useEffect(() => {
@@ -54,107 +102,134 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       return;
     }
 
-    let unsubscribe: (() => void) | null = null;
+    const unsubscribeMessages = wsManager.subscribe((event) => {
+      const data = event as NotificationSocketEvent;
 
-    const setupWebSocket = () => {
-      // Подписываемся на сообщения через singleton
-      unsubscribe = wsManager.subscribe((data) => {
-        // Игнорируем служебные события
-        if (['ping', 'list_update', 'new_message', 'marked_read', 'message_edited', 'reaction_added', 'reaction_removed', 'poll_update'].includes(data.type)) {
-          return;
-        }
+      if (['ping', 'list_update', 'new_message', 'marked_read', 'message_edited', 'reaction_added', 'reaction_removed', 'poll_update'].includes(data.type)) {
+        return;
+      }
 
-        // Новое уведомление
-        if (data.type === 'notification' && data.notification) {
-          console.log('[NotificationsContext] New notification:', data.notification);
-          
-          setNotifications(prev => {
-            if (prev.some(n => n.id === data.notification.id)) {
-              return prev;
-            }
-            return [data.notification, ...prev];
-          });
+      const incomingNotification = data.notification;
 
-          if (!data.notification.is_read) {
-            setUnreadCount(prev => prev + 1);
+      if (data.type === 'notification' && incomingNotification) {
+        setNotifications(prev => {
+          if (prev.some(n => n.id === incomingNotification.id)) {
+            return prev;
           }
-        }
+          return [incomingNotification, ...prev];
+        });
 
-        // Обновление счетчика
-        if (data.type === 'unread_count' && typeof data.count === 'number') {
-          console.log('[NotificationsContext] Unread count update:', data.count);
-          setUnreadCount(data.count);
+        const isRead = incomingNotification.is_read ?? !incomingNotification.unread;
+        if (!isRead) {
+          setUnreadCount(prev => prev + 1);
         }
-      });
-    };
+        return;
+      }
 
-    setupWebSocket();
+      if (data.type === 'notification_read' && typeof data.notification_id === 'number') {
+        setNotifications(prev =>
+          prev.map(n => (n.id === data.notification_id ? { ...n, is_read: true, unread: false } : n))
+        );
+        if (typeof data.unread_count === 'number') {
+          setUnreadCount(data.unread_count);
+        }
+        return;
+      }
+
+      if (data.type === 'notifications_read_all') {
+        const ids = Array.isArray(data.notification_ids) ? new Set<number>(data.notification_ids) : null;
+        setNotifications(prev =>
+          prev.map((notification) => {
+            if (!ids || ids.has(notification.id)) {
+              return { ...notification, is_read: true, unread: false };
+            }
+            return notification;
+          })
+        );
+        if (typeof data.unread_count === 'number') {
+          setUnreadCount(data.unread_count);
+        }
+        return;
+      }
+
+      if (data.type === 'unread_count' && typeof data.count === 'number') {
+        setUnreadCount(data.count);
+      }
+    });
+
+    const unsubscribeStatus = wsManager.subscribeStatus((status) => {
+      setIsWsConnected(status.isConnected);
+    });
 
     return () => {
-      if (unsubscribe) {
-        unsubscribe();
+      unsubscribeMessages();
+      unsubscribeStatus();
+    };
+  }, []);
+
+  // API fallback на время разрыва WebSocket и при возврате фокуса
+  useEffect(() => {
+    if (typeof window === 'undefined' || isWsConnected || !localStorage.getItem('access_token')) {
+      return;
+    }
+
+    const sync = () => {
+      void syncUnreadNotifications(false);
+    };
+
+    sync();
+
+    const intervalId = window.setInterval(sync, 15000);
+    const handleFocus = () => sync();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        sync();
       }
     };
-  }, []);
 
-  // Синхронизация между вкладками через CustomEvent
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const handleMarkedRead = (e: Event) => {
-      const customEvent = e as CustomEvent;
-      const { id } = customEvent.detail;
-      setNotifications(prev =>
-        prev.map(n => (n.id === id ? { ...n, is_read: true } : n))
-      );
-      setUnreadCount(prev => Math.max(0, prev - 1));
-    };
-
-    const handleAllMarkedRead = () => {
-      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-      setUnreadCount(0);
-    };
-
-    window.addEventListener('notification-marked-read', handleMarkedRead);
-    window.addEventListener('all-notifications-marked-read', handleAllMarkedRead);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      window.removeEventListener('notification-marked-read', handleMarkedRead);
-      window.removeEventListener('all-notifications-marked-read', handleAllMarkedRead);
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [isWsConnected, syncUnreadNotifications]);
+
+  useEffect(() => {
+    if (!isWsConnected) {
+      return;
+    }
+
+    void syncUnreadNotifications(false);
+  }, [isWsConnected, syncUnreadNotifications]);
 
   const markAsRead = useCallback(async (id: number) => {
     await apiClient.markNotificationAsRead(id);
     setNotifications(prev =>
-      prev.map(n => (n.id === id ? { ...n, is_read: true } : n))
+      prev.map(n => (n.id === id ? { ...n, is_read: true, unread: false } : n))
     );
     setUnreadCount(prev => Math.max(0, prev - 1));
-    
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('notification-marked-read', { detail: { id } }));
-    }
   }, []);
 
   const markAllAsRead = useCallback(async () => {
     await apiClient.markAllNotificationsAsRead();
-    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    setNotifications(prev => prev.map(n => ({ ...n, is_read: true, unread: false })));
     setUnreadCount(0);
-    
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('all-notifications-marked-read'));
-    }
   }, []);
 
   const markCategoryAsRead = useCallback(async (category: string) => {
     await apiClient.markCategoryAsRead(category);
-    const updatedNotifications = notifications.map(n =>
-      n.category === category ? { ...n, is_read: true } : n
-    );
-    setNotifications(updatedNotifications);
-    const newUnreadCount = updatedNotifications.filter(n => !n.is_read).length;
-    setUnreadCount(newUnreadCount);
-  }, [notifications]);
+    setNotifications(prev => {
+      const updatedNotifications = prev.map(n =>
+        n.category === category ? { ...n, is_read: true, unread: false } : n
+      );
+      const newUnreadCount = updatedNotifications.filter(n => !n.is_read && n.unread !== false).length;
+      setUnreadCount(newUnreadCount);
+      return updatedNotifications;
+    });
+  }, []);
 
   const deleteNotification = useCallback(async (id: number) => {
     await apiClient.deleteNotification(id);

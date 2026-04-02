@@ -16,6 +16,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from ..models import Notification, UserChannelPreferences
+from ..realtime import (
+    send_notification_read_event,
+    send_notifications_read_all_event,
+)
 from .serializers import (
     ChannelPreferencesSerializer,
     CountResponseSerializer,
@@ -188,7 +192,11 @@ def mark_as_read(request, notification_id):
             id=notification_id,
             recipient=request.user
         )
+        was_unread = notification.unread
         notification.mark_as_read()
+
+        if was_unread:
+            send_notification_read_event(request.user.id, notification_id)
 
         return Response({
             'status': 'success',
@@ -252,7 +260,15 @@ def mark_all_as_read(request):
     if verb:
         queryset = queryset.filter(verb=verb)
 
+    notification_ids = list(queryset.values_list('id', flat=True))
     count = queryset.mark_all_as_read()
+
+    if notification_ids:
+        send_notifications_read_all_event(
+            request.user.id,
+            notification_ids,
+            category=verb,
+        )
 
     return Response({
         'status': 'success',
@@ -299,7 +315,15 @@ def mark_category_as_read(request):
         verb__in=verbs,
     )
 
+    notification_ids = list(queryset.values_list('id', flat=True))
     count = queryset.mark_all_as_read()
+
+    if notification_ids:
+        send_notifications_read_all_event(
+            request.user.id,
+            notification_ids,
+            category=request.data.get('category'),
+        )
 
     return Response({
         'status': 'success',

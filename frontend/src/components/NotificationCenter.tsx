@@ -1,17 +1,30 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { Bell, Settings, X, Trash2 } from 'lucide-react';
 import { useNotifications } from '@/hooks/useApi';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale/ru';
 import { getVerbName } from '@/lib/verbTranslations';
 import Link from 'next/link';
+import type { NotificationItem } from '@/contexts/NotificationsContext';
 
 interface NotificationCenterProps {
     variant?: 'default' | 'mobile';
     isOpen?: boolean;
     onToggle?: () => void;
+}
+
+function getNotificationTitle(notification: NotificationItem): string {
+    return notification.title || getVerbName(notification.verb || '');
+}
+
+function getNotificationMessage(notification: NotificationItem): string {
+    return notification.description || notification.short_message || notification.message || '';
+}
+
+function getNotificationTimestamp(notification: NotificationItem): string | null {
+    return notification.timestamp || notification.created_at || null;
 }
 
 export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen, onToggle }: NotificationCenterProps) {
@@ -32,13 +45,13 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
         }
     };
 
-    const close = () => {
+    const close = useCallback(() => {
         if (onToggle && isOpen) {
             onToggle();
         } else {
             setInternalIsOpen(false);
         }
-    };
+    }, [isOpen, onToggle]);
 
     // Закрытие при клике вне компонента (только для desktop варианта)
     useEffect(() => {
@@ -54,16 +67,16 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
 
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [isOpen, variant]);
+    }, [close, isOpen, variant]);
 
-    const handleNotificationClick = async (notification: any) => {
+    const handleNotificationClick = async (notification: NotificationItem) => {
         if (!notification.is_read) {
             await markAsRead(notification.id);
         }
         
         // Навигация если есть action_url
         if (notification.action_url) {
-            window.location.href = notification.action_url;
+            window.location.assign(notification.action_url);
         }
     };
 
@@ -144,11 +157,9 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                             <ul>
                                 {notifications.slice(0, 20).map((notification) => {
                                     const isUnread = !notification.is_read;
-                                    // v2 API: timestamp вместо created_at
-                                    const timestamp = notification.timestamp || notification.created_at;
-                                    // v2 API: verb + description вместо title + message
-                                    const title = notification.title || getVerbName(notification.verb);
-                                    const message = notification.description || notification.short_message || notification.message;
+                                    const timestamp = getNotificationTimestamp(notification);
+                                    const title = getNotificationTitle(notification);
+                                    const message = getNotificationMessage(notification);
                                     
                                     return (
                                     <li
@@ -172,10 +183,10 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                                                     {message}
                                                 </p>
                                                 <p className="text-[10px] text-gray-400">
-                                                    {formatDistanceToNow(new Date(timestamp), {
+                                                    {timestamp ? formatDistanceToNow(new Date(timestamp), {
                                                         addSuffix: true,
                                                         locale: ru,
-                                                    })}
+                                                    }) : 'Только что'}
                                                 </p>
                                             </div>
                                             <button
@@ -214,15 +225,15 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
 
 /** Встраиваемая панель уведомлений (для выдвижных блоков) */
 export function NotificationPanel({ onClose }: { onClose?: () => void }) {
-    const { notifications: notificationsData, unreadCount, markAsRead, markAllAsRead, deleteNotification, loading } = useNotifications();
+    const { notifications: notificationsData, unreadCount, markAsRead, markAllAsRead, loading } = useNotifications();
     const notifications = Array.isArray(notificationsData) ? notificationsData : [];
 
-    const handleNotificationClick = async (notification: any) => {
+    const handleNotificationClick = async (notification: NotificationItem) => {
         if (!notification.is_read) {
             await markAsRead(notification.id);
         }
         if (notification.action_url) {
-            window.location.href = notification.action_url;
+            window.location.assign(notification.action_url);
         }
     };
 
@@ -273,11 +284,9 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
                     <ul>
                         {notifications.slice(0, 20).map((notification) => {
                             const isUnread = !notification.is_read;
-                            // v2 API: timestamp вместо created_at
-                            const timestamp = notification.timestamp || notification.created_at;
-                            // v2 API: verb + description вместо title + message
-                            const title = notification.title || getVerbName(notification.verb);
-                            const message = notification.description || notification.short_message || notification.message;
+                            const timestamp = getNotificationTimestamp(notification);
+                            const title = getNotificationTitle(notification);
+                            const message = getNotificationMessage(notification);
                             
                             return (
                             <li
@@ -295,7 +304,7 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
                                         <h4 className="font-medium text-sm mb-0.5 truncate text-gray-800">{title}</h4>
                                         <p className="text-xs text-gray-600 line-clamp-2 mb-1">{message}</p>
                                         <p className="text-[10px] text-gray-400">
-                                            {formatDistanceToNow(new Date(timestamp), { addSuffix: true, locale: ru })}
+                                            {timestamp ? formatDistanceToNow(new Date(timestamp), { addSuffix: true, locale: ru }) : 'Только что'}
                                         </p>
                                     </div>
                                 </div>
