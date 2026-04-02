@@ -106,6 +106,14 @@ class ChatConsumerMixin:
 
         await self.send_json({"type": "chat_opened", "chat_id": chat_id})
 
+        chat_notification_read_service = getattr(
+            self,
+            'chat_notification_read_service',
+            None,
+        )
+        if chat_notification_read_service is not None:
+            await self._mark_chat_notifications_as_read(chat_id)
+
         logger.info(f"[ChatMixin] User {self.user.id} opened chat {chat_id}")
 
     async def _handle_close_chat(self, content):
