@@ -14,11 +14,13 @@ WebSocket Consumer для пользователя.
 
 import asyncio
 import logging
+from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
 from django.utils import timezone
 
 from communications.consumers import ChatConsumerMixin
+from communications.services import ChatNotificationReadService
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,16 @@ class UserConsumer(ChatConsumerMixin, AsyncJsonWebsocketConsumer):
         self.active_chat_id = None  # ID открытого чата
         self.subscribed_chats = set()  # Чаты, на которые подписан
         self.user = None
+        self.chat_notification_read_service = ChatNotificationReadService()
+
+    @database_sync_to_async
+    def _mark_chat_notifications_as_read(self, chat_id):
+        return (
+            self.chat_notification_read_service.mark_chat_notifications_as_read(
+                user=self.user,
+                chat_id=chat_id,
+            )
+        )
 
     async def connect(self):
         """Подключение пользователя - подписка на все его чаты и каналы"""
@@ -220,8 +232,16 @@ class UserConsumer(ChatConsumerMixin, AsyncJsonWebsocketConsumer):
         notification = event.get("message", {})
 
         if self._should_suppress_active_chat_notification(notification):
+            notification_chat_id = self._extract_notification_chat_id(
+                notification
+            )
+            if notification_chat_id is not None:
+                await self._mark_chat_notifications_as_read(
+                    notification_chat_id
+                )
             logger.info(
-                "[UserWS] Suppressed notification for active chat %s in session %s",
+                "[UserWS] Suppressed notification for active chat %s "
+                "in session %s",
                 self.active_chat_id,
                 self.channel_name,
             )
@@ -237,7 +257,8 @@ class UserConsumer(ChatConsumerMixin, AsyncJsonWebsocketConsumer):
 
         if self._should_suppress_active_chat_notification(notification):
             logger.info(
-                "[UserWS] Suppressed notification_new for active chat %s in session %s",
+                "[UserWS] Suppressed notification_new for active chat %s "
+                "in session %s",
                 self.active_chat_id,
                 self.channel_name,
             )

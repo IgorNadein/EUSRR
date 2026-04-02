@@ -272,7 +272,7 @@ function LeftNavContent({ onNavigate }: LeftNavContentProps) {
 
   const handleNavClick = async (category?: string) => {
     // Помечаем уведомления категории как прочитанные
-    if (category && categoryCounts[category] > 0) {
+    if (category && category !== "Сообщения" && categoryCounts[category] > 0) {
       await markCategoryAsRead(category);
     }
     

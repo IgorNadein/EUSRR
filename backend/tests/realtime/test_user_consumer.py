@@ -15,6 +15,7 @@ from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
 
 from communications.models import Chat, ChatMembership
+from notifications.models import Notification
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -99,6 +100,55 @@ class TestUserConsumerChatManagement:
         assert response["type"] == "chat_opened"
         assert response["chat_id"] == test_chat.id
         
+        await communicator.disconnect()
+
+    async def test_open_chat_marks_related_notifications_as_read(self, ws_communicator, user, test_chat):
+        """Открытие конкретного чата читает только связанные с ним уведомления."""
+        related_notification = await database_sync_to_async(Notification.objects.create)(
+            recipient=user,
+            verb='chat_new_message',
+            description='Chat notification',
+            action_url=f'/messages/{test_chat.id}',
+            data={'chat_id': test_chat.id, 'message_id': 10},
+        )
+        unrelated_notification = await database_sync_to_async(Notification.objects.create)(
+            recipient=user,
+            verb='chat_new_message',
+            description='Other chat notification',
+            action_url='/messages/999',
+            data={'chat_id': 999, 'message_id': 11},
+        )
+
+        communicator = await ws_communicator(user=user)
+
+        connected, _ = await communicator.connect()
+        assert connected
+
+        await communicator.send_json_to({
+            'action': 'open_chat',
+            'chat_id': test_chat.id,
+            'load_history': False,
+        })
+
+        response = await communicator.receive_json_from(timeout=5)
+        assert response['type'] == 'chat_opened'
+        assert response['chat_id'] == test_chat.id
+
+        read_all_event = await communicator.receive_json_from(timeout=5)
+        assert read_all_event['type'] == 'notifications_read_all'
+        assert related_notification.id in read_all_event['notification_ids']
+        assert unrelated_notification.id not in read_all_event['notification_ids']
+
+        count_event = await communicator.receive_json_from(timeout=5)
+        assert count_event['type'] == 'unread_count'
+        assert count_event['count'] == 1
+
+        related_notification = await database_sync_to_async(Notification.objects.get)(id=related_notification.id)
+        unrelated_notification = await database_sync_to_async(Notification.objects.get)(id=unrelated_notification.id)
+
+        assert related_notification.unread is False
+        assert unrelated_notification.unread is True
+
         await communicator.disconnect()
     
     async def test_open_nonexistent_chat(self, ws_communicator, user):

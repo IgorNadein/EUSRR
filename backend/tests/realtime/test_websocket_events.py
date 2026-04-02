@@ -15,6 +15,9 @@
 """
 import pytest
 from channels.layers import get_channel_layer
+from channels.db import database_sync_to_async
+
+from notifications.models import Notification
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -623,6 +626,74 @@ class TestNotificationStateEvents:
             await comm_active.disconnect()
         except asyncio.CancelledError:
             pass
+
+    @pytest.mark.asyncio
+    async def test_suppressed_active_chat_notification_is_marked_read(
+        self,
+        ws_communicator,
+        user,
+        test_chat,
+    ):
+        """Подавленное уведомление активного чата должно сразу считаться прочитанным."""
+        comm = await ws_communicator(user=user)
+
+        connected, _ = await comm.connect()
+        assert connected
+
+        await comm.send_json_to(
+            {
+                'action': 'open_chat',
+                'chat_id': test_chat.id,
+                'load_history': False,
+            }
+        )
+
+        response = await comm.receive_json_from(timeout=5)
+        assert response['type'] == 'chat_opened'
+
+        notification = await database_sync_to_async(Notification.objects.create)(
+            recipient=user,
+            verb='chat_new_message',
+            description='Suppressed notification',
+            action_url=f'/messages/{test_chat.id}',
+            data={'chat_id': test_chat.id, 'message_id': 777},
+        )
+
+        channel_layer = get_channel_layer()
+        payload = {
+            'type': 'notification',
+            'id': notification.id,
+            'verb': 'chat_new_message',
+            'description': 'Suppressed notification',
+            'action_url': f'/messages/{test_chat.id}',
+            'timestamp': '2026-04-02T12:00:00Z',
+            'unread': True,
+            'data': {
+                'chat_id': test_chat.id,
+                'message_id': 777,
+            },
+        }
+
+        await channel_layer.group_send(
+            f'user_{user.id}',
+            {
+                'type': 'notification_message',
+                'message': payload,
+            }
+        )
+
+        read_all_event = await comm.receive_json_from(timeout=5)
+        assert read_all_event['type'] == 'notifications_read_all'
+        assert notification.id in read_all_event['notification_ids']
+
+        count_event = await comm.receive_json_from(timeout=5)
+        assert count_event['type'] == 'unread_count'
+        assert count_event['count'] == 0
+
+        notification = await database_sync_to_async(Notification.objects.get)(id=notification.id)
+        assert notification.unread is False
+
+        await comm.disconnect()
 
     @pytest.mark.asyncio
     async def test_notification_read_sync_between_sessions(self, ws_communicator, user):
