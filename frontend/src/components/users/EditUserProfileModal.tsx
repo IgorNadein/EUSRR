@@ -59,12 +59,14 @@ export default function EditUserProfileModal({
             <div className="flex items-center gap-4">
               <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-xl font-semibold text-white">
                 {form.avatarPreview ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={form.avatarPreview}
                     alt="Preview"
                     className="h-full w-full object-cover"
                   />
                 ) : avatarUrl && !avatarFailed ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={avatarUrl}
                     alt="Avatar"
