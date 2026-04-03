@@ -15,14 +15,14 @@ export default function MessageReadersModal({ isOpen, onClose, readers }: Messag
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Прочитали сообщение" size="sm">
       <div className="space-y-4">
-        <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/80 p-4">
-          <div className="flex items-center gap-2 text-emerald-900">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/90 ring-1 ring-emerald-100">
+        <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+          <div className="flex items-center gap-2 text-gray-700">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500">
               <CheckCheck size={16} />
             </span>
             <div>
               <p className="text-sm font-semibold">Полный список прочитавших</p>
-              <p className="text-xs text-emerald-800/80">
+              <p className="text-xs text-gray-500">
                 {readers.length === 1 ? "1 сотрудник" : `${readers.length} сотрудников`}
               </p>
             </div>
@@ -34,7 +34,7 @@ export default function MessageReadersModal({ isOpen, onClose, readers }: Messag
             {readers.map((reader) => (
               <div
                 key={`message-reader-${reader.id}`}
-                className="rounded-2xl border border-gray-200 bg-white px-3 py-3 text-sm font-medium leading-5 text-gray-800 shadow-sm"
+                className="rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm font-medium leading-5 text-gray-800"
               >
                 {reader.name}
               </div>
