@@ -441,6 +441,47 @@ function MessageDialogPageContent() {
     return () => viewport.removeEventListener("scroll", onScroll);
   }, [cm, markRead, scroll]);
 
+  useEffect(() => {
+    if (cm.messagesLoading || cm.loadingOlder || displayMessages.length === 0) {
+      return;
+    }
+
+    if (!cm.hasMoreOlder && !cm.allowOneOlderProbe) {
+      return;
+    }
+
+    const component = messagesViewportRef.current;
+    const viewport = component?.containerRef?.current;
+    if (!viewport) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const frameId = window.requestAnimationFrame(() => {
+      if (cancelled) {
+        return;
+      }
+
+      const hasScrollableOverflow = viewport.scrollHeight > viewport.clientHeight + 8;
+      if (!hasScrollableOverflow) {
+        void cm.loadOlderMessages();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [
+    cm.allowOneOlderProbe,
+    cm.hasMoreOlder,
+    cm.loadingOlder,
+    cm.loadOlderMessages,
+    cm.messagesLoading,
+    displayMessages.length,
+  ]);
+
   /* ── fallback sync ── */
   useChatFallbackSync({
     chatId: chatId || null,
