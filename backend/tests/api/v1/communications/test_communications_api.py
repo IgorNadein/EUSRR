@@ -2451,6 +2451,35 @@ class TestDeleteVariousMessageTypes:
         assert reply2.is_deleted is False
         assert reply1.reply_to_id == original.id
 
+    def test_messages_around_keeps_deleted_reply_preview_non_clickable_contract(
+        self, auth_client, private_chat, user1
+    ):
+        """Ответ на удаленное сообщение сохраняет preview, но помечается как deleted."""
+        original = Message.objects.create(
+            chat=private_chat, author=user1, content="Original to delete"
+        )
+        reply = Message.objects.create(
+            chat=private_chat, author=user1, content="Reply", reply_to=original
+        )
+
+        delete_url = f"/api/v1/communications/messages/{original.pk}/"
+        delete_response = auth_client.delete(delete_url)
+
+        assert delete_response.status_code == status.HTTP_204_NO_CONTENT
+
+        url = f"/api/v1/communications/chats/{private_chat.pk}/messages-around/"
+        response = auth_client.get(url, {"around_id": reply.id})
+
+        assert response.status_code == status.HTTP_200_OK
+        serialized_reply = next(
+            item for item in response.data["messages"] if item["id"] == reply.id
+        )
+
+        assert serialized_reply["reply_to"]["id"] == original.id
+        assert serialized_reply["reply_to"]["is_deleted"] is True
+        assert serialized_reply["reply_to"]["content"] == ""
+        assert "author_name" in serialized_reply["reply_to"]
+
     def test_bulk_delete_various_types(self, auth_client, private_chat, user1):
         """Массовое удаление сообщений разных типов"""
         from communications.models import MessageAttachment, Poll, PollOption

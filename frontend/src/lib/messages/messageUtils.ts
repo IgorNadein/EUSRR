@@ -1,4 +1,12 @@
-import type { Message, MessageAttachment } from "@/types/api";
+import type { Message, MessageAttachment, MessageReplyPreview } from "@/types/api";
+
+type ReplyPreviewSource = Message | MessageReplyPreview;
+
+function isReplyPreviewSource(value: unknown): value is ReplyPreviewSource {
+  return Boolean(
+    value && typeof value === "object" && typeof (value as { id?: unknown }).id === "number"
+  );
+}
 
 export function getMessageInitials(message: Message): string {
   const name = (message.author_name || "").trim();
@@ -89,13 +97,43 @@ export function getMessagePreviewText(message: Message): string {
   return "[Сообщение]";
 }
 
+export function getReplyPreview(message: Message, loadedReply?: Message | null): ReplyPreviewSource | null {
+  if (loadedReply) {
+    return loadedReply;
+  }
+
+  if (isReplyPreviewSource(message.reply_to)) {
+    return message.reply_to;
+  }
+
+  if (isReplyPreviewSource(message.reply_to_message)) {
+    return message.reply_to_message;
+  }
+
+  return null;
+}
+
+export function isReplyPreviewDeleted(preview: ReplyPreviewSource | null | undefined): boolean {
+  return Boolean(preview?.is_deleted);
+}
+
+export function getReplyPreviewText(preview: ReplyPreviewSource): string {
+  if (preview.is_deleted) return "Сообщение удалено";
+  if (preview.content?.trim()) return preview.content.trim();
+  if ("attachments" in preview && Array.isArray(preview.attachments) && preview.attachments.length > 0) {
+    return "[Вложение]";
+  }
+  if (preview.has_attachments) return "[Вложение]";
+  return "[Сообщение]";
+}
+
 export function getReplyToId(message: Message): number | null {
   if (typeof message.reply_to_id === "number") return message.reply_to_id;
   if (typeof message.reply_to === "number") return message.reply_to;
-  if (message.reply_to && typeof message.reply_to === "object" && typeof message.reply_to.id === "number") {
+  if (isReplyPreviewSource(message.reply_to)) {
     return message.reply_to.id;
   }
-  if (message.reply_to_message && typeof message.reply_to_message.id === "number") {
+  if (isReplyPreviewSource(message.reply_to_message)) {
     return message.reply_to_message.id;
   }
   return null;

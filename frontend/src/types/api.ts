@@ -527,13 +527,21 @@ export interface Message {
   has_attachments?: boolean;
   attachments?: MessageAttachment[];
   reply_to_id?: number;
-  reply_to?: number | Message | null;
-  reply_to_message?: Message | null;
+  reply_to?: number | MessageReplyPreview | Message | null;
+  reply_to_message?: MessageReplyPreview | Message | null;
   reactions_summary?: Record<string, {
     count: number;
     users?: number[];
     user_names?: string[];
   }>;
+}
+
+export interface MessageReplyPreview {
+  id: number;
+  content: string;
+  author_name?: string;
+  is_deleted?: boolean;
+  has_attachments?: boolean;
 }
 
 export interface MessageReader {

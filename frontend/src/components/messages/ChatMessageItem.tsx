@@ -16,9 +16,13 @@ import {
 import { resolveMediaUrl } from "@/lib/url";
 import {
   formatFileSize,
+  getReplyPreview,
+  getReplyPreviewText,
+  getReplyToId,
   getMessageDate,
   getMessageInitials,
   getMessagePreviewText,
+  isReplyPreviewDeleted,
   isAudioAttachment,
   isImageAttachment,
   isVideoAttachment,
@@ -55,6 +59,7 @@ type ChatMessageItemProps = {
   brokenMedia: Record<number, boolean>;
   useOriginalImage: Record<number, boolean>;
   onToggleActions: (messageId: number, anchor: { x: number; y: number }) => void;
+  onJumpToReply: (messageId: number) => void;
   onOpenMediaPreview: (preview: MediaPreview) => void;
   onAttachmentLoad: (attachmentId: number) => void;
   onAttachmentError: (attachmentId: number) => void;
@@ -116,6 +121,7 @@ export default function ChatMessageItem({
   brokenMedia,
   useOriginalImage,
   onToggleActions,
+  onJumpToReply,
   onOpenMediaPreview,
   onAttachmentLoad,
   onAttachmentError,
@@ -124,7 +130,9 @@ export default function ChatMessageItem({
   hasMyReaction,
 }: ChatMessageItemProps) {
   const currentDate = getMessageDate(message);
-  const replyToId = repliedMessage?.id ?? message.reply_to_id ?? (typeof message.reply_to === "number" ? message.reply_to : null);
+  const replyPreviewMessage = getReplyPreview(message, repliedMessage);
+  const replyToId = getReplyToId(message);
+  const canJumpToReply = Boolean(replyToId && !isReplyPreviewDeleted(replyPreviewMessage));
   const isMine = Boolean(
     currentUserId &&
       (message.author_id === currentUserId || message.author?.id === currentUserId || message.sender?.id === currentUserId)
@@ -180,10 +188,45 @@ export default function ChatMessageItem({
             {!isMine ? <p className="mb-1 text-[11px] font-medium text-gray-500">{getMessageAuthorLabel(message)}</p> : null}
 
             {replyToId ? (
-              <div className={`mb-2 rounded-lg border-l-2 px-2 py-1 text-xs ${isMine ? "border-sky-200 bg-sky-400/30 text-sky-50" : "border-gray-300 bg-gray-100 text-gray-600"}`}>
-                <p className="font-medium">{repliedMessage?.author_name || "Ответ на сообщение"}</p>
-                <p className="truncate">{repliedMessage ? getMessagePreviewText(repliedMessage) : `Сообщение #${replyToId}`}</p>
-              </div>
+              canJumpToReply ? (
+                <button
+                  type="button"
+                  onClick={() => onJumpToReply(replyToId)}
+                  className={[
+                    "group mb-2 block w-full rounded-xl border-l-2 px-2.5 py-1.5 text-left text-xs transition focus-visible:outline-none",
+                    isMine
+                      ? "border-sky-200 bg-sky-400/30 text-sky-50 hover:bg-sky-400/40 focus-visible:bg-sky-400/40 focus-visible:ring-2 focus-visible:ring-white/35"
+                      : "border-gray-300 bg-gray-100 text-gray-600 hover:bg-gray-200 focus-visible:bg-gray-200 focus-visible:ring-2 focus-visible:ring-sky-200",
+                  ].join(" ")}
+                  title="Перейти к исходному сообщению"
+                  aria-label={`Перейти к сообщению ${replyPreviewMessage?.author_name || `#${replyToId}`}`}
+                >
+                  <p className="font-medium opacity-90 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                    {replyPreviewMessage?.author_name || "Ответ на сообщение"}
+                  </p>
+                  <p className="truncate opacity-90 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                    {replyPreviewMessage ? getReplyPreviewText(replyPreviewMessage) : `Сообщение #${replyToId}`}
+                  </p>
+                </button>
+              ) : (
+                <div
+                  className={[
+                    "mb-2 block w-full rounded-xl border-l-2 px-2.5 py-1.5 text-left text-xs opacity-85",
+                    isMine
+                      ? "border-sky-200/80 bg-sky-400/20 text-sky-50/95"
+                      : "border-gray-300 bg-gray-100 text-gray-500",
+                  ].join(" ")}
+                  title="Исходное сообщение удалено"
+                  aria-label={`Исходное сообщение удалено${replyPreviewMessage?.author_name ? `, автор ${replyPreviewMessage.author_name}` : ""}`}
+                >
+                  <p className="font-medium">
+                    {replyPreviewMessage?.author_name || "Ответ на сообщение"}
+                  </p>
+                  <p className="truncate">
+                    {replyPreviewMessage ? getReplyPreviewText(replyPreviewMessage) : "Сообщение удалено"}
+                  </p>
+                </div>
+              )
             ) : null}
 
             {message.is_deleted ? (

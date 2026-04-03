@@ -791,6 +791,21 @@ export default function MessageDialogPage() {
     }
   }, [cm, highlightFoundMessage, searchResults]);
 
+  const handleJumpToReply = useCallback(async (messageId: number) => {
+    if (!messageId) {
+      return;
+    }
+
+    const jumped = await cm.jumpToMessage(messageId);
+    if (jumped) {
+      highlightFoundMessage(messageId);
+      setExpandedReplyActionForId(null);
+      setActionsMenuAnchor(null);
+      setReactionPickerForMessageId(null);
+      setIsReadersModalOpen(false);
+    }
+  }, [cm, highlightFoundMessage]);
+
   const handleSubmitSelectedSearchResult = useCallback(() => {
     if (searchResults.length === 0) {
       return;
@@ -1018,6 +1033,9 @@ export default function MessageDialogPage() {
                               brokenMedia={brokenMedia}
                               useOriginalImage={useOriginalImage}
                               onToggleActions={handleToggleMessageActions}
+                              onJumpToReply={(messageId) => {
+                                void handleJumpToReply(messageId);
+                              }}
                               onOpenMediaPreview={setMediaPreview}
                               onAttachmentLoad={handleAttachmentLoad}
                               onAttachmentError={handleAttachmentError}

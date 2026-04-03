@@ -86,6 +86,24 @@ def _get_user_avatar_url(user) -> str:
     return ""
 
 
+def _serialize_reply_preview(reply_msg) -> dict:
+    is_deleted = bool(getattr(reply_msg, "is_deleted", False))
+
+    return {
+        "id": reply_msg.id,
+        "content": ""
+        if is_deleted
+        else (reply_msg.content[:100] if reply_msg.content else ""),
+        "author_name": (
+            reply_msg.author.get_full_name()
+            if reply_msg.author
+            else "Неизвестный"
+        ),
+        "is_deleted": is_deleted,
+        "has_attachments": bool(getattr(reply_msg, "has_attachments", False)),
+    }
+
+
 def _get_message_read_by(m) -> list[dict]:
     """Список участников, которые дочитали сообщение."""
     chat = getattr(m, "chat", None)
@@ -281,17 +299,7 @@ def serialize_message(m) -> dict:
                     pk=m.reply_to_id
                 )
 
-            data["reply_to"] = {
-                "id": reply_msg.id,
-                "content": (
-                    reply_msg.content[:100] if reply_msg.content else ""
-                ),
-                "author_name": (
-                    reply_msg.author.get_full_name()
-                    if reply_msg.author
-                    else "Неизвестный"
-                ),
-            }
+            data["reply_to"] = _serialize_reply_preview(reply_msg)
         except Exception:
             # Если не удалось загрузить reply_to, просто пропускаем
             pass
