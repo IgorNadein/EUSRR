@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
 import { RelatedDocument, Document } from '@/types/api';
 import { apiClient } from '@/lib/api';
+import { Modal } from "@/components/ui";
 
 interface RelatedDocumentsListProps {
   documentId: number;
@@ -170,35 +170,16 @@ export default function RelatedDocumentsList({ documentId }: RelatedDocumentsLis
       )}
 
       {/* Модальное окно добавления */}
-      {showAddModal && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4" 
-          onClick={() => {
-            setShowAddModal(false);
-            setSearchQuery('');
-            setSearchResults([]);
-          }}
-        >
-          <div 
-            className="w-full max-w-[95vw] sm:max-w-md rounded-xl sm:rounded-2xl bg-white shadow-xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto" 
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
-              <h5 className="text-base sm:text-lg font-semibold text-gray-900">Добавить связанный документ</h5>
-              <button
-                type="button"
-                className="rounded-full p-1 hover:bg-gray-100"
-                onClick={() => {
-                  setShowAddModal(false);
-                  setSearchQuery('');
-                  setSearchResults([]);
-                }}
-              >
-                <X size={20} className="text-gray-600" />
-              </button>
-            </div>
-            
-            <div className="px-4 sm:px-6 py-4">
+      <Modal
+        isOpen={showAddModal}
+        onClose={() => {
+          setShowAddModal(false);
+          setSearchQuery('');
+          setSearchResults([]);
+        }}
+        title="Добавить связанный документ"
+        size="sm"
+      >
               <div className="mb-4">
                 <input
                   type="text"
@@ -241,10 +222,7 @@ export default function RelatedDocumentsList({ documentId }: RelatedDocumentsLis
                   ))}
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 }

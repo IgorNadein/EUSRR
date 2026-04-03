@@ -72,6 +72,40 @@ def _parse_bool_query_param(value, default=True):
     return default
 
 
+def _build_message_search_snippet(message, query, max_length=140):
+    query_normalized = (query or '').strip().lower()
+    content = (message.content or '').strip()
+
+    if content:
+        if not query_normalized:
+            return f"{content[:max_length].rstrip()}…" if len(content) > max_length else content
+
+        content_normalized = content.lower()
+        match_index = content_normalized.find(query_normalized)
+
+        if match_index < 0:
+            return f"{content[:max_length].rstrip()}…" if len(content) > max_length else content
+
+        context_before = max_length // 3
+        context_after = max_length - context_before - len(query_normalized)
+        start = max(0, match_index - context_before)
+        end = min(len(content), match_index + len(query_normalized) + context_after)
+        snippet = content[start:end].strip()
+
+        if start > 0:
+            snippet = f"…{snippet}"
+        if end < len(content):
+            snippet = f"{snippet}…"
+        return snippet
+
+    attachment_names = [a.file_name for a in getattr(message, 'attachments').all() if a.file_name]
+    if attachment_names:
+        joined_names = ', '.join(attachment_names)
+        return f"Файлы: {joined_names}"
+
+    return 'Сообщение без текста'
+
+
 class ChatViewSet(viewsets.ModelViewSet):
     """
     ViewSet для управления чатами
@@ -853,6 +887,79 @@ class ChatViewSet(viewsets.ModelViewSet):
             'anchor_index': anchor_index,
             'has_more_before': len(before) >= before_limit,
             'has_more_after': len(after) > after_limit
+        })
+
+    @action(detail=True, methods=['get'], url_path='search-messages')
+    def search_messages(self, request, pk=None):
+        """Поиск сообщений внутри одного чата с пагинацией и сниппетами."""
+        chat = self.get_object()
+
+        if not user_can_access_chat(chat, request.user):
+            return Response(
+                {'error': 'Access denied'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        query = (request.query_params.get('q') or '').strip()
+
+        try:
+            limit = min(max(int(request.query_params.get('limit', 20)), 1), 100)
+        except (ValueError, TypeError):
+            limit = 20
+
+        try:
+            offset = max(int(request.query_params.get('offset', 0)), 0)
+        except (ValueError, TypeError):
+            offset = 0
+
+        if len(query) < 2:
+            return Response({
+                'query': query,
+                'count': 0,
+                'offset': offset,
+                'next_offset': None,
+                'results': [],
+            })
+
+        queryset = chat.messages.filter(
+            is_deleted=False,
+        ).select_related(
+            'author'
+        ).prefetch_related(
+            'attachments'
+        ).filter(
+            Q(content__icontains=query) | Q(attachments__file_name__icontains=query)
+        ).distinct().order_by('-created_at', '-id')
+
+        total_count = queryset.count()
+        matches = list(queryset[offset:offset + limit])
+        next_offset = offset + limit if (offset + limit) < total_count else None
+
+        results = []
+        for message in matches:
+            author = message.author
+            author_name = (
+                f"{getattr(author, 'last_name', '')} {getattr(author, 'first_name', '')}".strip()
+                or getattr(author, 'username', '')
+                or 'Сотрудник'
+            )
+            attachments = list(message.attachments.all())
+            results.append({
+                'message_id': message.id,
+                'content': message.content or '',
+                'snippet': _build_message_search_snippet(message, query),
+                'author_name': author_name,
+                'created_at': message.created_at,
+                'attachments_count': len(attachments),
+                'has_attachments': bool(attachments),
+            })
+
+        return Response({
+            'query': query,
+            'count': total_count,
+            'offset': offset,
+            'next_offset': next_offset,
+            'results': results,
         })
 
     @action(detail=True, methods=['post'], url_path='mark-read')

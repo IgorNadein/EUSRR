@@ -555,6 +555,24 @@ export interface MessageAttachment {
   is_local?: boolean;
 }
 
+export interface ChatMessageSearchResult {
+  message_id: number;
+  content: string;
+  snippet: string;
+  author_name: string;
+  created_at: string;
+  attachments_count: number;
+  has_attachments: boolean;
+}
+
+export interface ChatMessageSearchResponse {
+  query: string;
+  count: number;
+  offset: number;
+  next_offset: number | null;
+  results: ChatMessageSearchResult[];
+}
+
 // Calendar types (django-scheduler)
 export interface CalendarEvent {
   id: number;

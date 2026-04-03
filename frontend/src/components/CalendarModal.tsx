@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
+import { Modal } from "@/components/ui";
 import { apiClient } from "@/lib/api";
 import { useCalendar } from "@/contexts/CalendarContext";
 
@@ -79,28 +80,39 @@ export function CalendarModal({ isOpen, onClose, calendar }: CalendarModalProps)
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSave();
-    } else if (e.key === "Escape") {
-      onClose();
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
-      <div className="w-full max-w-[95vw] sm:max-w-md rounded-xl sm:rounded-2xl bg-white p-4 sm:p-6 shadow-xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
-        <div className="mb-3 sm:mb-4 flex items-center justify-between">
-          <h3 className="text-base sm:text-lg font-semibold text-gray-900">
-            {calendar?.id ? "Редактировать календарь" : "Создать календарь"}
-          </h3>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={calendar?.id ? "Редактировать календарь" : "Создать календарь"}
+      size="sm"
+      footer={
+        <div className="flex gap-2">
           <button
-            onClick={onClose}
-            disabled={saving}
-            className="rounded-full p-1 hover:bg-gray-100 disabled:opacity-50"
+            onClick={handleSave}
+            disabled={!name.trim() || saving}
+            className="flex-1 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <X size={20} className="text-gray-600" />
+            {saving ? "Сохранение..." : calendar?.id ? "Сохранить" : "Создать"}
           </button>
-        </div>
 
-        <div className="space-y-4">
+          {calendar?.id && (
+            <button
+              onClick={handleDelete}
+              disabled={saving}
+              className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-50"
+              title="Удалить календарь"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+        </div>
+      }
+    >
+      <div className="space-y-4">
           {!calendar?.id && (
             <p className="text-sm text-gray-600">
               Создайте календарь для организации событий. Вы сможете добавлять встречи, задачи и напоминания.
@@ -123,28 +135,7 @@ export function CalendarModal({ isOpen, onClose, calendar }: CalendarModalProps)
             />
           </div>
 
-          <div className="flex gap-2">
-            <button
-              onClick={handleSave}
-              disabled={!name.trim() || saving}
-              className="flex-1 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {saving ? "Сохранение..." : calendar?.id ? "Сохранить" : "Создать"}
-            </button>
-
-            {calendar?.id && (
-              <button
-                onClick={handleDelete}
-                disabled={saving}
-                className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-50"
-                title="Удалить календарь"
-              >
-                <Trash2 size={16} />
-              </button>
-            )}
-          </div>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

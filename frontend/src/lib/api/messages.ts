@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import type { ChatMessageSearchResponse } from '@/types/api';
 import type { RequestFn, GetTokenFn } from './utils';
 
 export function createMessagesApi(request: RequestFn, getToken: GetTokenFn) {
@@ -86,6 +87,13 @@ export function createMessagesApi(request: RequestFn, getToken: GetTokenFn) {
             if (params?.around_id) qp.append('around_id', params.around_id.toString());
             const qs = qp.toString();
             return request(`/api/v1/communications/chats/${chatId}/messages-around/${qs ? '?' + qs : ''}`);
+        },
+        searchChatMessages: (chatId: number | string, params: { q: string; limit?: number; offset?: number }) => {
+            const qp = new URLSearchParams();
+            qp.append('q', params.q);
+            if (params.limit) qp.append('limit', params.limit.toString());
+            if (typeof params.offset === 'number') qp.append('offset', params.offset.toString());
+            return request(`/api/v1/communications/chats/${chatId}/search-messages/?${qp.toString()}`) as Promise<ChatMessageSearchResponse>;
         },
         sendMessage: (chatId: number | string, text: string, replyTo?: number) => uploadMessage(chatId, text, [], replyTo),
         sendMessageWithFiles: (chatId: number | string, text: string, files: File[], replyTo?: number) => uploadMessage(chatId, text, files, replyTo),

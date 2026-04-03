@@ -2,6 +2,7 @@
 
 import { Heart, ImageIcon, MessageSquare, Paperclip, Pencil, Plus, Send, Trash2, X } from "lucide-react";
 import { AppShell } from "../components/AppShell";
+import { Modal } from "@/components/ui";
 import { apiClient } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/url";
 import { useEffect, useRef, useState } from "react";
@@ -683,152 +684,180 @@ export default function Home() {
         )}
       </div>
 
-      {createPostOpen ? (
-        <div className="fixed inset-0 z-[100]">
-          <button
-            type="button"
-            aria-label="Закрыть создание публикации"
-            onClick={() => setCreatePostOpen(false)}
-            className="absolute inset-0 bg-black/50"
-          />
+      <Modal
+        isOpen={createPostOpen}
+        onClose={() => setCreatePostOpen(false)}
+        title={editingPostId ? "Редактировать публикацию" : "Создать публикацию"}
+        size="lg"
+        closeOnEsc={!createSubmitting}
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setCreatePostOpen(false)}
+              className="rounded-lg bg-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300"
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              disabled={createSubmitting}
+              onClick={handleCreatePost}
+              className="rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-50"
+            >
+              {createSubmitting ? (editingPostId ? "Сохраняем..." : "Публикуем...") : (editingPostId ? "Сохранить" : "Опубликовать")}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          {createError ? (
+            <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{createError}</div>
+          ) : null}
 
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl max-h-[80vh] mx-auto px-3 flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-gray-200 sm:px-6">
-            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-              <p className="text-sm font-semibold text-gray-900">
-                {editingPostId ? "Редактировать публикацию" : "Создать публикацию"}
-              </p>
-              <button
-                type="button"
-                onClick={() => setCreatePostOpen(false)}
-                className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-gray-100"
+          {(canCreateCompanyPost || canCreateDepartmentPost) ? (
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Тип публикации</label>
+              <select
+                value={createType}
+                onChange={(e) => setCreateType(e.target.value as "company" | "department")}
+                className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
               >
-                <X size={18} className="text-gray-600" />
-              </button>
+                {canCreateCompanyPost ? <option value="company">Новость компании</option> : null}
+                {canCreateDepartmentPost ? <option value="department">Новость отдела</option> : null}
+              </select>
             </div>
+          ) : null}
 
-            <div className="flex-1 overflow-y-auto px-4 py-4">
-              <div className="space-y-4">
-                {createError ? (
-                  <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{createError}</div>
-                ) : null}
-
-                {(canCreateCompanyPost || canCreateDepartmentPost) ? (
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Тип публикации</label>
-                    <select
-                      value={createType}
-                      onChange={(e) => setCreateType(e.target.value as "company" | "department")}
-                      className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                    >
-                      {canCreateCompanyPost ? <option value="company">Новость компании</option> : null}
-                      {canCreateDepartmentPost ? <option value="department">Новость отдела</option> : null}
-                    </select>
-                  </div>
-                ) : null}
-
-                {createType === "department" ? (
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Отдел</label>
-                    <select
-                      value={createDepartmentId}
-                      onChange={(e) => setCreateDepartmentId(e.target.value)}
-                      className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                    >
-                      <option value="">Выберите отдел</option>
-                      {userDepartments.map((dept) => (
-                        <option key={dept.id} value={String(dept.id)}>{dept.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                ) : null}
-
-                <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Заголовок</label>
-                  <input
-                    type="text"
-                    value={createTitle}
-                    onChange={(e) => setCreateTitle(e.target.value)}
-                    className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Содержание</label>
-                  <textarea
-                    value={createBody}
-                    onChange={(e) => setCreateBody(e.target.value)}
-                    className="min-h-32 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Изображение</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setCreateImage(e.target.files?.[0] || null)}
-                    className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-sky-50 file:px-3 file:py-2 file:text-sm file:text-sky-700 hover:file:bg-sky-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Вложение</label>
-                  <input
-                    type="file"
-                    onChange={(e) => setCreateAttachment(e.target.files?.[0] || null)}
-                    className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:text-gray-700 hover:file:bg-gray-200"
-                  />
-                </div>
-              </div>
+          {createType === "department" ? (
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Отдел</label>
+              <select
+                value={createDepartmentId}
+                onChange={(e) => setCreateDepartmentId(e.target.value)}
+                className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              >
+                <option value="">Выберите отдел</option>
+                {userDepartments.map((dept) => (
+                  <option key={dept.id} value={String(dept.id)}>{dept.name}</option>
+                ))}
+              </select>
             </div>
+          ) : null}
 
-            <div className="border-t border-gray-100 px-4 py-3">
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setCreatePostOpen(false)}
-                  className="rounded-lg bg-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="button"
-                  disabled={createSubmitting}
-                  onClick={handleCreatePost}
-                  className="rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-50"
-                >
-                  {createSubmitting ? (editingPostId ? "Сохраняем..." : "Публикуем...") : (editingPostId ? "Сохранить" : "Опубликовать")}
-                </button>
-              </div>
-            </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Заголовок</label>
+            <input
+              type="text"
+              value={createTitle}
+              onChange={(e) => setCreateTitle(e.target.value)}
+              className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Содержание</label>
+            <textarea
+              value={createBody}
+              onChange={(e) => setCreateBody(e.target.value)}
+              className="min-h-32 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Изображение</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setCreateImage(e.target.files?.[0] || null)}
+              className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-sky-50 file:px-3 file:py-2 file:text-sm file:text-sky-700 hover:file:bg-sky-100"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Вложение</label>
+            <input
+              type="file"
+              onChange={(e) => setCreateAttachment(e.target.files?.[0] || null)}
+              className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:text-gray-700 hover:file:bg-gray-200"
+            />
           </div>
         </div>
-      ) : null}
+      </Modal>
 
-      {commentsOpen && activePost && (
-        <div className="fixed inset-0 z-[100]">
-          <button
-            type="button"
-            aria-label="Закрыть комментарии"
-            onClick={() => setCommentsOpen(false)}
-            className="absolute inset-0 bg-black/50"
-          />
-
-          <div className="absolute inset-x-2 sm:inset-x-3 top-2 sm:top-4 bottom-2 sm:bottom-4 mx-auto flex max-w-[95vw] sm:max-w-2xl flex-col overflow-hidden rounded-xl sm:rounded-2xl bg-white shadow-2xl ring-1 ring-gray-200">
-            <div className="flex items-center justify-between border-b border-gray-100 px-3 sm:px-4 py-2.5 sm:py-3">
-              <div>
-                <p className="text-xs sm:text-sm font-semibold text-gray-900">Комментарии</p>
-                <p className="text-[10px] sm:text-xs text-gray-500">Публикация #{activePost.id}</p>
+      <Modal
+        isOpen={commentsOpen && !!activePost}
+        onClose={() => setCommentsOpen(false)}
+        title="Комментарии"
+        size="lg"
+        noPadding
+        footer={
+          <div>
+            {(commentImage || commentAttachment) && (
+              <div className="mb-2 flex flex-wrap gap-2">
+                {commentImage && (
+                  <div className="flex items-center gap-1.5 rounded-md bg-sky-50 px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-200">
+                    <ImageIcon size={12} />
+                    <span className="max-w-[120px] truncate">{commentImage.name}</span>
+                    <button type="button" onClick={() => setCommentImage(null)} className="ml-0.5 text-sky-400 hover:text-sky-700"><X size={12} /></button>
+                  </div>
+                )}
+                {commentAttachment && (
+                  <div className="flex items-center gap-1.5 rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700 ring-1 ring-gray-200">
+                    <Paperclip size={12} />
+                    <span className="max-w-[120px] truncate">{commentAttachment.name}</span>
+                    <button type="button" onClick={() => setCommentAttachment(null)} className="ml-0.5 text-gray-400 hover:text-gray-700"><X size={12} /></button>
+                  </div>
+                )}
               </div>
+            )}
+            <div className="flex items-center gap-2">
+              <input ref={commentImageRef} type="file" accept="image/*" className="hidden" onChange={(e) => { setCommentImage(e.target.files?.[0] || null); e.target.value = ""; }} />
+              <input ref={commentAttachmentRef} type="file" className="hidden" onChange={(e) => { setCommentAttachment(e.target.files?.[0] || null); e.target.value = ""; }} />
               <button
                 type="button"
-                onClick={() => setCommentsOpen(false)}
-                className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-gray-100"
+                onClick={() => commentImageRef.current?.click()}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                title="Прикрепить изображение"
               >
-                <X size={18} className="text-gray-600" />
+                <ImageIcon size={18} />
+              </button>
+              <button
+                type="button"
+                onClick={() => commentAttachmentRef.current?.click()}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                title="Прикрепить файл"
+              >
+                <Paperclip size={18} />
+              </button>
+              <input
+                type="text"
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleCreateComment();
+                  }
+                }}
+                placeholder="Напишите комментарий..."
+                className="h-10 flex-1 rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              />
+              <button
+                type="button"
+                disabled={commentSending || (!newComment.trim() && !commentImage && !commentAttachment)}
+                onClick={handleCreateComment}
+                className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-500 text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Send size={16} />
               </button>
             </div>
-
+          </div>
+        }
+      >
+        {activePost && (
+          <>
+            <p className="px-4 pt-1 pb-2 text-[10px] sm:text-xs text-gray-500">Публикация #{activePost.id}</p>
             <div className="flex-1 overflow-y-auto px-4 py-3">
               {commentsLoading ? (
                 <p className="text-sm text-gray-500">Загрузка комментариев...</p>
@@ -943,71 +972,9 @@ export default function Home() {
                 </div>
               )}
             </div>
-
-            <div className="border-t border-gray-100 px-4 py-3">
-              {(commentImage || commentAttachment) && (
-                <div className="mb-2 flex flex-wrap gap-2">
-                  {commentImage && (
-                    <div className="flex items-center gap-1.5 rounded-md bg-sky-50 px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-200">
-                      <ImageIcon size={12} />
-                      <span className="max-w-[120px] truncate">{commentImage.name}</span>
-                      <button type="button" onClick={() => setCommentImage(null)} className="ml-0.5 text-sky-400 hover:text-sky-700"><X size={12} /></button>
-                    </div>
-                  )}
-                  {commentAttachment && (
-                    <div className="flex items-center gap-1.5 rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700 ring-1 ring-gray-200">
-                      <Paperclip size={12} />
-                      <span className="max-w-[120px] truncate">{commentAttachment.name}</span>
-                      <button type="button" onClick={() => setCommentAttachment(null)} className="ml-0.5 text-gray-400 hover:text-gray-700"><X size={12} /></button>
-                    </div>
-                  )}
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <input ref={commentImageRef} type="file" accept="image/*" className="hidden" onChange={(e) => { setCommentImage(e.target.files?.[0] || null); e.target.value = ""; }} />
-                <input ref={commentAttachmentRef} type="file" className="hidden" onChange={(e) => { setCommentAttachment(e.target.files?.[0] || null); e.target.value = ""; }} />
-                <button
-                  type="button"
-                  onClick={() => commentImageRef.current?.click()}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                  title="Прикрепить изображение"
-                >
-                  <ImageIcon size={18} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => commentAttachmentRef.current?.click()}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                  title="Прикрепить файл"
-                >
-                  <Paperclip size={18} />
-                </button>
-                <input
-                  type="text"
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleCreateComment();
-                    }
-                  }}
-                  placeholder="Напишите комментарий..."
-                  className="h-10 flex-1 rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                />
-                <button
-                  type="button"
-                  disabled={commentSending || (!newComment.trim() && !commentImage && !commentAttachment)}
-                  onClick={handleCreateComment}
-                  className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-500 text-white disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Send size={16} />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
     </AppShell>
   );
 }

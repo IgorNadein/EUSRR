@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Check, Bell, BellOff, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Check, Bell, BellOff, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Modal } from "@/components/ui";
 import { apiClient } from "@/lib/api";
 
 interface Calendar {
@@ -138,17 +139,11 @@ export function CalendarSubscriptionsModal({ isOpen, onClose, onUpdate }: Props)
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
-      <div className="w-full max-w-[95vw] sm:max-w-2xl rounded-xl sm:rounded-2xl bg-white shadow-xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+    <Modal isOpen={isOpen} onClose={onClose} size="md" noPadding>
+      <div className="overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-100 px-4 sm:px-6 py-3 sm:py-4">
           <h3 className="text-base sm:text-lg font-semibold text-gray-900">Подписки на календари</h3>
-          <button
-            onClick={onClose}
-            className="rounded-full p-1 hover:bg-gray-100"
-          >
-            <X size={20} className="text-gray-600" />
-          </button>
         </div>
 
         {/* Tabs */}
@@ -296,6 +291,6 @@ export function CalendarSubscriptionsModal({ isOpen, onClose, onUpdate }: Props)
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

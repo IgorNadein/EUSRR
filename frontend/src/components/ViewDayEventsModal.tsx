@@ -1,6 +1,7 @@
 "use client";
 
-import { X, Plus, Clock, Calendar } from "lucide-react";
+import { Plus, Clock, Calendar } from "lucide-react";
+import { Modal } from "@/components/ui";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 
@@ -51,26 +52,27 @@ export function ViewDayEventsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
-      <div className="w-full max-w-[95vw] sm:max-w-md rounded-xl sm:rounded-2xl bg-white p-4 sm:p-6 shadow-xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
-        <div className="mb-3 sm:mb-4 flex items-center justify-between">
-          <div>
-            <h3 className="text-base sm:text-lg font-semibold text-gray-900">События на {capitalizedDate}</h3>
-            <p className="text-xs text-gray-500 mt-1">
-              {sortedEvents.length === 0
-                ? "Нет событий"
-                : `${sortedEvents.length} ${sortedEvents.length === 1 ? "событие" : "событий"}`}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded-full p-1 hover:bg-gray-100"
-          >
-            <X size={20} className="text-gray-600" />
-          </button>
-        </div>
-
-        <div className="space-y-4">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={`События на ${capitalizedDate}`}
+      size="sm"
+      footer={
+        <button
+          onClick={onCreateEvent}
+          className="w-full flex items-center justify-center gap-2 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600"
+        >
+          <Plus size={16} />
+          Создать событие
+        </button>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-xs text-gray-500">
+          {sortedEvents.length === 0
+            ? "Нет событий"
+            : `${sortedEvents.length} ${sortedEvents.length === 1 ? "событие" : "событий"}`}
+        </p>
           {sortedEvents.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <Calendar size={40} className="text-gray-300 mb-2" />
@@ -126,17 +128,7 @@ export function ViewDayEventsModal({
             </div>
           )}
 
-          <div className="mt-4">
-            <button
-              onClick={onCreateEvent}
-              className="w-full flex items-center justify-center gap-2 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600"
-            >
-              <Plus size={16} />
-              Создать событие
-            </button>
-          </div>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

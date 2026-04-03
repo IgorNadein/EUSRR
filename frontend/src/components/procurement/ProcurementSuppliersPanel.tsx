@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { apiClient } from "@/lib/api";
 import type { ProcurementSupplier } from "@/types/api";
 import { Pencil, Plus, Star, Trash2 } from "lucide-react";
+import { Modal } from "@/components/ui";
 
 type Props = {
   canManage: boolean;
@@ -215,11 +216,13 @@ export default function ProcurementSuppliersPanel({ canManage }: Props) {
         </table>
       </div>
 
-      {formOpen && canManage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) closeForm(); }}>
-          <div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-xl">
-            <h3 className="text-base font-semibold text-gray-900">{editing ? "Редактировать поставщика" : "Новый поставщик"}</h3>
-            <div className="mt-4 grid gap-3">
+      <Modal isOpen={formOpen && canManage} onClose={closeForm} title={editing ? "Редактировать поставщика" : "Новый поставщик"} size="md" footer={
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={closeForm} className="rounded-lg bg-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300">Отмена</button>
+              <button type="button" onClick={handleSave} disabled={busy} className="rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-60">Сохранить</button>
+            </div>
+      }>
+            <div className="grid gap-3">
               <input value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Название *" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
               <div className="grid grid-cols-2 gap-3">
                 <input value={form.contact_person} onChange={(e) => setForm((prev) => ({ ...prev, contact_person: e.target.value }))} placeholder="Контактное лицо" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
@@ -239,13 +242,7 @@ export default function ProcurementSuppliersPanel({ canManage }: Props) {
                 <input type="checkbox" checked={form.is_active} onChange={(e) => setForm((prev) => ({ ...prev, is_active: e.target.checked }))} /> Активный поставщик
               </label>
             </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button type="button" onClick={closeForm} className="rounded-lg bg-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300">Отмена</button>
-              <button type="button" onClick={handleSave} disabled={busy} className="rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-60">Сохранить</button>
-            </div>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 }

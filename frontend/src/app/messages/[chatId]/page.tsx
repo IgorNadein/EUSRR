@@ -7,12 +7,13 @@ import { AppShell } from "../../../components/AppShell";
 import ChatDialogHeader from "@/components/messages/ChatDialogHeader";
 import ChatMediaPreviewModal from "@/components/messages/ChatMediaPreviewModal";
 import ChatMessageItem, { MediaPreview } from "@/components/messages/ChatMessageItem";
+import ChatSearchPanel from "@/components/messages/ChatSearchPanel";
 import MessageActionsMenu from "@/components/messages/MessageActionsMenu";
 import MessageReadersModal from "@/components/messages/MessageReadersModal";
 import MessageComposer from "@/components/messages/MessageComposer";
 import ReactionPickerModal from "@/components/messages/ReactionPickerModal";
 import { apiClient } from "@/lib/api";
-import type { Message } from "@/types/api";
+import type { ChatMessageSearchResponse, ChatMessageSearchResult, Message } from "@/types/api";
 import { useUser } from "@/contexts/UserContext";
 import { useChatFallbackSync } from "@/hooks/useChatFallbackSync";
 import { useSilentChatReloadGuard } from "@/hooks/useSilentChatReloadGuard";
@@ -69,6 +70,8 @@ export default function MessageDialogPage() {
   const messagesViewportRef = useRef<ScrollableMessageListInner | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const highlightTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   /* ──────────────────────────────────────────────────────
    * HOOK: Chat messages (state, pagination, pending)
@@ -141,6 +144,16 @@ export default function MessageDialogPage() {
   const [isPinned, setIsPinned] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [jumpingToDate, setJumpingToDate] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<ChatMessageSearchResult[]>([]);
+  const [searchTotalCount, setSearchTotalCount] = useState(0);
+  const [selectedSearchResultIndex, setSelectedSearchResultIndex] = useState(0);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchLoadingMore, setSearchLoadingMore] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [nextSearchOffset, setNextSearchOffset] = useState<number | null>(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
 
   // Sync settings from chat
   useEffect(() => {
@@ -149,6 +162,17 @@ export default function MessageDialogPage() {
       setNotificationsEnabled(cm.chat.notifications_enabled ?? true);
     }
   }, [cm.chat]);
+
+  useEffect(() => {
+    if (!isSearchOpen) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    });
+  }, [isSearchOpen]);
 
   /* ── membership & permissions ── */
   const myMembership = useMemo(() => {
@@ -313,6 +337,7 @@ export default function MessageDialogPage() {
   /* ── cleanup timers ── */
   useEffect(() => () => {
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
   }, []);
 
   useLayoutEffect(() => {
@@ -602,6 +627,171 @@ export default function MessageDialogPage() {
     } catch (e) { console.error("Ошибка переключения уведомлений:", e); }
   };
 
+  const openSearchPanel = useCallback(() => {
+    setIsSearchOpen(true);
+    setExpandedReplyActionForId(null);
+    setActionsMenuAnchor(null);
+    setReactionPickerForMessageId(null);
+    setShowComposerEmojiPicker(false);
+    scroll.setIsDateNavigatorOpen(false);
+  }, [scroll]);
+
+  const closeSearchPanel = useCallback(() => {
+    setIsSearchOpen(false);
+    setSearchQuery("");
+    setSearchResults([]);
+    setSearchTotalCount(0);
+    setSelectedSearchResultIndex(0);
+    setSearchLoading(false);
+    setSearchLoadingMore(false);
+    setSearchError(null);
+    setNextSearchOffset(null);
+  }, []);
+
+  const highlightFoundMessage = useCallback((messageId: number) => {
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    setHighlightedMessageId(messageId);
+    highlightTimerRef.current = setTimeout(() => {
+      setHighlightedMessageId(null);
+      highlightTimerRef.current = null;
+    }, 2200);
+  }, []);
+
+  const runSearch = useCallback(async (query: string, options?: { append?: boolean; offset?: number }) => {
+    const normalizedQuery = query.trim();
+    if (!chatId || normalizedQuery.length < 2) {
+      setSearchResults([]);
+      setSearchTotalCount(0);
+      setSelectedSearchResultIndex(0);
+      setSearchError(null);
+      setNextSearchOffset(null);
+      return;
+    }
+
+    const append = Boolean(options?.append);
+    if (append) {
+      setSearchLoadingMore(true);
+    } else {
+      setSearchLoading(true);
+    }
+    setSearchError(null);
+
+    try {
+      const response: ChatMessageSearchResponse = await apiClient.searchChatMessages(chatId, {
+        q: normalizedQuery,
+        limit: 20,
+        offset: options?.offset ?? 0,
+      });
+
+      setSearchTotalCount(response.count);
+      setNextSearchOffset(response.next_offset);
+      setSearchResults((prev) => {
+        if (!append) {
+          return response.results;
+        }
+
+        const seen = new Set(prev.map((item) => item.message_id));
+        const merged = [...prev];
+        response.results.forEach((item: ChatMessageSearchResult) => {
+          if (!seen.has(item.message_id)) {
+            seen.add(item.message_id);
+            merged.push(item);
+          }
+        });
+        return merged;
+      });
+
+      if (!append) {
+        setSelectedSearchResultIndex(0);
+      }
+    } catch (e) {
+      console.error("Ошибка поиска по сообщениям:", e);
+      setSearchError("Не удалось выполнить поиск по сообщениям.");
+    } finally {
+      if (append) {
+        setSearchLoadingMore(false);
+      } else {
+        setSearchLoading(false);
+      }
+    }
+  }, [chatId]);
+
+  useEffect(() => {
+    if (!isSearchOpen) {
+      return;
+    }
+
+    const normalizedQuery = searchQuery.trim();
+    if (normalizedQuery.length < 2) {
+      setSearchResults([]);
+      setSearchTotalCount(0);
+      setSelectedSearchResultIndex(0);
+      setSearchError(null);
+      setNextSearchOffset(null);
+      setSearchLoading(false);
+      setSearchLoadingMore(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      void runSearch(normalizedQuery, { append: false, offset: 0 });
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [isSearchOpen, runSearch, searchQuery]);
+
+  const handleSelectSearchResult = useCallback(async (index: number) => {
+    const result = searchResults[index];
+    if (!result) {
+      return;
+    }
+
+    setSelectedSearchResultIndex(index);
+    const jumped = await cm.jumpToMessage(result.message_id);
+    if (jumped) {
+      highlightFoundMessage(result.message_id);
+      setExpandedReplyActionForId(null);
+      setActionsMenuAnchor(null);
+      setReactionPickerForMessageId(null);
+      setIsReadersModalOpen(false);
+    }
+  }, [cm, highlightFoundMessage, searchResults]);
+
+  const handleSubmitSelectedSearchResult = useCallback(() => {
+    if (searchResults.length === 0) {
+      return;
+    }
+
+    void handleSelectSearchResult(selectedSearchResultIndex);
+  }, [handleSelectSearchResult, searchResults.length, selectedSearchResultIndex]);
+
+  const handlePreviousSearchResult = useCallback(() => {
+    if (searchResults.length === 0) {
+      return;
+    }
+
+    const nextIndex = selectedSearchResultIndex <= 0 ? searchResults.length - 1 : selectedSearchResultIndex - 1;
+    void handleSelectSearchResult(nextIndex);
+  }, [handleSelectSearchResult, searchResults.length, selectedSearchResultIndex]);
+
+  const handleNextSearchResult = useCallback(() => {
+    if (searchResults.length === 0) {
+      return;
+    }
+
+    const nextIndex = selectedSearchResultIndex >= searchResults.length - 1 ? 0 : selectedSearchResultIndex + 1;
+    void handleSelectSearchResult(nextIndex);
+  }, [handleSelectSearchResult, searchResults.length, selectedSearchResultIndex]);
+
+  const handleLoadMoreSearchResults = useCallback(() => {
+    const normalizedQuery = searchQuery.trim();
+    if (!normalizedQuery || nextSearchOffset === null || searchLoadingMore) {
+      return;
+    }
+
+    void runSearch(normalizedQuery, { append: true, offset: nextSearchOffset });
+  }, [nextSearchOffset, runSearch, searchLoadingMore, searchQuery]);
+
   /* ── global click / escape dismissals ── */
 
   useEffect(() => {
@@ -628,11 +818,12 @@ export default function MessageDialogPage() {
         setReactionPickerForMessageId(null);
         setShowComposerEmojiPicker(false);
         scroll.setIsDateNavigatorOpen(false);
+        if (isSearchOpen) closeSearchPanel();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [scroll]);
+  }, [closeSearchPanel, isSearchOpen, scroll]);
 
   // Mobile keyboard viewport adjustment
   useEffect(() => {
@@ -655,7 +846,14 @@ export default function MessageDialogPage() {
       if (!c?.containerRef?.current) return;
       const v = c.containerRef.current;
       const t = e.target as HTMLElement | null;
-      if (!t || v.contains(t) || t.closest("textarea,input,button,a,video,audio,[contenteditable='true']")) return;
+      if (
+        !t ||
+        v.contains(t) ||
+        t.closest("[data-overlay-root='true'], [role='dialog'], [aria-modal='true']") ||
+        t.closest("textarea,input,button,a,video,audio,[contenteditable='true']")
+      ) {
+        return;
+      }
       e.preventDefault();
       v.scrollTop += e.deltaY;
     };
@@ -691,6 +889,29 @@ export default function MessageDialogPage() {
                 notificationsEnabled={notificationsEnabled}
                 onTogglePin={handleTogglePin}
                 onToggleNotifications={handleToggleNotifications}
+                onOpenSearch={openSearchPanel}
+              />
+
+              <ChatSearchPanel
+                isOpen={isSearchOpen}
+                query={searchQuery}
+                loading={searchLoading}
+                loadingMore={searchLoadingMore}
+                error={searchError}
+                results={searchResults}
+                totalCount={searchTotalCount}
+                nextOffset={nextSearchOffset}
+                selectedIndex={selectedSearchResultIndex}
+                inputRef={searchInputRef}
+                onQueryChange={setSearchQuery}
+                onClose={closeSearchPanel}
+                onPrevious={handlePreviousSearchResult}
+                onNext={handleNextSearchResult}
+                onSelect={(index) => {
+                  void handleSelectSearchResult(index);
+                }}
+                onLoadMore={handleLoadMoreSearchResults}
+                onSubmitSelection={handleSubmitSelectedSearchResult}
               />
 
               <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -756,6 +977,7 @@ export default function MessageDialogPage() {
                               message={message}
                               currentUserId={user?.id}
                               repliedMessage={repliedMessage}
+                              isHighlighted={highlightedMessageId === message.id}
                               isActionsOpen={expandedReplyActionForId === message.id}
                               canManage={!message.is_optimistic && canManageMessage(message)}
                               canReply={!message.is_deleted && !message.is_optimistic}

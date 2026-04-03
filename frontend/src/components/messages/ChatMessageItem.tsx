@@ -1,7 +1,17 @@
 "use client";
 
 import Image from "next/image";
-import { AlertCircle, Check, CheckCheck, ChevronRight, Clock3, FileText, Loader2 } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  CheckCheck,
+  ChevronRight,
+  Clock3,
+  FileText,
+  Image as ImageIcon,
+  Loader2,
+  PlayCircle,
+} from "lucide-react";
 
 import { resolveMediaUrl } from "@/lib/url";
 import {
@@ -22,10 +32,23 @@ export type MediaPreview = {
   name: string;
 };
 
+function MediaTypeBadge({ type }: { type: "image" | "video" }) {
+  const isVideo = type === "video";
+  const Icon = isVideo ? PlayCircle : ImageIcon;
+
+  return (
+    <span className="absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[11px] font-medium text-white backdrop-blur-sm">
+      <Icon size={12} />
+      {isVideo ? "Видео" : "Фото"}
+    </span>
+  );
+}
+
 type ChatMessageItemProps = {
   message: Message;
   currentUserId?: number;
   repliedMessage?: Message | null;
+  isHighlighted?: boolean;
   isActionsOpen: boolean;
   canManage: boolean;
   canReply: boolean;
@@ -86,6 +109,7 @@ export default function ChatMessageItem({
   message,
   currentUserId,
   repliedMessage,
+  isHighlighted = false,
   isActionsOpen,
   canManage,
   canReply,
@@ -132,7 +156,7 @@ export default function ChatMessageItem({
         ) : null}
 
         <div className={`flex min-w-0 items-start gap-1 ${isMine ? "max-w-[88%] flex-row-reverse" : "max-w-[calc(100%-2.5rem)]"}`}>
-          <div className={`relative min-w-0 rounded-2xl px-3 py-2 pr-9 ${isMine ? "bg-sky-500 text-white" : "bg-white text-gray-900 ring-1 ring-gray-100"}`}>
+          <div className={`relative min-w-0 rounded-2xl px-3 py-2 pr-9 transition-shadow duration-300 ${isMine ? "bg-sky-500 text-white" : "bg-white text-gray-900 ring-1 ring-gray-100"} ${isHighlighted ? (isMine ? "shadow-[0_0_0_3px_rgba(125,211,252,0.45)]" : "ring-2 ring-sky-300 shadow-[0_0_0_4px_rgba(186,230,253,0.65)]") : ""}`}>
             {hasActions ? (
               <div className="absolute right-1 top-1 z-20">
                 <button
@@ -212,8 +236,9 @@ export default function ChatMessageItem({
                         key={attachment.id}
                         type="button"
                         onClick={() => onOpenMediaPreview({ type: "image", src: fileUrl, name: attachment.file_name })}
-                        className="block w-full overflow-hidden rounded-lg"
+                        className="relative block w-full overflow-hidden rounded-lg"
                       >
+                        <MediaTypeBadge type="image" />
                         <Image
                           src={imageSrc}
                           alt={attachment.file_name}
@@ -256,8 +281,9 @@ export default function ChatMessageItem({
                         key={attachment.id}
                         type="button"
                         onClick={() => onOpenMediaPreview({ type: "video", src: fileUrl, name: attachment.file_name })}
-                        className="block w-full overflow-hidden rounded-lg"
+                        className="relative block w-full overflow-hidden rounded-lg"
                       >
+                        <MediaTypeBadge type="video" />
                         <video
                           preload="metadata"
                           playsInline
@@ -269,6 +295,11 @@ export default function ChatMessageItem({
                           onError={() => onAttachmentError(attachment.id)}
                           onLoadedData={() => onAttachmentLoad(attachment.id)}
                         />
+                        <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                          <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm">
+                            <PlayCircle size={26} fill="currentColor" strokeWidth={1.8} />
+                          </span>
+                        </span>
                       </button>
                     );
                   }

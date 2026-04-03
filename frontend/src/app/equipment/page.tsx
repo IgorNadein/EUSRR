@@ -7,6 +7,7 @@ import { Archive, ArrowRightLeft, ArrowUpDown, ChevronDown, Filter, MessageSquar
 import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
 import { formatDate, formatMoney } from "@/lib/shared";
 import { useEquipmentPage } from "@/hooks/useEquipmentPage";
+import { Modal } from "@/components/ui";
 
 const listModeMeta = [
   { value: "all", label: "Весь реестр" },
@@ -611,14 +612,14 @@ export default function EquipmentPage() {
       )}
 
       {/* ===== Modal create/edit ===== */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}>
-          <div className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-gray-900">{modalMode === "create" ? "Добавить оборудование" : "Редактировать оборудование"}</h2>
-              <button type="button" onClick={closeModal} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"><X size={18} /></button>
+      <Modal isOpen={isModalOpen} onClose={closeModal} title={modalMode === "create" ? "Добавить оборудование" : "Редактировать оборудование"} size="md" footer={
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button type="button" onClick={closeModal} className="rounded-lg bg-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300">Отмена</button>
+              <button type="button" onClick={() => handleSave(modalMode)} disabled={busyKey !== null} className="rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-60">
+                {modalMode === "create" ? "Добавить" : "Сохранить"}
+              </button>
             </div>
-
+      }>
             {actionError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
 
             <div className="flex flex-col gap-3">
@@ -740,30 +741,20 @@ export default function EquipmentPage() {
                 />
               </div>
             </div>
+      </Modal>
 
-            {/* Buttons */}
-            <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 pt-4">
-              <button type="button" onClick={closeModal} className="rounded-lg bg-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300">Отмена</button>
-              <button type="button" onClick={() => handleSave(modalMode)} disabled={busyKey !== null} className="rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-60">
-                {modalMode === "create" ? "Добавить" : "Сохранить"}
-              </button>
+      <Modal isOpen={!!operationModal && !!selectedEquipment} onClose={closeOperationModal} title={
+            operationModal === "transfer" ? "Перевод оборудования" :
+            operationModal === "writeoff" ? "Списание оборудования" :
+            "Добавить обслуживание"
+      } size="md" footer={
+            <div className="flex items-center justify-end gap-2">
+              <button type="button" onClick={closeOperationModal} className="rounded-lg bg-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300">Отмена</button>
+              {operationModal === "transfer" && <button type="button" onClick={() => { void handleTransfer(); }} disabled={busyKey !== null} className="rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-60">Перевести</button>}
+              {operationModal === "writeoff" && <button type="button" onClick={() => { void handleWriteOff(); }} disabled={busyKey !== null} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-60">Списать</button>}
+              {operationModal === "maintenance" && <button type="button" onClick={() => { void handleMaintenance(); }} disabled={busyKey !== null} className="rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-60">Добавить</button>}
             </div>
-          </div>
-        </div>
-      )}
-
-      {operationModal && selectedEquipment && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) closeOperationModal(); }}>
-          <div className="relative w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-base font-semibold text-gray-900">
-                {operationModal === "transfer" && "Перевод оборудования"}
-                {operationModal === "writeoff" && "Списание оборудования"}
-                {operationModal === "maintenance" && "Добавить обслуживание"}
-              </h3>
-              <button type="button" onClick={closeOperationModal} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"><X size={18} /></button>
-            </div>
-
+      }>
             {operationModal === "transfer" && (
               <div className="space-y-3">
                 <SearchableSelectSingle
@@ -821,16 +812,7 @@ export default function EquipmentPage() {
                 </div>
               </div>
             )}
-
-            <div className="mt-5 flex items-center justify-end gap-2 border-t border-gray-100 pt-4">
-              <button type="button" onClick={closeOperationModal} className="rounded-lg bg-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300">Отмена</button>
-              {operationModal === "transfer" && <button type="button" onClick={() => { void handleTransfer(); }} disabled={busyKey !== null} className="rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-60">Перевести</button>}
-              {operationModal === "writeoff" && <button type="button" onClick={() => { void handleWriteOff(); }} disabled={busyKey !== null} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-60">Списать</button>}
-              {operationModal === "maintenance" && <button type="button" onClick={() => { void handleMaintenance(); }} disabled={busyKey !== null} className="rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-60">Добавить</button>}
-            </div>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* ===== Attachment preview removed (no attachment fields in model) ===== */}
     </AppShell>

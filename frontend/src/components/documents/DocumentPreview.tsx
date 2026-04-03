@@ -5,6 +5,7 @@ import { Document as PDFDocument, Page, pdfjs } from "react-pdf";
 import { ChevronLeft, ChevronRight, Download, X, FileText, Table } from "lucide-react";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
+import { Modal } from "@/components/ui";
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -166,8 +167,7 @@ export function DocumentPreview({ fileUrl, fileName, onClose }: DocumentPreviewP
   const goToNextPage = () => setPageNumber((prev) => Math.min(prev + 1, numPages));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-2 sm:p-4">
-      <div className="relative flex h-full max-h-[95vh] sm:max-h-[90vh] w-full max-w-[95vw] sm:max-w-4xl flex-col rounded-xl sm:rounded-2xl bg-white shadow-2xl">
+    <Modal isOpen onClose={onClose ?? (() => {})} noHeader noPadding size="xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4">
           <h3 className="truncate text-sm sm:text-lg font-semibold text-gray-900">{fileName}</h3>
@@ -419,7 +419,6 @@ export function DocumentPreview({ fileUrl, fileName, onClose }: DocumentPreviewP
             </button>
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }

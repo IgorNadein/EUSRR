@@ -12,7 +12,7 @@ type ChatMediaPreviewModalProps = {
 
 export default function ChatMediaPreviewModal({ preview, onClose }: ChatMediaPreviewModalProps) {
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
+    <div data-overlay-root="true" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
       <button
         type="button"
         onClick={onClose}

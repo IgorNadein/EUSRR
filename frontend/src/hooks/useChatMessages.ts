@@ -70,6 +70,12 @@ export interface UseChatMessagesReturn {
     anchorId: number | null;
     anchorIndex: number | null;
   } | null>;
+  /** Jump to a specific message by id and load surrounding context */
+  jumpToMessage: (messageId: number) => Promise<{
+    hasMoreAfter: boolean;
+    anchorId: number | null;
+    anchorIndex: number | null;
+  } | null>;
   /** Set anchorRetryTick (used to retry anchor scroll) */
   setAnchorRetryTick: React.Dispatch<React.SetStateAction<number>>;
   /** Mark initial scroll as done */
@@ -527,6 +533,40 @@ export function useChatMessages({
     }
   }, [chat?.last_read_message_id, chatId, hasMoreNewer, historyNavigationMode]);
 
+  const jumpToMessage = useCallback(async (messageId: number) => {
+    if (!chatId || Number.isNaN(chatId) || !messageId) return null;
+
+    try {
+      setMessagesLoading(true);
+      setHistoryNavigationMode(true);
+
+      const around = await apiClient.getChatMessagesAround(chatId, { limit: 30, around_id: messageId });
+      const norm = uniqueMessagesById(around.messages || []);
+      if (norm.length === 0) return null;
+
+      setMessages(norm);
+      setHasMoreOlder(typeof around.has_more_before === "boolean" ? around.has_more_before : norm.length >= 50);
+      setHasMoreNewer(Boolean(around.has_more_after));
+      setInitialAnchorId(around.anchor_id ?? messageId);
+      setInitialAnchorIndex(typeof around.anchor_index === "number" ? around.anchor_index : norm.findIndex(m => m.id === (around.anchor_id ?? messageId)));
+      setAllowOneOlderProbe(Boolean(around.anchor_id ?? messageId));
+
+      initialScrolledRef.current = false;
+      setAnchorRetryTick(0);
+
+      return {
+        hasMoreAfter: Boolean(around.has_more_after),
+        anchorId: around.anchor_id ?? messageId,
+        anchorIndex: typeof around.anchor_index === "number" ? around.anchor_index : norm.findIndex(m => m.id === (around.anchor_id ?? messageId)),
+      };
+    } catch (e) {
+      console.error("Ошибка перехода к найденному сообщению:", e);
+      return null;
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, [chatId]);
+
   /* ── scroll tracking helpers ── */
 
   const markInitialScrollDone = useCallback(() => { initialScrolledRef.current = true; }, []);
@@ -567,6 +607,7 @@ export function useChatMessages({
     markPendingFailed,
     jumpToDate,
     returnToUnread,
+    jumpToMessage,
     setAnchorRetryTick,
     markInitialScrollDone,
     isInitialScrollPending,
