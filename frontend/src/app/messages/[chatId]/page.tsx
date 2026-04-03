@@ -12,77 +12,52 @@ import MessageReadersModal from "@/components/messages/MessageReadersModal";
 import MessageComposer from "@/components/messages/MessageComposer";
 import ReactionPickerModal from "@/components/messages/ReactionPickerModal";
 import { apiClient } from "@/lib/api";
-import type { Chat, Message } from "@/types/api";
+import type { Message } from "@/types/api";
 import { useUser } from "@/contexts/UserContext";
 import { useChatFallbackSync } from "@/hooks/useChatFallbackSync";
 import { useSilentChatReloadGuard } from "@/hooks/useSilentChatReloadGuard";
 import { useWebSocket } from "@/hooks/useWebSocket";
-import { getMessageTimestamp, mergeDisplayMessages, uniqueMessagesById } from "@/lib/messages/chatUtils";
+import { useChatMessages } from "@/hooks/useChatMessages";
+import { useMarkRead } from "@/hooks/useMarkRead";
+import { useChatScroll, shiftDateInputValue } from "@/hooks/useChatScroll";
+import { mergeDisplayMessages, uniqueMessagesById } from "@/lib/messages/chatUtils";
 import { formatDayDivider, getMessageDate, getMessagePreviewText, getReplyToId } from "@/lib/messages/messageUtils";
 import wsManager from "@/lib/websocketManager";
 import ScrollableMessageList, { ScrollableMessageListInner } from "@/components/ScrollableMessageList";
 
-type ReplyTarget = {
-  id: number;
-  author: string;
-  preview: string;
-};
+/* ─── types ─── */
 
-type MessageActionsAnchor = {
-  x: number;
-  y: number;
-};
+type ReplyTarget = { id: number; author: string; preview: string };
+type MessageActionsAnchor = { x: number; y: number };
+
+/* ─── constants ─── */
 
 const RECENT_REACTIONS_KEY = "eusrr_recent_reactions";
 const MAX_RECENT_REACTIONS = 5;
-const PENDING_MESSAGE_DELAY_MS = 8000;
-const MARK_READ_DEBOUNCE_MS = 300;
 const ALL_REACTIONS = [
-  "👍", "❤️", "😂", "🔥", "👏", "🎉", "😊", "😉", "😁", "🤝",
-  "🙏", "😮", "😢", "😡", "💯", "✅", "👀", "🤔", "😍", "😎",
-  "🤩", "🥳", "😴", "🫡", "👌", "💪", "🙌", "🧠", "💡", "🚀",
-  "🎯", "⭐", "✨", "💩", "🫶", "🤗", "😅", "🤯", "🥲", "🫠",
+  "👍","❤️","😂","🔥","👏","🎉","😊","😉","😁","🤝",
+  "🙏","😮","😢","😡","💯","✅","👀","🤔","😍","😎",
+  "🤩","🥳","😴","🫡","👌","💪","🙌","🧠","💡","🚀",
+  "🎯","⭐","✨","💩","🫶","🤗","😅","🤯","🥲","🫠",
 ];
+
+/* ─── utils ─── */
 
 function uniqueEmoji(items: string[]): string[] {
   const seen = new Set<string>();
-  const out: string[] = [];
-
-  items.forEach((item) => {
-    if (!item || seen.has(item)) return;
-    seen.add(item);
-    out.push(item);
-  });
-
-  return out;
+  return items.filter(e => { if (!e || seen.has(e)) return false; seen.add(e); return true; });
 }
 
 function getMessageDayKey(message: Message): string | null {
-  const date = getMessageDate(message);
-  if (!date) {
-    return null;
-  }
-
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  const d = getMessageDate(message);
+  return d ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` : null;
 }
 
 function formatDateInputValue(date: Date): string {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
+  return `${date.getFullYear()}-${`${date.getMonth()+1}`.padStart(2,"0")}-${`${date.getDate()}`.padStart(2,"0")}`;
 }
 
-function shiftDateInputValue(value: string, deltaDays: number): string {
-  const baseDate = value ? new Date(`${value}T00:00:00`) : new Date();
-  if (Number.isNaN(baseDate.getTime())) {
-    return formatDateInputValue(new Date());
-  }
-
-  baseDate.setDate(baseDate.getDate() + deltaDays);
-  return formatDateInputValue(baseDate);
-}
+/* ─── component ─── */
 
 export default function MessageDialogPage() {
   const params = useParams<{ chatId: string }>();
@@ -90,12 +65,63 @@ export default function MessageDialogPage() {
   const { user, loading: userLoading } = useUser();
   const { handleReconnectExhausted, resetReloadGuard } = useSilentChatReloadGuard(chatId || null);
 
-  const [chat, setChat] = useState<Chat | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [pendingMessages, setPendingMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [messagesLoading, setMessagesLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  /* ── refs ── */
+  const messagesViewportRef = useRef<ScrollableMessageListInner | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  /* ──────────────────────────────────────────────────────
+   * HOOK: Chat messages (state, pagination, pending)
+   * ────────────────────────────────────────────────────── */
+  const cm = useChatMessages({ chatId, userId: user?.id, userLoading });
+
+  /* ──────────────────────────────────────────────────────
+   * HOOK: Scroll behavior (floating date, button, etc.)
+   * ────────────────────────────────────────────────────── */
+  const scroll = useChatScroll({
+    chatId,
+    messageCount: cm.messages.length + cm.pendingMessages.length,
+    viewportRef: messagesViewportRef,
+    hasMoreNewerRef: cm.hasMoreNewerRef,
+    unreadBelowIdsRef: cm.unreadBelowIdsRef,
+    historyNavigationMode: cm.historyNavigationMode,
+  });
+
+  // Wire scroll helpers into the messages hook so it can use them
+  useEffect(() => {
+    cm.isNearBottomRef.current = scroll.isNearBottom;
+    cm.scrollToBottomRef.current = scroll.scrollToBottom;
+  }, [cm.isNearBottomRef, cm.scrollToBottomRef, scroll.isNearBottom, scroll.scrollToBottom]);
+
+  /* ──────────────────────────────────────────────────────
+   * HOOK: Mark-as-read (debounced)
+   * ────────────────────────────────────────────────────── */
+  const markRead = useMarkRead({
+    chatId,
+    onReadAcknowledged: useCallback(() => {
+      // We intentionally do NOT pull fresh chat/unread_count here.
+      // The local newMessagesBelowCount resets only when the user
+      // physically scrolls to the bottom (via syncScrollToBottomState).
+    }, []),
+  });
+
+  // Sync confirmed watermark from chat.last_read_message_id
+  useEffect(() => {
+    markRead.syncConfirmed(cm.chat?.last_read_message_id ?? 0);
+  }, [cm.chat?.last_read_message_id, markRead]);
+
+  /* ── derived state ── */
+  const displayMessages = useMemo(() => mergeDisplayMessages(cm.messages, cm.pendingMessages), [cm.messages, cm.pendingMessages]);
+  const messagesById = useMemo(() => new Map(displayMessages.map(m => [m.id, m])), [displayMessages]);
+
+  /**
+   * Badge count: take the maximum of the server-provided unread_count
+   * and locally tracked new-messages-below. This ensures the badge
+   * stays visible even after mark-read flushes (until user scrolls down).
+   */
+  const displayedUnreadCount = Math.max(cm.chat?.unread_count ?? 0, cm.newMessagesBelowCount);
+
+  /* ── UI state ── */
   const [messageText, setMessageText] = useState("");
   const [sending, setSending] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
@@ -110,741 +136,71 @@ export default function MessageDialogPage() {
   const [brokenMedia, setBrokenMedia] = useState<Record<number, boolean>>({});
   const [useOriginalImage, setUseOriginalImage] = useState<Record<number, boolean>>({});
   const [mediaPreview, setMediaPreview] = useState<MediaPreview | null>(null);
-  const [floatingDate, setFloatingDate] = useState<string | null>(null);
-  const [floatingDateValue, setFloatingDateValue] = useState<string | null>(null);
-  const [showFloatingDate, setShowFloatingDate] = useState(false);
-  const [isDateNavigatorOpen, setIsDateNavigatorOpen] = useState(false);
-  const [selectedHistoryDate, setSelectedHistoryDate] = useState("");
-  const [jumpingToDate, setJumpingToDate] = useState(false);
-  const [historyNavigationMode, setHistoryNavigationMode] = useState(false);
-  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  const [newMessagesBelowCount, setNewMessagesBelowCount] = useState(0);
-  const floatingDateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const messagesViewportRef = useRef<ScrollableMessageListInner | null>(null);
-  const [hasMoreOlder, setHasMoreOlder] = useState(false);
-  const [hasMoreNewer, setHasMoreNewer] = useState(false);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  const [loadingNewer, setLoadingNewer] = useState(false);
-  const [initialAnchorId, setInitialAnchorId] = useState<number | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [initialAnchorIndex, setInitialAnchorIndex] = useState<number | null>(null);
-  const [allowOneOlderProbe, setAllowOneOlderProbe] = useState(false);
-  const initialScrolledRef = useRef(false);
-  const anchorScrollAttemptsRef = useRef(0);
-  const anchorOlderLoadAttemptsRef = useRef(0);
-  const [anchorRetryTick, setAnchorRetryTick] = useState(0);
-  const hasMoreNewerRef = useRef(false);
-  const fallbackSyncInFlightRef = useRef(false);
-  const pendingTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
-  const pendingMessagesRef = useRef<Message[]>([]);
-  const localMessageSequenceRef = useRef(0);
-  const markReadTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const markReadInFlightRef = useRef(false);
-  const queuedMarkReadIdRef = useRef<number | null>(null);
-  const lastConfirmedMarkReadIdRef = useRef(0);
-  const unreadBelowMessageIdsRef = useRef<Set<number>>(new Set());
-  
-  // Локальное состояние для настроек чата
   const [isPinned, setIsPinned] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  
-  // Синхронизируем ref с state
+  const [jumpingToDate, setJumpingToDate] = useState(false);
+
+  // Sync settings from chat
   useEffect(() => {
-    hasMoreNewerRef.current = hasMoreNewer;
-  }, [hasMoreNewer]);
-  
-  // Синхронизация настроек чата
-  useEffect(() => {
-    if (chat) {
-      setIsPinned(chat.is_pinned ?? false);
-      setNotificationsEnabled(chat.notifications_enabled ?? true);
+    if (cm.chat) {
+      setIsPinned(cm.chat.is_pinned ?? false);
+      setNotificationsEnabled(cm.chat.notifications_enabled ?? true);
     }
-  }, [chat]);
-  
-  const displayMessages = useMemo(() => mergeDisplayMessages(messages, pendingMessages), [messages, pendingMessages]);
-  const messagesById = useMemo(() => new Map(displayMessages.map((m) => [m.id, m])), [displayMessages]);
+  }, [cm.chat]);
 
-  useEffect(() => {
-    pendingMessagesRef.current = pendingMessages;
-  }, [pendingMessages]);
-
-  useEffect(() => {
-    if (floatingDateValue && !isDateNavigatorOpen) {
-      setSelectedHistoryDate(floatingDateValue);
-    }
-  }, [floatingDateValue, isDateNavigatorOpen]);
-
-  useEffect(() => {
-    lastConfirmedMarkReadIdRef.current = Math.max(
-      lastConfirmedMarkReadIdRef.current,
-      chat?.last_read_message_id ?? 0,
-    );
-  }, [chat?.last_read_message_id]);
-
-  useEffect(() => {
-    if (markReadTimerRef.current) {
-      clearTimeout(markReadTimerRef.current);
-      markReadTimerRef.current = null;
-    }
-
-    markReadInFlightRef.current = false;
-    queuedMarkReadIdRef.current = null;
-    lastConfirmedMarkReadIdRef.current = chat?.last_read_message_id ?? 0;
-    unreadBelowMessageIdsRef.current.clear();
-    setNewMessagesBelowCount(0);
-    setHistoryNavigationMode(false);
-  }, [chatId, chat?.last_read_message_id]);
-  
-  // Определяем текущий membership и права на отправку сообщений
+  /* ── membership & permissions ── */
   const myMembership = useMemo(() => {
-    if (!chat?.memberships || !user?.id) return null;
-    return chat.memberships.find(m => m.user === user.id) || null;
-  }, [chat?.memberships, user?.id]);
-  
+    if (!cm.chat?.memberships || !user?.id) return null;
+    return cm.chat.memberships.find(m => m.user === user.id) || null;
+  }, [cm.chat?.memberships, user?.id]);
+
   const canSendMessages = useMemo(() => {
-    // Если нет membership - разрешаем (обычные чаты без ролей)
     if (!myMembership) return true;
-    
-    // Проверяем флаг can_send_messages (гости имеют false)
     return myMembership.can_send_messages;
   }, [myMembership]);
-  
+
+  /* ── action menu derived ── */
   const selectedActionMessage = expandedReplyActionForId ? messagesById.get(expandedReplyActionForId) || null : null;
   const selectedActionCanManage = Boolean(
-    selectedActionMessage &&
-    user?.id &&
-    !selectedActionMessage.is_deleted &&
-    (selectedActionMessage.author_id === user.id ||
-      selectedActionMessage.author?.id === user.id ||
-      selectedActionMessage.sender?.id === user.id)
+    selectedActionMessage && user?.id && !selectedActionMessage.is_deleted &&
+    (selectedActionMessage.author_id === user.id || selectedActionMessage.author?.id === user.id || selectedActionMessage.sender?.id === user.id),
   );
   const selectedActionCanReply = Boolean(selectedActionMessage && !selectedActionMessage.is_deleted);
-  const selectedActionRecentReactions = useMemo(
-    () => uniqueEmoji(recentReactions).slice(0, MAX_RECENT_REACTIONS),
-    [recentReactions]
-  );
+  const selectedActionRecentReactions = useMemo(() => uniqueEmoji(recentReactions).slice(0, MAX_RECENT_REACTIONS), [recentReactions]);
   const selectedActionReaders = selectedActionMessage?.read_by || [];
   const sendingComposer = Boolean(editingMessageId && sending);
 
-  const clearPendingTimer = useCallback((localId?: string | null) => {
-    if (!localId) return;
-
-    const timer = pendingTimersRef.current.get(localId);
-    if (timer) {
-      clearTimeout(timer);
-      pendingTimersRef.current.delete(localId);
-    }
-  }, []);
-
-  const markPendingAsDelayed = useCallback((localId: string) => {
-    setPendingMessages((prev) =>
-      prev.map((message) =>
-        message.local_id === localId && message.send_state === "pending"
-          ? { ...message, send_state: "delayed" }
-          : message
-      )
-    );
-  }, []);
-
-  const schedulePendingTimer = useCallback((localId: string) => {
-    clearPendingTimer(localId);
-
-    const timer = setTimeout(() => {
-      pendingTimersRef.current.delete(localId);
-      markPendingAsDelayed(localId);
-    }, PENDING_MESSAGE_DELAY_MS);
-
-    pendingTimersRef.current.set(localId, timer);
-  }, [clearPendingTimer, markPendingAsDelayed]);
-
-  const removePendingMessage = useCallback((localId?: string | null) => {
-    if (!localId) return;
-
-    clearPendingTimer(localId);
-    setPendingMessages((prev) => prev.filter((message) => message.local_id !== localId));
-  }, [clearPendingTimer]);
-
-  const clearAllPendingTimers = useCallback(() => {
-    pendingTimersRef.current.forEach((timer) => clearTimeout(timer));
-    pendingTimersRef.current.clear();
-  }, []);
-
-  const resetNewMessagesBelow = useCallback(() => {
-    unreadBelowMessageIdsRef.current.clear();
-    setNewMessagesBelowCount(0);
-  }, []);
-
-  const registerNewMessagesBelow = useCallback((incomingMessages: Message[]) => {
-    if (!user?.id || incomingMessages.length === 0) {
-      return;
-    }
-
-    let addedCount = 0;
-
-    incomingMessages.forEach((message) => {
-      const authorId = message.author_id ?? message.author?.id ?? message.sender?.id;
-      if (authorId === user.id || message.id <= 0 || unreadBelowMessageIdsRef.current.has(message.id)) {
-        return;
-      }
-
-      unreadBelowMessageIdsRef.current.add(message.id);
-      addedCount += 1;
-    });
-
-    if (addedCount > 0) {
-      setNewMessagesBelowCount((prev) => prev + addedCount);
-    }
-  }, [user?.id]);
-
-  const flushMarkRead = useCallback(async () => {
-    if (!chatId || Number.isNaN(chatId) || markReadInFlightRef.current) {
-      return;
-    }
-
-    const targetMessageId = queuedMarkReadIdRef.current;
-    if (typeof targetMessageId !== "number") {
-      return;
-    }
-
-    if (targetMessageId <= lastConfirmedMarkReadIdRef.current) {
-      queuedMarkReadIdRef.current = null;
-      return;
-    }
-
-    queuedMarkReadIdRef.current = null;
-    markReadInFlightRef.current = true;
-
-    try {
-      await apiClient.markChatAsRead(chatId, targetMessageId);
-      lastConfirmedMarkReadIdRef.current = Math.max(
-        lastConfirmedMarkReadIdRef.current,
-        targetMessageId,
-      );
-      setChat((prev) =>
-        prev
-          ? {
-              ...prev,
-              last_read_message_id: Math.max(prev.last_read_message_id ?? 0, targetMessageId),
-            }
-          : prev
-      );
-    } catch (error) {
-      console.error("Ошибка отложенной отметки прочтения:", error);
-      queuedMarkReadIdRef.current = Math.max(
-        queuedMarkReadIdRef.current ?? 0,
-        targetMessageId,
-      );
-    } finally {
-      markReadInFlightRef.current = false;
-
-      if (
-        queuedMarkReadIdRef.current !== null &&
-        queuedMarkReadIdRef.current > lastConfirmedMarkReadIdRef.current &&
-        !markReadTimerRef.current
-      ) {
-        markReadTimerRef.current = setTimeout(() => {
-          markReadTimerRef.current = null;
-          void flushMarkRead();
-        }, MARK_READ_DEBOUNCE_MS);
-      }
-    }
-  }, [chatId]);
-
-  const scheduleMarkRead = useCallback((messageId?: number | null) => {
-    if (!chatId || typeof messageId !== "number") {
-      return;
-    }
-
-    const nextTarget = Math.max(queuedMarkReadIdRef.current ?? 0, messageId);
-    if (nextTarget <= lastConfirmedMarkReadIdRef.current) {
-      return;
-    }
-
-    queuedMarkReadIdRef.current = nextTarget;
-
-    if (markReadInFlightRef.current) {
-      return;
-    }
-
-    if (markReadTimerRef.current) {
-      clearTimeout(markReadTimerRef.current);
-    }
-
-    markReadTimerRef.current = setTimeout(() => {
-      markReadTimerRef.current = null;
-      void flushMarkRead();
-    }, MARK_READ_DEBOUNCE_MS);
-  }, [chatId, flushMarkRead]);
-
-  const getCurrentUserDisplayName = useCallback(() => {
-    if (!user) return "Вы";
-
-    const fullName = [user.last_name, user.first_name, user.patronymic].filter(Boolean).join(" ").trim();
-    return fullName || user.email || "Вы";
-  }, [user]);
-
-  const guessAttachmentType = useCallback((file: File): string => {
-    const mime = (file.type || "").toLowerCase();
-    if (mime.startsWith("image/")) return "image";
-    if (mime.startsWith("video/")) return "video";
-    if (mime.startsWith("audio/")) return "audio";
-    return "file";
-  }, []);
-
-  const getAttachmentSignature = useCallback((message: Message) => {
-    return (message.attachments || [])
-      .map((attachment) => `${attachment.file_name}|${attachment.file_size ?? 0}|${attachment.mime_type ?? ""}`)
-      .sort()
-      .join("||");
-  }, []);
-
-  const findMatchingPendingLocalId = useCallback((confirmedMessage: Message) => {
-    if (!user?.id || confirmedMessage.author_id !== user.id) {
-      return null;
-    }
-
-    const confirmedReplyToId = getReplyToId(confirmedMessage) ?? null;
-    const confirmedAttachmentSignature = getAttachmentSignature(confirmedMessage);
-    const confirmedTimestamp = getMessageTimestamp(confirmedMessage);
-
-    const candidates = pendingMessagesRef.current
-      .filter((pending) => pending.author_id === user.id)
-      .filter((pending) => pending.content === confirmedMessage.content)
-      .filter((pending) => (getReplyToId(pending) ?? null) === confirmedReplyToId)
-      .filter((pending) => getAttachmentSignature(pending) === confirmedAttachmentSignature)
-      .map((pending) => ({
-        localId: pending.local_id ?? null,
-        diff: Math.abs(getMessageTimestamp(pending) - confirmedTimestamp),
-      }))
-      .filter((candidate) => Boolean(candidate.localId))
-      .sort((left, right) => left.diff - right.diff);
-
-    const matchedCandidate = candidates[0];
-    if (!matchedCandidate) {
-      return null;
-    }
-
-    if (confirmedTimestamp > 0 && matchedCandidate.diff > 10 * 60 * 1000) {
-      return null;
-    }
-
-    return matchedCandidate.localId;
-  }, [getAttachmentSignature, user?.id]);
-
-  const removePendingMessageByServerMessage = useCallback((confirmedMessage: Message) => {
-    const localId = findMatchingPendingLocalId(confirmedMessage);
-    if (!localId) {
-      return;
-    }
-
-    removePendingMessage(localId);
-  }, [findMatchingPendingLocalId, removePendingMessage]);
-
-  const buildOptimisticMessage = useCallback((text: string, files: File[], localId: string): Message => {
-    localMessageSequenceRef.current += 1;
-    const now = Date.now() + localMessageSequenceRef.current;
-
-    return {
-      id: -now,
-      chat: chatId,
-      local_id: localId,
-      author_id: user?.id,
-      author_name: getCurrentUserDisplayName(),
-      avatar: user?.avatar,
-      content: text,
-      is_read: false,
-      send_state: "pending",
-      is_optimistic: true,
-      created_at: new Date(now).toISOString(),
-      created_ts: now,
-      has_attachments: files.length > 0,
-      attachments: files.map((file, index) => ({
-        id: -(now * 100 + index),
-        file_name: file.name,
-        file_type: guessAttachmentType(file),
-        file_url: "",
-        file_size: file.size,
-        mime_type: file.type,
-        is_local: true,
-      })),
-      reply_to_id: replyTo?.id,
-    };
-  }, [chatId, getCurrentUserDisplayName, guessAttachmentType, replyTo?.id, user?.avatar, user?.id]);
-
-  const resetComposerState = useCallback(() => {
-    setEditingMessageId(null);
-    setMessageText("");
-    setReplyTo(null);
-    setExpandedReplyActionForId(null);
-    setAttachedFiles([]);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }, []);
-
-  // WebSocket для real-time обновлений
-  const { isConnected, sendTyping, handlers } = useWebSocket({ 
-    chatId: chatId || null,
-    autoConnect: true,
-    onReconnectExhausted: handleReconnectExhausted,
-  });
-
+  /* ── reactions ── */
   useEffect(() => {
-    if (!chatId || Number.isNaN(chatId)) {
-      return;
-    }
-
-    wsManager.setActiveChat(chatId);
-
-    return () => {
-      wsManager.clearActiveChat(chatId);
-    };
-  }, [chatId]);
-
-  useEffect(() => {
-    if (!isConnected) {
-      return;
-    }
-
-    resetReloadGuard();
-  }, [isConnected, resetReloadGuard]);
-
-  // Проверка, находится ли пользователь внизу списка
-  const isNearBottom = useCallback(() => {
-    const component = messagesViewportRef.current;
-    if (!component || !component.containerRef?.current) return false;
-    
-    const viewport = component.containerRef.current;
-    const threshold = 150; // px от низа
-    const { scrollHeight, scrollTop, clientHeight } = viewport;
-    return scrollHeight - scrollTop - clientHeight <= threshold;
-  }, []);
-
-  const syncScrollToBottomState = useCallback(() => {
-    const isAtBottom = isNearBottom();
-    const hasBufferedNewer = hasMoreNewerRef.current || unreadBelowMessageIdsRef.current.size > 0;
-
-    if (isAtBottom && !hasMoreNewerRef.current) {
-      setShowScrollToBottom(false);
-      resetNewMessagesBelow();
-      setHistoryNavigationMode(false);
-      return true;
-    }
-
-    setShowScrollToBottom(!isAtBottom || hasBufferedNewer || historyNavigationMode);
-
-    return isAtBottom;
-  }, [historyNavigationMode, isNearBottom, resetNewMessagesBelow]);
-
-  // Автопрокрутка вниз
-  const scrollToBottom = useCallback((smooth = false) => {
-    const component = messagesViewportRef.current;
-    if (!component) return;
-    
-    component.scrollToBottom(smooth ? 'smooth' : 'auto');
-  }, []);
-
-  const syncLatestMessages = useCallback(async (
-    options: { limit?: number; scrollOnSync?: boolean } = {}
-  ) => {
-    if (
-      !chatId ||
-      Number.isNaN(chatId) ||
-      messagesLoading ||
-      messages.length === 0 ||
-      fallbackSyncInFlightRef.current
-    ) {
-      return;
-    }
-
-    const newestMessage = messages[messages.length - 1];
-    const shouldMarkRead = isNearBottom();
-
-    fallbackSyncInFlightRef.current = true;
-
-    try {
-      const response = await apiClient.getChatMessages(chatId, {
-        limit: options.limit ?? 20,
-        after_id: newestMessage.id,
-        mark_read: false,
-      });
-
-      const newerMessages = response.messages || [];
-      if (newerMessages.length > 0) {
-        newerMessages.forEach(removePendingMessageByServerMessage);
-        setMessages((prev) => uniqueMessagesById([...prev, ...newerMessages]));
-
-        if (shouldMarkRead) {
-          const lastLoadedMessage = newerMessages[newerMessages.length - 1];
-          scheduleMarkRead(lastLoadedMessage.id);
-        }
-
-        if (shouldMarkRead && options.scrollOnSync) {
-          requestAnimationFrame(() => {
-            scrollToBottom(false);
-          });
-        }
-      }
-
-      setHasMoreNewer(Boolean(response.has_more));
-    } catch (e) {
-      console.error("Ошибка тихой синхронизации сообщений:", e);
-    } finally {
-      fallbackSyncInFlightRef.current = false;
-    }
-  }, [chatId, isNearBottom, messages, messagesLoading, removePendingMessageByServerMessage, scheduleMarkRead, scrollToBottom]);
-
-  // Обновление reactions_summary для конкретного сообщения
-  const updateMessageReactionsSummary = useCallback((
-    messageId: number,
-    summary?: Record<string, { count: number; users?: number[]; user_names?: string[] }>
-  ) => {
-    if (!summary) return;
-    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions_summary: summary } : m)));
-  }, []);
-
-  // Настройка обработчиков WebSocket событий
-  useEffect(() => {
-    handlers.current.onMessage = (data) => {
-      if (data.type === 'new_message') {
-        // Новое сообщение
-        if (!data.message) {
-          return;
-        }
-
-        const newMsg = data.message;
-        const isMyMessage = newMsg.author_id === user?.id;
-        const wasNearBottom = isNearBottom();
-        removePendingMessageByServerMessage(newMsg);
-
-        if (!isMyMessage && !wasNearBottom) {
-          registerNewMessagesBelow([newMsg]);
-          setShowScrollToBottom(true);
-        }
-        
-        setMessages(prev => {
-          // Проверяем, нет ли уже такого сообщения (дедупликация)
-          if (prev.some(m => m.id === newMsg.id)) {
-            return prev;
-          }
-          
-          // ВАЖНО: Добавляем сообщение только если:
-          // 1. Это МОЕ сообщение (я только что отправил) - всегда добавляем
-          // 2. ИЛИ у нас загружены все сообщения (hasMoreNewerRef.current = false)
-          // 3. ИЛИ новое сообщение идет сразу после последнего (непрерывная последовательность)
-          
-          if (prev.length > 0 && !isMyMessage) {
-            const lastMessage = prev[prev.length - 1];
-            const hasGap = newMsg.id - lastMessage.id > 1; // Есть пропущенные сообщения
-            
-            // Если есть разрыв И есть непрочитанные - НЕ добавляем
-            if (hasGap && hasMoreNewerRef.current) {
-              console.warn(`⚠️ WebSocket: пропуск сообщения ${newMsg.id} - есть незагруженные между ${lastMessage.id} и ${newMsg.id}`);
-              // Оставляем hasMoreNewer = true
-              return prev;
-            }
-          }
-          
-          // Добавляем сообщение
-          const updated = [...prev, newMsg];
-          
-          // Сбрасываем флаг "есть еще новые сообщения"
-          setTimeout(() => {
-            setHasMoreNewer(false);
-            
-            // Автоотметка как прочитанное ТОЛЬКО если:
-            // 1. Это НЕ мое сообщение
-            // 2. И я был внизу (активно читал)
-            // Прагматичный подход: загружено = прочитано (для сообщений в области видимости)
-            if (!isMyMessage && wasNearBottom && chatId) {
-              scheduleMarkRead(newMsg.id);
-            }
-            
-            // Автопрокрутка вниз если:
-            // 1. Сообщение отправил я сам
-            // 2. Или я был внизу списка (читал последние сообщения)
-            if (isMyMessage || wasNearBottom) {
-              requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                  scrollToBottom(true);
-                });
-              });
-            }
-          }, 0);
-          
-          return updated;
-        });
-      } 
-      else if (data.type === 'message_edited') {
-        // Редактирование сообщения
-        if (!data.message) {
-          return;
-        }
-
-        const editedMsg = data.message;
-        setMessages(prev => prev.map(m => 
-          m.id === editedMsg.id ? { ...m, ...editedMsg } : m
-        ));
-      } 
-      else if (data.type === 'message_deleted') {
-        // Удаление сообщения
-        setMessages(prev => prev.filter(m => m.id !== data.message_id));
-      } 
-      else if (data.type === 'typing_start') {
-        // Индикатор "печатает..."
-        if (data.user_id !== user?.id) {
-          setIsTyping(true);
-          
-          if (typingTimeoutRef.current) {
-            clearTimeout(typingTimeoutRef.current);
-          }
-          
-          typingTimeoutRef.current = setTimeout(() => {
-            setIsTyping(false);
-          }, 3000);
-        }
-      }
-      else if (data.type === 'typing_stop') {
-        // Остановка печати
-        if (data.user_id !== user?.id) {
-          setIsTyping(false);
-          if (typingTimeoutRef.current) {
-            clearTimeout(typingTimeoutRef.current);
-          }
-        }
-      }
-      else if (data.type === 'reaction_added') {
-        // Реакция добавлена
-        if (data.reactions_summary && typeof data.message_id === 'number') {
-          updateMessageReactionsSummary(data.message_id, data.reactions_summary);
-        }
-      }
-      else if (data.type === 'reaction_removed') {
-        // Реакция удалена
-        if (data.reactions_summary && typeof data.message_id === 'number') {
-          updateMessageReactionsSummary(data.message_id, data.reactions_summary);
-        }
-      }
-      else if (data.type === 'marked_read' && data.chat_id === chatId && typeof data.last_read_message_id === 'number') {
-        const lastReadMessageId = data.last_read_message_id;
-        const readerUserId = typeof data.reader_user_id === 'number' ? data.reader_user_id : null;
-
-        if (readerUserId !== null) {
-          setMessages((prev) =>
-            prev.map((message) => {
-              const authorId = message.author_id ?? message.author?.id ?? message.sender?.id;
-              if (message.id > lastReadMessageId || authorId === readerUserId || message.is_read) {
-                return message;
-              }
-
-              return {
-                ...message,
-                is_read: true,
-              };
-            })
-          );
-        }
-
-        if (readerUserId === null || readerUserId === user?.id) {
-          lastConfirmedMarkReadIdRef.current = Math.max(
-            lastConfirmedMarkReadIdRef.current,
-            lastReadMessageId,
-          );
-          setChat((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  last_read_message_id: Math.max(prev.last_read_message_id ?? 0, lastReadMessageId),
-                }
-              : prev
-          );
-        }
-      }
-    };
-
-    handlers.current.onConnect = () => {
-      void syncLatestMessages({
-        limit: 30,
-        scrollOnSync: isNearBottom(),
-      });
-    };
-
-    handlers.current.onDisconnect = () => {
-      // WebSocket отключен
-    };
-
-    handlers.current.onError = (error) => {
-      console.error('❌ WebSocket error:', error);
-    };
-  }, [handlers, user?.id, chatId, isNearBottom, registerNewMessagesBelow, removePendingMessageByServerMessage, scheduleMarkRead, scrollToBottom, syncLatestMessages, updateMessageReactionsSummary]);
-
-  // Очистка таймаута при размонтировании
-  useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-      if (floatingDateTimeoutRef.current) {
-        clearTimeout(floatingDateTimeoutRef.current);
-      }
-      if (markReadTimerRef.current) {
-        clearTimeout(markReadTimerRef.current);
-      }
-      clearAllPendingTimers();
-    };
-  }, [clearAllPendingTimers]);
-
-  useLayoutEffect(() => {
-    if (typeof window === "undefined" || !window.history) return;
-    const prev = window.history.scrollRestoration;
-    window.history.scrollRestoration = "manual";
-    return () => {
-      window.history.scrollRestoration = prev;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
     try {
       const raw = localStorage.getItem(RECENT_REACTIONS_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return;
-      const normalized = uniqueEmoji(parsed.filter((v): v is string => typeof v === "string")).slice(0, MAX_RECENT_REACTIONS);
-      if (normalized.length > 0) {
-        setRecentReactions(normalized);
-      }
-    } catch {
-      // ignore
-    }
+      const norm = uniqueEmoji(parsed.filter((v): v is string => typeof v === "string")).slice(0, MAX_RECENT_REACTIONS);
+      if (norm.length > 0) setRecentReactions(norm);
+    } catch { /* ignore */ }
   }, []);
 
   const pushRecentReaction = (emoji: string) => {
     const next = uniqueEmoji([emoji, ...recentReactions]).slice(0, MAX_RECENT_REACTIONS);
     setRecentReactions(next);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(RECENT_REACTIONS_KEY, JSON.stringify(next));
-    }
+    if (typeof window !== "undefined") localStorage.setItem(RECENT_REACTIONS_KEY, JSON.stringify(next));
   };
 
-  const appendEmojiToComposer = (emoji: string) => {
-    setMessageText((prev) => `${prev}${emoji}`);
-    requestAnimationFrame(() => {
-      const input = messageInputRef.current;
-      if (!input) return;
-      input.focus();
-      const len = input.value.length;
-      input.setSelectionRange(len, len);
-    });
-  };
+  const updateMessageReactionsSummary = useCallback((
+    messageId: number,
+    summary?: Record<string, { count: number; users?: number[]; user_names?: string[] }>,
+  ) => {
+    if (!summary) return;
+    cm.setMessages(prev => prev.map(m => m.id === messageId ? { ...m, reactions_summary: summary } : m));
+  }, [cm]);
 
   const hasMyReaction = (message: Message, emoji: string): boolean => {
     if (!user?.id) return false;
-    const users = message.reactions_summary?.[emoji]?.users || [];
-    return users.includes(user.id);
+    return (message.reactions_summary?.[emoji]?.users || []).includes(user.id);
   };
 
   const handleReact = async (message: Message, emoji: string) => {
@@ -852,7 +208,6 @@ export default function MessageDialogPage() {
       const response = hasMyReaction(message, emoji)
         ? await apiClient.unreactToMessage(message.id, emoji)
         : await apiClient.reactToMessage(message.id, emoji);
-
       pushRecentReaction(emoji);
       updateMessageReactionsSummary(message.id, response.reactions_summary);
     } catch (e) {
@@ -860,406 +215,234 @@ export default function MessageDialogPage() {
     }
   };
 
-  useEffect(() => {
-    async function loadChats() {
-      if (!chatId || Number.isNaN(chatId)) {
-        setChat(null);
-        setLoading(false);
-        return;
-      }
-
-      // На full reload дожидаемся восстановления auth-состояния,
-      // иначе возможен первый 401 и «залипание» без повторной загрузки.
-      if (userLoading) {
-        setLoading(true);
-        return;
-      }
-
-      if (!user) {
-        setChat(null);
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        setError(null);
-        const loadedChat = await apiClient.getChat(chatId);
-        setChat(loadedChat);
-      } catch {
-        setChat(null);
-        setError("Не удалось загрузить чат. Проверьте подключение и попробуйте снова.");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadChats();
-  }, [chatId, userLoading, user, user?.id]);
+  /* ──────────────────────────────────────────────────────
+   * WebSocket
+   * ────────────────────────────────────────────────────── */
+  const { isConnected, sendTyping, handlers } = useWebSocket({
+    chatId: chatId || null,
+    autoConnect: true,
+    onReconnectExhausted: handleReconnectExhausted,
+  });
 
   useEffect(() => {
-    async function loadMessages() {
-      if (!chatId || Number.isNaN(chatId)) {
-        clearAllPendingTimers();
-        setMessages([]);
-        setPendingMessages([]);
-        setHasMoreOlder(false);
-        setHasMoreNewer(false);
-        setInitialAnchorId(null);
-        setInitialAnchorIndex(null);
-        setAllowOneOlderProbe(false);
-        initialScrolledRef.current = false;
-        resetNewMessagesBelow();
-        return;
-      }
+    if (!chatId || Number.isNaN(chatId)) return;
+    wsManager.setActiveChat(chatId);
+    return () => { wsManager.clearActiveChat(chatId); };
+  }, [chatId]);
 
-      // Ключевой фикс для полного reload: грузим сообщения только
-      // после завершения инициализации пользователя.
-      if (userLoading || !user) {
-        return;
-      }
+  useEffect(() => { if (isConnected) resetReloadGuard(); }, [isConnected, resetReloadGuard]);
 
-      try {
-        setMessagesLoading(true);
-        
-        // 1. Получаем детали чата с last_read_message_id
-        const chatDetails = await apiClient.getChat(chatId);
-        const lastReadId = chatDetails.last_read_message_id;
-        
-        // 2. Загружаем сообщения вокруг last_read_message_id
-        //    Асимметричные лимиты: 24 контекста + 6 новых = 30 сообщений
-        //    Автоотметка последнего загруженного как прочитанного
-        const around = await apiClient.getChatMessagesAround(chatId, { 
-          limit: 30,  // 24 до + 6 после
-          around_id: lastReadId || undefined
+  // WS event handler
+  useEffect(() => {
+    handlers.current.onMessage = (data) => {
+      if (data.type === "new_message" && data.message) {
+        const newMsg = data.message;
+        const isMyMessage = newMsg.author_id === user?.id;
+        const wasNearBottom = scroll.isNearBottom();
+        cm.removePendingByServer(newMsg);
+
+        if (!isMyMessage && !wasNearBottom) {
+          cm.registerNewMessagesBelow([newMsg]);
+          scroll.setShowScrollToBottom(true);
+        }
+
+        cm.setMessages(prev => {
+          if (prev.some(m => m.id === newMsg.id)) return prev;
+
+          if (prev.length > 0 && !isMyMessage) {
+            const last = prev[prev.length - 1];
+            if (newMsg.id - last.id > 1 && cm.hasMoreNewerRef.current) return prev;
+          }
+
+          const updated = [...prev, newMsg];
+
+          setTimeout(() => {
+            if (!isMyMessage && wasNearBottom && chatId) markRead.scheduleMarkRead(newMsg.id);
+            if (isMyMessage || wasNearBottom) {
+              requestAnimationFrame(() => requestAnimationFrame(() => scroll.scrollToBottom(true)));
+            }
+          }, 0);
+
+          return updated;
         });
-        
-        const aroundMessages = around.messages || [];
+      } else if (data.type === "message_edited" && data.message) {
+        const edited = data.message;
+        cm.setMessages(prev => prev.map(m => m.id === edited.id ? { ...m, ...edited } : m));
+      } else if (data.type === "message_deleted") {
+        cm.setMessages(prev => prev.filter(m => m.id !== data.message_id));
+      } else if (data.type === "typing_start" && data.user_id !== user?.id) {
+        setIsTyping(true);
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 3000);
+      } else if (data.type === "typing_stop" && data.user_id !== user?.id) {
+        setIsTyping(false);
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      } else if (data.type === "reaction_added" || data.type === "reaction_removed") {
+        if (data.reactions_summary && typeof data.message_id === "number") {
+          updateMessageReactionsSummary(data.message_id, data.reactions_summary);
+        }
+      } else if (data.type === "marked_read" && data.chat_id === chatId && typeof data.last_read_message_id === "number") {
+        const lastReadId = data.last_read_message_id;
+        const readerId = typeof data.reader_user_id === "number" ? data.reader_user_id : null;
 
-        if (aroundMessages.length > 0) {
-          clearAllPendingTimers();
-          const normalized = uniqueMessagesById(aroundMessages);
-          setMessages(normalized);
-          setPendingMessages([]);
-          // fallback на случай, если API не вернул флаг has_more_before
-          setHasMoreOlder(
-            typeof around.has_more_before === "boolean" ? around.has_more_before : normalized.length >= 50
+        if (readerId !== null) {
+          cm.setMessages(prev =>
+            prev.map(m => {
+              const aId = m.author_id ?? m.author?.id ?? m.sender?.id;
+              if (m.id > lastReadId || aId === readerId || m.is_read) return m;
+              return { ...m, is_read: true };
+            }),
           );
-          setHasMoreNewer(Boolean(around.has_more_after));
-          setInitialAnchorId(around.anchor_id ?? null);
-          setInitialAnchorIndex(typeof around.anchor_index === "number" ? around.anchor_index : null);
-          setAllowOneOlderProbe(Boolean(around.anchor_id));
-          unreadBelowMessageIdsRef.current = new Set(
-            normalized
-              .filter((message) => {
-                const authorId = message.author_id ?? message.author?.id ?? message.sender?.id;
-                return authorId !== user?.id && message.id > (lastReadId ?? 0);
-              })
-              .map((message) => message.id)
-          );
-          setNewMessagesBelowCount(Math.max(chatDetails.unread_count ?? unreadBelowMessageIdsRef.current.size, 0));
-        } else {
-          clearAllPendingTimers();
-          const response = await apiClient.getChatMessages(chatId, { limit: 50 });
-          const normalized = uniqueMessagesById(response.messages || []);
-          setMessages(normalized);
-          setPendingMessages([]);
-          setHasMoreOlder(Boolean(response.has_more));
-          setHasMoreNewer(false);
-          setInitialAnchorId(null);
-          setInitialAnchorIndex(null);
-          setAllowOneOlderProbe(false);
-          unreadBelowMessageIdsRef.current = new Set(
-            normalized
-              .filter((message) => {
-                const authorId = message.author_id ?? message.author?.id ?? message.sender?.id;
-                return authorId !== user?.id && message.id > (lastReadId ?? 0);
-              })
-              .map((message) => message.id)
-          );
-          setNewMessagesBelowCount(Math.max(chatDetails.unread_count ?? unreadBelowMessageIdsRef.current.size, 0));
         }
 
-        initialScrolledRef.current = false;
-        anchorScrollAttemptsRef.current = 0;
-        anchorOlderLoadAttemptsRef.current = 0;
-        setAnchorRetryTick(0);
-      } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        if (errorMessage.includes("403")) {
-          setError("Нет доступа к этому чату");
-          clearAllPendingTimers();
-          setMessages([]);
-          setPendingMessages([]);
-        } else {
-          console.error("Ошибка загрузки сообщений:", error);
+        if (readerId === null || readerId === user?.id) {
+          markRead.syncConfirmed(lastReadId);
+          // Refresh chat to get updated unread_count, but do NOT reset local counter
+          void apiClient.getChat(chatId).then(fresh => cm.setChat(fresh)).catch(() => {});
         }
-        setHasMoreOlder(false);
-        setHasMoreNewer(false);
-        setInitialAnchorId(null);
-        setInitialAnchorIndex(null);
-        setAllowOneOlderProbe(false);
-        resetNewMessagesBelow();
-        initialScrolledRef.current = false;
-        anchorScrollAttemptsRef.current = 0;
-        anchorOlderLoadAttemptsRef.current = 0;
-        setAnchorRetryTick(0);
-      } finally {
-        setMessagesLoading(false);
       }
-    }
+    };
 
-    loadMessages();
-  }, [chatId, clearAllPendingTimers, resetNewMessagesBelow, userLoading, user, user?.id]);
+    handlers.current.onConnect = () => {
+      void cm.syncLatestMessages({ limit: 30, scrollOnSync: scroll.isNearBottom() });
+    };
+    handlers.current.onDisconnect = () => {};
+    handlers.current.onError = (err) => { console.error("❌ WebSocket error:", err); };
+  }, [handlers, user?.id, chatId, scroll, cm, markRead, updateMessageReactionsSummary]);
 
-  // Скролл к якорю или вниз после загрузки сообщений
-  // Anchor scroll используется при переходе по прямой ссылке на сообщение (например, из уведомления)
+  /* ── cleanup timers ── */
+  useEffect(() => () => {
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (typeof window === "undefined" || !window.history) return;
+    const prev = window.history.scrollRestoration;
+    window.history.scrollRestoration = "manual";
+    return () => { window.history.scrollRestoration = prev; };
+  }, []);
+
+  /* ── anchor scroll ── */
   useEffect(() => {
     const component = messagesViewportRef.current;
-    if (messagesLoading || !component || !component.containerRef?.current || displayMessages.length === 0 || initialScrolledRef.current) return;
+    if (cm.messagesLoading || !component?.containerRef?.current || displayMessages.length === 0 || !cm.isInitialScrollPending()) return;
 
     const viewport = component.containerRef.current;
 
-    // Если есть якорь - пытаемся к нему прокрутиться
-    if (initialAnchorId) {
-      const el = viewport.querySelector(`[data-message-id="${initialAnchorId}"]`) as HTMLElement | null;
+    if (cm.initialAnchorId) {
+      const el = viewport.querySelector(`[data-message-id="${cm.initialAnchorId}"]`) as HTMLElement | null;
       if (el) {
-        // Ручной scrollTop вместо scrollIntoView (iOS Safari не поддерживает scrollIntoView в overflow контейнерах)
-        const containerRect = viewport.getBoundingClientRect();
-        const elRect = el.getBoundingClientRect();
-        const offset = elRect.top - containerRect.top + viewport.scrollTop - viewport.clientHeight / 2 + elRect.height / 2;
-        viewport.scrollTop = Math.max(0, offset);
-        syncScrollToBottomState();
-        initialScrolledRef.current = true;
-        anchorScrollAttemptsRef.current = 0;
-        setInitialAnchorId(null);
-        setInitialAnchorIndex(null);
+        const cRect = viewport.getBoundingClientRect();
+        const eRect = el.getBoundingClientRect();
+        viewport.scrollTop = Math.max(0, eRect.top - cRect.top + viewport.scrollTop - viewport.clientHeight / 2 + eRect.height / 2);
+        scroll.syncScrollToBottomState();
+        cm.markInitialScrollDone();
         return;
       }
 
-      // Пробуем по индексу
-      if (typeof initialAnchorIndex === "number" && initialAnchorIndex >= 0) {
-        const children = viewport.querySelectorAll("[data-message-id]");
-        const byIndex = children.item(initialAnchorIndex) as HTMLElement | null;
+      if (typeof cm.initialAnchorIndex === "number" && cm.initialAnchorIndex >= 0) {
+        const byIndex = viewport.querySelectorAll("[data-message-id]").item(cm.initialAnchorIndex) as HTMLElement | null;
         if (byIndex) {
-          const containerRect = viewport.getBoundingClientRect();
-          const elRect = byIndex.getBoundingClientRect();
-          const offset = elRect.top - containerRect.top + viewport.scrollTop - viewport.clientHeight / 2 + elRect.height / 2;
-          viewport.scrollTop = Math.max(0, offset);
-          syncScrollToBottomState();
-          initialScrolledRef.current = true;
-          anchorScrollAttemptsRef.current = 0;
-          setInitialAnchorId(null);
-          setInitialAnchorIndex(null);
+          const cRect = viewport.getBoundingClientRect();
+          const eRect = byIndex.getBoundingClientRect();
+          viewport.scrollTop = Math.max(0, eRect.top - cRect.top + viewport.scrollTop - viewport.clientHeight / 2 + eRect.height / 2);
+          scroll.syncScrollToBottomState();
+          cm.markInitialScrollDone();
           return;
         }
       }
 
-      // Даем DOM время на отрисовку (максимум 5 попыток, iOS рендерит медленнее)
-      if (anchorScrollAttemptsRef.current < 5) {
-        anchorScrollAttemptsRef.current += 1;
-        setTimeout(() => setAnchorRetryTick((v) => v + 1), 100);
+      // Retry up to 5 times for slow DOM rendering
+      if (cm.anchorRetryTick < 5) {
+        setTimeout(() => cm.setAnchorRetryTick(v => v + 1), 100);
         return;
       }
-      
-      // Якорь не найден после 5 попыток - скроллим вниз
-      console.warn('Anchor not found after 5 attempts, scrolling to bottom');
-      setInitialAnchorId(null);
-      setInitialAnchorIndex(null);
     }
 
-    // Обычная прокрутка вниз без анимации (автоматический скролл при первой загрузке чата)
-    component.scrollToBottom('auto');
-    syncScrollToBottomState();
-    initialScrolledRef.current = true;
-    anchorScrollAttemptsRef.current = 0;
-    anchorOlderLoadAttemptsRef.current = 0;
-  }, [
-    messagesLoading,
-    displayMessages,
-    initialAnchorId,
-    initialAnchorIndex,
-    anchorRetryTick,
-    syncScrollToBottomState,
-  ]);
+    component.scrollToBottom("auto");
+    scroll.syncScrollToBottomState();
+    cm.markInitialScrollDone();
+  }, [cm, displayMessages, scroll]);
 
-  // Удалено: prependAdjustRef useLayoutEffect
-  // ScrollableMessageList уже корректирует позицию автоматически через getSnapshotBeforeUpdate
-  // Дублирующая корректировка вызывала "подергивание" при загрузке старых сообщений
-
-  const loadOlderMessages = useCallback(async () => {
-    if (!chatId || Number.isNaN(chatId) || loadingOlder || messagesLoading || messages.length === 0) {
-      return;
-    }
-
-    if (!hasMoreOlder && !allowOneOlderProbe) {
-      return;
-    }
-
-    const oldestMessage = messages[0];
-
-    try {
-      setLoadingOlder(true);
-      const response = await apiClient.getChatMessages(chatId, {
-        limit: 40,
-        before_id: oldestMessage.id,
-      });
-
-      const olderMessages = response.messages || [];
-      if (olderMessages.length > 0) {
-        // ScrollableMessageList автоматически сохранит позицию через getSnapshotBeforeUpdate
-        setMessages((prev) => uniqueMessagesById([...olderMessages, ...prev]));
-      }
-
-      setHasMoreOlder(Boolean(response.has_more));
-      setAllowOneOlderProbe(false);
-      if (!response.has_more && (!response.messages || response.messages.length === 0)) {
-        anchorOlderLoadAttemptsRef.current = 3;
-      }
-    } catch (e) {
-      console.error("Ошибка подгрузки старых сообщений:", e);
-    } finally {
-      setLoadingOlder(false);
-    }
-  }, [allowOneOlderProbe, chatId, hasMoreOlder, loadingOlder, messages, messagesLoading]);
-
-  const loadNewerMessages = useCallback(async () => {
-    if (!chatId || Number.isNaN(chatId) || loadingNewer || messagesLoading || !hasMoreNewer || messages.length === 0) {
-      return;
-    }
-
-    const newestMessage = messages[messages.length - 1];
-    const shouldMarkRead = !historyNavigationMode && isNearBottom();
-
-    try {
-      setLoadingNewer(true);
-      const response = await apiClient.getChatMessages(chatId, {
-        limit: 10,  // Ограничено для минимальной погрешности автоотметки (было 40)
-        after_id: newestMessage.id,
-        mark_read: false,
-      });
-
-      const newerMessages = response.messages || [];
-      if (newerMessages.length > 0) {
-        newerMessages.forEach(removePendingMessageByServerMessage);
-        setMessages((prev) => uniqueMessagesById([...prev, ...newerMessages]));
-
-        if (shouldMarkRead) {
-          const lastLoadedMessage = newerMessages[newerMessages.length - 1];
-          scheduleMarkRead(lastLoadedMessage.id);
-        }
-        
-        // НЕ делаем автоскролл - ScrollableMessageList сам решит:
-        // - Если был внизу (sticky) → автоматически проскроллит вниз
-        // - Если был НЕ внизу → сохранит текущую позицию
-        // Это правильное поведение для дозагрузки истории
-      }
-
-      setHasMoreNewer(Boolean(response.has_more));
-    } catch (e) {
-      console.error("Ошибка подгрузки новых сообщений:", e);
-    } finally {
-      setLoadingNewer(false);
-    }
-  }, [chatId, hasMoreNewer, historyNavigationMode, isNearBottom, loadingNewer, messages, messagesLoading, removePendingMessageByServerMessage, scheduleMarkRead]);
-
-  useChatFallbackSync({
-    chatId: chatId || null,
-    isConnected,
-    userLoading,
-    hasUser: Boolean(user),
-    messagesLoading,
-    hasMessages: messages.length > 0,
-    isNearBottom,
-    syncLatestMessages,
-  });
-
+  /* ── scroll handler: pagination + mark-read ── */
   useEffect(() => {
-    const component = messagesViewportRef.current;
-    if (!component || !component.containerRef?.current) return;
-    
-    const viewport = component.containerRef.current;
+    const c = messagesViewportRef.current;
+    if (!c?.containerRef?.current) return;
+    const viewport = c.containerRef.current;
 
     const onScroll = () => {
-      // Загрузка старых сообщений при приближении к верху
-      if (!loadingOlder && !messagesLoading && hasMoreOlder && viewport.scrollTop <= 120) {
-        loadOlderMessages();
+      if (!cm.loadingOlder && !cm.messagesLoading && cm.hasMoreOlder && viewport.scrollTop <= 120) {
+        cm.loadOlderMessages();
       }
 
-      // Загрузка новых сообщений при приближении к низу (щедрый порог для предзагрузки)
       const distFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-      if (!loadingNewer && !messagesLoading && hasMoreNewer && distFromBottom <= 300) {
-        loadNewerMessages();
+      if (!cm.loadingNewer && !cm.messagesLoading && cm.hasMoreNewer && distFromBottom <= 300) {
+        cm.loadNewerMessages();
       }
 
-      const messageEls = viewport.querySelectorAll<HTMLElement>('[data-message-date]');
-      const viewportTop = viewport.getBoundingClientRect().top;
-      let topDate: string | null = null;
-      let topDateValue: string | null = null;
+      const isAtBottom = scroll.syncScrollToBottomState();
 
-      for (let i = 0; i < messageEls.length; i += 1) {
-        const el = messageEls[i];
-        const rect = el.getBoundingClientRect();
-
-        if (rect.bottom > viewportTop + 8) {
-          const isoDate = el.getAttribute('data-message-date');
-          if (isoDate) {
-            const date = new Date(isoDate);
-            if (!Number.isNaN(date.getTime())) {
-              topDate = formatDayDivider(date);
-              topDateValue = formatDateInputValue(date);
-            }
-          }
-          break;
-        }
-      }
-
-      if (topDate) {
-        setFloatingDate(topDate);
-        setFloatingDateValue(topDateValue);
-        setShowFloatingDate(true);
-
-        if (floatingDateTimeoutRef.current) {
-          clearTimeout(floatingDateTimeoutRef.current);
-        }
-
-        floatingDateTimeoutRef.current = setTimeout(() => {
-          setShowFloatingDate(false);
-        }, 1100);
-      }
-
-      // Показ кнопки scroll-to-bottom когда не внизу
-      const isAtBottom = syncScrollToBottomState();
-
-      if (isAtBottom && !hasMoreNewer && messages.length > 0) {
-        const latestLoadedMessage = messages[messages.length - 1];
-        scheduleMarkRead(latestLoadedMessage.id);
+      if (isAtBottom && !cm.hasMoreNewer && cm.messages.length > 0) {
+        const latest = cm.messages[cm.messages.length - 1];
+        markRead.scheduleMarkRead(latest.id);
+        cm.resetNewMessagesBelow();
       }
     };
 
     viewport.addEventListener("scroll", onScroll, { passive: true });
     return () => viewport.removeEventListener("scroll", onScroll);
-  }, [chatId, displayMessages, hasMoreOlder, hasMoreNewer, loadNewerMessages, loadOlderMessages, loadingOlder, loadingNewer, messages, messagesLoading, scheduleMarkRead, syncScrollToBottomState]);
+  }, [cm, markRead, scroll]);
+
+  /* ── fallback sync ── */
+  useChatFallbackSync({
+    chatId: chatId || null,
+    isConnected,
+    userLoading,
+    hasUser: Boolean(user),
+    messagesLoading: cm.messagesLoading,
+    hasMessages: cm.messages.length > 0,
+    isNearBottom: scroll.isNearBottom,
+    syncLatestMessages: cm.syncLatestMessages,
+  });
+
+  /* ── composer helpers ── */
+
+  const resetComposerState = useCallback(() => {
+    setEditingMessageId(null);
+    setMessageText("");
+    setReplyTo(null);
+    setExpandedReplyActionForId(null);
+    setAttachedFiles([]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
+  const focusMessageInput = () => {
+    const input = messageInputRef.current;
+    if (!input) return;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  };
+
+  const appendEmojiToComposer = (emoji: string) => {
+    setMessageText(prev => `${prev}${emoji}`);
+    requestAnimationFrame(() => focusMessageInput());
+  };
 
   const handleSend = async () => {
     const text = messageText.trim();
     let optimisticLocalId: string | null = null;
 
     if (!chatId || (editingMessageId && sending)) return;
-    if (editingMessageId) {
-      if (!text) return;
-    } else if (!text && attachedFiles.length === 0) {
-      return;
-    }
+    if (editingMessageId) { if (!text) return; }
+    else if (!text && attachedFiles.length === 0) return;
 
-    // Запоминаем позицию ДО отправки
-    const wasNearBottom = isNearBottom();
+    const wasNearBottom = scroll.isNearBottom();
 
     try {
       if (editingMessageId) {
         setSending(true);
         const updated = await apiClient.updateMessage(editingMessageId, text);
-        setMessages((prev) => prev.map((m) => (m.id === editingMessageId ? { ...m, ...updated } : m)));
+        cm.setMessages(prev => prev.map(m => m.id === editingMessageId ? { ...m, ...updated } : m));
         resetComposerState();
       } else {
         const files = [...attachedFiles];
@@ -1268,148 +451,79 @@ export default function MessageDialogPage() {
           ? crypto.randomUUID()
           : `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
         optimisticLocalId = localId;
-        const optimisticMessage = buildOptimisticMessage(text, files, localId);
-
-        setPendingMessages((prev) => [...prev, optimisticMessage]);
-        schedulePendingTimer(localId);
+        const opt = cm.buildOptimistic(text, files, localId, replyToId);
+        cm.addPending(opt);
+        cm.schedulePendingTimer(localId);
         resetComposerState();
 
         const sent = files.length
           ? await apiClient.sendMessageWithFiles(chatId, text, files, replyToId)
           : await apiClient.sendMessage(chatId, text, replyToId);
 
-        removePendingMessage(localId);
-        setMessages((prev) => uniqueMessagesById([...prev, sent]));
-        setHasMoreNewer(false);
+        cm.removePendingMessage(localId);
+        cm.setMessages(prev => uniqueMessagesById([...prev, sent]));
 
-        if (wasNearBottom) {
-          requestAnimationFrame(() => {
-            scrollToBottom(false);
-          });
-        }
+        if (wasNearBottom) requestAnimationFrame(() => scroll.scrollToBottom(false));
         return;
       }
 
-      // Автоскролл вниз ТОЛЬКО если был внизу при отправке
-      // Если читал историю вверху - не скроллим, оставляем там где был
-      if (wasNearBottom) {
-        requestAnimationFrame(() => {
-          scrollToBottom(false);
-        });
-      }
+      if (wasNearBottom) requestAnimationFrame(() => scroll.scrollToBottom(false));
     } catch (e) {
       console.error("Ошибка отправки сообщения:", e);
-      if (!editingMessageId && optimisticLocalId) {
-        clearPendingTimer(optimisticLocalId);
-        setPendingMessages((prev) =>
-          prev.map((message) =>
-            message.local_id === optimisticLocalId
-              ? { ...message, send_state: "failed" }
-              : message
-          )
-        );
-      }
+      if (!editingMessageId && optimisticLocalId) cm.markPendingFailed(optimisticLocalId);
     } finally {
-      if (editingMessageId) {
-        setSending(false);
-      }
+      if (editingMessageId) setSending(false);
     }
   };
 
-  const handlePickFiles = () => {
-    if (editingMessageId) return;
-    fileInputRef.current?.click();
-  };
+  /* ── file handling ── */
 
   const addAttachedFiles = useCallback((files: File[]) => {
-    if (editingMessageId || files.length === 0) {
-      return;
-    }
-
-    setAttachedFiles((prev) => [...prev, ...files]);
+    if (editingMessageId || files.length === 0) return;
+    setAttachedFiles(prev => [...prev, ...files]);
   }, [editingMessageId]);
 
-  const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    addAttachedFiles(files);
-  };
+  const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => addAttachedFiles(Array.from(e.target.files || []));
+  const removeAttachedFile = (index: number) => setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+  const handlePickFiles = () => { if (!editingMessageId) fileInputRef.current?.click(); };
 
-  const removeAttachedFile = (index: number) => {
-    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const focusMessageInput = () => {
-    const input = messageInputRef.current;
-    if (!input) return;
-    input.focus();
-    const len = input.value.length;
-    input.setSelectionRange(len, len);
-  };
-
-  const handleReplyToMessage = (message: Message) => {
-    const author = message.author_name || message.author?.last_name || message.sender?.last_name || "Сотрудник";
-    const preview = getMessagePreviewText(message);
-    setEditingMessageId(null);
-    setReplyTo({ id: message.id, author, preview });
-    setExpandedReplyActionForId(null);
-    setIsReadersModalOpen(false);
-    setActionsMenuAnchor(null);
-    requestAnimationFrame(focusMessageInput);
-  };
+  /* ── message actions ── */
 
   const canManageMessage = (message: Message): boolean => {
     if (!user?.id || message.is_deleted) return false;
     return message.author_id === user.id || message.author?.id === user.id || message.sender?.id === user.id;
   };
 
+  const handleReplyToMessage = (message: Message) => {
+    const author = message.author_name || message.author?.last_name || message.sender?.last_name || "Сотрудник";
+    setEditingMessageId(null);
+    setReplyTo({ id: message.id, author, preview: getMessagePreviewText(message) });
+    setExpandedReplyActionForId(null);
+    setIsReadersModalOpen(false);
+    setActionsMenuAnchor(null);
+    requestAnimationFrame(focusMessageInput);
+  };
+
   const handleStartEditMessage = (message: Message) => {
     if (!canManageMessage(message)) return;
-
     setEditingMessageId(message.id);
     setReplyTo(null);
     setExpandedReplyActionForId(null);
     setMessageText(message.content || "");
     setAttachedFiles([]);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-
+    if (fileInputRef.current) fileInputRef.current.value = "";
     requestAnimationFrame(focusMessageInput);
   };
 
-  const handleCancelEdit = () => {
-    setEditingMessageId(null);
-    setMessageText("");
-  };
+  const handleCancelEdit = () => { setEditingMessageId(null); setMessageText(""); };
 
   const handleDeleteMessage = async (message: Message) => {
     if (!canManageMessage(message)) return;
-
     try {
       await apiClient.deleteMessage(message.id);
-
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === message.id
-            ? {
-                ...m,
-                content: "",
-                attachments: [],
-                has_attachments: false,
-                is_deleted: true,
-              }
-            : m
-        )
-      );
-
-      if (replyTo?.id === message.id) {
-        setReplyTo(null);
-      }
-      if (editingMessageId === message.id) {
-        setEditingMessageId(null);
-        setMessageText("");
-      }
-
+      cm.setMessages(prev => prev.map(m => m.id === message.id ? { ...m, content: "", attachments: [], has_attachments: false, is_deleted: true } : m));
+      if (replyTo?.id === message.id) setReplyTo(null);
+      if (editingMessageId === message.id) { setEditingMessageId(null); setMessageText(""); }
       setExpandedReplyActionForId(null);
       setIsReadersModalOpen(false);
       setActionsMenuAnchor(null);
@@ -1419,13 +533,8 @@ export default function MessageDialogPage() {
   };
 
   const handleToggleMessageActions = useCallback((messageId: number, anchor: MessageActionsAnchor) => {
-    setExpandedReplyActionForId((prev) => {
-      if (prev === messageId) {
-        setIsReadersModalOpen(false);
-        setActionsMenuAnchor(null);
-        return null;
-      }
-
+    setExpandedReplyActionForId(prev => {
+      if (prev === messageId) { setIsReadersModalOpen(false); setActionsMenuAnchor(null); return null; }
       setIsReadersModalOpen(false);
       setReactionPickerForMessageId(null);
       setShowComposerEmojiPicker(false);
@@ -1434,207 +543,81 @@ export default function MessageDialogPage() {
     });
   }, []);
 
-  const handleAttachmentLoad = useCallback((attachmentId: number) => {
-    setBrokenMedia((prev) => ({ ...prev, [attachmentId]: false }));
+  const handleAttachmentLoad = useCallback((id: number) => {
+    setBrokenMedia(prev => ({ ...prev, [id]: false }));
     messagesViewportRef.current?.updateScrollPosition();
   }, []);
+  const handleAttachmentError = useCallback((id: number) => { setBrokenMedia(prev => ({ ...prev, [id]: true })); }, []);
+  const handleUseOriginalImage = useCallback((id: number) => { setUseOriginalImage(prev => ({ ...prev, [id]: true })); }, []);
 
-  const handleAttachmentError = useCallback((attachmentId: number) => {
-    setBrokenMedia((prev) => ({ ...prev, [attachmentId]: true }));
-  }, []);
-
-  const handleUseOriginalImage = useCallback((attachmentId: number) => {
-    setUseOriginalImage((prev) => ({ ...prev, [attachmentId]: true }));
-  }, []);
-
-  const openDateNavigator = useCallback((dateValue?: string | null) => {
-    setSelectedHistoryDate(dateValue || floatingDateValue || formatDateInputValue(new Date()));
-    setShowFloatingDate(true);
-    setIsDateNavigatorOpen(true);
-  }, [floatingDateValue]);
+  /* ── date navigation ── */
 
   const handleJumpToDate = useCallback(async (dateValue: string) => {
-    if (!chatId || Number.isNaN(chatId) || !dateValue || jumpingToDate) {
-      return;
-    }
-
-    const dayStart = new Date(`${dateValue}T00:00:00`);
-    if (Number.isNaN(dayStart.getTime())) {
-      return;
-    }
-
-    try {
-      setJumpingToDate(true);
-      setHistoryNavigationMode(true);
-      setMessagesLoading(true);
-      setIsDateNavigatorOpen(false);
-
-      const [olderResponse, newerResponse] = await Promise.all([
-        apiClient.getChatMessages(chatId, {
-          limit: 20,
-          before: dayStart.toISOString(),
-        }),
-        apiClient.getChatMessages(chatId, {
-          limit: 20,
-          after: dayStart.toISOString(),
-          mark_read: false,
-        }),
-      ]);
-
-      const olderMessages = olderResponse.messages || [];
-      const newerMessages = newerResponse.messages || [];
-      const combinedMessages = uniqueMessagesById([...olderMessages, ...newerMessages]);
-      const anchorMessage = newerMessages[0] || olderMessages[olderMessages.length - 1] || combinedMessages[0] || null;
-
-      if (!anchorMessage) {
-        return;
-      }
-
-      setMessages(combinedMessages);
-      setHasMoreOlder(Boolean(olderResponse.has_more));
-      setHasMoreNewer(Boolean(newerResponse.has_more));
-      setInitialAnchorId(anchorMessage.id);
-      setInitialAnchorIndex(combinedMessages.findIndex((message) => message.id === anchorMessage.id));
-      setAllowOneOlderProbe(Boolean(newerMessages[0]));
-
-      const anchorDate = getMessageDate(anchorMessage);
-      if (anchorDate) {
-        setFloatingDate(formatDayDivider(anchorDate));
-        setFloatingDateValue(formatDateInputValue(anchorDate));
-        setShowFloatingDate(true);
-      }
-
-      initialScrolledRef.current = false;
-      anchorScrollAttemptsRef.current = 0;
-      anchorOlderLoadAttemptsRef.current = 0;
-      setAnchorRetryTick(0);
-      resetNewMessagesBelow();
-    } catch (jumpError) {
-      console.error("Ошибка перехода к дате:", jumpError);
-    } finally {
-      setMessagesLoading(false);
-      setJumpingToDate(false);
-    }
-  }, [chatId, jumpingToDate, resetNewMessagesBelow]);
+    if (jumpingToDate) return;
+    setJumpingToDate(true);
+    scroll.setIsDateNavigatorOpen(false);
+    await cm.jumpToDate(dateValue);
+    setJumpingToDate(false);
+  }, [cm, jumpingToDate, scroll]);
 
   const handleReturnToNewMessages = useCallback(async () => {
-    if (!chatId || Number.isNaN(chatId)) {
+    const c = messagesViewportRef.current?.containerRef?.current;
+
+    if (!cm.hasMoreNewer && !cm.historyNavigationMode) {
+      cm.setHistoryNavigationMode(false);
+      if (c) c.scrollTop = c.scrollHeight;
+      cm.resetNewMessagesBelow();
       return;
     }
 
-    const component = messagesViewportRef.current;
-    const container = component?.containerRef?.current;
-    const lastReadMessageId = Math.max(chat?.last_read_message_id ?? 0, lastConfirmedMarkReadIdRef.current);
-    const shouldRestoreUnreadBoundary = (hasMoreNewer || historyNavigationMode) && lastReadMessageId > 0;
-
-    if (!shouldRestoreUnreadBoundary) {
-      setHistoryNavigationMode(false);
-      if (container) {
-        container.scrollTop = container.scrollHeight;
-      }
-      resetNewMessagesBelow();
-      return;
+    const result = await cm.returnToUnread();
+    if (!result) {
+      if (c) c.scrollTop = c.scrollHeight;
+      cm.setHistoryNavigationMode(false);
+      cm.resetNewMessagesBelow();
+    } else {
+      scroll.setShowScrollToBottom(true);
     }
+  }, [cm, scroll]);
 
-    try {
-      setMessagesLoading(true);
-
-      const around = await apiClient.getChatMessagesAround(chatId, {
-        limit: 30,
-        around_id: lastReadMessageId,
-      });
-
-      const normalized = uniqueMessagesById(around.messages || []);
-      if (normalized.length === 0) {
-        if (container) {
-          container.scrollTop = container.scrollHeight;
-        }
-        setHistoryNavigationMode(false);
-        resetNewMessagesBelow();
-        return;
-      }
-
-      setMessages(normalized);
-      setHasMoreOlder(
-        typeof around.has_more_before === "boolean" ? around.has_more_before : normalized.length >= 50
-      );
-      setHasMoreNewer(Boolean(around.has_more_after));
-      setInitialAnchorId(around.anchor_id ?? lastReadMessageId);
-      setInitialAnchorIndex(typeof around.anchor_index === "number" ? around.anchor_index : null);
-      setAllowOneOlderProbe(Boolean(around.anchor_id ?? lastReadMessageId));
-      setHistoryNavigationMode(Boolean(around.has_more_after));
-      setShowScrollToBottom(true);
-
-      initialScrolledRef.current = false;
-      anchorScrollAttemptsRef.current = 0;
-      anchorOlderLoadAttemptsRef.current = 0;
-      setAnchorRetryTick(0);
-    } catch (error) {
-      console.error("Ошибка возврата к непрочитанным сообщениям:", error);
-    } finally {
-      setMessagesLoading(false);
-    }
-  }, [chat?.last_read_message_id, chatId, hasMoreNewer, historyNavigationMode, resetNewMessagesBelow]);
+  /* ── chat settings toggles ── */
 
   const handleTogglePin = async () => {
     if (!chatId) return;
-    
     try {
-      const response = await apiClient.togglePinChat(chatId);
-      const newIsPinned = response.is_pinned ?? !isPinned;
-      setIsPinned(newIsPinned);
-      
-      // Обновляем chat объект
-      if (chat) {
-        setChat({ ...chat, is_pinned: newIsPinned });
-      }
-    } catch (e) {
-      console.error("Ошибка переключения закрепления:", e);
-    }
+      const resp = await apiClient.togglePinChat(chatId);
+      const v = resp.is_pinned ?? !isPinned;
+      setIsPinned(v);
+      if (cm.chat) cm.setChat({ ...cm.chat, is_pinned: v });
+    } catch (e) { console.error("Ошибка переключения закрепления:", e); }
   };
 
   const handleToggleNotifications = async () => {
     if (!chatId) return;
-    
     try {
-      const response = await apiClient.toggleChatNotifications(chatId);
-      const newNotificationsEnabled = response.notifications_enabled ?? !notificationsEnabled;
-      setNotificationsEnabled(newNotificationsEnabled);
-      
-      // Обновляем chat объект
-      if (chat) {
-        setChat({ ...chat, notifications_enabled: newNotificationsEnabled });
-      }
-    } catch (e) {
-      console.error("Ошибка переключения уведомлений:", e);
-    }
+      const resp = await apiClient.toggleChatNotifications(chatId);
+      const v = resp.notifications_enabled ?? !notificationsEnabled;
+      setNotificationsEnabled(v);
+      if (cm.chat) cm.setChat({ ...cm.chat, notifications_enabled: v });
+    } catch (e) { console.error("Ошибка переключения уведомлений:", e); }
   };
 
-  useEffect(() => {
-    const onWindowClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-      if (target.closest("[data-actions-menu='true']")) return;
-      if (target.closest("[data-actions-trigger='true']")) return;
-      if (target.closest("[data-reaction-picker='true']")) return;
-      if (target.closest(".reaction-picker-modal")) return;
-      if (target.closest("[data-composer-emoji='true']")) return;
-      if (target.closest("[data-date-navigator='true']")) return;
-      if (target.closest("[data-date-trigger='true']")) return;
+  /* ── global click / escape dismissals ── */
 
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t) return;
+      if (t.closest("[data-actions-menu='true'],[data-actions-trigger='true'],[data-reaction-picker='true'],.reaction-picker-modal,[data-composer-emoji='true'],[data-date-navigator='true'],[data-date-trigger='true']")) return;
       setExpandedReplyActionForId(null);
       setActionsMenuAnchor(null);
       setReactionPickerForMessageId(null);
       setShowComposerEmojiPicker(false);
-      setIsDateNavigatorOpen(false);
+      scroll.setIsDateNavigatorOpen(false);
     };
-
-    window.addEventListener("mousedown", onWindowClick);
-    return () => window.removeEventListener("mousedown", onWindowClick);
-  }, []);
-
-  const isInteractiveArea = (target: HTMLElement): boolean =>
-    Boolean(target.closest("textarea, input, button, a, video, audio, [contenteditable='true']"));
+    window.addEventListener("mousedown", onClick);
+    return () => window.removeEventListener("mousedown", onClick);
+  }, [scroll]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1644,74 +627,64 @@ export default function MessageDialogPage() {
         setActionsMenuAnchor(null);
         setReactionPickerForMessageId(null);
         setShowComposerEmojiPicker(false);
-        setIsDateNavigatorOpen(false);
+        scroll.setIsDateNavigatorOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [scroll]);
 
-  // При открытии мобильной клавиатуры прокручиваем чат вниз
+  // Mobile keyboard viewport adjustment
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
-
-    let prevHeight = vv.height;
-
+    let prevH = vv.height;
     const onResize = () => {
-      const newHeight = vv.height;
-      if (newHeight < prevHeight) {
-        requestAnimationFrame(() => {
-          messagesViewportRef.current?.scrollToBottom('auto');
-        });
-      }
-      prevHeight = newHeight;
+      if (vv.height < prevH) requestAnimationFrame(() => messagesViewportRef.current?.scrollToBottom("auto"));
+      prevH = vv.height;
     };
-
-    vv.addEventListener('resize', onResize);
-    return () => vv.removeEventListener('resize', onResize);
+    vv.addEventListener("resize", onResize);
+    return () => vv.removeEventListener("resize", onResize);
   }, []);
 
+  // Redirect wheel events outside chat container into it
   useEffect(() => {
-    const onGlobalWheel = (e: WheelEvent) => {
+    const onWheel = (e: WheelEvent) => {
       if (e.defaultPrevented || mediaPreview) return;
-
-      const component = messagesViewportRef.current;
-      if (!component || !component.containerRef?.current) return;
-      const viewport = component.containerRef.current;
-
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-
-      if (viewport.contains(target)) return;
-      if (isInteractiveArea(target)) return;
-
+      const c = messagesViewportRef.current;
+      if (!c?.containerRef?.current) return;
+      const v = c.containerRef.current;
+      const t = e.target as HTMLElement | null;
+      if (!t || v.contains(t) || t.closest("textarea,input,button,a,video,audio,[contenteditable='true']")) return;
       e.preventDefault();
-      viewport.scrollTop += e.deltaY;
+      v.scrollTop += e.deltaY;
     };
-
-    window.addEventListener("wheel", onGlobalWheel, { passive: false });
-    return () => window.removeEventListener("wheel", onGlobalWheel);
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onWheel);
   }, [mediaPreview]);
+
+  /* ──────────────────────────────────────────────────────
+   * RENDER
+   * ────────────────────────────────────────────────────── */
 
   return (
     <AppShell>
-      {loading ? (
+      {cm.loading ? (
         <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-100">
           <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-sky-400 border-t-transparent" />
           <p className="text-sm text-gray-500">Загрузка чатов...</p>
         </div>
-      ) : error ? (
+      ) : cm.error ? (
         <div className="rounded-2xl bg-red-50 p-6 text-center">
-          <p className="text-sm text-red-800">{error}</p>
+          <p className="text-sm text-red-800">{cm.error}</p>
         </div>
       ) : (
         <div className="min-h-0 h-full lg:sticky lg:top-22 lg:h-[calc(100dvh-7.5rem)]">
         <section className="flex h-full min-h-0 flex-col overflow-hidden lg:bg-white lg:rounded-xl lg:p-4 lg:ring-1 lg:ring-gray-100">
-          {chat ? (
+          {cm.chat ? (
             <>
               <ChatDialogHeader
-                chat={chat}
+                chat={cm.chat}
                 chatId={chatId}
                 currentUserId={user?.id}
                 isPinned={isPinned}
@@ -1721,108 +694,61 @@ export default function MessageDialogPage() {
               />
 
               <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-                {floatingDate ? (
-                  <div className={`absolute left-0 right-0 top-2 z-20 flex justify-center px-3 transition-opacity duration-200 ${showFloatingDate ? 'opacity-100' : 'opacity-0'}`}>
-                    <button
-                      type="button"
-                      data-date-trigger="true"
-                      onClick={() => openDateNavigator()}
-                      className="inline-block rounded-full bg-white/95 px-3 py-1 text-xs text-gray-500 shadow-sm ring-1 ring-gray-200 backdrop-blur transition hover:bg-white hover:text-gray-700"
-                    >
-                      {floatingDate}
+                {/* Floating date */}
+                {scroll.floatingDate ? (
+                  <div className={`absolute left-0 right-0 top-2 z-20 flex justify-center px-3 transition-opacity duration-200 ${scroll.showFloatingDate ? "opacity-100" : "opacity-0"}`}>
+                    <button type="button" data-date-trigger="true" onClick={() => scroll.openDateNavigator()} className="inline-block rounded-full bg-white/95 px-3 py-1 text-xs text-gray-500 shadow-sm ring-1 ring-gray-200 backdrop-blur transition hover:bg-white hover:text-gray-700">
+                      {scroll.floatingDate}
                     </button>
                   </div>
                 ) : null}
 
-                {isDateNavigatorOpen ? (
+                {/* Date navigator panel */}
+                {scroll.isDateNavigatorOpen ? (
                   <div data-date-navigator="true" className="absolute left-1/2 top-12 z-30 w-[min(22rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-2xl bg-white p-4 shadow-lg ring-1 ring-gray-200">
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Перейти к дате</p>
                     <div className="mt-3 flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedHistoryDate((prev) => shiftDateInputValue(prev, -1))}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-600 transition hover:bg-gray-100"
-                        aria-label="Предыдущий день"
-                      >
-                        <ChevronLeft size={16} />
-                      </button>
-                      <input
-                        type="date"
-                        value={selectedHistoryDate}
-                        onChange={(event) => setSelectedHistoryDate(event.target.value)}
-                        className="h-9 flex-1 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setSelectedHistoryDate((prev) => shiftDateInputValue(prev, 1))}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-600 transition hover:bg-gray-100"
-                        aria-label="Следующий день"
-                      >
-                        <ChevronRight size={16} />
-                      </button>
+                      <button type="button" onClick={() => scroll.setSelectedHistoryDate(prev => shiftDateInputValue(prev, -1))} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-600 transition hover:bg-gray-100" aria-label="Предыдущий день"><ChevronLeft size={16} /></button>
+                      <input type="date" value={scroll.selectedHistoryDate} onChange={e => scroll.setSelectedHistoryDate(e.target.value)} className="h-9 flex-1 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100" />
+                      <button type="button" onClick={() => scroll.setSelectedHistoryDate(prev => shiftDateInputValue(prev, 1))} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-600 transition hover:bg-gray-100" aria-label="Следующий день"><ChevronRight size={16} /></button>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedHistoryDate(formatDateInputValue(new Date()))}
-                        className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-100"
-                      >
-                        Сегодня
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIsDateNavigatorOpen(false)}
-                        className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-50"
-                      >
-                        Закрыть
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleJumpToDate(selectedHistoryDate)}
-                        disabled={!selectedHistoryDate || jumpingToDate}
-                        className="ml-auto rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:bg-sky-300"
-                      >
-                        {jumpingToDate ? "Переход..." : "Перейти"}
-                      </button>
+                      <button type="button" onClick={() => scroll.setSelectedHistoryDate(formatDateInputValue(new Date()))} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-100">Сегодня</button>
+                      <button type="button" onClick={() => scroll.setIsDateNavigatorOpen(false)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-50">Закрыть</button>
+                      <button type="button" onClick={() => void handleJumpToDate(scroll.selectedHistoryDate)} disabled={!scroll.selectedHistoryDate || jumpingToDate} className="ml-auto rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:bg-sky-300">{jumpingToDate ? "Переход..." : "Перейти"}</button>
                     </div>
                   </div>
                 ) : null}
 
+                {/* Message list */}
                 <ScrollableMessageList
                   ref={messagesViewportRef}
-                  autoScrollToBottom={!hasMoreNewer && !historyNavigationMode}
-                  autoScrollToBottomOnMount={!hasMoreNewer && !historyNavigationMode}
+                  autoScrollToBottom={!cm.hasMoreNewer && !cm.historyNavigationMode}
+                  autoScrollToBottomOnMount={!cm.hasMoreNewer && !cm.historyNavigationMode}
                   scrollBehavior="smooth"
                   className="min-h-0 flex-1 bg-gray-50 p-3"
                 >
-                  {messagesLoading ? (
+                  {cm.messagesLoading ? (
                     <p className="text-center text-sm text-gray-500">Загрузка сообщений...</p>
                   ) : displayMessages.length === 0 ? (
                     <p className="text-center text-sm text-gray-500">Пока нет сообщений. Напишите первым.</p>
                   ) : (
                     <div className="flex min-h-full flex-col justify-end">
-                      {loadingOlder ? (
-                        <p className="mb-3 text-center text-xs text-gray-500">Подгружаем старые сообщения...</p>
-                      ) : null}
+                      {cm.loadingOlder ? <p className="mb-3 text-center text-xs text-gray-500">Подгружаем старые сообщения...</p> : null}
                       {displayMessages.map((message, index) => {
                         const replyToId = getReplyToId(message);
                         const repliedMessage = replyToId ? messagesById.get(replyToId) : null;
-                        const currentDayKey = getMessageDayKey(message);
-                        const previousDayKey = index > 0 ? getMessageDayKey(displayMessages[index - 1]) : null;
-                        const currentMessageDate = getMessageDate(message);
-                        const showDayDivider = Boolean(currentMessageDate && currentDayKey !== previousDayKey);
+                        const curDay = getMessageDayKey(message);
+                        const prevDay = index > 0 ? getMessageDayKey(displayMessages[index - 1]) : null;
+                        const curDate = getMessageDate(message);
+                        const showDayDivider = Boolean(curDate && curDay !== prevDay);
 
                         return (
                           <React.Fragment key={message.id}>
-                            {showDayDivider && currentMessageDate ? (
+                            {showDayDivider && curDate ? (
                               <div className="mb-3 flex justify-center px-2 pointer-events-none">
-                                <button
-                                  type="button"
-                                  data-date-trigger="true"
-                                  onClick={() => openDateNavigator(formatDateInputValue(currentMessageDate))}
-                                  className="pointer-events-auto inline-block rounded-full bg-white/95 px-3 py-1 text-xs text-gray-500 shadow-sm ring-1 ring-gray-200 backdrop-blur transition hover:bg-white hover:text-gray-700"
-                                >
-                                  {formatDayDivider(currentMessageDate)}
+                                <button type="button" data-date-trigger="true" onClick={() => scroll.openDateNavigator(formatDateInputValue(curDate))} className="pointer-events-auto inline-block rounded-full bg-white/95 px-3 py-1 text-xs text-gray-500 shadow-sm ring-1 ring-gray-200 backdrop-blur transition hover:bg-white hover:text-gray-700">
+                                  {formatDayDivider(curDate)}
                                 </button>
                               </div>
                             ) : null}
@@ -1850,35 +776,34 @@ export default function MessageDialogPage() {
                   )}
                 </ScrollableMessageList>
 
-                {/* Кнопка прокрутки вниз */}
-                {showScrollToBottom && (
+                {/* Scroll-to-bottom button */}
+                {scroll.showScrollToBottom && (
                   <div className="pointer-events-auto absolute bottom-25 right-3 z-20 transition-opacity duration-300">
                     <button
                       type="button"
-                      onClick={() => {
-                        void handleReturnToNewMessages();
-                      }}
+                      onClick={() => void handleReturnToNewMessages()}
                       className="relative inline-flex h-10 w-10 items-center justify-center rounded-full bg-sky-500 text-white leading-none shadow-sm shadow-sky-200/70 transition hover:bg-sky-600 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-sky-100"
                       title="Вернуться к новым сообщениям"
-                      aria-label={newMessagesBelowCount > 0 ? `Вернуться к новым сообщениям (${newMessagesBelowCount > 99 ? "99+" : newMessagesBelowCount})` : "Вернуться к новым сообщениям"}
+                      aria-label={displayedUnreadCount > 0 ? `Вернуться к новым сообщениям (${displayedUnreadCount > 99 ? "99+" : displayedUnreadCount})` : "Вернуться к новым сообщениям"}
                     >
                       <ChevronDown size={18} />
-                      {newMessagesBelowCount > 0 ? (
+                      {displayedUnreadCount > 0 ? (
                         <span className="absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full border border-white bg-rose-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white shadow-sm">
-                          {newMessagesBelowCount > 99 ? "99+" : newMessagesBelowCount}
+                          {displayedUnreadCount > 99 ? "99+" : displayedUnreadCount}
                         </span>
                       ) : null}
                     </button>
                   </div>
                 )}
 
+                {/* Composer area */}
                 <div className="shrink-0 border-t border-gray-100 bg-white px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.25rem)] lg:px-0 lg:pb-0">
                   {isTyping && (
                     <div className="mb-2 flex items-center gap-2 text-xs text-gray-500 italic">
                       <div className="flex gap-1">
-                        <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: '0ms' }}></span>
-                        <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: '150ms' }}></span>
-                        <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: '300ms' }}></span>
+                        <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "0ms" }} />
+                        <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "150ms" }} />
+                        <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "300ms" }} />
                       </div>
                       <span>Собеседник печатает...</span>
                     </div>
@@ -1901,15 +826,12 @@ export default function MessageDialogPage() {
                     onFilesChange={handleFilesChange}
                     onRemoveFile={removeAttachedFile}
                     onToggleEmojiPicker={() => {
-                      setShowComposerEmojiPicker((prev) => !prev);
+                      setShowComposerEmojiPicker(prev => !prev);
                       setExpandedReplyActionForId(null);
                       setActionsMenuAnchor(null);
                       setReactionPickerForMessageId(null);
                     }}
-                    onSelectEmoji={(emoji) => {
-                      appendEmojiToComposer(emoji);
-                      setShowComposerEmojiPicker(false);
-                    }}
+                    onSelectEmoji={(emoji) => { appendEmojiToComposer(emoji); setShowComposerEmojiPicker(false); }}
                     onInputClick={() => setShowComposerEmojiPicker(false)}
                     onChangeMessage={setMessageText}
                     onTyping={sendTyping}
@@ -1942,12 +864,7 @@ export default function MessageDialogPage() {
           canReply={selectedActionCanReply}
           canManage={selectedActionCanManage}
           recentReactions={selectedActionRecentReactions}
-          onQuickReact={(emoji) => {
-            handleReact(selectedActionMessage, emoji);
-            setExpandedReplyActionForId(null);
-            setIsReadersModalOpen(false);
-            setActionsMenuAnchor(null);
-          }}
+          onQuickReact={(emoji) => { handleReact(selectedActionMessage, emoji); setExpandedReplyActionForId(null); setIsReadersModalOpen(false); setActionsMenuAnchor(null); }}
           onOpenReactionPicker={() => setReactionPickerForMessageId(selectedActionMessage.id)}
           onShowAllReaders={() => setIsReadersModalOpen(true)}
           onReply={() => handleReplyToMessage(selectedActionMessage)}
@@ -1957,21 +874,15 @@ export default function MessageDialogPage() {
       ) : null}
 
       {selectedActionMessage ? (
-        <MessageReadersModal
-          isOpen={isReadersModalOpen}
-          onClose={() => setIsReadersModalOpen(false)}
-          readers={selectedActionReaders}
-        />
+        <MessageReadersModal isOpen={isReadersModalOpen} onClose={() => setIsReadersModalOpen(false)} readers={selectedActionReaders} />
       ) : null}
 
       {reactionPickerForMessageId ? (
         <ReactionPickerModal
           onClose={() => setReactionPickerForMessageId(null)}
           onSelect={(emoji) => {
-            const message = messagesById.get(reactionPickerForMessageId);
-            if (message) {
-              void handleReact(message, emoji);
-            }
+            const msg = messagesById.get(reactionPickerForMessageId);
+            if (msg) void handleReact(msg, emoji);
             setReactionPickerForMessageId(null);
             setExpandedReplyActionForId(null);
             setActionsMenuAnchor(null);

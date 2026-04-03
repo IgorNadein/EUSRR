@@ -116,7 +116,6 @@ class ChatViewSet(viewsets.ModelViewSet):
         queryset = Chat.objects.filter(
             Q(memberships__user=user, memberships__is_active=True)
             | Q(participants=user)
-            | Q(participants=user)
             | Q(include_all_users=True)
             | Q(created_by=user)  # Создатель всегда видит свои чаты
         ).select_related(
@@ -139,7 +138,15 @@ class ChatViewSet(viewsets.ModelViewSet):
                 'read_states',
                 queryset=ChatReadState.objects.filter(user=user),
                 to_attr='my_read_state'
-            )
+            ),
+            # Prefetch последнее сообщение чата (1 запрос вместо N)
+            Prefetch(
+                'messages',
+                queryset=Message.objects.filter(
+                    is_deleted=False,
+                ).select_related('author').order_by('-created_at')[:1],
+                to_attr='_prefetched_last_message'
+            ),
         ).distinct()
 
         # Исключаем чаты-комментарии из общего списка
