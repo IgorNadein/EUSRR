@@ -18,7 +18,7 @@ import { useChatFallbackSync } from "@/hooks/useChatFallbackSync";
 import { useSilentChatReloadGuard } from "@/hooks/useSilentChatReloadGuard";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { getMessageTimestamp, mergeDisplayMessages, uniqueMessagesById } from "@/lib/messages/chatUtils";
-import { formatDayDivider, getMessagePreviewText, getReplyToId } from "@/lib/messages/messageUtils";
+import { formatDayDivider, getMessageDate, getMessagePreviewText, getReplyToId } from "@/lib/messages/messageUtils";
 import wsManager from "@/lib/websocketManager";
 import ScrollableMessageList, { ScrollableMessageListInner } from "@/components/ScrollableMessageList";
 
@@ -55,6 +55,15 @@ function uniqueEmoji(items: string[]): string[] {
   });
 
   return out;
+}
+
+function getMessageDayKey(message: Message): string | null {
+  const date = getMessageDate(message);
+  if (!date) {
+    return null;
+  }
+
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
 export default function MessageDialogPage() {
@@ -1148,20 +1157,20 @@ export default function MessageDialogPage() {
         loadNewerMessages();
       }
 
-      // Обновление плавающей даты
       const messageEls = viewport.querySelectorAll<HTMLElement>('[data-message-date]');
-      let topDate: string | null = null;
       const viewportTop = viewport.getBoundingClientRect().top;
+      let topDate: string | null = null;
 
-      for (let i = 0; i < messageEls.length; i++) {
+      for (let i = 0; i < messageEls.length; i += 1) {
         const el = messageEls[i];
         const rect = el.getBoundingClientRect();
-        if (rect.bottom > viewportTop) {
+
+        if (rect.bottom > viewportTop + 8) {
           const isoDate = el.getAttribute('data-message-date');
           if (isoDate) {
-            const d = new Date(isoDate);
-            if (!Number.isNaN(d.getTime())) {
-              topDate = formatDayDivider(d);
+            const date = new Date(isoDate);
+            if (!Number.isNaN(date.getTime())) {
+              topDate = formatDayDivider(date);
             }
           }
           break;
@@ -1172,10 +1181,13 @@ export default function MessageDialogPage() {
         setFloatingDate(topDate);
         setShowFloatingDate(true);
 
-        if (floatingDateTimeoutRef.current) clearTimeout(floatingDateTimeoutRef.current);
+        if (floatingDateTimeoutRef.current) {
+          clearTimeout(floatingDateTimeoutRef.current);
+        }
+
         floatingDateTimeoutRef.current = setTimeout(() => {
           setShowFloatingDate(false);
-        }, 1500);
+        }, 1100);
       }
 
       // Показ кнопки scroll-to-bottom когда не внизу
@@ -1538,16 +1550,13 @@ export default function MessageDialogPage() {
               />
 
               <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-                {/* Плавающая дата */}
-                {floatingDate && (
-                  <div
-                    className={`pointer-events-none absolute left-0 right-0 top-2 z-20 text-center transition-opacity duration-300 ${showFloatingDate ? 'opacity-100' : 'opacity-0'}`}
-                  >
+                {floatingDate ? (
+                  <div className={`pointer-events-none absolute left-0 right-0 top-2 z-20 flex justify-center px-3 transition-opacity duration-200 ${showFloatingDate ? 'opacity-100' : 'opacity-0'}`}>
                     <span className="inline-block rounded-full bg-white/95 px-3 py-1 text-xs text-gray-500 shadow-sm ring-1 ring-gray-200 backdrop-blur">
                       {floatingDate}
                     </span>
                   </div>
-                )}
+                ) : null}
 
                 <ScrollableMessageList
                   ref={messagesViewportRef}
@@ -1565,29 +1574,41 @@ export default function MessageDialogPage() {
                       {loadingOlder ? (
                         <p className="mb-3 text-center text-xs text-gray-500">Подгружаем старые сообщения...</p>
                       ) : null}
-                      {displayMessages.map((message) => {
+                      {displayMessages.map((message, index) => {
                         const replyToId = getReplyToId(message);
                         const repliedMessage = replyToId ? messagesById.get(replyToId) : null;
+                        const currentDayKey = getMessageDayKey(message);
+                        const previousDayKey = index > 0 ? getMessageDayKey(displayMessages[index - 1]) : null;
+                        const currentMessageDate = getMessageDate(message);
+                        const showDayDivider = Boolean(currentMessageDate && currentDayKey !== previousDayKey);
 
                         return (
-                          <ChatMessageItem
-                            key={message.id}
-                            message={message}
-                            currentUserId={user?.id}
-                            repliedMessage={repliedMessage}
-                            isActionsOpen={expandedReplyActionForId === message.id}
-                            canManage={!message.is_optimistic && canManageMessage(message)}
-                            canReply={!message.is_deleted && !message.is_optimistic}
-                            brokenMedia={brokenMedia}
-                            useOriginalImage={useOriginalImage}
-                            onToggleActions={handleToggleMessageActions}
-                            onOpenMediaPreview={setMediaPreview}
-                            onAttachmentLoad={handleAttachmentLoad}
-                            onAttachmentError={handleAttachmentError}
-                            onUseOriginalImage={handleUseOriginalImage}
-                            onReact={handleReact}
-                            hasMyReaction={hasMyReaction}
-                          />
+                          <React.Fragment key={message.id}>
+                            {showDayDivider && currentMessageDate ? (
+                              <div className="mb-3 flex justify-center px-2 pointer-events-none">
+                                <span className="inline-block rounded-full bg-white/95 px-3 py-1 text-xs text-gray-500 shadow-sm ring-1 ring-gray-200 backdrop-blur">
+                                  {formatDayDivider(currentMessageDate)}
+                                </span>
+                              </div>
+                            ) : null}
+                            <ChatMessageItem
+                              message={message}
+                              currentUserId={user?.id}
+                              repliedMessage={repliedMessage}
+                              isActionsOpen={expandedReplyActionForId === message.id}
+                              canManage={!message.is_optimistic && canManageMessage(message)}
+                              canReply={!message.is_deleted && !message.is_optimistic}
+                              brokenMedia={brokenMedia}
+                              useOriginalImage={useOriginalImage}
+                              onToggleActions={handleToggleMessageActions}
+                              onOpenMediaPreview={setMediaPreview}
+                              onAttachmentLoad={handleAttachmentLoad}
+                              onAttachmentError={handleAttachmentError}
+                              onUseOriginalImage={handleUseOriginalImage}
+                              onReact={handleReact}
+                              hasMyReaction={hasMyReaction}
+                            />
+                          </React.Fragment>
                         );
                       })}
                     </div>
