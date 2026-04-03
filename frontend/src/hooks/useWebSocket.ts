@@ -12,6 +12,7 @@ interface WebSocketMessage {
   user_id?: number;
   chat_id?: number;
   last_read_message_id?: number;
+  reader_user_id?: number;
   reactions_summary?: ReactionsSummary;
   [key: string]: unknown;
 }

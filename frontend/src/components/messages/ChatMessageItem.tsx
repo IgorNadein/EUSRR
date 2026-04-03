@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { ChevronRight, FileText } from "lucide-react";
+import { Check, CheckCheck, ChevronRight, FileText } from "lucide-react";
 
 import { resolveMediaUrl } from "@/lib/url";
 import {
@@ -44,6 +44,20 @@ function getMessageAuthorLabel(message: Message): string {
   return message.author_name || message.author?.last_name || message.sender?.last_name || "Сотрудник";
 }
 
+function MessageDeliveryStatus({ isRead }: { isRead: boolean }) {
+  const Icon = isRead ? CheckCheck : Check;
+
+  return (
+    <span
+      className={`inline-flex items-center ${isRead ? "text-white" : "text-sky-100"}`}
+      title={isRead ? "Прочитано" : "Отправлено"}
+      aria-label={isRead ? "Прочитано" : "Отправлено"}
+    >
+      <Icon size={13} strokeWidth={2.2} />
+    </span>
+  );
+}
+
 export default function ChatMessageItem({
   message,
   currentUserId,
@@ -68,6 +82,7 @@ export default function ChatMessageItem({
       (message.author_id === currentUserId || message.author?.id === currentUserId || message.sender?.id === currentUserId)
   );
   const hasActions = canReply || canManage;
+  const isRead = Boolean(message.is_read);
 
   return (
     <div data-message-id={message.id} data-message-date={currentDate?.toISOString() || ""} className="mb-3 last:mb-0">
@@ -267,7 +282,10 @@ export default function ChatMessageItem({
               </div>
             ) : null}
 
-            <p className={`mt-1 text-right text-[11px] ${isMine ? "text-sky-100" : "text-gray-400"}`}>{messageTime(message)}</p>
+            <div className={`mt-1 flex items-center ${isMine ? "justify-end gap-1.5" : "justify-end"}`}>
+              <p className={`text-right text-[11px] ${isMine ? "text-sky-100" : "text-gray-400"}`}>{messageTime(message)}</p>
+              {isMine ? <MessageDeliveryStatus isRead={isRead} /> : null}
+            </div>
 
             {Object.keys(message.reactions_summary || {}).length > 0 ? (
               <div className="mt-2 flex flex-wrap gap-1">

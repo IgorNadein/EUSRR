@@ -380,15 +380,34 @@ export default function MessageDialogPage() {
       }
       else if (data.type === 'marked_read' && data.chat_id === chatId && typeof data.last_read_message_id === 'number') {
         const lastReadMessageId = data.last_read_message_id;
+        const readerUserId = typeof data.reader_user_id === 'number' ? data.reader_user_id : null;
 
-        setChat((prev) =>
-          prev
-            ? {
-                ...prev,
-                last_read_message_id: Math.max(prev.last_read_message_id ?? 0, lastReadMessageId),
+        if (readerUserId !== null) {
+          setMessages((prev) =>
+            prev.map((message) => {
+              const authorId = message.author_id ?? message.author?.id ?? message.sender?.id;
+              if (message.id > lastReadMessageId || authorId === readerUserId || message.is_read) {
+                return message;
               }
-            : prev
-        );
+
+              return {
+                ...message,
+                is_read: true,
+              };
+            })
+          );
+        }
+
+        if (readerUserId === null || readerUserId === user?.id) {
+          setChat((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  last_read_message_id: Math.max(prev.last_read_message_id ?? 0, lastReadMessageId),
+                }
+              : prev
+          );
+        }
       }
     };
 

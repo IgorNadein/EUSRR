@@ -8,6 +8,4 @@ class ApiConfig(AppConfig):
 
     def ready(self):
         """Инициализация при загрузке приложения."""
-        # Патч для django-scheduler теперь применяется в
-        # scheduling.apps.SchedulingConfig
         pass

@@ -562,14 +562,27 @@ class ChatViewSet(viewsets.ModelViewSet):
         self._send_marked_read_event(user.id, chat.id, last_message.id)
 
     def _send_marked_read_event(self, user_id, chat_id, message_id):
-        """WebSocket событие для синхронизации между вкладками"""
+        """WebSocket событие для синхронизации и read receipts."""
         channel_layer = get_channel_layer()
+        event_payload = {
+            'chat_id': chat_id,
+            'last_read_message_id': message_id,
+            'reader_user_id': user_id,
+        }
+
         async_to_sync(channel_layer.group_send)(
             f'user_{user_id}',
             {
+                'type': 'chat_marked_read_sync',
+                **event_payload,
+            }
+        )
+
+        async_to_sync(channel_layer.group_send)(
+            f'chat_{chat_id}',
+            {
                 'type': 'chat_marked_read',
-                'chat_id': chat_id,
-                'last_read_message_id': message_id
+                **event_payload,
             }
         )
 
@@ -607,7 +620,7 @@ class ChatViewSet(viewsets.ModelViewSet):
         queryset = chat.messages.filter(is_deleted=False).select_related(
             'author', 'reply_to', 'reply_to__author', 'poll'
         ).prefetch_related(
-            'attachments', 'reactions', 'reactions__user', 'poll__options'
+            'attachments', 'reactions', 'reactions__user', 'poll__options', 'chat__read_states'
         )
 
         # Определяем порядок сортировки в зависимости от типа запроса
@@ -706,7 +719,7 @@ class ChatViewSet(viewsets.ModelViewSet):
         queryset = chat.messages.filter(is_deleted=False).select_related(
             'author', 'reply_to', 'reply_to__author', 'poll'
         ).prefetch_related(
-            'attachments', 'reactions', 'reactions__user', 'poll__options'
+            'attachments', 'reactions', 'reactions__user', 'poll__options', 'chat__read_states'
         )
 
         # Если нет around_id, пытаемся получить last_read_message_id
@@ -1058,9 +1071,9 @@ class MessageViewSet(viewsets.ModelViewSet):
 
         # Перезагружаем с prefetch
         message = Message.objects.select_related(
-            'author', 'reply_to', 'reply_to__author', 'poll'
+            'author', 'reply_to', 'reply_to__author', 'poll', 'chat'
         ).prefetch_related(
-            'attachments', 'reactions', 'reactions__user'
+            'attachments', 'reactions', 'reactions__user', 'chat__read_states'
         ).get(pk=message.id)
 
         # Отправляем через WebSocket
@@ -1215,9 +1228,9 @@ class MessageViewSet(viewsets.ModelViewSet):
         # Перезагружаем с нуля чтобы получить обновленные attachments
         # Используем новый запрос, чтобы избежать кэширования
         instance = Message.objects.select_related(
-            'author', 'reply_to', 'reply_to__author', 'poll'
+            'author', 'reply_to', 'reply_to__author', 'poll', 'chat'
         ).prefetch_related(
-            'attachments', 'reactions', 'reactions__user', 'poll__options'
+            'attachments', 'reactions', 'reactions__user', 'poll__options', 'chat__read_states'
         ).get(pk=instance.id)
 
         # WebSocket уведомление

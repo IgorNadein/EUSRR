@@ -48,6 +48,31 @@ def _get_author_url(author) -> str:
         return ""
 
 
+def _is_message_read(m) -> bool:
+    """True, если сообщение прочитал хотя бы один другой участник."""
+    chat = getattr(m, "chat", None)
+    if (
+        not chat
+        or not getattr(m, "id", None)
+        or not getattr(m, "author_id", None)
+    ):
+        return False
+
+    prefetched = getattr(chat, "_prefetched_objects_cache", {})
+    read_states = prefetched.get("read_states")
+    if read_states is not None:
+        return any(
+            state.user_id != m.author_id
+            and state.last_read_message_id
+            and state.last_read_message_id >= m.id
+            for state in read_states
+        )
+
+    return chat.read_states.exclude(user_id=m.author_id).filter(
+        last_read_message_id__gte=m.id
+    ).exists()
+
+
 def serialize_message(m) -> dict:
     """
     Сериализация сообщения с поддержкой всех полей.
@@ -83,6 +108,7 @@ def serialize_message(m) -> dict:
         # Статусные поля
         "is_edited": m.is_edited,
         "edited_at": m.edited_at.isoformat() if m.edited_at else None,
+        "is_read": _is_message_read(m),
         "is_deleted": m.is_deleted,
         "is_pinned": m.is_pinned,
         "is_forwarded": m.is_forwarded,

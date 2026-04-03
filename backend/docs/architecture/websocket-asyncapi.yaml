@@ -1,0 +1,560 @@
+asyncapi: 2.6.0
+info:
+  title: EUSRR Realtime WebSocket API
+  version: 1.0.0
+  description: |
+    Отдельная AsyncAPI-спецификация для WebSocket-контура EUSRR.
+
+    HTTP API продолжает документироваться через OpenAPI в /api/schema/.
+    Этот документ описывает только двусторонний realtime-канал /ws/.
+
+    Аутентификация:
+      - query-параметр ?token=<jwt_access_token>
+      - или заголовок Authorization: Bearer <jwt_access_token>
+
+defaultContentType: application/json
+servers:
+  development:
+    url: localhost:9000/ws/
+    protocol: ws
+    description: Локальная разработка
+  production:
+    url: api.example.com/ws/
+    protocol: wss
+    description: Продакшен через TLS
+channels:
+  userRealtime:
+    address: /ws/
+    description: |
+      Универсальное пользовательское соединение для всех real-time сценариев:
+        - сообщения и список чатов
+        - уведомления и unread count
+        - typing indicators
+        - реакции и голосования
+        - procurement updates
+    publish:
+      operationId: clientAction
+      summary: Команды от клиента к серверу
+      message:
+        oneOf:
+          - $ref: '#/components/messages/OpenChatAction'
+          - $ref: '#/components/messages/CloseChatAction'
+          - $ref: '#/components/messages/SendMessageAction'
+          - $ref: '#/components/messages/EditMessageAction'
+          - $ref: '#/components/messages/DeleteMessageAction'
+          - $ref: '#/components/messages/AddReactionAction'
+          - $ref: '#/components/messages/RemoveReactionAction'
+          - $ref: '#/components/messages/TypingAction'
+          - $ref: '#/components/messages/StopTypingAction'
+          - $ref: '#/components/messages/VotePollAction'
+          - $ref: '#/components/messages/MarkReadAction'
+    subscribe:
+      operationId: serverEvent
+      summary: События от сервера клиенту
+      message:
+        oneOf:
+          - $ref: '#/components/messages/PingEvent'
+          - $ref: '#/components/messages/ErrorEvent'
+          - $ref: '#/components/messages/ChatOpenedEvent'
+          - $ref: '#/components/messages/ChatClosedEvent'
+          - $ref: '#/components/messages/InitialMessagesEvent'
+          - $ref: '#/components/messages/NewMessageEvent'
+          - $ref: '#/components/messages/ListUpdateEvent'
+          - $ref: '#/components/messages/MessageUpdatedEvent'
+          - $ref: '#/components/messages/MessageDeletedEvent'
+          - $ref: '#/components/messages/ReactionAddedEvent'
+          - $ref: '#/components/messages/ReactionRemovedEvent'
+          - $ref: '#/components/messages/TypingStartEvent'
+          - $ref: '#/components/messages/TypingStopEvent'
+          - $ref: '#/components/messages/PollUpdateEvent'
+          - $ref: '#/components/messages/MarkedReadEvent'
+          - $ref: '#/components/messages/NotificationEvent'
+          - $ref: '#/components/messages/UnreadCountEvent'
+          - $ref: '#/components/messages/NotificationReadEvent'
+          - $ref: '#/components/messages/NotificationsReadAllEvent'
+          - $ref: '#/components/messages/ProcurementUpdateEvent'
+components:
+  schemas:
+    ChatId:
+      type: integer
+      minimum: 1
+    MessageId:
+      type: integer
+      minimum: 1
+    UserId:
+      type: integer
+      minimum: 1
+    Emoji:
+      type: string
+      minLength: 1
+    GenericMessagePayload:
+      type: object
+      description: |
+        Сериализованное сообщение чата. Полный набор полей зависит от
+        communications.serialization.serialize_message.
+      properties:
+        id:
+          type: integer
+        content:
+          type: string
+          nullable: true
+        chat:
+          type: integer
+        author:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+      additionalProperties: true
+    NotificationPayload:
+      type: object
+      description: Сериализованное уведомление пользователя.
+      properties:
+        id:
+          type: integer
+        verb:
+          type: string
+        description:
+          type: string
+        unread:
+          type: boolean
+        action_url:
+          type: string
+          nullable: true
+        data:
+          type: object
+          additionalProperties: true
+      required:
+        - id
+        - verb
+        - unread
+      additionalProperties: true
+  messages:
+    OpenChatAction:
+      name: OpenChatAction
+      title: Открыть чат
+      payload:
+        type: object
+        required: [action, chat_id]
+        properties:
+          action:
+            type: string
+            enum: [open_chat]
+          chat_id:
+            $ref: '#/components/schemas/ChatId'
+          load_history:
+            type: boolean
+            default: false
+    CloseChatAction:
+      name: CloseChatAction
+      title: Закрыть чат
+      payload:
+        type: object
+        required: [action, chat_id]
+        properties:
+          action:
+            type: string
+            enum: [close_chat]
+          chat_id:
+            $ref: '#/components/schemas/ChatId'
+    SendMessageAction:
+      name: SendMessageAction
+      title: Отправить сообщение
+      payload:
+        type: object
+        required: [action]
+        properties:
+          action:
+            type: string
+            enum: [send_message]
+          content:
+            type: string
+          text:
+            type: string
+    EditMessageAction:
+      name: EditMessageAction
+      title: Редактировать сообщение
+      payload:
+        type: object
+        required: [action, message_id, content]
+        properties:
+          action:
+            type: string
+            enum: [edit_message]
+          message_id:
+            $ref: '#/components/schemas/MessageId'
+          content:
+            type: string
+    DeleteMessageAction:
+      name: DeleteMessageAction
+      title: Удалить сообщение
+      payload:
+        type: object
+        required: [action, message_id]
+        properties:
+          action:
+            type: string
+            enum: [delete_message]
+          message_id:
+            $ref: '#/components/schemas/MessageId'
+    AddReactionAction:
+      name: AddReactionAction
+      title: Добавить реакцию
+      payload:
+        type: object
+        required: [action, message_id, emoji]
+        properties:
+          action:
+            type: string
+            enum: [add_reaction]
+          message_id:
+            $ref: '#/components/schemas/MessageId'
+          emoji:
+            $ref: '#/components/schemas/Emoji'
+    RemoveReactionAction:
+      name: RemoveReactionAction
+      title: Удалить реакцию
+      payload:
+        type: object
+        required: [action, message_id, emoji]
+        properties:
+          action:
+            type: string
+            enum: [remove_reaction]
+          message_id:
+            $ref: '#/components/schemas/MessageId'
+          emoji:
+            $ref: '#/components/schemas/Emoji'
+    TypingAction:
+      name: TypingAction
+      title: Пользователь печатает
+      payload:
+        type: object
+        required: [action]
+        properties:
+          action:
+            type: string
+            enum: [typing]
+    StopTypingAction:
+      name: StopTypingAction
+      title: Пользователь перестал печатать
+      payload:
+        type: object
+        required: [action]
+        properties:
+          action:
+            type: string
+            enum: [stop_typing]
+    VotePollAction:
+      name: VotePollAction
+      title: Голосование в опросе
+      payload:
+        type: object
+        required: [action]
+        properties:
+          action:
+            type: string
+            enum: [vote_poll]
+        additionalProperties: true
+    MarkReadAction:
+      name: MarkReadAction
+      title: Deprecated mark_read
+      payload:
+        type: object
+        required: [action, chat_id]
+        properties:
+          action:
+            type: string
+            enum: [mark_read]
+          chat_id:
+            $ref: '#/components/schemas/ChatId'
+          note:
+            type: string
+            example: Deprecated, используйте HTTP mark-read endpoint
+    PingEvent:
+      name: PingEvent
+      payload:
+        type: object
+        required: [type, timestamp]
+        properties:
+          type:
+            type: string
+            enum: [ping]
+          timestamp:
+            type: string
+            format: date-time
+    ErrorEvent:
+      name: ErrorEvent
+      payload:
+        type: object
+        required: [type, error]
+        properties:
+          type:
+            type: string
+            enum: [error]
+          error:
+            type: string
+          chat_id:
+            $ref: '#/components/schemas/ChatId'
+    ChatOpenedEvent:
+      name: ChatOpenedEvent
+      payload:
+        type: object
+        required: [type, chat_id]
+        properties:
+          type:
+            type: string
+            enum: [chat_opened]
+          chat_id:
+            $ref: '#/components/schemas/ChatId'
+    ChatClosedEvent:
+      name: ChatClosedEvent
+      payload:
+        type: object
+        required: [type, chat_id]
+        properties:
+          type:
+            type: string
+            enum: [chat_closed]
+          chat_id:
+            $ref: '#/components/schemas/ChatId'
+    InitialMessagesEvent:
+      name: InitialMessagesEvent
+      payload:
+        type: object
+        required: [type, chat_id, messages]
+        properties:
+          type:
+            type: string
+            enum: [initial_messages]
+          chat_id:
+            $ref: '#/components/schemas/ChatId'
+          messages:
+            type: array
+            items:
+              $ref: '#/components/schemas/GenericMessagePayload'
+    NewMessageEvent:
+      name: NewMessageEvent
+      payload:
+        type: object
+        required: [type, chat_id, message]
+        properties:
+          type:
+            type: string
+            enum: [new_message]
+          chat_id:
+            $ref: '#/components/schemas/ChatId'
+          message:
+            $ref: '#/components/schemas/GenericMessagePayload'
+    ListUpdateEvent:
+      name: ListUpdateEvent
+      payload:
+        type: object
+        required: [type, chat_id, message]
+        properties:
+          type:
+            type: string
+            enum: [list_update]
+          chat_id:
+            $ref: '#/components/schemas/ChatId'
+          message:
+            $ref: '#/components/schemas/GenericMessagePayload'
+    MessageUpdatedEvent:
+      name: MessageUpdatedEvent
+      payload:
+        type: object
+        required: [type, chat_id, message]
+        properties:
+          type:
+            type: string
+            enum: [message_updated]
+          chat_id:
+            $ref: '#/components/schemas/ChatId'
+          message:
+            $ref: '#/components/schemas/GenericMessagePayload'
+    MessageDeletedEvent:
+      name: MessageDeletedEvent
+      payload:
+        type: object
+        required: [type, chat_id, message_id]
+        properties:
+          type:
+            type: string
+            enum: [message_deleted]
+          chat_id:
+            $ref: '#/components/schemas/ChatId'
+          message_id:
+            $ref: '#/components/schemas/MessageId'
+    ReactionAddedEvent:
+      name: ReactionAddedEvent
+      payload:
+        type: object
+        required: [type, chat_id, message_id, emoji, user_id]
+        properties:
+          type:
+            type: string
+            enum: [reaction_added]
+          chat_id:
+            $ref: '#/components/schemas/ChatId'
+          message_id:
+            $ref: '#/components/schemas/MessageId'
+          emoji:
+            $ref: '#/components/schemas/Emoji'
+          user_id:
+            $ref: '#/components/schemas/UserId'
+          user_name:
+            type: string
+          reactions_summary:
+            type: object
+            additionalProperties: true
+    ReactionRemovedEvent:
+      name: ReactionRemovedEvent
+      payload:
+        type: object
+        required: [type, chat_id, message_id, emoji, user_id]
+        properties:
+          type:
+            type: string
+            enum: [reaction_removed]
+          chat_id:
+            $ref: '#/components/schemas/ChatId'
+          message_id:
+            $ref: '#/components/schemas/MessageId'
+          emoji:
+            $ref: '#/components/schemas/Emoji'
+          user_id:
+            $ref: '#/components/schemas/UserId'
+          reactions_summary:
+            type: object
+            additionalProperties: true
+    TypingStartEvent:
+      name: TypingStartEvent
+      payload:
+        type: object
+        required: [type, chat_id, user_id]
+        properties:
+          type:
+            type: string
+            enum: [typing_start]
+          chat_id:
+            $ref: '#/components/schemas/ChatId'
+          user_id:
+            $ref: '#/components/schemas/UserId'
+          user_name:
+            type: string
+    TypingStopEvent:
+      name: TypingStopEvent
+      payload:
+        type: object
+        required: [type, chat_id, user_id]
+        properties:
+          type:
+            type: string
+            enum: [typing_stop]
+          chat_id:
+            $ref: '#/components/schemas/ChatId'
+          user_id:
+            $ref: '#/components/schemas/UserId'
+    PollUpdateEvent:
+      name: PollUpdateEvent
+      payload:
+        type: object
+        required: [type, chat_id]
+        properties:
+          type:
+            type: string
+            enum: [poll_update]
+          chat_id:
+            $ref: '#/components/schemas/ChatId'
+          poll_id:
+            type: integer
+          message_id:
+            $ref: '#/components/schemas/MessageId'
+          results:
+            type: object
+            additionalProperties: true
+    MarkedReadEvent:
+      name: MarkedReadEvent
+      payload:
+        type: object
+        required: [type, chat_id, last_read_message_id]
+        properties:
+          type:
+            type: string
+            enum: [marked_read]
+          chat_id:
+            $ref: '#/components/schemas/ChatId'
+          last_read_message_id:
+            $ref: '#/components/schemas/MessageId'
+    NotificationEvent:
+      name: NotificationEvent
+      payload:
+        type: object
+        required: [type, notification]
+        properties:
+          type:
+            type: string
+            enum: [notification]
+          notification:
+            $ref: '#/components/schemas/NotificationPayload'
+    UnreadCountEvent:
+      name: UnreadCountEvent
+      payload:
+        type: object
+        required: [type, count]
+        properties:
+          type:
+            type: string
+            enum: [unread_count]
+          count:
+            type: integer
+            minimum: 0
+    NotificationReadEvent:
+      name: NotificationReadEvent
+      payload:
+        type: object
+        required: [type, notification_id, unread_count]
+        properties:
+          type:
+            type: string
+            enum: [notification_read]
+          notification_id:
+            type: integer
+          unread_count:
+            type: integer
+            minimum: 0
+    NotificationsReadAllEvent:
+      name: NotificationsReadAllEvent
+      payload:
+        type: object
+        required: [type, notification_ids, unread_count]
+        properties:
+          type:
+            type: string
+            enum: [notifications_read_all]
+          notification_ids:
+            type: array
+            items:
+              type: integer
+          category:
+            type: string
+            nullable: true
+          unread_count:
+            type: integer
+            minimum: 0
+    ProcurementUpdateEvent:
+      name: ProcurementUpdateEvent
+      payload:
+        type: object
+        required: [type, event, data]
+        properties:
+          type:
+            type: string
+            enum: [procurement_update]
+          event:
+            type: string
+          data:
+            type: object
+            additionalProperties: true

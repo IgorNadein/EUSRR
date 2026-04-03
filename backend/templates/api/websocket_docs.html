@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EUSRR WebSocket AsyncAPI</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #f6f8fb;
+            color: #1f2937;
+        }
+        .page {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 32px 24px 48px;
+        }
+        .hero {
+            background: linear-gradient(135deg, #ffffff, #eef6ff);
+            border: 1px solid #dbe5f1;
+            border-radius: 20px;
+            padding: 28px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+        }
+        h1, h2 {
+            margin: 0 0 12px;
+        }
+        p {
+            line-height: 1.6;
+        }
+        .links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin: 20px 0 0;
+        }
+        .links a {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 14px;
+            border-radius: 10px;
+            text-decoration: none;
+            border: 1px solid #c7d7ea;
+            background: #fff;
+            color: #0f4c81;
+            font-weight: 600;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            margin-top: 24px;
+        }
+        .card {
+            background: #fff;
+            border: 1px solid #dbe5f1;
+            border-radius: 16px;
+            padding: 20px;
+        }
+        code, pre {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        }
+        code {
+            background: #eef4fb;
+            border-radius: 6px;
+            padding: 2px 6px;
+        }
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            background: #0f172a;
+            color: #dbeafe;
+            border-radius: 16px;
+            padding: 20px;
+            overflow-x: auto;
+            line-height: 1.45;
+        }
+        .section {
+            margin-top: 28px;
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <section class="hero">
+            <h1>WebSocket AsyncAPI</h1>
+            <p>
+                Отдельная документация realtime-контура EUSRR. HTTP API продолжает
+                жить в OpenAPI, а WebSocket-контур документируется отдельно через
+                AsyncAPI, без смешивания двух протоколов в одной схеме.
+            </p>
+            <div class="links">
+                <a href="{{ asyncapi_schema_url }}">Скачать AsyncAPI YAML</a>
+                <a href="{{ swagger_url }}">HTTP Swagger</a>
+                <a href="{{ redoc_url }}">HTTP ReDoc</a>
+                <a href="{{ openapi_schema_url }}">HTTP OpenAPI schema</a>
+            </div>
+        </section>
+
+        <section class="grid section">
+            <article class="card">
+                <h2>Точка подключения</h2>
+                <p><code>{{ ws_endpoint_url }}</code></p>
+                <p>
+                    Аутентификация поддерживает либо query-параметр
+                    <code>?token=&lt;jwt_access_token&gt;</code>, либо заголовок
+                    <code>Authorization: Bearer &lt;jwt_access_token&gt;</code>.
+                </p>
+            </article>
+            <article class="card">
+                <h2>Что описано</h2>
+                <p>
+                    В схеме отражены клиентские action-сообщения и серверные
+                    realtime-события для чатов, уведомлений, typing, реакций,
+                    read-sync и procurement updates.
+                </p>
+            </article>
+            <article class="card">
+                <h2>Почему отдельно</h2>
+                <p>
+                    Swagger и ReDoc используют OpenAPI-схему HTTP API. Для
+                    WebSocket-протокола отдельный AsyncAPI-документ чище,
+                    понятнее и лучше масштабируется.
+                </p>
+            </article>
+        </section>
+
+        <section class="section">
+            <h2>Содержимое AsyncAPI</h2>
+            <pre>{{ schema_text }}</pre>
+        </section>
+    </div>
+</body>
+</html>
