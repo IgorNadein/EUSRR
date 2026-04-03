@@ -69,8 +69,7 @@ export default function EmployeesPage() {
     setCreatingChatFor(employee.id);
     try {
       // Ищем существующий приватный чат с этим пользователем
-      const chatsResponse = await apiClient.getChats();
-      const allChats = chatsResponse.results || chatsResponse;
+      const allChats = await apiClient.getAllChats();
       
       const existingChat = allChats.find((chat: any) => {
         if (chat.type !== 'private') return false;

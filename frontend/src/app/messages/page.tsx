@@ -112,8 +112,7 @@ export default function MessagesPage() {
       try {
         setLoading(true);
         setError(null);
-        const response = await apiClient.getChats();
-        const items = response.results || [];
+        const items = await apiClient.getAllChats();
 
         // FRONTEND-ONLY: добираем детали чатов, чтобы получить имя/аватар собеседника
         // для private/direct в случае, когда list не отдает avatar/participant_details.

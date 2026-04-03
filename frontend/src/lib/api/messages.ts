@@ -20,13 +20,39 @@ export function createMessagesApi(request: RequestFn, getToken: GetTokenFn) {
         return result.message || result;
     }
 
+    function buildChatsQuery(params?: { search?: string; page?: number; page_size?: number }) {
+        const qp = new URLSearchParams();
+        if (params?.search) qp.append('search', params.search);
+        if (params?.page) qp.append('page', params.page.toString());
+        if (params?.page_size) qp.append('page_size', params.page_size.toString());
+        const qs = qp.toString();
+        return `/api/v1/communications/chats/${qs ? '?' + qs : ''}`;
+    }
+
     return {
-        getChats: (params?: { search?: string; page?: number }) => {
-            const qp = new URLSearchParams();
-            if (params?.search) qp.append('search', params.search);
-            if (params?.page) qp.append('page', params.page.toString());
-            const qs = qp.toString();
-            return request(`/api/v1/communications/chats/${qs ? '?' + qs : ''}`);
+        getChats: (params?: { search?: string; page?: number; page_size?: number }) => request(buildChatsQuery(params)),
+        getAllChats: async (params?: { search?: string; page_size?: number }) => {
+            const pageSize = params?.page_size ?? 200;
+            const chats: any[] = [];
+            let page = 1;
+
+            for (;;) {
+                const response = await request(buildChatsQuery({
+                    search: params?.search,
+                    page,
+                    page_size: pageSize,
+                })) as { results?: any[]; next?: string | null } | any[];
+                const results = Array.isArray(response) ? response : (response.results || []);
+                chats.push(...results);
+
+                if (Array.isArray(response) || !response.next) {
+                    break;
+                }
+
+                page += 1;
+            }
+
+            return chats;
         },
         getChat: (chatId: number) => request(`/api/v1/communications/chats/${chatId}/`),
         createChat: (data: { type: string; participants?: number[]; name?: string; description?: string; department?: number; include_all_employees?: boolean; avatar?: File }) => {

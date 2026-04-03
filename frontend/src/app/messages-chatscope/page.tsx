@@ -92,8 +92,7 @@ export default function ChatscapeMessenger() {
     const loadChats = async () => {
       try {
         setLoading(true);
-        const response = await apiClient.getChats();
-        const chatsList = response.results || [];
+        const chatsList = await apiClient.getAllChats();
         setChats(chatsList);
 
         // Автоматически открываем первый чат
@@ -114,8 +113,7 @@ export default function ChatscapeMessenger() {
   const handleChatCreated = async (chatId: number) => {
     try {
       // Перезагружаем список чатов
-      const response = await apiClient.getChats();
-      const chatsList = response.results || [];
+      const chatsList = await apiClient.getAllChats();
       setChats(chatsList);
 
       // Открываем новый чат

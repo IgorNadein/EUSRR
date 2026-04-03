@@ -19,22 +19,11 @@ import {
 } from "@/lib/users/userDetailUtils";
 import type { Chat, EmployeeAction, User } from "@/types/api";
 
-type ChatListResponse = Chat[] | { results?: Chat[] };
 type ChatWithMemberIds = Chat & { member_ids?: number[] };
 
 const getErrorMessage = (error: unknown, fallback: string): string => (
   String((error as Error)?.message || fallback)
 );
-
-const getChatResults = (response: ChatListResponse): ChatWithMemberIds[] => {
-  if (Array.isArray(response)) {
-    return response as ChatWithMemberIds[];
-  }
-
-  return Array.isArray(response.results)
-    ? (response.results as ChatWithMemberIds[])
-    : [];
-};
 
 export function useUserDetailPage(userId: number, currentUser: User | null) {
   const router = useRouter();
@@ -107,8 +96,7 @@ export function useUserDetailPage(userId: number, currentUser: User | null) {
     try {
       setCreatingChat(true);
 
-      const chatsResponse = await apiClient.getChats() as ChatListResponse;
-      const allChats = getChatResults(chatsResponse);
+      const allChats = await apiClient.getAllChats() as ChatWithMemberIds[];
       const existingChat = allChats.find((chat) => {
         if (chat.type !== "private") return false;
 
