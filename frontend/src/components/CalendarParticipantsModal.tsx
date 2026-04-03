@@ -183,7 +183,7 @@ export default function CalendarParticipantsModal({
   if (!isOpen) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="md" noPadding>
+    <Modal isOpen={isOpen} onClose={onClose} size="md" noPadding noHeader>
       <div className="overflow-y-auto">
         <div className="flex items-center justify-between border-b px-4 sm:px-6 py-3 sm:py-4">
           <div>

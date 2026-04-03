@@ -15,7 +15,7 @@ export interface ModalProps {
   closeOnEsc?: boolean;
   footer?: ReactNode;
   className?: string;
-  /** Render children directly without padding wrappers (for custom layouts like flex-col) */
+  /** Remove default content padding while keeping the standard modal frame */
   noPadding?: boolean;
   /** Hide the built-in header (caller manages its own header inside children) */
   noHeader?: boolean;
@@ -137,50 +137,48 @@ export function Modal({
           isAnimating ? "scale-100 opacity-100" : "scale-95 opacity-0"
         } ${className}`}
       >
-        {noPadding ? (
-          children
-        ) : (
-          <>
-            {/* Header */}
-            {showHeader && (
-              <div className="flex shrink-0 items-center gap-2 sm:gap-3 mb-3 sm:mb-4 px-4 sm:px-6 pt-4 sm:pt-6">
-                {title && (
-                  <h3
-                    id="modal-title"
-                    className="min-w-0 flex-1 text-sm sm:text-base lg:text-lg font-semibold text-gray-900 truncate"
-                    title={title}
-                  >
-                    {title}
-                  </h3>
-                )}
-                <div className="flex shrink-0 items-center gap-2">
-                  {showCloseButton && (
-                    <button
-                      onClick={onClose}
-                      className="rounded-full p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
-                      title="Закрыть"
-                    >
-                      <X size={20} />
-                    </button>
-                  )}
-                </div>
-              </div>
+        {/* Header */}
+        {showHeader && (
+          <div className="mb-3 flex shrink-0 items-center gap-2 px-4 pt-4 sm:mb-4 sm:gap-3 sm:px-6 sm:pt-6">
+            {title && (
+              <h3
+                id="modal-title"
+                className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 sm:text-base lg:text-lg"
+                title={title}
+              >
+                {title}
+              </h3>
             )}
-
-            {/* Content */}
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6">
-              {children}
+            <div className="flex shrink-0 items-center gap-2">
+              {showCloseButton && (
+                <button
+                  onClick={onClose}
+                  className="rounded-full p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+                  title="Закрыть"
+                >
+                  <X size={20} />
+                </button>
+              )}
             </div>
-
-            {/* Footer */}
-            {footer && (
-              <div className="shrink-0 border-t border-gray-200 px-4 sm:px-6 py-3 sm:py-4">{footer}</div>
-            )}
-
-            {/* Bottom padding */}
-            <div className="pb-4 sm:pb-6" />
-          </>
+          </div>
         )}
+
+        {/* Content */}
+        <div
+          className={noPadding
+            ? "min-h-0 flex flex-1 flex-col"
+            : "min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6"}
+        >
+          {children}
+        </div>
+
+        {/* Footer */}
+        {footer && (
+          <div className="shrink-0 border-t border-gray-200 px-4 py-3 sm:px-6 sm:py-4">{footer}</div>
+        )}
+
+        {/* Bottom padding */}
+        {!noPadding && <div className="pb-4 sm:pb-6" />}
       </div>
     </div>
   );
