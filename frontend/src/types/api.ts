@@ -539,6 +539,7 @@ export interface Message {
 export interface MessageReader {
   id: number;
   name: string;
+  avatar?: string;
 }
 
 export interface MessageAttachment {

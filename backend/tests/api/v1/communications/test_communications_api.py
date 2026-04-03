@@ -203,6 +203,9 @@ class TestChatViewSet:
 
     def test_chat_messages_include_read_by_users(self, auth_client, private_chat, user1, user2):
         """Payload сообщения содержит список пользователей, которые его прочитали."""
+        user2.avatar = "avatars/read-by-user2.jpg"
+        user2.save(update_fields=["avatar"])
+
         message = Message.objects.create(
             chat=private_chat,
             author=user1,
@@ -223,7 +226,13 @@ class TestChatViewSet:
         payload = response.data["messages"][0]
         assert payload["is_read"] is True
         assert payload["read_count"] == 1
-        assert payload["read_by"] == [{"id": user2.id, "name": user2.get_full_name()}]
+        assert payload["read_by"] == [
+            {
+                "id": user2.id,
+                "name": user2.get_full_name(),
+                "avatar": user2.avatar.url,
+            }
+        ]
 
     def test_mark_read(self, auth_client, private_chat, user1):
         """Пометка чата как прочитанного"""

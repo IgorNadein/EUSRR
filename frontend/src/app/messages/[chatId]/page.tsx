@@ -41,7 +41,7 @@ const ALL_REACTIONS = [
   "👍", "❤️", "😂", "🔥", "👏", "🎉", "😊", "😉", "😁", "🤝",
   "🙏", "😮", "😢", "😡", "💯", "✅", "👀", "🤔", "😍", "😎",
   "🤩", "🥳", "😴", "🫡", "👌", "💪", "🙌", "🧠", "💡", "🚀",
-  "🎯", "⭐", "✨", "🌟", "🫶", "🤗", "😅", "🤯", "🥲", "🫠",
+  "🎯", "⭐", "✨", "💩", "🫶", "🤗", "😅", "🤯", "🥲", "🫠",
 ];
 
 function uniqueEmoji(items: string[]): string[] {
@@ -1360,6 +1360,7 @@ export default function MessageDialogPage() {
       if (target.closest("[data-actions-menu='true']")) return;
       if (target.closest("[data-actions-trigger='true']")) return;
       if (target.closest("[data-reaction-picker='true']")) return;
+      if (target.closest(".reaction-picker-modal")) return;
       if (target.closest("[data-composer-emoji='true']")) return;
 
       setExpandedReplyActionForId(null);
@@ -1628,7 +1629,6 @@ export default function MessageDialogPage() {
 
       {reactionPickerForMessageId ? (
         <ReactionPickerModal
-          allReactions={ALL_REACTIONS}
           onClose={() => setReactionPickerForMessageId(null)}
           onSelect={(emoji) => {
             const message = messagesById.get(reactionPickerForMessageId);

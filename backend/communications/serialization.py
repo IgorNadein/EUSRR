@@ -73,6 +73,19 @@ def _is_message_read(m) -> bool:
     ).exists()
 
 
+def _get_user_avatar_url(user) -> str:
+    if not user:
+        return ""
+
+    try:
+        if getattr(user, "avatar", None) and user.avatar:
+            return user.avatar.url
+    except Exception:
+        return ""
+
+    return ""
+
+
 def _get_message_read_by(m) -> list[dict]:
     """Список участников, которые дочитали сообщение."""
     chat = getattr(m, "chat", None)
@@ -105,6 +118,7 @@ def _get_message_read_by(m) -> list[dict]:
             {
                 "id": user.id,
                 "name": user.get_full_name() or user.username,
+                "avatar": _get_user_avatar_url(user),
             }
         )
 
@@ -127,12 +141,7 @@ def serialize_message(m) -> dict:
     """
     author = m.author
     author_name = author.get_full_name() or author.username
-    avatar = ""
-    try:
-        if getattr(author, "avatar", None) and author.avatar:
-            avatar = author.avatar.url
-    except Exception:
-        avatar = ""
+    avatar = _get_user_avatar_url(author)
 
     # Базовые поля
     data = {
