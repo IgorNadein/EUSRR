@@ -815,7 +815,10 @@ class ChatViewSet(viewsets.ModelViewSet):
         # Если все еще нет around_id - возвращаем последние сообщения
         if not around_id:
             fallback_limit = before_limit + after_limit
-            messages = list(queryset.order_by('-created_at')[:fallback_limit])
+            messages = list(queryset.order_by('-created_at', '-id')[:fallback_limit + 1])
+            has_more_before = len(messages) > fallback_limit
+            if has_more_before:
+                messages = messages[:fallback_limit]
             messages.reverse()
 
             # Автоотметка: последнее ЗАГРУЖЕННОЕ становится last_read
@@ -827,7 +830,9 @@ class ChatViewSet(viewsets.ModelViewSet):
                 'messages': [serialize_message(m) for m in messages],
                 'messages_count': len(messages),
                 'anchor_id': None,
-                'anchor_index': 0
+                'anchor_index': 0,
+                'has_more_before': has_more_before,
+                'has_more_after': False,
             })
 
         # Определяем, это ID сообщения или timestamp
@@ -872,7 +877,10 @@ class ChatViewSet(viewsets.ModelViewSet):
         if not anchor_msg:
             # Если не найдено - возвращаем последние сообщения
             fallback_limit = before_limit + after_limit
-            messages = list(queryset.order_by('-created_at')[:fallback_limit])
+            messages = list(queryset.order_by('-created_at', '-id')[:fallback_limit + 1])
+            has_more_before = len(messages) > fallback_limit
+            if has_more_before:
+                messages = messages[:fallback_limit]
             messages.reverse()
 
             # Автоотметка: последнее ЗАГРУЖЕННОЕ становится last_read
@@ -884,7 +892,9 @@ class ChatViewSet(viewsets.ModelViewSet):
                 'messages': [serialize_message(m) for m in messages],
                 'messages_count': len(messages),
                 'anchor_id': None,
-                'anchor_index': 0
+                'anchor_index': 0,
+                'has_more_before': has_more_before,
+                'has_more_after': False,
             })
 
         # Асимметричная загрузка: больше контекста, меньше новых

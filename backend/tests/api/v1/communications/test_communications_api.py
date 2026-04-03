@@ -286,6 +286,36 @@ class TestChatViewSet:
         assert "messages" in response.data
         assert response.data["messages_count"] > 0
 
+    def test_messages_around_without_anchor_reports_more_older(
+        self, auth_client, private_chat, user1
+    ):
+        """Fallback messages-around без якоря должен сообщать, что вверх есть история."""
+        for i in range(40):
+            Message.objects.create(chat=private_chat, author=user1, content=f"Msg {i}")
+
+        url = f"/api/v1/communications/chats/{private_chat.pk}/messages-around/"
+        response = auth_client.get(url, {"limit": 30})
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["messages_count"] == 30
+        assert response.data["has_more_before"] is True
+        assert response.data["has_more_after"] is False
+
+    def test_messages_around_with_missing_anchor_reports_more_older(
+        self, auth_client, private_chat, user1
+    ):
+        """Fallback messages-around с отсутствующим around_id не должен скрывать старую историю."""
+        for i in range(40):
+            Message.objects.create(chat=private_chat, author=user1, content=f"Msg {i}")
+
+        url = f"/api/v1/communications/chats/{private_chat.pk}/messages-around/"
+        response = auth_client.get(url, {"around_id": 999999, "limit": 30})
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["messages_count"] == 30
+        assert response.data["has_more_before"] is True
+        assert response.data["has_more_after"] is False
+
     def test_messages_pagination_before(self, auth_client, private_chat, user1):
         """Пагинация сообщений (before)"""
         messages = [
