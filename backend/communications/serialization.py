@@ -73,6 +73,45 @@ def _is_message_read(m) -> bool:
     ).exists()
 
 
+def _get_message_read_by(m) -> list[dict]:
+    """Список участников, которые дочитали сообщение."""
+    chat = getattr(m, "chat", None)
+    if (
+        not chat
+        or not getattr(m, "id", None)
+        or not getattr(m, "author_id", None)
+    ):
+        return []
+
+    prefetched = getattr(chat, "_prefetched_objects_cache", {})
+    read_states = prefetched.get("read_states")
+    if read_states is None:
+        read_states = chat.read_states.select_related("user").filter(
+            last_read_message_id__gte=m.id
+        )
+
+    readers = []
+    for state in read_states:
+        if state.user_id == m.author_id:
+            continue
+        if not state.last_read_message_id or state.last_read_message_id < m.id:
+            continue
+
+        user = getattr(state, "user", None)
+        if not user:
+            continue
+
+        readers.append(
+            {
+                "id": user.id,
+                "name": user.get_full_name() or user.username,
+            }
+        )
+
+    readers.sort(key=lambda item: item["name"].lower())
+    return readers
+
+
 def serialize_message(m) -> dict:
     """
     Сериализация сообщения с поддержкой всех полей.
@@ -109,12 +148,14 @@ def serialize_message(m) -> dict:
         "is_edited": m.is_edited,
         "edited_at": m.edited_at.isoformat() if m.edited_at else None,
         "is_read": _is_message_read(m),
+        "read_by": _get_message_read_by(m),
         "is_deleted": m.is_deleted,
         "is_pinned": m.is_pinned,
         "is_forwarded": m.is_forwarded,
         "is_system": m.is_system,
         "has_attachments": m.has_attachments,
     }
+    data["read_count"] = len(data["read_by"])
 
     # Информация о пересылке (используем forward_metadata)
     if m.is_forwarded:

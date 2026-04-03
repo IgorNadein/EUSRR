@@ -8,6 +8,7 @@ import ChatDialogHeader from "@/components/messages/ChatDialogHeader";
 import ChatMediaPreviewModal from "@/components/messages/ChatMediaPreviewModal";
 import ChatMessageItem, { MediaPreview } from "@/components/messages/ChatMessageItem";
 import MessageActionsMenu from "@/components/messages/MessageActionsMenu";
+import MessageReadersModal from "@/components/messages/MessageReadersModal";
 import MessageComposer from "@/components/messages/MessageComposer";
 import ReactionPickerModal from "@/components/messages/ReactionPickerModal";
 import { apiClient } from "@/lib/api";
@@ -16,7 +17,7 @@ import { useUser } from "@/contexts/UserContext";
 import { useChatFallbackSync } from "@/hooks/useChatFallbackSync";
 import { useSilentChatReloadGuard } from "@/hooks/useSilentChatReloadGuard";
 import { useWebSocket } from "@/hooks/useWebSocket";
-import { uniqueMessagesById } from "@/lib/messages/chatUtils";
+import { getMessageTimestamp, mergeDisplayMessages, uniqueMessagesById } from "@/lib/messages/chatUtils";
 import { formatDayDivider, getMessagePreviewText, getReplyToId } from "@/lib/messages/messageUtils";
 import wsManager from "@/lib/websocketManager";
 import ScrollableMessageList, { ScrollableMessageListInner } from "@/components/ScrollableMessageList";
@@ -34,6 +35,8 @@ type MessageActionsAnchor = {
 
 const RECENT_REACTIONS_KEY = "eusrr_recent_reactions";
 const MAX_RECENT_REACTIONS = 5;
+const PENDING_MESSAGE_DELAY_MS = 8000;
+const MARK_READ_DEBOUNCE_MS = 300;
 const ALL_REACTIONS = [
   "👍", "❤️", "😂", "🔥", "👏", "🎉", "😊", "😉", "😁", "🤝",
   "🙏", "😮", "😢", "😡", "💯", "✅", "👀", "🤔", "😍", "😎",
@@ -62,6 +65,7 @@ export default function MessageDialogPage() {
 
   const [chat, setChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [pendingMessages, setPendingMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +75,7 @@ export default function MessageDialogPage() {
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [expandedReplyActionForId, setExpandedReplyActionForId] = useState<number | null>(null);
   const [actionsMenuAnchor, setActionsMenuAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [isReadersModalOpen, setIsReadersModalOpen] = useState(false);
   const [reactionPickerForMessageId, setReactionPickerForMessageId] = useState<number | null>(null);
   const [showComposerEmojiPicker, setShowComposerEmojiPicker] = useState(false);
   const [recentReactions, setRecentReactions] = useState<string[]>(ALL_REACTIONS.slice(0, MAX_RECENT_REACTIONS));
@@ -100,6 +105,13 @@ export default function MessageDialogPage() {
   const [anchorRetryTick, setAnchorRetryTick] = useState(0);
   const hasMoreNewerRef = useRef(false);
   const fallbackSyncInFlightRef = useRef(false);
+  const pendingTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const pendingMessagesRef = useRef<Message[]>([]);
+  const localMessageSequenceRef = useRef(0);
+  const markReadTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const markReadInFlightRef = useRef(false);
+  const queuedMarkReadIdRef = useRef<number | null>(null);
+  const lastConfirmedMarkReadIdRef = useRef(0);
   
   // Локальное состояние для настроек чата
   const [isPinned, setIsPinned] = useState(false);
@@ -118,7 +130,30 @@ export default function MessageDialogPage() {
     }
   }, [chat]);
   
-  const messagesById = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
+  const displayMessages = useMemo(() => mergeDisplayMessages(messages, pendingMessages), [messages, pendingMessages]);
+  const messagesById = useMemo(() => new Map(displayMessages.map((m) => [m.id, m])), [displayMessages]);
+
+  useEffect(() => {
+    pendingMessagesRef.current = pendingMessages;
+  }, [pendingMessages]);
+
+  useEffect(() => {
+    lastConfirmedMarkReadIdRef.current = Math.max(
+      lastConfirmedMarkReadIdRef.current,
+      chat?.last_read_message_id ?? 0,
+    );
+  }, [chat?.last_read_message_id]);
+
+  useEffect(() => {
+    if (markReadTimerRef.current) {
+      clearTimeout(markReadTimerRef.current);
+      markReadTimerRef.current = null;
+    }
+
+    markReadInFlightRef.current = false;
+    queuedMarkReadIdRef.current = null;
+    lastConfirmedMarkReadIdRef.current = chat?.last_read_message_id ?? 0;
+  }, [chatId, chat?.last_read_message_id]);
   
   // Определяем текущий membership и права на отправку сообщений
   const myMembership = useMemo(() => {
@@ -148,6 +183,237 @@ export default function MessageDialogPage() {
     () => uniqueEmoji(recentReactions).slice(0, MAX_RECENT_REACTIONS),
     [recentReactions]
   );
+  const selectedActionReaders = selectedActionMessage?.read_by || [];
+  const sendingComposer = Boolean(editingMessageId && sending);
+
+  const clearPendingTimer = useCallback((localId?: string | null) => {
+    if (!localId) return;
+
+    const timer = pendingTimersRef.current.get(localId);
+    if (timer) {
+      clearTimeout(timer);
+      pendingTimersRef.current.delete(localId);
+    }
+  }, []);
+
+  const markPendingAsDelayed = useCallback((localId: string) => {
+    setPendingMessages((prev) =>
+      prev.map((message) =>
+        message.local_id === localId && message.send_state === "pending"
+          ? { ...message, send_state: "delayed" }
+          : message
+      )
+    );
+  }, []);
+
+  const schedulePendingTimer = useCallback((localId: string) => {
+    clearPendingTimer(localId);
+
+    const timer = setTimeout(() => {
+      pendingTimersRef.current.delete(localId);
+      markPendingAsDelayed(localId);
+    }, PENDING_MESSAGE_DELAY_MS);
+
+    pendingTimersRef.current.set(localId, timer);
+  }, [clearPendingTimer, markPendingAsDelayed]);
+
+  const removePendingMessage = useCallback((localId?: string | null) => {
+    if (!localId) return;
+
+    clearPendingTimer(localId);
+    setPendingMessages((prev) => prev.filter((message) => message.local_id !== localId));
+  }, [clearPendingTimer]);
+
+  const clearAllPendingTimers = useCallback(() => {
+    pendingTimersRef.current.forEach((timer) => clearTimeout(timer));
+    pendingTimersRef.current.clear();
+  }, []);
+
+  const flushMarkRead = useCallback(async () => {
+    if (!chatId || Number.isNaN(chatId) || markReadInFlightRef.current) {
+      return;
+    }
+
+    const targetMessageId = queuedMarkReadIdRef.current;
+    if (typeof targetMessageId !== "number") {
+      return;
+    }
+
+    if (targetMessageId <= lastConfirmedMarkReadIdRef.current) {
+      queuedMarkReadIdRef.current = null;
+      return;
+    }
+
+    queuedMarkReadIdRef.current = null;
+    markReadInFlightRef.current = true;
+
+    try {
+      await apiClient.markChatAsRead(chatId, targetMessageId);
+      lastConfirmedMarkReadIdRef.current = Math.max(
+        lastConfirmedMarkReadIdRef.current,
+        targetMessageId,
+      );
+      setChat((prev) =>
+        prev
+          ? {
+              ...prev,
+              last_read_message_id: Math.max(prev.last_read_message_id ?? 0, targetMessageId),
+            }
+          : prev
+      );
+    } catch (error) {
+      console.error("Ошибка отложенной отметки прочтения:", error);
+      queuedMarkReadIdRef.current = Math.max(
+        queuedMarkReadIdRef.current ?? 0,
+        targetMessageId,
+      );
+    } finally {
+      markReadInFlightRef.current = false;
+
+      if (
+        queuedMarkReadIdRef.current !== null &&
+        queuedMarkReadIdRef.current > lastConfirmedMarkReadIdRef.current &&
+        !markReadTimerRef.current
+      ) {
+        markReadTimerRef.current = setTimeout(() => {
+          markReadTimerRef.current = null;
+          void flushMarkRead();
+        }, MARK_READ_DEBOUNCE_MS);
+      }
+    }
+  }, [chatId]);
+
+  const scheduleMarkRead = useCallback((messageId?: number | null) => {
+    if (!chatId || typeof messageId !== "number") {
+      return;
+    }
+
+    const nextTarget = Math.max(queuedMarkReadIdRef.current ?? 0, messageId);
+    if (nextTarget <= lastConfirmedMarkReadIdRef.current) {
+      return;
+    }
+
+    queuedMarkReadIdRef.current = nextTarget;
+
+    if (markReadInFlightRef.current) {
+      return;
+    }
+
+    if (markReadTimerRef.current) {
+      clearTimeout(markReadTimerRef.current);
+    }
+
+    markReadTimerRef.current = setTimeout(() => {
+      markReadTimerRef.current = null;
+      void flushMarkRead();
+    }, MARK_READ_DEBOUNCE_MS);
+  }, [chatId, flushMarkRead]);
+
+  const getCurrentUserDisplayName = useCallback(() => {
+    if (!user) return "Вы";
+
+    const fullName = [user.last_name, user.first_name, user.patronymic].filter(Boolean).join(" ").trim();
+    return fullName || user.email || "Вы";
+  }, [user]);
+
+  const guessAttachmentType = useCallback((file: File): string => {
+    const mime = (file.type || "").toLowerCase();
+    if (mime.startsWith("image/")) return "image";
+    if (mime.startsWith("video/")) return "video";
+    if (mime.startsWith("audio/")) return "audio";
+    return "file";
+  }, []);
+
+  const getAttachmentSignature = useCallback((message: Message) => {
+    return (message.attachments || [])
+      .map((attachment) => `${attachment.file_name}|${attachment.file_size ?? 0}|${attachment.mime_type ?? ""}`)
+      .sort()
+      .join("||");
+  }, []);
+
+  const findMatchingPendingLocalId = useCallback((confirmedMessage: Message) => {
+    if (!user?.id || confirmedMessage.author_id !== user.id) {
+      return null;
+    }
+
+    const confirmedReplyToId = getReplyToId(confirmedMessage) ?? null;
+    const confirmedAttachmentSignature = getAttachmentSignature(confirmedMessage);
+    const confirmedTimestamp = getMessageTimestamp(confirmedMessage);
+
+    const candidates = pendingMessagesRef.current
+      .filter((pending) => pending.author_id === user.id)
+      .filter((pending) => pending.content === confirmedMessage.content)
+      .filter((pending) => (getReplyToId(pending) ?? null) === confirmedReplyToId)
+      .filter((pending) => getAttachmentSignature(pending) === confirmedAttachmentSignature)
+      .map((pending) => ({
+        localId: pending.local_id ?? null,
+        diff: Math.abs(getMessageTimestamp(pending) - confirmedTimestamp),
+      }))
+      .filter((candidate) => Boolean(candidate.localId))
+      .sort((left, right) => left.diff - right.diff);
+
+    const matchedCandidate = candidates[0];
+    if (!matchedCandidate) {
+      return null;
+    }
+
+    if (confirmedTimestamp > 0 && matchedCandidate.diff > 10 * 60 * 1000) {
+      return null;
+    }
+
+    return matchedCandidate.localId;
+  }, [getAttachmentSignature, user?.id]);
+
+  const removePendingMessageByServerMessage = useCallback((confirmedMessage: Message) => {
+    const localId = findMatchingPendingLocalId(confirmedMessage);
+    if (!localId) {
+      return;
+    }
+
+    removePendingMessage(localId);
+  }, [findMatchingPendingLocalId, removePendingMessage]);
+
+  const buildOptimisticMessage = useCallback((text: string, files: File[], localId: string): Message => {
+    localMessageSequenceRef.current += 1;
+    const now = Date.now() + localMessageSequenceRef.current;
+
+    return {
+      id: -now,
+      chat: chatId,
+      local_id: localId,
+      author_id: user?.id,
+      author_name: getCurrentUserDisplayName(),
+      avatar: user?.avatar,
+      content: text,
+      is_read: false,
+      send_state: "pending",
+      is_optimistic: true,
+      created_at: new Date(now).toISOString(),
+      created_ts: now,
+      has_attachments: files.length > 0,
+      attachments: files.map((file, index) => ({
+        id: -(now * 100 + index),
+        file_name: file.name,
+        file_type: guessAttachmentType(file),
+        file_url: "",
+        file_size: file.size,
+        mime_type: file.type,
+        is_local: true,
+      })),
+      reply_to_id: replyTo?.id,
+    };
+  }, [chatId, getCurrentUserDisplayName, guessAttachmentType, replyTo?.id, user?.avatar, user?.id]);
+
+  const resetComposerState = useCallback(() => {
+    setEditingMessageId(null);
+    setMessageText("");
+    setReplyTo(null);
+    setExpandedReplyActionForId(null);
+    setAttachedFiles([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }, []);
 
   // WebSocket для real-time обновлений
   const { isConnected, sendTyping, handlers } = useWebSocket({ 
@@ -217,23 +483,17 @@ export default function MessageDialogPage() {
       const response = await apiClient.getChatMessages(chatId, {
         limit: options.limit ?? 20,
         after_id: newestMessage.id,
-        mark_read: shouldMarkRead,
+        mark_read: false,
       });
 
       const newerMessages = response.messages || [];
       if (newerMessages.length > 0) {
+        newerMessages.forEach(removePendingMessageByServerMessage);
         setMessages((prev) => uniqueMessagesById([...prev, ...newerMessages]));
 
         if (shouldMarkRead) {
           const lastLoadedMessage = newerMessages[newerMessages.length - 1];
-          setChat((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  last_read_message_id: Math.max(prev.last_read_message_id ?? 0, lastLoadedMessage.id),
-                }
-              : prev
-          );
+          scheduleMarkRead(lastLoadedMessage.id);
         }
 
         if (shouldMarkRead && options.scrollOnSync) {
@@ -249,7 +509,7 @@ export default function MessageDialogPage() {
     } finally {
       fallbackSyncInFlightRef.current = false;
     }
-  }, [chatId, isNearBottom, messages, messagesLoading, scrollToBottom]);
+  }, [chatId, isNearBottom, messages, messagesLoading, removePendingMessageByServerMessage, scheduleMarkRead, scrollToBottom]);
 
   // Обновление reactions_summary для конкретного сообщения
   const updateMessageReactionsSummary = useCallback((
@@ -272,6 +532,7 @@ export default function MessageDialogPage() {
         const newMsg = data.message;
         const isMyMessage = newMsg.author_id === user?.id;
         const wasNearBottom = isNearBottom();
+        removePendingMessageByServerMessage(newMsg);
         
         setMessages(prev => {
           // Проверяем, нет ли уже такого сообщения (дедупликация)
@@ -308,9 +569,7 @@ export default function MessageDialogPage() {
             // 2. И я был внизу (активно читал)
             // Прагматичный подход: загружено = прочитано (для сообщений в области видимости)
             if (!isMyMessage && wasNearBottom && chatId) {
-              apiClient.markChatAsRead(chatId, newMsg.id).catch(err => {
-                console.error('Ошибка автоотметки WebSocket сообщения:', err);
-              });
+              scheduleMarkRead(newMsg.id);
             }
             
             // Автопрокрутка вниз если:
@@ -399,6 +658,10 @@ export default function MessageDialogPage() {
         }
 
         if (readerUserId === null || readerUserId === user?.id) {
+          lastConfirmedMarkReadIdRef.current = Math.max(
+            lastConfirmedMarkReadIdRef.current,
+            lastReadMessageId,
+          );
           setChat((prev) =>
             prev
               ? {
@@ -425,7 +688,7 @@ export default function MessageDialogPage() {
     handlers.current.onError = (error) => {
       console.error('❌ WebSocket error:', error);
     };
-  }, [handlers, user?.id, chatId, isNearBottom, scrollToBottom, syncLatestMessages, updateMessageReactionsSummary]);
+  }, [handlers, user?.id, chatId, isNearBottom, removePendingMessageByServerMessage, scheduleMarkRead, scrollToBottom, syncLatestMessages, updateMessageReactionsSummary]);
 
   // Очистка таймаута при размонтировании
   useEffect(() => {
@@ -436,8 +699,12 @@ export default function MessageDialogPage() {
       if (floatingDateTimeoutRef.current) {
         clearTimeout(floatingDateTimeoutRef.current);
       }
+      if (markReadTimerRef.current) {
+        clearTimeout(markReadTimerRef.current);
+      }
+      clearAllPendingTimers();
     };
-  }, []);
+  }, [clearAllPendingTimers]);
 
   useLayoutEffect(() => {
     if (typeof window === "undefined" || !window.history) return;
@@ -542,7 +809,9 @@ export default function MessageDialogPage() {
   useEffect(() => {
     async function loadMessages() {
       if (!chatId || Number.isNaN(chatId)) {
+        clearAllPendingTimers();
         setMessages([]);
+        setPendingMessages([]);
         setHasMoreOlder(false);
         setHasMoreNewer(false);
         setInitialAnchorId(null);
@@ -576,8 +845,10 @@ export default function MessageDialogPage() {
         const aroundMessages = around.messages || [];
 
         if (aroundMessages.length > 0) {
+          clearAllPendingTimers();
           const normalized = uniqueMessagesById(aroundMessages);
           setMessages(normalized);
+          setPendingMessages([]);
           // fallback на случай, если API не вернул флаг has_more_before
           setHasMoreOlder(
             typeof around.has_more_before === "boolean" ? around.has_more_before : normalized.length >= 50
@@ -587,8 +858,10 @@ export default function MessageDialogPage() {
           setInitialAnchorIndex(typeof around.anchor_index === "number" ? around.anchor_index : null);
           setAllowOneOlderProbe(Boolean(around.anchor_id));
         } else {
+          clearAllPendingTimers();
           const response = await apiClient.getChatMessages(chatId, { limit: 50 });
           setMessages(uniqueMessagesById(response.messages || []));
+          setPendingMessages([]);
           setHasMoreOlder(Boolean(response.has_more));
           setHasMoreNewer(false);
           setInitialAnchorId(null);
@@ -604,7 +877,9 @@ export default function MessageDialogPage() {
         const errorMessage = error instanceof Error ? error.message : String(error);
         if (errorMessage.includes("403")) {
           setError("Нет доступа к этому чату");
+          clearAllPendingTimers();
           setMessages([]);
+          setPendingMessages([]);
         } else {
           console.error("Ошибка загрузки сообщений:", error);
         }
@@ -623,13 +898,13 @@ export default function MessageDialogPage() {
     }
 
     loadMessages();
-  }, [chatId, userLoading, user, user?.id]);
+  }, [chatId, clearAllPendingTimers, userLoading, user, user?.id]);
 
   // Скролл к якорю или вниз после загрузки сообщений
   // Anchor scroll используется при переходе по прямой ссылке на сообщение (например, из уведомления)
   useEffect(() => {
     const component = messagesViewportRef.current;
-    if (messagesLoading || !component || !component.containerRef?.current || messages.length === 0 || initialScrolledRef.current) return;
+    if (messagesLoading || !component || !component.containerRef?.current || displayMessages.length === 0 || initialScrolledRef.current) return;
 
     const viewport = component.containerRef.current;
 
@@ -686,7 +961,7 @@ export default function MessageDialogPage() {
     anchorOlderLoadAttemptsRef.current = 0;
   }, [
     messagesLoading,
-    messages,
+    displayMessages,
     initialAnchorId,
     initialAnchorIndex,
     anchorRetryTick,
@@ -745,23 +1020,17 @@ export default function MessageDialogPage() {
       const response = await apiClient.getChatMessages(chatId, {
         limit: 10,  // Ограничено для минимальной погрешности автоотметки (было 40)
         after_id: newestMessage.id,
-        mark_read: shouldMarkRead,
+        mark_read: false,
       });
 
       const newerMessages = response.messages || [];
       if (newerMessages.length > 0) {
+        newerMessages.forEach(removePendingMessageByServerMessage);
         setMessages((prev) => uniqueMessagesById([...prev, ...newerMessages]));
 
         if (shouldMarkRead) {
           const lastLoadedMessage = newerMessages[newerMessages.length - 1];
-          setChat((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  last_read_message_id: Math.max(prev.last_read_message_id ?? 0, lastLoadedMessage.id),
-                }
-              : prev
-          );
+          scheduleMarkRead(lastLoadedMessage.id);
         }
         
         // НЕ делаем автоскролл - ScrollableMessageList сам решит:
@@ -776,7 +1045,7 @@ export default function MessageDialogPage() {
     } finally {
       setLoadingNewer(false);
     }
-  }, [chatId, hasMoreNewer, isNearBottom, loadingNewer, messages, messagesLoading]);
+  }, [chatId, hasMoreNewer, isNearBottom, loadingNewer, messages, messagesLoading, removePendingMessageByServerMessage, scheduleMarkRead]);
 
   useChatFallbackSync({
     chatId: chatId || null,
@@ -840,15 +1109,22 @@ export default function MessageDialogPage() {
       // Показ кнопки scroll-to-bottom когда не внизу
       const isAtBottom = isNearBottom();
       setShowScrollToBottom(!isAtBottom);
+
+      if (isAtBottom && !hasMoreNewer && messages.length > 0) {
+        const latestLoadedMessage = messages[messages.length - 1];
+        scheduleMarkRead(latestLoadedMessage.id);
+      }
     };
 
     viewport.addEventListener("scroll", onScroll, { passive: true });
     return () => viewport.removeEventListener("scroll", onScroll);
-  }, [chatId, hasMoreOlder, hasMoreNewer, isNearBottom, loadNewerMessages, loadOlderMessages, loadingOlder, loadingNewer, messagesLoading, messages]);
+  }, [chatId, displayMessages, hasMoreOlder, hasMoreNewer, isNearBottom, loadNewerMessages, loadOlderMessages, loadingOlder, loadingNewer, messages, messagesLoading, scheduleMarkRead]);
 
   const handleSend = async () => {
     const text = messageText.trim();
-    if (!chatId || sending) return;
+    let optimisticLocalId: string | null = null;
+
+    if (!chatId || (editingMessageId && sending)) return;
     if (editingMessageId) {
       if (!text) return;
     } else if (!text && attachedFiles.length === 0) {
@@ -859,24 +1135,38 @@ export default function MessageDialogPage() {
     const wasNearBottom = isNearBottom();
 
     try {
-      setSending(true);
       if (editingMessageId) {
+        setSending(true);
         const updated = await apiClient.updateMessage(editingMessageId, text);
         setMessages((prev) => prev.map((m) => (m.id === editingMessageId ? { ...m, ...updated } : m)));
+        resetComposerState();
       } else {
-        const sent = attachedFiles.length
-          ? await apiClient.sendMessageWithFiles(chatId, text, attachedFiles, replyTo?.id)
-          : await apiClient.sendMessage(chatId, text, replyTo?.id);
-        setMessages((prev) => uniqueMessagesById([...prev, sent]));
-      }
+        const files = [...attachedFiles];
+        const replyToId = replyTo?.id;
+        const localId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        optimisticLocalId = localId;
+        const optimisticMessage = buildOptimisticMessage(text, files, localId);
 
-      setEditingMessageId(null);
-      setMessageText("");
-      setReplyTo(null);
-      setExpandedReplyActionForId(null);
-      setAttachedFiles([]);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+        setPendingMessages((prev) => [...prev, optimisticMessage]);
+        schedulePendingTimer(localId);
+        resetComposerState();
+
+        const sent = files.length
+          ? await apiClient.sendMessageWithFiles(chatId, text, files, replyToId)
+          : await apiClient.sendMessage(chatId, text, replyToId);
+
+        removePendingMessage(localId);
+        setMessages((prev) => uniqueMessagesById([...prev, sent]));
+        setHasMoreNewer(false);
+
+        if (wasNearBottom) {
+          requestAnimationFrame(() => {
+            scrollToBottom(false);
+          });
+        }
+        return;
       }
 
       // Автоскролл вниз ТОЛЬКО если был внизу при отправке
@@ -888,8 +1178,20 @@ export default function MessageDialogPage() {
       }
     } catch (e) {
       console.error("Ошибка отправки сообщения:", e);
+      if (!editingMessageId && optimisticLocalId) {
+        clearPendingTimer(optimisticLocalId);
+        setPendingMessages((prev) =>
+          prev.map((message) =>
+            message.local_id === optimisticLocalId
+              ? { ...message, send_state: "failed" }
+              : message
+          )
+        );
+      }
     } finally {
-      setSending(false);
+      if (editingMessageId) {
+        setSending(false);
+      }
     }
   };
 
@@ -922,6 +1224,7 @@ export default function MessageDialogPage() {
     setEditingMessageId(null);
     setReplyTo({ id: message.id, author, preview });
     setExpandedReplyActionForId(null);
+    setIsReadersModalOpen(false);
     setActionsMenuAnchor(null);
     requestAnimationFrame(focusMessageInput);
   };
@@ -980,6 +1283,7 @@ export default function MessageDialogPage() {
       }
 
       setExpandedReplyActionForId(null);
+      setIsReadersModalOpen(false);
       setActionsMenuAnchor(null);
     } catch (e) {
       console.error("Ошибка удаления сообщения:", e);
@@ -989,10 +1293,12 @@ export default function MessageDialogPage() {
   const handleToggleMessageActions = useCallback((messageId: number, anchor: MessageActionsAnchor) => {
     setExpandedReplyActionForId((prev) => {
       if (prev === messageId) {
+        setIsReadersModalOpen(false);
         setActionsMenuAnchor(null);
         return null;
       }
 
+      setIsReadersModalOpen(false);
       setReactionPickerForMessageId(null);
       setShowComposerEmojiPicker(false);
       setActionsMenuAnchor(anchor);
@@ -1173,14 +1479,14 @@ export default function MessageDialogPage() {
                 >
                   {messagesLoading ? (
                     <p className="text-center text-sm text-gray-500">Загрузка сообщений...</p>
-                  ) : messages.length === 0 ? (
+                  ) : displayMessages.length === 0 ? (
                     <p className="text-center text-sm text-gray-500">Пока нет сообщений. Напишите первым.</p>
                   ) : (
                     <div className="flex min-h-full flex-col justify-end">
                       {loadingOlder ? (
                         <p className="mb-3 text-center text-xs text-gray-500">Подгружаем старые сообщения...</p>
                       ) : null}
-                      {messages.map((message) => {
+                      {displayMessages.map((message) => {
                         const replyToId = getReplyToId(message);
                         const repliedMessage = replyToId ? messagesById.get(replyToId) : null;
 
@@ -1191,8 +1497,8 @@ export default function MessageDialogPage() {
                             currentUserId={user?.id}
                             repliedMessage={repliedMessage}
                             isActionsOpen={expandedReplyActionForId === message.id}
-                            canManage={canManageMessage(message)}
-                            canReply={!message.is_deleted}
+                            canManage={!message.is_optimistic && canManageMessage(message)}
+                            canReply={!message.is_deleted && !message.is_optimistic}
                             brokenMedia={brokenMedia}
                             useOriginalImage={useOriginalImage}
                             onToggleActions={handleToggleMessageActions}
@@ -1248,7 +1554,7 @@ export default function MessageDialogPage() {
                     replyTo={replyTo}
                     attachedFiles={attachedFiles}
                     messageText={messageText}
-                    sending={sending}
+                    sending={sendingComposer}
                     showEmojiPicker={showComposerEmojiPicker}
                     allReactions={ALL_REACTIONS}
                     fileInputRef={fileInputRef}
@@ -1293,6 +1599,7 @@ export default function MessageDialogPage() {
       {expandedReplyActionForId && actionsMenuAnchor && selectedActionMessage ? (
         <MessageActionsMenu
           anchor={actionsMenuAnchor}
+          currentUserId={user?.id}
           message={selectedActionMessage}
           canReply={selectedActionCanReply}
           canManage={selectedActionCanManage}
@@ -1300,12 +1607,22 @@ export default function MessageDialogPage() {
           onQuickReact={(emoji) => {
             handleReact(selectedActionMessage, emoji);
             setExpandedReplyActionForId(null);
+            setIsReadersModalOpen(false);
             setActionsMenuAnchor(null);
           }}
           onOpenReactionPicker={() => setReactionPickerForMessageId(selectedActionMessage.id)}
+          onShowAllReaders={() => setIsReadersModalOpen(true)}
           onReply={() => handleReplyToMessage(selectedActionMessage)}
           onEdit={() => handleStartEditMessage(selectedActionMessage)}
           onDelete={() => handleDeleteMessage(selectedActionMessage)}
+        />
+      ) : null}
+
+      {selectedActionMessage ? (
+        <MessageReadersModal
+          isOpen={isReadersModalOpen}
+          onClose={() => setIsReadersModalOpen(false)}
+          readers={selectedActionReaders}
         />
       ) : null}
 

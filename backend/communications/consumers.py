@@ -13,10 +13,10 @@ WebSocket Consumer Mixin для чатов.
 
 import logging
 from channels.db import database_sync_to_async
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.utils import timezone
 
-from .models import Chat, ChatMembership, Message, MessageReaction
+from .models import Chat, ChatMembership, ChatReadState, Message, MessageReaction
 from .serialization import serialize_message
 
 logger = logging.getLogger(__name__)
@@ -724,7 +724,14 @@ class ChatConsumerMixin:
         messages = (
             Message.objects.filter(chat_id=chat_id)
             .select_related("author", "chat")
-            .prefetch_related("attachments", "reactions", "chat__read_states")
+            .prefetch_related(
+                "attachments",
+                "reactions",
+                Prefetch(
+                    "chat__read_states",
+                    queryset=ChatReadState.objects.select_related("user"),
+                ),
+            )
             .order_by("-created_at")[:limit]
         )
 

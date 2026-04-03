@@ -620,7 +620,14 @@ class ChatViewSet(viewsets.ModelViewSet):
         queryset = chat.messages.filter(is_deleted=False).select_related(
             'author', 'reply_to', 'reply_to__author', 'poll'
         ).prefetch_related(
-            'attachments', 'reactions', 'reactions__user', 'poll__options', 'chat__read_states'
+            'attachments',
+            'reactions',
+            'reactions__user',
+            'poll__options',
+            Prefetch(
+                'chat__read_states',
+                queryset=ChatReadState.objects.select_related('user'),
+            ),
         )
 
         # Определяем порядок сортировки в зависимости от типа запроса
@@ -719,7 +726,14 @@ class ChatViewSet(viewsets.ModelViewSet):
         queryset = chat.messages.filter(is_deleted=False).select_related(
             'author', 'reply_to', 'reply_to__author', 'poll'
         ).prefetch_related(
-            'attachments', 'reactions', 'reactions__user', 'poll__options', 'chat__read_states'
+            'attachments',
+            'reactions',
+            'reactions__user',
+            'poll__options',
+            Prefetch(
+                'chat__read_states',
+                queryset=ChatReadState.objects.select_related('user'),
+            ),
         )
 
         # Если нет around_id, пытаемся получить last_read_message_id
@@ -1073,7 +1087,13 @@ class MessageViewSet(viewsets.ModelViewSet):
         message = Message.objects.select_related(
             'author', 'reply_to', 'reply_to__author', 'poll', 'chat'
         ).prefetch_related(
-            'attachments', 'reactions', 'reactions__user', 'chat__read_states'
+            'attachments',
+            'reactions',
+            'reactions__user',
+            Prefetch(
+                'chat__read_states',
+                queryset=ChatReadState.objects.select_related('user'),
+            ),
         ).get(pk=message.id)
 
         # Отправляем через WebSocket
@@ -1230,7 +1250,14 @@ class MessageViewSet(viewsets.ModelViewSet):
         instance = Message.objects.select_related(
             'author', 'reply_to', 'reply_to__author', 'poll', 'chat'
         ).prefetch_related(
-            'attachments', 'reactions', 'reactions__user', 'poll__options', 'chat__read_states'
+            'attachments',
+            'reactions',
+            'reactions__user',
+            'poll__options',
+            Prefetch(
+                'chat__read_states',
+                queryset=ChatReadState.objects.select_related('user'),
+            ),
         ).get(pk=instance.id)
 
         # WebSocket уведомление

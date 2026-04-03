@@ -36,6 +36,8 @@ interface UseWebSocketOptions {
   }) => void;
 }
 
+const TYPING_THROTTLE_MS = 2000;
+
 export function useWebSocket({
   chatId,
   autoConnect = true,
@@ -51,6 +53,7 @@ export function useWebSocket({
   const reconnectAttemptsRef = useRef(0);
   const shouldReconnectRef = useRef(autoConnect);
   const connectRef = useRef<() => void>(() => {});
+  const lastTypingSentAtRef = useRef(0);
 
   const handlers = useRef<WebSocketHandlers>({
     onMessage: () => {},
@@ -192,15 +195,24 @@ export function useWebSocket({
     reconnectAttemptsRef.current = 0;
     setReconnectAttempts(0);
     isConnectingRef.current = false;
+    lastTypingSentAtRef.current = 0;
   }, [chatId]);
 
   const sendTyping = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        action: 'typing'
-      }));
+    if (!chatId || wsRef.current?.readyState !== WebSocket.OPEN) {
+      return;
     }
-  }, []);
+
+    const now = Date.now();
+    if (now - lastTypingSentAtRef.current < TYPING_THROTTLE_MS) {
+      return;
+    }
+
+    lastTypingSentAtRef.current = now;
+    wsRef.current.send(JSON.stringify({
+      action: 'typing'
+    }));
+  }, [chatId]);
 
   const sendMessage = useCallback((message: Record<string, unknown>) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {

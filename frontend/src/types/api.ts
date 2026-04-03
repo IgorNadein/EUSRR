@@ -507,6 +507,7 @@ export interface ChatUserSettings {
 export interface Message {
   id: number;
   chat?: number;
+  local_id?: string | null;
   sender?: User;
   author?: User;
   author_id?: number;
@@ -514,6 +515,10 @@ export interface Message {
   avatar?: string;
   content: string;
   is_read?: boolean;
+  read_count?: number;
+  read_by?: MessageReader[];
+  send_state?: 'pending' | 'delayed' | 'failed';
+  is_optimistic?: boolean;
   created_at?: string;
   created?: string;
   created_ts?: number;
@@ -531,6 +536,11 @@ export interface Message {
   }>;
 }
 
+export interface MessageReader {
+  id: number;
+  name: string;
+}
+
 export interface MessageAttachment {
   id: number;
   file_name: string;
@@ -541,6 +551,7 @@ export interface MessageAttachment {
   width?: number;
   height?: number;
   thumbnail?: string | null;
+  is_local?: boolean;
 }
 
 // Calendar types (django-scheduler)

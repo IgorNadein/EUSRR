@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Check, CheckCheck, ChevronRight, FileText } from "lucide-react";
+import { AlertCircle, Check, CheckCheck, ChevronRight, Clock3, FileText, Loader2 } from "lucide-react";
 
 import { resolveMediaUrl } from "@/lib/url";
 import {
@@ -44,7 +44,31 @@ function getMessageAuthorLabel(message: Message): string {
   return message.author_name || message.author?.last_name || message.sender?.last_name || "Сотрудник";
 }
 
-function MessageDeliveryStatus({ isRead }: { isRead: boolean }) {
+function MessageDeliveryStatus({ sendState, isRead }: { sendState?: Message["send_state"]; isRead: boolean }) {
+  if (sendState === "pending") {
+    return (
+      <span className="inline-flex items-center text-sky-100" title="Отправляется" aria-label="Отправляется">
+        <Loader2 size={13} strokeWidth={2.2} className="animate-spin" />
+      </span>
+    );
+  }
+
+  if (sendState === "delayed") {
+    return (
+      <span className="inline-flex items-center text-sky-100" title="Сервер отвечает медленно" aria-label="Сервер отвечает медленно">
+        <Clock3 size={13} strokeWidth={2.2} />
+      </span>
+    );
+  }
+
+  if (sendState === "failed") {
+    return (
+      <span className="inline-flex items-center text-rose-200" title="Не отправлено" aria-label="Не отправлено">
+        <AlertCircle size={13} strokeWidth={2.2} />
+      </span>
+    );
+  }
+
   const Icon = isRead ? CheckCheck : Check;
 
   return (
@@ -83,6 +107,7 @@ export default function ChatMessageItem({
   );
   const hasActions = canReply || canManage;
   const isRead = Boolean(message.is_read);
+  const sendState = message.send_state;
 
   return (
     <div data-message-id={message.id} data-message-date={currentDate?.toISOString() || ""} className="mb-3 last:mb-0">
@@ -146,6 +171,19 @@ export default function ChatMessageItem({
             {message.attachments && message.attachments.length > 0 ? (
               <div className="mt-2 space-y-2">
                 {message.attachments.map((attachment) => {
+                  if (attachment.is_local) {
+                    return (
+                      <div
+                        key={attachment.id}
+                        className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${isMine ? "bg-sky-400/25 text-sky-50" : "bg-white/80 text-gray-700 ring-1 ring-gray-200"}`}
+                      >
+                        <FileText size={16} className="shrink-0" />
+                        <span className="min-w-0 flex-1 truncate">{attachment.file_name}</span>
+                        <span className={`shrink-0 text-xs ${isMine ? "text-sky-100" : "text-gray-500"}`}>{formatFileSize(attachment.file_size)}</span>
+                      </div>
+                    );
+                  }
+
                   const fileUrl = resolveMediaUrl(attachment.file_url);
 
                   if (isImageAttachment(attachment)) {
@@ -284,7 +322,7 @@ export default function ChatMessageItem({
 
             <div className={`mt-1 flex items-center ${isMine ? "justify-end gap-1.5" : "justify-end"}`}>
               <p className={`text-right text-[11px] ${isMine ? "text-sky-100" : "text-gray-400"}`}>{messageTime(message)}</p>
-              {isMine ? <MessageDeliveryStatus isRead={isRead} /> : null}
+              {isMine ? <MessageDeliveryStatus sendState={sendState} isRead={isRead} /> : null}
             </div>
 
             {Object.keys(message.reactions_summary || {}).length > 0 ? (

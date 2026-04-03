@@ -3,7 +3,7 @@
 """
 
 import pytest
-from communications.models import Chat, ChatMembership, ChatUserSettings, Message
+from communications.models import Chat, ChatMembership, ChatReadState, ChatUserSettings, Message
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from employees.models import Department
@@ -200,6 +200,30 @@ class TestChatViewSet:
         assert response.status_code == status.HTTP_200_OK
         assert "messages" in response.data
         assert len(response.data["messages"]) == 5
+
+    def test_chat_messages_include_read_by_users(self, auth_client, private_chat, user1, user2):
+        """Payload сообщения содержит список пользователей, которые его прочитали."""
+        message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content="Read me",
+        )
+        read_state = ChatReadState.objects.get(
+            chat=private_chat,
+            user=user2,
+        )
+        read_state.last_read_message = message
+        read_state.unread_count = 0
+        read_state.save(update_fields=["last_read_message", "unread_count", "updated_at"])
+
+        url = f"/api/v1/communications/chats/{private_chat.pk}/messages/"
+        response = auth_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        payload = response.data["messages"][0]
+        assert payload["is_read"] is True
+        assert payload["read_count"] == 1
+        assert payload["read_by"] == [{"id": user2.id, "name": user2.get_full_name()}]
 
     def test_mark_read(self, auth_client, private_chat, user1):
         """Пометка чата как прочитанного"""
