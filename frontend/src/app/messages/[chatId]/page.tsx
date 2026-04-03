@@ -86,6 +86,7 @@ export default function MessageDialogPage() {
   const [floatingDate, setFloatingDate] = useState<string | null>(null);
   const [showFloatingDate, setShowFloatingDate] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [newMessagesBelowCount, setNewMessagesBelowCount] = useState(0);
   const floatingDateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -112,6 +113,7 @@ export default function MessageDialogPage() {
   const markReadInFlightRef = useRef(false);
   const queuedMarkReadIdRef = useRef<number | null>(null);
   const lastConfirmedMarkReadIdRef = useRef(0);
+  const unreadBelowMessageIdsRef = useRef<Set<number>>(new Set());
   
   // Локальное состояние для настроек чата
   const [isPinned, setIsPinned] = useState(false);
@@ -153,6 +155,8 @@ export default function MessageDialogPage() {
     markReadInFlightRef.current = false;
     queuedMarkReadIdRef.current = null;
     lastConfirmedMarkReadIdRef.current = chat?.last_read_message_id ?? 0;
+    unreadBelowMessageIdsRef.current.clear();
+    setNewMessagesBelowCount(0);
   }, [chatId, chat?.last_read_message_id]);
   
   // Определяем текущий membership и права на отправку сообщений
@@ -228,6 +232,33 @@ export default function MessageDialogPage() {
     pendingTimersRef.current.forEach((timer) => clearTimeout(timer));
     pendingTimersRef.current.clear();
   }, []);
+
+  const resetNewMessagesBelow = useCallback(() => {
+    unreadBelowMessageIdsRef.current.clear();
+    setNewMessagesBelowCount(0);
+  }, []);
+
+  const registerNewMessagesBelow = useCallback((incomingMessages: Message[]) => {
+    if (!user?.id || incomingMessages.length === 0) {
+      return;
+    }
+
+    let addedCount = 0;
+
+    incomingMessages.forEach((message) => {
+      const authorId = message.author_id ?? message.author?.id ?? message.sender?.id;
+      if (authorId === user.id || message.id <= 0 || unreadBelowMessageIdsRef.current.has(message.id)) {
+        return;
+      }
+
+      unreadBelowMessageIdsRef.current.add(message.id);
+      addedCount += 1;
+    });
+
+    if (addedCount > 0) {
+      setNewMessagesBelowCount((prev) => prev + addedCount);
+    }
+  }, [user?.id]);
 
   const flushMarkRead = useCallback(async () => {
     if (!chatId || Number.isNaN(chatId) || markReadInFlightRef.current) {
@@ -453,6 +484,17 @@ export default function MessageDialogPage() {
     return scrollHeight - scrollTop - clientHeight <= threshold;
   }, []);
 
+  const syncScrollToBottomState = useCallback(() => {
+    const isAtBottom = isNearBottom();
+    setShowScrollToBottom(!isAtBottom);
+
+    if (isAtBottom) {
+      resetNewMessagesBelow();
+    }
+
+    return isAtBottom;
+  }, [isNearBottom, resetNewMessagesBelow]);
+
   // Автопрокрутка вниз
   const scrollToBottom = useCallback((smooth = false) => {
     const component = messagesViewportRef.current;
@@ -533,6 +575,11 @@ export default function MessageDialogPage() {
         const isMyMessage = newMsg.author_id === user?.id;
         const wasNearBottom = isNearBottom();
         removePendingMessageByServerMessage(newMsg);
+
+        if (!isMyMessage && !wasNearBottom) {
+          registerNewMessagesBelow([newMsg]);
+          setShowScrollToBottom(true);
+        }
         
         setMessages(prev => {
           // Проверяем, нет ли уже такого сообщения (дедупликация)
@@ -688,7 +735,7 @@ export default function MessageDialogPage() {
     handlers.current.onError = (error) => {
       console.error('❌ WebSocket error:', error);
     };
-  }, [handlers, user?.id, chatId, isNearBottom, removePendingMessageByServerMessage, scheduleMarkRead, scrollToBottom, syncLatestMessages, updateMessageReactionsSummary]);
+  }, [handlers, user?.id, chatId, isNearBottom, registerNewMessagesBelow, removePendingMessageByServerMessage, scheduleMarkRead, scrollToBottom, syncLatestMessages, updateMessageReactionsSummary]);
 
   // Очистка таймаута при размонтировании
   useEffect(() => {
@@ -818,6 +865,7 @@ export default function MessageDialogPage() {
         setInitialAnchorIndex(null);
         setAllowOneOlderProbe(false);
         initialScrolledRef.current = false;
+        resetNewMessagesBelow();
         return;
       }
 
@@ -857,16 +905,35 @@ export default function MessageDialogPage() {
           setInitialAnchorId(around.anchor_id ?? null);
           setInitialAnchorIndex(typeof around.anchor_index === "number" ? around.anchor_index : null);
           setAllowOneOlderProbe(Boolean(around.anchor_id));
+          unreadBelowMessageIdsRef.current = new Set(
+            normalized
+              .filter((message) => {
+                const authorId = message.author_id ?? message.author?.id ?? message.sender?.id;
+                return authorId !== user?.id && message.id > (lastReadId ?? 0);
+              })
+              .map((message) => message.id)
+          );
+          setNewMessagesBelowCount(Math.max(chatDetails.unread_count ?? unreadBelowMessageIdsRef.current.size, 0));
         } else {
           clearAllPendingTimers();
           const response = await apiClient.getChatMessages(chatId, { limit: 50 });
-          setMessages(uniqueMessagesById(response.messages || []));
+          const normalized = uniqueMessagesById(response.messages || []);
+          setMessages(normalized);
           setPendingMessages([]);
           setHasMoreOlder(Boolean(response.has_more));
           setHasMoreNewer(false);
           setInitialAnchorId(null);
           setInitialAnchorIndex(null);
           setAllowOneOlderProbe(false);
+          unreadBelowMessageIdsRef.current = new Set(
+            normalized
+              .filter((message) => {
+                const authorId = message.author_id ?? message.author?.id ?? message.sender?.id;
+                return authorId !== user?.id && message.id > (lastReadId ?? 0);
+              })
+              .map((message) => message.id)
+          );
+          setNewMessagesBelowCount(Math.max(chatDetails.unread_count ?? unreadBelowMessageIdsRef.current.size, 0));
         }
 
         initialScrolledRef.current = false;
@@ -888,6 +955,7 @@ export default function MessageDialogPage() {
         setInitialAnchorId(null);
         setInitialAnchorIndex(null);
         setAllowOneOlderProbe(false);
+        resetNewMessagesBelow();
         initialScrolledRef.current = false;
         anchorScrollAttemptsRef.current = 0;
         anchorOlderLoadAttemptsRef.current = 0;
@@ -898,7 +966,7 @@ export default function MessageDialogPage() {
     }
 
     loadMessages();
-  }, [chatId, clearAllPendingTimers, userLoading, user, user?.id]);
+  }, [chatId, clearAllPendingTimers, resetNewMessagesBelow, userLoading, user, user?.id]);
 
   // Скролл к якорю или вниз после загрузки сообщений
   // Anchor scroll используется при переходе по прямой ссылке на сообщение (например, из уведомления)
@@ -917,6 +985,7 @@ export default function MessageDialogPage() {
         const elRect = el.getBoundingClientRect();
         const offset = elRect.top - containerRect.top + viewport.scrollTop - viewport.clientHeight / 2 + elRect.height / 2;
         viewport.scrollTop = Math.max(0, offset);
+        syncScrollToBottomState();
         initialScrolledRef.current = true;
         anchorScrollAttemptsRef.current = 0;
         setInitialAnchorId(null);
@@ -933,6 +1002,7 @@ export default function MessageDialogPage() {
           const elRect = byIndex.getBoundingClientRect();
           const offset = elRect.top - containerRect.top + viewport.scrollTop - viewport.clientHeight / 2 + elRect.height / 2;
           viewport.scrollTop = Math.max(0, offset);
+          syncScrollToBottomState();
           initialScrolledRef.current = true;
           anchorScrollAttemptsRef.current = 0;
           setInitialAnchorId(null);
@@ -956,6 +1026,7 @@ export default function MessageDialogPage() {
 
     // Обычная прокрутка вниз без анимации (автоматический скролл при первой загрузке чата)
     component.scrollToBottom('auto');
+    syncScrollToBottomState();
     initialScrolledRef.current = true;
     anchorScrollAttemptsRef.current = 0;
     anchorOlderLoadAttemptsRef.current = 0;
@@ -965,6 +1036,7 @@ export default function MessageDialogPage() {
     initialAnchorId,
     initialAnchorIndex,
     anchorRetryTick,
+    syncScrollToBottomState,
   ]);
 
   // Удалено: prependAdjustRef useLayoutEffect
@@ -1107,8 +1179,7 @@ export default function MessageDialogPage() {
       }
 
       // Показ кнопки scroll-to-bottom когда не внизу
-      const isAtBottom = isNearBottom();
-      setShowScrollToBottom(!isAtBottom);
+      const isAtBottom = syncScrollToBottomState();
 
       if (isAtBottom && !hasMoreNewer && messages.length > 0) {
         const latestLoadedMessage = messages[messages.length - 1];
@@ -1118,7 +1189,7 @@ export default function MessageDialogPage() {
 
     viewport.addEventListener("scroll", onScroll, { passive: true });
     return () => viewport.removeEventListener("scroll", onScroll);
-  }, [chatId, displayMessages, hasMoreOlder, hasMoreNewer, isNearBottom, loadNewerMessages, loadOlderMessages, loadingOlder, loadingNewer, messages, messagesLoading, scheduleMarkRead]);
+  }, [chatId, displayMessages, hasMoreOlder, hasMoreNewer, loadNewerMessages, loadOlderMessages, loadingOlder, loadingNewer, messages, messagesLoading, scheduleMarkRead, syncScrollToBottomState]);
 
   const handleSend = async () => {
     const text = messageText.trim();
@@ -1200,10 +1271,17 @@ export default function MessageDialogPage() {
     fileInputRef.current?.click();
   };
 
+  const addAttachedFiles = useCallback((files: File[]) => {
+    if (editingMessageId || files.length === 0) {
+      return;
+    }
+
+    setAttachedFiles((prev) => [...prev, ...files]);
+  }, [editingMessageId]);
+
   const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    setAttachedFiles((prev) => [...prev, ...files]);
+    addAttachedFiles(files);
   };
 
   const removeAttachedFile = (index: number) => {
@@ -1526,12 +1604,19 @@ export default function MessageDialogPage() {
                         if (container) {
                           container.scrollTop = container.scrollHeight;
                         }
+
+                        resetNewMessagesBelow();
                       }}
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-sky-500 text-white shadow-lg transition hover:bg-sky-600 active:scale-95"
+                      className="relative inline-flex h-10 w-10 items-center justify-center rounded-full bg-sky-500 text-white leading-none shadow-sm shadow-sky-200/70 transition hover:bg-sky-600 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-sky-100"
                       title="Вернуться к новым сообщениям"
-                      aria-label="Вернуться к новым сообщениям"
+                      aria-label={newMessagesBelowCount > 0 ? `Вернуться к новым сообщениям (${newMessagesBelowCount > 99 ? "99+" : newMessagesBelowCount})` : "Вернуться к новым сообщениям"}
                     >
                       <ChevronDown size={18} />
+                      {newMessagesBelowCount > 0 ? (
+                        <span className="absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full border border-white bg-rose-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white shadow-sm">
+                          {newMessagesBelowCount > 99 ? "99+" : newMessagesBelowCount}
+                        </span>
+                      ) : null}
                     </button>
                   </div>
                 )}
@@ -1561,6 +1646,7 @@ export default function MessageDialogPage() {
                     fileInputRef={fileInputRef}
                     messageInputRef={messageInputRef}
                     onPickFiles={handlePickFiles}
+                    onAddFiles={addAttachedFiles}
                     onFilesChange={handleFilesChange}
                     onRemoveFile={removeAttachedFile}
                     onToggleEmojiPicker={() => {

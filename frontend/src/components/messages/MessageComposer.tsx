@@ -26,6 +26,7 @@ type MessageComposerProps = {
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   messageInputRef: React.RefObject<HTMLTextAreaElement | null>;
   onPickFiles: () => void;
+  onAddFiles: (files: File[]) => void;
   onFilesChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onRemoveFile: (index: number) => void;
   onToggleEmojiPicker: () => void;
@@ -51,6 +52,7 @@ export default function MessageComposer({
   fileInputRef,
   messageInputRef,
   onPickFiles,
+  onAddFiles,
   onFilesChange,
   onRemoveFile,
   onToggleEmojiPicker,
@@ -64,6 +66,25 @@ export default function MessageComposer({
 }: MessageComposerProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const canSend = editingMessageId ? messageText.trim().length > 0 : messageText.trim().length > 0 || attachedFiles.length > 0;
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (editingMessageId) return;
+
+    const clipboardFiles = Array.from(event.clipboardData.files || []);
+    const clipboardItemFiles = Array.from(event.clipboardData.items || [])
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file));
+
+    const uniqueFiles = [...clipboardFiles, ...clipboardItemFiles].filter((file, index, files) => {
+      const signature = `${file.name}|${file.size}|${file.type}|${file.lastModified}`;
+      return files.findIndex((candidate) => `${candidate.name}|${candidate.size}|${candidate.type}|${candidate.lastModified}` === signature) === index;
+    });
+
+    if (uniqueFiles.length > 0) {
+      onAddFiles(uniqueFiles);
+    }
+  };
 
   useLayoutEffect(() => {
     const input = messageInputRef.current;
@@ -145,7 +166,7 @@ export default function MessageComposer({
             onChange={onFilesChange}
           />
           <div
-            className={`relative min-w-0 flex-1 overflow-hidden border border-gray-200 bg-gray-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition focus-within:border-sky-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-sky-100 ${
+            className={`relative min-w-0 flex-1 ${showEmojiPicker ? "overflow-visible" : "overflow-hidden"} border border-gray-200 bg-gray-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition focus-within:border-sky-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-sky-100 ${
               isExpanded ? "rounded-[1.5rem]" : "h-10 rounded-full"
             }`}
             data-composer-emoji="true"
@@ -201,6 +222,7 @@ export default function MessageComposer({
                 onTyping();
               }}
               onClick={onInputClick}
+              onPaste={handlePaste}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
