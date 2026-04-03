@@ -6,6 +6,7 @@ import pytest
 from communications.models import Chat, ChatMembership, ChatReadState, ChatUserSettings, Message
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.utils import timezone
 from employees.models import Department
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -327,6 +328,62 @@ class TestChatViewSet:
 
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data["messages"]) <= 10
+
+    def test_messages_pagination_before_id_respects_created_at_anchor(
+        self, auth_client, private_chat, user1
+    ):
+        """before_id должен пагинировать по временной ленте, а не по голому id."""
+        msg_old = Message.objects.create(
+            chat=private_chat, author=user1, content="Old by time"
+        )
+        msg_middle = Message.objects.create(
+            chat=private_chat, author=user1, content="Middle by time"
+        )
+        msg_new = Message.objects.create(
+            chat=private_chat, author=user1, content="New by time"
+        )
+
+        base = timezone.now()
+        Message.objects.filter(pk=msg_old.pk).update(created_at=base)
+        Message.objects.filter(pk=msg_middle.pk).update(created_at=base + timezone.timedelta(minutes=20))
+        Message.objects.filter(pk=msg_new.pk).update(created_at=base + timezone.timedelta(minutes=10))
+
+        url = f"/api/v1/communications/chats/{private_chat.pk}/messages/"
+        response = auth_client.get(url, {"before_id": msg_middle.id, "limit": 10})
+
+        assert response.status_code == status.HTTP_200_OK
+        returned_ids = [item["id"] for item in response.data["messages"]]
+
+        assert msg_old.id in returned_ids
+        assert msg_new.id in returned_ids
+        assert msg_middle.id not in returned_ids
+
+    def test_messages_pagination_after_id_respects_created_at_anchor(
+        self, auth_client, private_chat, user1
+    ):
+        """after_id должен догружать по временной ленте даже при несогласованных id и created_at."""
+        msg_old = Message.objects.create(
+            chat=private_chat, author=user1, content="Old by time"
+        )
+        msg_middle = Message.objects.create(
+            chat=private_chat, author=user1, content="Middle by time"
+        )
+        msg_new = Message.objects.create(
+            chat=private_chat, author=user1, content="New by time"
+        )
+
+        base = timezone.now()
+        Message.objects.filter(pk=msg_old.pk).update(created_at=base)
+        Message.objects.filter(pk=msg_middle.pk).update(created_at=base + timezone.timedelta(minutes=20))
+        Message.objects.filter(pk=msg_new.pk).update(created_at=base + timezone.timedelta(minutes=10))
+
+        url = f"/api/v1/communications/chats/{private_chat.pk}/messages/"
+        response = auth_client.get(url, {"after_id": msg_new.id, "limit": 10})
+
+        assert response.status_code == status.HTTP_200_OK
+        returned_ids = [item["id"] for item in response.data["messages"]]
+
+        assert returned_ids == [msg_middle.id]
 
     def test_chat_access_denied(self, user3, private_chat):
         """Попытка доступа к чату без прав"""

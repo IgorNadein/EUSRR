@@ -419,7 +419,7 @@ function MessageDialogPageContent() {
     const viewport = c.containerRef.current;
 
     const onScroll = () => {
-      if (!cm.loadingOlder && !cm.messagesLoading && cm.hasMoreOlder && viewport.scrollTop <= 120) {
+      if (!cm.loadingOlder && !cm.messagesLoading && (cm.hasMoreOlder || cm.allowOneOlderProbe) && viewport.scrollTop <= 120) {
         cm.loadOlderMessages();
       }
 

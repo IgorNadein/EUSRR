@@ -106,6 +106,38 @@ def _build_message_search_snippet(message, query, max_length=140):
     return 'Сообщение без текста'
 
 
+def _filter_messages_before_anchor(queryset, chat, before_id):
+    try:
+        anchor_id = int(before_id)
+    except (TypeError, ValueError):
+        return queryset
+
+    anchor = chat.messages.only('id', 'created_at').filter(pk=anchor_id).first()
+    if not anchor:
+        return queryset.filter(id__lt=anchor_id)
+
+    return queryset.filter(
+        Q(created_at__lt=anchor.created_at)
+        | Q(created_at=anchor.created_at, id__lt=anchor.id)
+    )
+
+
+def _filter_messages_after_anchor(queryset, chat, after_id):
+    try:
+        anchor_id = int(after_id)
+    except (TypeError, ValueError):
+        return queryset
+
+    anchor = chat.messages.only('id', 'created_at').filter(pk=anchor_id).first()
+    if not anchor:
+        return queryset.filter(id__gt=anchor_id)
+
+    return queryset.filter(
+        Q(created_at__gt=anchor.created_at)
+        | Q(created_at=anchor.created_at, id__gt=anchor.id)
+    )
+
+
 class ChatViewSet(viewsets.ModelViewSet):
     """
     ViewSet для управления чатами
@@ -675,28 +707,22 @@ class ChatViewSet(viewsets.ModelViewSet):
         if after_id or after_ts:
             # Для загрузки новых сообщений - сортируем по возрастанию (от старых к
             # новым)
-            queryset = queryset.order_by('created_at')
+            queryset = queryset.order_by('created_at', 'id')
         else:
             # Для загрузки старых или начальной загрузки - по убыванию (от новых к
             # старым)
-            queryset = queryset.order_by('-created_at')
+            queryset = queryset.order_by('-created_at', '-id')
 
         # Фильтрация по ID (приоритет) или timestamp
         if before_id:
-            try:
-                queryset = queryset.filter(id__lt=int(before_id))
-            except ValueError:
-                pass
+            queryset = _filter_messages_before_anchor(queryset, chat, before_id)
         elif before_ts:
             before_dt = _coerce_ts(before_ts)
             if before_dt:
                 queryset = queryset.filter(created_at__lt=before_dt)
 
         if after_id:
-            try:
-                queryset = queryset.filter(id__gt=int(after_id))
-            except ValueError:
-                pass
+            queryset = _filter_messages_after_anchor(queryset, chat, after_id)
         elif after_ts:
             after_dt = _coerce_ts(after_ts)
             if after_dt:
