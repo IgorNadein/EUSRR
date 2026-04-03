@@ -2,7 +2,7 @@
 
 import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Document } from "@/types/api";
@@ -63,6 +63,25 @@ function formatDate(value?: string): string {
 }
 
 export default function DocumentsPage() {
+  return (
+    <Suspense fallback={<DocumentsPageFallback />}>
+      <DocumentsPageContent />
+    </Suspense>
+  );
+}
+
+function DocumentsPageFallback() {
+  return (
+    <AppShell>
+      <section className="rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-gray-100">
+        <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-sky-600"></div>
+        <p className="mt-3 text-sm text-gray-500">Загрузка документов...</p>
+      </section>
+    </AppShell>
+  );
+}
+
+function DocumentsPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();

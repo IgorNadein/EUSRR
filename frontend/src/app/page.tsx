@@ -5,7 +5,7 @@ import { AppShell } from "../components/AppShell";
 import { Modal } from "@/components/ui";
 import { apiClient } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/url";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Comment, Post } from "@/types/api";
 import { useUser } from "@/contexts/UserContext";
@@ -19,6 +19,25 @@ type LikeUser = {
 };
 
 export default function Home() {
+  return (
+    <Suspense fallback={<HomePageFallback />}>
+      <HomePageContent />
+    </Suspense>
+  );
+}
+
+function HomePageFallback() {
+  return (
+    <AppShell>
+      <section className="rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-gray-100">
+        <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-sky-600"></div>
+        <p className="mt-3 text-sm text-gray-500">Загрузка ленты...</p>
+      </section>
+    </AppShell>
+  );
+}
+
+function HomePageContent() {
   const { user } = useUser();
   const router = useRouter();
   const pathname = usePathname();

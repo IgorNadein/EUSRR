@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
+import React, { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MessageCircle, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { AppShell } from "../../../components/AppShell";
@@ -61,6 +61,25 @@ function formatDateInputValue(date: Date): string {
 /* ─── component ─── */
 
 export default function MessageDialogPage() {
+  return (
+    <Suspense fallback={<MessageDialogPageFallback />}>
+      <MessageDialogPageContent />
+    </Suspense>
+  );
+}
+
+function MessageDialogPageFallback() {
+  return (
+    <AppShell>
+      <section className="rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-gray-100">
+        <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-sky-600"></div>
+        <p className="mt-3 text-sm text-gray-500">Загрузка чата...</p>
+      </section>
+    </AppShell>
+  );
+}
+
+function MessageDialogPageContent() {
   const params = useParams<{ chatId: string }>();
   const router = useRouter();
   const pathname = usePathname();
