@@ -15,18 +15,9 @@ export default function MessageReadersModal({ isOpen, onClose, readers }: Messag
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Прочитали сообщение" size="sm">
       <div className="space-y-4">
-        <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-          <div className="flex items-center gap-2 text-gray-700">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500">
-              <CheckCheck size={16} />
-            </span>
-            <div>
-              <p className="text-sm font-semibold">Полный список прочитавших</p>
-              <p className="text-xs text-gray-500">
-                {readers.length === 1 ? "1 сотрудник" : `${readers.length} сотрудников`}
-              </p>
-            </div>
-          </div>
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <CheckCheck size={16} className="text-gray-400" />
+          <p>{readers.length === 1 ? "Сообщение прочитал 1 сотрудник" : `Сообщение прочитали ${readers.length} сотрудников`}</p>
         </div>
 
         {readers.length > 0 ? (
