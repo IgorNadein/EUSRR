@@ -1536,7 +1536,7 @@ export default function MessageDialogPage() {
                   </div>
                 )}
 
-                <div className="shrink-0 border-t border-gray-100 bg-white pt-3">
+                <div className="shrink-0 -mx-4 border-t border-gray-100 bg-white px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.25rem)] sm:-mx-8 sm:px-8 lg:mx-0 lg:px-0 lg:pb-0">
                   {isTyping && (
                     <div className="mb-2 flex items-center gap-2 text-xs text-gray-500 italic">
                       <div className="flex gap-1">
