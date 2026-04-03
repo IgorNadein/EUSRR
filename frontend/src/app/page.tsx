@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui";
 import { apiClient } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/url";
 import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Comment, Post } from "@/types/api";
 import { useUser } from "@/contexts/UserContext";
 
@@ -19,6 +20,9 @@ type LikeUser = {
 
 export default function Home() {
   const { user } = useUser();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,6 +81,19 @@ export default function Home() {
   const auth = user?.auth;
   const authPerms = auth?.permissions || [];
   const authByApp = auth?.permissions_by_app || {};
+  const linkedPostId = Number(searchParams.get("post") || "");
+
+  const clearPostParam = () => {
+    if (!searchParams.get("post")) return;
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("post");
+    router.replace(nextParams.toString() ? `${pathname}?${nextParams.toString()}` : pathname, { scroll: false });
+  };
+
+  const closeCommentsModal = () => {
+    setCommentsOpen(false);
+    clearPostParam();
+  };
 
   const hasPermission = (perm: string) => {
     if (!perm) return false;
@@ -171,7 +188,7 @@ export default function Home() {
     if (!commentsOpen && !createPostOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setCommentsOpen(false);
+        closeCommentsModal();
       }
     };
 
@@ -295,6 +312,16 @@ export default function Home() {
     setEditingCommentText("");
     await loadComments(post.id);
   };
+
+  useEffect(() => {
+    if (!linkedPostId || posts.length === 0) return;
+    if (commentsOpen && activePost?.id === linkedPostId) return;
+
+    const targetPost = posts.find((post) => post.id === linkedPostId);
+    if (!targetPost) return;
+
+    void openComments(targetPost);
+  }, [activePost?.id, commentsOpen, linkedPostId, posts]);
 
   const handleCreateComment = async () => {
     if (!activePost) return;
@@ -550,7 +577,7 @@ export default function Home() {
                 : `${Math.floor(diffHours / 24)} дн. назад`;
 
             return (
-              <article key={post.id} className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
+              <article id={`post-${post.id}`} key={post.id} className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
                 <header className="mb-3 flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div className="relative h-10 w-10">
@@ -787,7 +814,7 @@ export default function Home() {
 
       <Modal
         isOpen={commentsOpen && !!activePost}
-        onClose={() => setCommentsOpen(false)}
+        onClose={closeCommentsModal}
         title="Комментарии"
         size="lg"
         noPadding

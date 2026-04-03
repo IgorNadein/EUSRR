@@ -10,6 +10,7 @@ from rest_framework.test import APIClient
 
 from employees.models import Employee, Department, Position
 from feed.models import Post
+from notifications.models import Notification
 from requests_app.models import Request
 
 
@@ -251,7 +252,7 @@ class TestSearchAPI:
             assert 'model_name' in result
             assert 'object_id' in result
             assert 'title' in result
-            assert 'url' in result
+            assert 'url' not in result
     
     def test_search_request_permissions(self, api_client, sample_data):
         """Пользователи видят только свои заявления."""
@@ -295,6 +296,30 @@ class TestSearchAPI:
         # Должны найти пост "Новые технологии в разработке"
         posts = [r for r in response.data['results'] if r['model_name'] == 'post']
         assert len(posts) > 0
+
+    def test_search_formats_notification_v2_without_500(self, api_client, regular_user):
+        """Поиск по уведомлениям v2 не падает на legacy-ожиданиях формата."""
+        from django.core.management import call_command
+
+        Notification.objects.create(
+            recipient=regular_user,
+            verb="system_notice",
+            description="Это обычный текст уведомления для поиска",
+            data={"title": "Важное уведомление"},
+            action_url="/documents/5/",
+        )
+        call_command('buildwatson', verbosity=0)
+
+        response = api_client.get('/api/v1/search/?q=обычный')
+
+        assert response.status_code == status.HTTP_200_OK
+        notifications = [
+            r for r in response.data['results'] if r['model_name'] == 'notification'
+        ]
+        assert len(notifications) > 0
+        assert notifications[0]['title'] == 'Важное уведомление'
+        assert 'обычный текст уведомления' in notifications[0]['description'].lower()
+        assert 'url' not in notifications[0]
 
 
 @pytest.mark.django_db

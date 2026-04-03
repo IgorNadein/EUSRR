@@ -4,6 +4,7 @@ import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Document } from "@/types/api";
 import {
   Search,
@@ -62,6 +63,9 @@ function formatDate(value?: string): string {
 }
 
 export default function DocumentsPage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   // State
   const [documents, setDocuments] = useState<Document[]>([]);
   const [folders, setFolders] = useState<FolderNode[]>([]);
@@ -95,6 +99,19 @@ export default function DocumentsPage() {
   
   // Bulk selection
   const selection = useDocumentSelection(documents);
+  const linkedDocumentId = Number(searchParams.get("document") || "");
+
+  const clearDocumentParam = () => {
+    if (!searchParams.get("document")) return;
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("document");
+    router.replace(nextParams.toString() ? `${pathname}?${nextParams.toString()}` : pathname, { scroll: false });
+  };
+
+  const closeSelectedDocument = () => {
+    setSelectedDocument(null);
+    clearDocumentParam();
+  };
 
   const loadDocuments = async () => {
     try {
@@ -142,6 +159,26 @@ export default function DocumentsPage() {
     loadFolders();
     loadTags();
   }, []);
+
+  useEffect(() => {
+    if (!linkedDocumentId || selectedDocument?.id === linkedDocumentId) return;
+
+    let cancelled = false;
+
+    apiClient.getDocument(linkedDocumentId)
+      .then((document) => {
+        if (!cancelled) {
+          setSelectedDocument(document);
+        }
+      })
+      .catch((error) => {
+        console.error("Ошибка deep-link документа:", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [linkedDocumentId, selectedDocument?.id]);
 
   const filteredDocuments = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -813,7 +850,7 @@ export default function DocumentsPage() {
       <DocumentDetailModal
         document={selectedDocument}
         isOpen={!!selectedDocument}
-        onClose={() => setSelectedDocument(null)}
+        onClose={closeSelectedDocument}
         onUpdate={() => {
           loadDocuments();
           if (selectedDocument) {

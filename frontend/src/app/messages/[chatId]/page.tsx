@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MessageCircle, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { AppShell } from "../../../components/AppShell";
 import ChatDialogHeader from "@/components/messages/ChatDialogHeader";
@@ -62,6 +62,9 @@ function formatDateInputValue(date: Date): string {
 
 export default function MessageDialogPage() {
   const params = useParams<{ chatId: string }>();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const chatId = Number(params.chatId);
   const { user, loading: userLoading } = useUser();
   const { handleReconnectExhausted, resetReloadGuard } = useSilentChatReloadGuard(chatId || null);
@@ -154,6 +157,7 @@ export default function MessageDialogPage() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [nextSearchOffset, setNextSearchOffset] = useState<number | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
+  const linkedMessageId = Number(searchParams.get("message") || "");
 
   // Sync settings from chat
   useEffect(() => {
@@ -656,6 +660,36 @@ export default function MessageDialogPage() {
       highlightTimerRef.current = null;
     }, 2200);
   }, []);
+
+  const clearMessageParam = useCallback(() => {
+    if (!searchParams.get("message")) return;
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("message");
+    router.replace(nextParams.toString() ? `${pathname}?${nextParams.toString()}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    if (!linkedMessageId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const jumped = await cm.jumpToMessage(linkedMessageId);
+      if (cancelled) {
+        return;
+      }
+      if (jumped) {
+        highlightFoundMessage(linkedMessageId);
+      }
+      clearMessageParam();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clearMessageParam, cm.jumpToMessage, highlightFoundMessage, linkedMessageId]);
 
   const runSearch = useCallback(async (query: string, options?: { append?: boolean; offset?: number }) => {
     const normalizedQuery = query.trim();

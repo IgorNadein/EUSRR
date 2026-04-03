@@ -53,7 +53,6 @@ def _format_employee(obj: Any) -> Dict[str, Any]:
         "description": getattr(obj.position, "name", "")
         if hasattr(obj, "position")
         else "",
-        "url": f"/employees/{obj.pk}/",
         "meta": {
             "email": obj.email,
             "phone": str(obj.phone_number) if obj.phone_number else "",
@@ -68,7 +67,6 @@ def _format_department(obj: Any) -> Dict[str, Any]:
         "object_id": obj.pk,
         "title": obj.name,
         "description": obj.description or "",
-        "url": f"/departments/{obj.pk}/",
         "meta": {
             "head": str(obj.head) if hasattr(obj, "head") and obj.head else None
         },
@@ -84,7 +82,6 @@ def _format_post(obj: Any) -> Dict[str, Any]:
         "description": obj.body[:200] + "..."
         if len(obj.body) > 200
         else obj.body,
-        "url": f"/feed/{obj.pk}/",
         "meta": {
             "author": str(obj.author) if hasattr(obj, "author") else None,
             "created_at": obj.created_at.isoformat()
@@ -103,7 +100,6 @@ def _format_request(obj: Any) -> Dict[str, Any]:
         "description": obj.comment[:200] + "..."
         if obj.comment and len(obj.comment) > 200
         else (obj.comment or ""),
-        "url": f"/requests/{obj.pk}/",
         "meta": {
             "status": obj.status,
             "type": obj.type,
@@ -119,7 +115,6 @@ def _format_chat(obj: Any) -> Dict[str, Any]:
         "object_id": obj.pk,
         "title": obj.name or f"Чат #{obj.pk}",
         "description": obj.description or "",
-        "url": f"/messages?chat={obj.pk}",
         "meta": {
             "type": obj.type if hasattr(obj, "type") else None,
         },
@@ -137,14 +132,10 @@ def _format_message(obj: Any) -> Dict[str, Any]:
         "description": obj.content[:200] + "..."
         if len(obj.content) > 200
         else obj.content,
-        "url": (
-            f"/messages?chat={
-                obj.chat.pk if hasattr(obj, 'chat') else ''
-            }#msg-{obj.pk}"
-        ),
         "meta": {
             "author": str(obj.author) if hasattr(obj, "author") else None,
             "chat": str(obj.chat) if hasattr(obj, "chat") else None,
+            "chat_id": obj.chat.pk if hasattr(obj, "chat") else None,
         },
     }
 
@@ -156,7 +147,6 @@ def _format_event(obj: Any) -> Dict[str, Any]:
         "object_id": obj.pk,
         "title": obj.title,
         "description": obj.description or "",
-        "url": f"/calendar?event={obj.pk}",
         "meta": {
             "start_date": obj.start_date.isoformat()
             if hasattr(obj, "start_date")
@@ -172,7 +162,6 @@ def _format_schedule_event(obj: Any) -> Dict[str, Any]:
         "object_id": obj.pk,
         "title": obj.title,
         "description": obj.description or "",
-        "url": "/calendar/",
         "meta": {
             "start": obj.start.isoformat() if hasattr(obj, "start") else None,
             "end": obj.end.isoformat()
@@ -191,7 +180,6 @@ def _format_procurement_request(obj: Any) -> Dict[str, Any]:
         "description": obj.description[:200] + "..."
         if len(obj.description) > 200
         else obj.description,
-        "url": f"/procurement/requests/{obj.pk}/",
         "meta": {
             "status": obj.status if hasattr(obj, "status") else None,
             "requestor": str(obj.requestor)
@@ -215,7 +203,6 @@ def _format_equipment(obj: Any) -> Dict[str, Any]:
             if obj.serial_number
             else f"Инв. №: {obj.inventory_number}"
         ),
-        "url": f"/procurement/equipment/{obj.pk}/",
         "meta": {
             "inventory_number": obj.inventory_number,
             "status": obj.status if hasattr(obj, "status") else None,
@@ -235,7 +222,6 @@ def _format_document(obj: Any) -> Dict[str, Any]:
             if obj.description and len(obj.description) > 200
             else (obj.description or "")
         ),
-        "url": f"/documents/{obj.pk}/",
         "meta": {
             "uploaded_by": str(obj.uploaded_by)
             if hasattr(obj, "uploaded_by") and obj.uploaded_by
@@ -247,23 +233,34 @@ def _format_document(obj: Any) -> Dict[str, Any]:
     }
 
 
+def _get_notification_search_title(obj: Any) -> str:
+    """Строит заголовок уведомления для поиска без legacy-зависимостей."""
+    data = getattr(obj, "data", None) or {}
+    if isinstance(data, dict) and data.get("title"):
+        return str(data["title"])
+
+    verb = getattr(obj, "verb", "") or "notification"
+    return str(verb).replace("_", " ").title()
+
+
+def _get_notification_search_message(obj: Any) -> str:
+    """Возвращает текст уведомления для результатов поиска."""
+    return getattr(obj, "description", "") or ""
+
+
 def _format_notification(obj: Any) -> Dict[str, Any]:
     """Форматирует уведомление для API."""
+    message = _get_notification_search_message(obj)
+
     return {
         "model_name": "notification",
         "object_id": obj.pk,
-        "title": obj.title,
-        "description": obj.short_message
-        or (
-            obj.message[:150] + "..." if len(obj.message) > 150 else obj.message
-        ),
-        "url": obj.action_url
-        if hasattr(obj, "action_url") and obj.action_url
-        else "/notifications/",
+        "title": _get_notification_search_title(obj),
+        "description": message[:150] + "..." if len(message) > 150 else message,
         "meta": {
-            "is_read": obj.is_read if hasattr(obj, "is_read") else False,
-            "created_at": obj.created_at.isoformat()
-            if hasattr(obj, "created_at")
+            "is_read": not getattr(obj, "unread", True),
+            "created_at": obj.timestamp.isoformat()
+            if hasattr(obj, "timestamp") and obj.timestamp
             else None,
         },
     }
@@ -296,7 +293,6 @@ def _format_result(obj: Any, model_name: str) -> Dict[str, Any]:
         "object_id": obj.pk,
         "title": str(obj),
         "description": "",
-        "url": "#",
         "meta": {},
     }
 
@@ -339,7 +335,6 @@ def search_api_view(request: DRFRequest) -> Response:
                     "object_id": 123,
                     "title": "Заголовок",
                     "description": "Описание",
-                    "url": "/path/to/object/",
                     "meta": {...}
                 },
                 ...

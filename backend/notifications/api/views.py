@@ -1,6 +1,7 @@
 """
 API endpoints для системы уведомлений v2.0
 
+
 Новая архитектура:
 - Notification с GenericForeignKey (actor/action_object/target)
 - verb вместо category/type
@@ -33,16 +34,6 @@ from .serializers import (
     VapidPublicKeyResponseSerializer,
     VerbTypesResponseSerializer,
 )
-
-
-def _get_notification_title(notification):
-    """Получить заголовок уведомления из data или сгенерировать fallback"""
-    # Приоритет: title из data (задается при создании уведомления)
-    if notification.data and 'title' in notification.data:
-        return notification.data['title']
-
-    # Fallback: генерируем простой заголовок из verb
-    return notification.verb.replace('_', ' ').title()
 
 
 def _format_time_or_none(value):
@@ -126,7 +117,11 @@ def get_notifications(request):
             {
                 'id': n.id,
                 # Frontend ожидает title, message, is_read, created_at
-                'title': _get_notification_title(n),
+                'title': (
+                    n.data['title']
+                    if n.data and 'title' in n.data
+                    else n.verb.replace('_', ' ').title()
+                ),
                 'message': n.description,
                 'short_message': (
                     n.description[:100] + '...'

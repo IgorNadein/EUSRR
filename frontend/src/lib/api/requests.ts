@@ -29,6 +29,7 @@ export function createRequestsApi(request: RequestFn, getToken: GetTokenFn) {
             const qs = qp.toString();
             return request(`/api/v1/requests/${qs ? '?' + qs : ''}`);
         },
+        getRequest: (requestId: number) => request(`/api/v1/requests/${requestId}/`),
         createRequest: (data: Record<string, any>, saveAs?: 'draft' | 'submitted') => formDataRequest('/api/v1/requests/', 'POST', data, saveAs),
         updateRequest: (requestId: number, data: Record<string, any>, saveAs?: 'draft' | 'submitted') => formDataRequest(`/api/v1/requests/${requestId}/`, 'PATCH', data, saveAs),
         deleteRequest: (requestId: number): Promise<void> => request(`/api/v1/requests/${requestId}/`, { method: 'DELETE' }),

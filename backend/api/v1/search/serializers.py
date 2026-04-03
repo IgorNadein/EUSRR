@@ -24,7 +24,6 @@ class SearchResultSerializer(serializers.Serializer):
     description = serializers.CharField(
         help_text="Описание/превью контента", allow_blank=True, required=False
     )
-    url = serializers.CharField(help_text="Ссылка на объект", allow_blank=True)
     meta = serializers.DictField(
         help_text="Дополнительные метаданные", required=False, allow_null=True
     )
