@@ -1,36 +1,39 @@
 "use client";
 
-import { X } from "lucide-react";
+import dynamic from "next/dynamic";
+import { EmojiStyle, SuggestionMode, Theme } from "emoji-picker-react";
+
+import { Modal } from "@/components/ui";
+import emojiDataRu from "emoji-picker-react/dist/data/emojis-ru.js";
+
+const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
 
 type ReactionPickerModalProps = {
-  allReactions: string[];
   onClose: () => void;
   onSelect: (emoji: string) => void;
 };
 
-export default function ReactionPickerModal({ allReactions, onClose, onSelect }: ReactionPickerModalProps) {
+export default function ReactionPickerModal({ onClose, onSelect }: ReactionPickerModalProps) {
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-2 sm:p-4" data-reaction-picker="true">
-      <div className="w-full max-w-[95vw] rounded-xl bg-white p-4 shadow-xl sm:max-w-md sm:rounded-2xl sm:p-6">
-        <div className="mb-3 flex items-center justify-between sm:mb-4">
-          <h3 className="text-base font-semibold text-gray-900 sm:text-lg">Выберите реакцию</h3>
-          <button type="button" onClick={onClose} className="rounded-full p-1 hover:bg-gray-100" aria-label="Закрыть">
-            <X size={18} className="text-gray-600 sm:h-5 sm:w-5" />
-          </button>
-        </div>
-        <div className="grid max-h-[60vh] grid-cols-6 gap-1.5 overflow-y-auto sm:max-h-[55vh] sm:grid-cols-8 sm:gap-2">
-          {allReactions.map((emoji) => (
-            <button
-              key={`picker-${emoji}`}
-              type="button"
-              onClick={() => onSelect(emoji)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-lg hover:bg-sky-50"
-            >
-              {emoji}
-            </button>
-          ))}
+    <Modal isOpen onClose={onClose} title="Выберите реакцию" size="sm" className="reaction-picker-modal">
+      <div className="space-y-4" data-reaction-picker="true">
+        <p className="text-sm text-gray-500">Быстрый способ отреагировать на сообщение без текста.</p>
+
+        <div className="overflow-hidden rounded-xl border border-gray-100 bg-white">
+          <EmojiPicker
+            emojiData={emojiDataRu}
+            onEmojiClick={(emoji) => onSelect(emoji.emoji)}
+            searchPlaceholder="Поиск смайликов"
+            theme={Theme.LIGHT}
+            emojiStyle={EmojiStyle.NATIVE}
+            suggestedEmojisMode={SuggestionMode.FREQUENT}
+            lazyLoadEmojis
+            previewConfig={{ showPreview: false }}
+            width="100%"
+            height={420}
+          />
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

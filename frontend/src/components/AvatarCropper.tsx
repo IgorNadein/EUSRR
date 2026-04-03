@@ -3,6 +3,7 @@
 import { useCallback, useState } from 'react';
 import Cropper from 'react-easy-crop';
 import type { Area, Point } from 'react-easy-crop';
+import { Modal } from "@/components/ui";
 
 interface AvatarCropperProps {
   onCropComplete: (croppedImage: string) => void;
@@ -59,8 +60,7 @@ export default function AvatarCropper({ onCropComplete, onCancel, initialImage }
   }, [croppedAreaPixels, initialImage, onCropComplete]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75">
-      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl">
+    <Modal isOpen onClose={onCancel} noHeader noPadding size="lg">
         {/* Заголовок */}
         <div className="border-b border-gray-200 px-6 py-4">
           <h3 className="text-lg font-semibold text-gray-900">
@@ -174,7 +174,6 @@ export default function AvatarCropper({ onCropComplete, onCancel, initialImage }
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

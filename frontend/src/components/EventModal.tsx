@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { X, Trash2 } from "lucide-react";
 import { apiClient } from "@/lib/api";
+import { Modal } from "@/components/ui";
 
 // Нормализация byweekday в массив чисел
 function normalizeByweekday(byweekday: any): number[] {
@@ -377,25 +378,41 @@ export function EventModal({
     }
   };
 
-  if (!isOpen || !editingEvent) return null;
+  if (!editingEvent) return null;
+
+  const footerContent = (
+    <div className="flex gap-2">
+      <button
+        onClick={handleSave}
+        disabled={!editingEvent.title?.trim() || saving}
+        className="flex-1 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {saving ? 'Сохранение...' : (editingEvent.id ? 'Сохранить' : 'Создать')}
+      </button>
+
+      {editingEvent.id && (
+        <button
+          onClick={handleDelete}
+          disabled={saving}
+          className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-50"
+          title="Удалить событие"
+        >
+          <Trash2 size={16} />
+        </button>
+      )}
+    </div>
+  );
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
-      <div className="w-full max-w-[95vw] sm:max-w-md rounded-xl sm:rounded-2xl bg-white p-4 sm:p-6 shadow-xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
-        <div className="mb-3 sm:mb-4 flex items-center justify-between">
-          <h3 className="text-base sm:text-lg font-semibold text-gray-900">
-            {editingEvent.id ? "Редактировать событие" : "Создать событие"}
-          </h3>
-          <button
-            onClick={onClose}
-            disabled={saving}
-            className="rounded-full p-1 hover:bg-gray-100 disabled:opacity-50"
-          >
-            <X size={20} className="text-gray-600" />
-          </button>
-        </div>
-
-        <div className="space-y-4">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={editingEvent.id ? "Редактировать событие" : "Создать событие"}
+      size="sm"
+      closeOnEsc={!saving}
+      footer={footerContent}
+    >
+      <div className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
               Название
@@ -799,29 +816,7 @@ export function EventModal({
               )}
             </div>
           )}
-
-          <div className="flex gap-2">
-            <button
-              onClick={handleSave}
-              disabled={!editingEvent.title?.trim() || saving}
-              className="flex-1 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {saving ? 'Сохранение...' : (editingEvent.id ? 'Сохранить' : 'Создать')}
-            </button>
-
-            {editingEvent.id && (
-              <button
-                onClick={handleDelete}
-                disabled={saving}
-                className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-50"
-                title="Удалить событие"
-              >
-                <Trash2 size={16} />
-              </button>
-            )}
-          </div>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

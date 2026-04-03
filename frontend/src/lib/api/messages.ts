@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import type { ChatMessageSearchResponse } from '@/types/api';
 import type { RequestFn, GetTokenFn } from './utils';
 
 export function createMessagesApi(request: RequestFn, getToken: GetTokenFn) {
@@ -20,13 +21,39 @@ export function createMessagesApi(request: RequestFn, getToken: GetTokenFn) {
         return result.message || result;
     }
 
+    function buildChatsQuery(params?: { search?: string; page?: number; page_size?: number }) {
+        const qp = new URLSearchParams();
+        if (params?.search) qp.append('search', params.search);
+        if (params?.page) qp.append('page', params.page.toString());
+        if (params?.page_size) qp.append('page_size', params.page_size.toString());
+        const qs = qp.toString();
+        return `/api/v1/communications/chats/${qs ? '?' + qs : ''}`;
+    }
+
     return {
-        getChats: (params?: { search?: string; page?: number }) => {
-            const qp = new URLSearchParams();
-            if (params?.search) qp.append('search', params.search);
-            if (params?.page) qp.append('page', params.page.toString());
-            const qs = qp.toString();
-            return request(`/api/v1/communications/chats/${qs ? '?' + qs : ''}`);
+        getChats: (params?: { search?: string; page?: number; page_size?: number }) => request(buildChatsQuery(params)),
+        getAllChats: async (params?: { search?: string; page_size?: number }) => {
+            const pageSize = params?.page_size ?? 200;
+            const chats: any[] = [];
+            let page = 1;
+
+            for (;;) {
+                const response = await request(buildChatsQuery({
+                    search: params?.search,
+                    page,
+                    page_size: pageSize,
+                })) as { results?: any[]; next?: string | null } | any[];
+                const results = Array.isArray(response) ? response : (response.results || []);
+                chats.push(...results);
+
+                if (Array.isArray(response) || !response.next) {
+                    break;
+                }
+
+                page += 1;
+            }
+
+            return chats;
         },
         getChat: (chatId: number) => request(`/api/v1/communications/chats/${chatId}/`),
         createChat: (data: { type: string; participants?: number[]; name?: string; description?: string; department?: number; include_all_employees?: boolean; avatar?: File }) => {
@@ -60,6 +87,13 @@ export function createMessagesApi(request: RequestFn, getToken: GetTokenFn) {
             if (params?.around_id) qp.append('around_id', params.around_id.toString());
             const qs = qp.toString();
             return request(`/api/v1/communications/chats/${chatId}/messages-around/${qs ? '?' + qs : ''}`);
+        },
+        searchChatMessages: (chatId: number | string, params: { q: string; limit?: number; offset?: number }) => {
+            const qp = new URLSearchParams();
+            qp.append('q', params.q);
+            if (params.limit) qp.append('limit', params.limit.toString());
+            if (typeof params.offset === 'number') qp.append('offset', params.offset.toString());
+            return request(`/api/v1/communications/chats/${chatId}/search-messages/?${qp.toString()}`) as Promise<ChatMessageSearchResponse>;
         },
         sendMessage: (chatId: number | string, text: string, replyTo?: number) => uploadMessage(chatId, text, [], replyTo),
         sendMessageWithFiles: (chatId: number | string, text: string, files: File[], replyTo?: number) => uploadMessage(chatId, text, files, replyTo),

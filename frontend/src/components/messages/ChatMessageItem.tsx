@@ -1,14 +1,29 @@
 "use client";
 
 import Image from "next/image";
-import { ChevronRight, FileText } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  CheckCheck,
+  ChevronRight,
+  Clock3,
+  FileText,
+  Image as ImageIcon,
+  Loader2,
+  PlayCircle,
+} from "lucide-react";
 
 import { resolveMediaUrl } from "@/lib/url";
 import {
   formatFileSize,
+  getReplyPreview,
+  getReplyPreviewStatusLabel,
+  getReplyPreviewText,
+  getReplyToId,
   getMessageDate,
   getMessageInitials,
   getMessagePreviewText,
+  isReplyPreviewDeleted,
   isAudioAttachment,
   isImageAttachment,
   isVideoAttachment,
@@ -22,16 +37,30 @@ export type MediaPreview = {
   name: string;
 };
 
+function MediaTypeBadge({ type }: { type: "image" | "video" }) {
+  const isVideo = type === "video";
+  const Icon = isVideo ? PlayCircle : ImageIcon;
+
+  return (
+    <span className="absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[11px] font-medium text-white backdrop-blur-sm">
+      <Icon size={12} />
+      {isVideo ? "Видео" : "Фото"}
+    </span>
+  );
+}
+
 type ChatMessageItemProps = {
   message: Message;
   currentUserId?: number;
   repliedMessage?: Message | null;
+  isHighlighted?: boolean;
   isActionsOpen: boolean;
   canManage: boolean;
   canReply: boolean;
   brokenMedia: Record<number, boolean>;
   useOriginalImage: Record<number, boolean>;
   onToggleActions: (messageId: number, anchor: { x: number; y: number }) => void;
+  onJumpToReply: (messageId: number) => void;
   onOpenMediaPreview: (preview: MediaPreview) => void;
   onAttachmentLoad: (attachmentId: number) => void;
   onAttachmentError: (attachmentId: number) => void;
@@ -44,16 +73,56 @@ function getMessageAuthorLabel(message: Message): string {
   return message.author_name || message.author?.last_name || message.sender?.last_name || "Сотрудник";
 }
 
+function MessageDeliveryStatus({ sendState, isRead }: { sendState?: Message["send_state"]; isRead: boolean }) {
+  if (sendState === "pending") {
+    return (
+      <span className="inline-flex items-center text-sky-100" title="Отправляется" aria-label="Отправляется">
+        <Loader2 size={13} strokeWidth={2.2} className="animate-spin" />
+      </span>
+    );
+  }
+
+  if (sendState === "delayed") {
+    return (
+      <span className="inline-flex items-center text-sky-100" title="Сервер отвечает медленно" aria-label="Сервер отвечает медленно">
+        <Clock3 size={13} strokeWidth={2.2} />
+      </span>
+    );
+  }
+
+  if (sendState === "failed") {
+    return (
+      <span className="inline-flex items-center text-rose-200" title="Не отправлено" aria-label="Не отправлено">
+        <AlertCircle size={13} strokeWidth={2.2} />
+      </span>
+    );
+  }
+
+  const Icon = isRead ? CheckCheck : Check;
+
+  return (
+    <span
+      className={`inline-flex items-center ${isRead ? "text-white" : "text-sky-100"}`}
+      title={isRead ? "Прочитано" : "Отправлено"}
+      aria-label={isRead ? "Прочитано" : "Отправлено"}
+    >
+      <Icon size={13} strokeWidth={2.2} />
+    </span>
+  );
+}
+
 export default function ChatMessageItem({
   message,
   currentUserId,
   repliedMessage,
+  isHighlighted = false,
   isActionsOpen,
   canManage,
   canReply,
   brokenMedia,
   useOriginalImage,
   onToggleActions,
+  onJumpToReply,
   onOpenMediaPreview,
   onAttachmentLoad,
   onAttachmentError,
@@ -62,12 +131,17 @@ export default function ChatMessageItem({
   hasMyReaction,
 }: ChatMessageItemProps) {
   const currentDate = getMessageDate(message);
-  const replyToId = repliedMessage?.id ?? message.reply_to_id ?? (typeof message.reply_to === "number" ? message.reply_to : null);
+  const replyPreviewMessage = getReplyPreview(message, repliedMessage);
+  const replyToId = getReplyToId(message);
+  const canJumpToReply = Boolean(replyToId && !isReplyPreviewDeleted(replyPreviewMessage));
+  const replyStatusLabel = getReplyPreviewStatusLabel(replyPreviewMessage);
   const isMine = Boolean(
     currentUserId &&
       (message.author_id === currentUserId || message.author?.id === currentUserId || message.sender?.id === currentUserId)
   );
   const hasActions = canReply || canManage;
+  const isRead = Boolean(message.is_read);
+  const sendState = message.send_state;
 
   return (
     <div data-message-id={message.id} data-message-date={currentDate?.toISOString() || ""} className="mb-3 last:mb-0">
@@ -92,7 +166,7 @@ export default function ChatMessageItem({
         ) : null}
 
         <div className={`flex min-w-0 items-start gap-1 ${isMine ? "max-w-[88%] flex-row-reverse" : "max-w-[calc(100%-2.5rem)]"}`}>
-          <div className={`relative min-w-0 rounded-2xl px-3 py-2 pr-9 ${isMine ? "bg-sky-500 text-white" : "bg-white text-gray-900 ring-1 ring-gray-100"}`}>
+          <div className={`relative min-w-0 rounded-2xl px-3 py-2 pr-9 transition-shadow duration-300 ${isMine ? "bg-sky-500 text-white" : "bg-white text-gray-900 ring-1 ring-gray-100"} ${isHighlighted ? (isMine ? "shadow-[0_0_0_3px_rgba(125,211,252,0.45)]" : "ring-2 ring-sky-300 shadow-[0_0_0_4px_rgba(186,230,253,0.65)]") : ""}`}>
             {hasActions ? (
               <div className="absolute right-1 top-1 z-20">
                 <button
@@ -116,10 +190,52 @@ export default function ChatMessageItem({
             {!isMine ? <p className="mb-1 text-[11px] font-medium text-gray-500">{getMessageAuthorLabel(message)}</p> : null}
 
             {replyToId ? (
-              <div className={`mb-2 rounded-lg border-l-2 px-2 py-1 text-xs ${isMine ? "border-sky-200 bg-sky-400/30 text-sky-50" : "border-gray-300 bg-gray-100 text-gray-600"}`}>
-                <p className="font-medium">{repliedMessage?.author_name || "Ответ на сообщение"}</p>
-                <p className="truncate">{repliedMessage ? getMessagePreviewText(repliedMessage) : `Сообщение #${replyToId}`}</p>
-              </div>
+              canJumpToReply ? (
+                <button
+                  type="button"
+                  onClick={() => onJumpToReply(replyToId)}
+                  className={[
+                    "group mb-2 block w-full rounded-xl border-l-2 px-2.5 py-1.5 text-left text-xs transition focus-visible:outline-none",
+                    isMine
+                      ? "border-sky-200 bg-sky-400/30 text-sky-50 hover:bg-sky-400/40 focus-visible:bg-sky-400/40 focus-visible:ring-2 focus-visible:ring-white/35"
+                      : "border-gray-300 bg-gray-100 text-gray-600 hover:bg-gray-200 focus-visible:bg-gray-200 focus-visible:ring-2 focus-visible:ring-sky-200",
+                  ].join(" ")}
+                  title="Перейти к исходному сообщению"
+                  aria-label={`Перейти к сообщению ${replyPreviewMessage?.author_name || `#${replyToId}`}`}
+                >
+                  <p className="font-medium opacity-90 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                    {replyPreviewMessage?.author_name || "Ответ на сообщение"}
+                  </p>
+                  <p className="truncate opacity-90 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                    {replyPreviewMessage ? getReplyPreviewText(replyPreviewMessage) : `Сообщение #${replyToId}`}
+                  </p>
+                </button>
+              ) : (
+                <div
+                  className={[
+                    "mb-2 block w-full rounded-xl border-l-2 px-2.5 py-1.5 text-left text-xs opacity-95",
+                    isMine
+                      ? "border-sky-200/80 bg-sky-400/20 text-sky-50/95"
+                      : "border-gray-300 bg-gray-100 text-gray-600",
+                  ].join(" ")}
+                  title="Исходное сообщение удалено"
+                  aria-label={`Исходное сообщение удалено${replyPreviewMessage?.author_name ? `, автор ${replyPreviewMessage.author_name}` : ""}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="min-w-0 truncate font-medium">
+                      {replyPreviewMessage?.author_name || "Ответ на сообщение"}
+                    </p>
+                    {replyStatusLabel ? (
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${isMine ? "bg-white/18 text-white/90" : "bg-gray-200 text-gray-600"}`}>
+                        {replyStatusLabel}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="truncate opacity-90">
+                    {replyPreviewMessage ? getReplyPreviewText(replyPreviewMessage) : "Сообщение удалено"}
+                  </p>
+                </div>
+              )
             ) : null}
 
             {message.is_deleted ? (
@@ -131,6 +247,19 @@ export default function ChatMessageItem({
             {message.attachments && message.attachments.length > 0 ? (
               <div className="mt-2 space-y-2">
                 {message.attachments.map((attachment) => {
+                  if (attachment.is_local) {
+                    return (
+                      <div
+                        key={attachment.id}
+                        className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${isMine ? "bg-sky-400/25 text-sky-50" : "bg-white/80 text-gray-700 ring-1 ring-gray-200"}`}
+                      >
+                        <FileText size={16} className="shrink-0" />
+                        <span className="min-w-0 flex-1 truncate">{attachment.file_name}</span>
+                        <span className={`shrink-0 text-xs ${isMine ? "text-sky-100" : "text-gray-500"}`}>{formatFileSize(attachment.file_size)}</span>
+                      </div>
+                    );
+                  }
+
                   const fileUrl = resolveMediaUrl(attachment.file_url);
 
                   if (isImageAttachment(attachment)) {
@@ -159,8 +288,9 @@ export default function ChatMessageItem({
                         key={attachment.id}
                         type="button"
                         onClick={() => onOpenMediaPreview({ type: "image", src: fileUrl, name: attachment.file_name })}
-                        className="block w-full overflow-hidden rounded-lg"
+                        className="relative block w-full overflow-hidden rounded-lg"
                       >
+                        <MediaTypeBadge type="image" />
                         <Image
                           src={imageSrc}
                           alt={attachment.file_name}
@@ -203,8 +333,9 @@ export default function ChatMessageItem({
                         key={attachment.id}
                         type="button"
                         onClick={() => onOpenMediaPreview({ type: "video", src: fileUrl, name: attachment.file_name })}
-                        className="block w-full overflow-hidden rounded-lg"
+                        className="relative block w-full overflow-hidden rounded-lg"
                       >
+                        <MediaTypeBadge type="video" />
                         <video
                           preload="metadata"
                           playsInline
@@ -216,6 +347,11 @@ export default function ChatMessageItem({
                           onError={() => onAttachmentError(attachment.id)}
                           onLoadedData={() => onAttachmentLoad(attachment.id)}
                         />
+                        <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                          <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm">
+                            <PlayCircle size={26} fill="currentColor" strokeWidth={1.8} />
+                          </span>
+                        </span>
                       </button>
                     );
                   }
@@ -267,7 +403,10 @@ export default function ChatMessageItem({
               </div>
             ) : null}
 
-            <p className={`mt-1 text-right text-[11px] ${isMine ? "text-sky-100" : "text-gray-400"}`}>{messageTime(message)}</p>
+            <div className={`mt-1 flex items-center ${isMine ? "justify-end gap-1.5" : "justify-end"}`}>
+              <p className={`text-right text-[11px] ${isMine ? "text-sky-100" : "text-gray-400"}`}>{messageTime(message)}</p>
+              {isMine ? <MessageDeliveryStatus sendState={sendState} isRead={isRead} /> : null}
+            </div>
 
             {Object.keys(message.reactions_summary || {}).length > 0 ? (
               <div className="mt-2 flex flex-wrap gap-1">

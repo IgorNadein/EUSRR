@@ -8,6 +8,41 @@ import { apiClient } from "@/lib/api";
 import type { SearchResponse, SearchResult, SearchModelType } from "@/types/api";
 import { Search, User, Building, FileText, MessageSquare, MessageCircle, Calendar, Inbox, ShoppingCart, Package, Bell } from "lucide-react";
 
+function buildSearchHref(result: SearchResult): string {
+  switch (result.model_name) {
+    case "employee":
+      return `/users/${result.object_id}`;
+    case "department":
+      return `/departments/${result.object_id}`;
+    case "post":
+      return `/?post=${result.object_id}`;
+    case "request":
+      return `/requests?request=${result.object_id}`;
+    case "chat":
+      return `/messages/${result.object_id}`;
+    case "message": {
+      const chatId = typeof result.meta?.chat_id === "number"
+        ? result.meta.chat_id
+        : Number(result.meta?.chat_id || 0);
+      return chatId ? `/messages/${chatId}?message=${result.object_id}` : "/messages";
+    }
+    case "event":
+      return "/calendar";
+    case "schedule_event":
+      return `/calendar?event=${result.object_id}`;
+    case "procurement_request":
+      return "/procurement";
+    case "equipment":
+      return "/equipment";
+    case "document":
+      return `/documents?document=${result.object_id}`;
+    case "notification":
+      return "/notifications";
+    default:
+      return "/search";
+  }
+}
+
 // Иконки для разных типов результатов
 const modelIcons: Record<SearchModelType, React.ComponentType<{ size?: number; className?: string }>> = {
   employee: User,
@@ -166,7 +201,7 @@ function SearchPageContent() {
                     {results.map((result) => (
                       <Link
                         key={`${result.model_name}-${result.object_id}`}
-                        href={result.url}
+                        href={buildSearchHref(result)}
                         className="block rounded-lg border border-gray-200 p-3 transition-all hover:border-blue-300 hover:bg-blue-50/50 hover:shadow-sm"
                       >
                         <div className="flex items-start justify-between gap-2">

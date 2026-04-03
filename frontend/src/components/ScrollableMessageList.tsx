@@ -27,6 +27,8 @@ interface Snapshot {
   clientHeight: number;
   scrollHeight: number;
   diff: number;
+  anchorMessageId: string | null;
+  anchorOffsetTop: number | null;
 }
 
 export class ScrollableMessageListInner extends Component<ScrollableMessageListProps> {
@@ -46,6 +48,29 @@ export class ScrollableMessageListInner extends Component<ScrollableMessageListP
     autoScrollToBottomOnMount: true,
     scrollBehavior: 'smooth' as ScrollBehavior,
   };
+
+  private getScrollAnchor(container: HTMLDivElement): { messageId: string; offsetTop: number } | null {
+    const containerRect = container.getBoundingClientRect();
+    const viewportTop = containerRect.top;
+    const messageElements = container.querySelectorAll<HTMLElement>('[data-message-id]');
+
+    for (const element of messageElements) {
+      const messageId = element.dataset.messageId;
+      if (!messageId) {
+        continue;
+      }
+
+      const rect = element.getBoundingClientRect();
+      if (rect.bottom > viewportTop) {
+        return {
+          messageId,
+          offsetTop: rect.top - containerRect.top,
+        };
+      }
+    }
+
+    return null;
+  }
 
   componentDidMount() {
     // Начальный скролл вниз при монтировании
@@ -115,11 +140,15 @@ export class ScrollableMessageListInner extends Component<ScrollableMessageListP
       container.scrollHeight + 1 === topHeight ||
       container.scrollHeight - 1 === topHeight;
 
+    const anchor = this.getScrollAnchor(container);
+
     return {
       sticky,
       clientHeight: container.clientHeight,
       scrollHeight: container.scrollHeight,
       diff: container.scrollHeight - container.scrollTop,
+      anchorMessageId: anchor?.messageId ?? null,
+      anchorOffsetTop: anchor?.offsetTop ?? null,
     };
   }
 
@@ -162,22 +191,19 @@ export class ScrollableMessageListInner extends Component<ScrollableMessageListP
         }
       } else {
         this.preventScrollTop = false;
-        
-        // Особый случай: если пользователь был в самом верху списка при добавлении новых элементов
-        // Это происходит при загрузке старых сообщений (prepend operation)
-        // diff === scrollHeight означает что scrollTop был 0
-        if (snapshot.diff >= snapshot.scrollHeight - 5 && container.scrollHeight > snapshot.scrollHeight) {
-          // Прокручиваем ровно на высоту добавленного контента
-          // Чтобы первое "старое" сообщение осталось видимым в той же позиции
-          const addedHeight = container.scrollHeight - snapshot.scrollHeight;
-          container.scrollTop = addedHeight;
-        } else {
-          // Стандартное восстановление позиции для всех остальных случаев
-          // Сохраняет расстояние от текущей позиции до конца списка
-          container.scrollTop =
-            container.scrollHeight -
-            snapshot.diff +
-            (this.lastClientHeight - container.clientHeight);
+
+        if (snapshot.anchorMessageId && snapshot.anchorOffsetTop !== null) {
+          const anchorElement = container.querySelector<HTMLElement>(`[data-message-id="${snapshot.anchorMessageId}"]`);
+
+          if (anchorElement) {
+            const containerRect = container.getBoundingClientRect();
+            const currentOffsetTop = anchorElement.getBoundingClientRect().top - containerRect.top;
+            const offsetDiff = currentOffsetTop - snapshot.anchorOffsetTop;
+
+            if (Math.abs(offsetDiff) > 0.5) {
+              container.scrollTop += offsetDiff;
+            }
+          }
         }
       }
     }
@@ -191,7 +217,7 @@ export class ScrollableMessageListInner extends Component<ScrollableMessageListP
    * Обработка изменений высоты контента (через MutationObserver)
    * Срабатывает когда загружаются изображения/видео и меняется scrollHeight
    */
-  handleContentMutation = () => {
+  handleContentMutation = (mutations: MutationRecord[] = []) => {
     const container = this.containerRef.current;
     if (!container) return;
 
@@ -200,6 +226,12 @@ export class ScrollableMessageListInner extends Component<ScrollableMessageListP
     // Если высота контента изменилась
     if (currentScrollHeight !== this.lastScrollHeight) {
       const heightDiff = currentScrollHeight - this.lastScrollHeight;
+      const hasChildListMutation = mutations.some((mutation) => mutation.type === 'childList');
+
+      if (hasChildListMutation) {
+        this.lastScrollHeight = currentScrollHeight;
+        return;
+      }
       
       // ВАЖНО: Не корректируем если scrollTop близко к 0 (это prepend operation)
       // В этом случае коррекцию делает componentDidUpdate с правильной логикой

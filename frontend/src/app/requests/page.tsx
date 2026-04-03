@@ -2,11 +2,13 @@
 /* eslint-disable react-hooks/refs -- All h.* values come from useState, not useRef. React compiler false positive. */
 
 import { AppShell } from "../../components/AppShell";
-import { Modal } from "@/components/ui/Modal";
+import { Modal } from "@/components/ui";
+import { apiClient } from "@/lib/api";
 import { useUser } from "@/contexts/UserContext";
 import { canManageRequests, canProcessRequests } from "@/lib/permissions";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { User } from "@/types/api";
 import { ArrowUpDown, Ban, ChevronDown, FileSignature, Filter, MessageSquare, Paperclip, Pencil, Plus, Search, ThumbsDown, ThumbsUp, Trash2, X, Zap } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -24,11 +26,29 @@ const SwipeApprovalMode = dynamic(() => import("@/components/requests/SwipeAppro
 
 export default function RequestsPage() {
   const { user } = useUser();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const canProcess = canProcessRequests(user);
   const canManage = canManageRequests(user);
   const auth = user?.auth;
   const h = useRequestsPage(user?.id);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const openedLinkedRequestIdRef = useRef<number | null>(null);
+  const loadingLinkedRequestIdRef = useRef<number | null>(null);
+  const linkedRequestId = Number(searchParams.get("request") || "");
+
+  const clearRequestParam = () => {
+    if (!searchParams.get("request")) return;
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("request");
+    router.replace(nextParams.toString() ? `${pathname}?${nextParams.toString()}` : pathname, { scroll: false });
+  };
+
+  const closeDetailsRequest = () => {
+    h.setDetailsRequest(null);
+    clearRequestParam();
+  };
 
   const renderUserBadge = (person: User, large = false) => {
     const personLink = userProfileLink(person, user?.id);
@@ -50,6 +70,57 @@ export default function RequestsPage() {
       ? <Link href={personLink} className={`${cls} hover:bg-gray-200`}>{chip}</Link>
       : <span className={cls}>{chip}</span>;
   };
+
+  useEffect(() => {
+    if (!linkedRequestId) {
+      openedLinkedRequestIdRef.current = null;
+      loadingLinkedRequestIdRef.current = null;
+      return;
+    }
+
+    if (h.detailsRequest?.id === linkedRequestId) {
+      openedLinkedRequestIdRef.current = linkedRequestId;
+      loadingLinkedRequestIdRef.current = null;
+      return;
+    }
+
+    if (openedLinkedRequestIdRef.current === linkedRequestId) {
+      return;
+    }
+
+    const existing = h.requests.find((item) => item.id === linkedRequestId);
+    if (existing) {
+      openedLinkedRequestIdRef.current = linkedRequestId;
+      loadingLinkedRequestIdRef.current = null;
+      h.setDetailsRequest(existing);
+      return;
+    }
+
+    if (loadingLinkedRequestIdRef.current === linkedRequestId) {
+      return;
+    }
+
+    loadingLinkedRequestIdRef.current = linkedRequestId;
+
+    let cancelled = false;
+
+    apiClient.getRequest(linkedRequestId)
+      .then((request) => {
+        if (!cancelled && openedLinkedRequestIdRef.current !== linkedRequestId) {
+          openedLinkedRequestIdRef.current = linkedRequestId;
+          loadingLinkedRequestIdRef.current = null;
+          h.setDetailsRequest(request);
+        }
+      })
+      .catch((error) => {
+        loadingLinkedRequestIdRef.current = null;
+        console.error("Ошибка deep-link заявления:", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [h.detailsRequest?.id, h.requests, h.setDetailsRequest, linkedRequestId]);
 
   return (
     <AppShell>
@@ -218,7 +289,7 @@ export default function RequestsPage() {
       )}
 
       {/* Detail modal */}
-      <Modal isOpen={Boolean(h.detailsRequest)} onClose={() => h.setDetailsRequest(null)} title="Полная информация по заявлению" size="lg">
+      <Modal isOpen={Boolean(h.detailsRequest)} onClose={closeDetailsRequest} title="Полная информация по заявлению" size="lg">
         {h.detailsRequest && (() => {
           const dr = h.detailsRequest; const da = dr.employee || dr.created_by; const dap = dr.approver || dr.assigned_to;
           const ds = statusMeta[String(dr.status || "").toLowerCase()] ?? defaultStatusMeta;
@@ -241,10 +312,13 @@ export default function RequestsPage() {
       </Modal>
 
       {/* Create/Edit modal */}
-      {h.isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) h.closeModal(); }}>
-          <div className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
-            <div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold text-gray-900">{h.modalMode === "create" ? "Новое заявление" : "Редактировать заявление"}</h2><button type="button" onClick={h.closeModal} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"><X size={18} /></button></div>
+      <Modal isOpen={h.isModalOpen} onClose={h.closeModal} title={h.modalMode === "create" ? "Новое заявление" : "Редактировать заявление"} size="md" footer={
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button type="button" onClick={h.closeModal} className="rounded-lg bg-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300">Отмена</button>
+              <button type="button" onClick={() => h.handleCreateOrUpdate(h.modalMode, "draft")} disabled={h.busyKey !== null} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60">Сохранить как черновик</button>
+              <button type="button" onClick={() => h.handleCreateOrUpdate(h.modalMode, "submitted")} disabled={h.busyKey !== null} className="rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-60">{h.modalMode === "create" ? "Создать" : "Сохранить"}</button>
+            </div>
+      }>
             {h.actionError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{h.actionError}</p>}
             <div className="flex flex-col gap-3">
               <div><label className="mb-1 block text-xs font-medium text-gray-500">Тема заявления</label><input value={h.form.title} onChange={(e) => h.setForm((p) => ({ ...p, title: e.target.value }))} placeholder="Тема заявления" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100" /></div>
@@ -257,26 +331,16 @@ export default function RequestsPage() {
               <div><input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { const ext = f.name.split(".").pop()?.toLowerCase() || ""; if (!["pdf","jpg","jpeg","png"].includes(ext)) return; } h.setForm((p) => ({ ...p, attachment: f })); }} /><button type="button" onClick={() => fileInputRef.current?.click()} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"><Paperclip size={14} />{h.form.attachment ? h.form.attachment.name : "Прикрепить файл"}</button></div>
               <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={h.form.sent_to_all_department} onChange={(e) => h.setForm((p) => ({ ...p, sent_to_all_department: e.target.checked }))} className="rounded border-gray-300" />Отправить всем сотрудникам выбранных отделов</label>
             </div>
-            <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 pt-4">
-              <button type="button" onClick={h.closeModal} className="rounded-lg bg-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300">Отмена</button>
-              <button type="button" onClick={() => h.handleCreateOrUpdate(h.modalMode, "draft")} disabled={h.busyKey !== null} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60">Сохранить как черновик</button>
-              <button type="button" onClick={() => h.handleCreateOrUpdate(h.modalMode, "submitted")} disabled={h.busyKey !== null} className="rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-60">{h.modalMode === "create" ? "Создать" : "Сохранить"}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* Attachment preview */}
       {h.attachmentPreview && (() => {
         const apUrl = h.attachmentPreview.url;
         const apName = h.attachmentPreview.name;
         return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) h.setAttachmentPreview(null); }}>
-          <div className="relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3"><p className="truncate text-sm font-medium text-gray-800">{apName}</p><div className="flex items-center gap-2"><a href={apUrl} download className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">Скачать</a><button type="button" onClick={() => h.setAttachmentPreview(null)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"><X size={18} /></button></div></div>
-            <div className="flex-1 overflow-auto p-4">{(() => { const ext = apUrl.split(".").pop()?.toLowerCase() || ""; if (["jpg","jpeg","png","gif","webp","svg","bmp"].includes(ext)) return <img src={apUrl} alt={apName} className="mx-auto max-h-[70vh] rounded-lg object-contain" />; if (["mp4","webm","ogg","mov"].includes(ext)) return <video src={apUrl} controls className="mx-auto max-h-[70vh] rounded-lg" />; if (["mp3","wav","aac"].includes(ext)) return <audio src={apUrl} controls className="mx-auto mt-8" />; return <div className="flex flex-col items-center gap-3 py-12 text-center"><FileSignature size={40} className="text-gray-300" /><p className="text-sm text-gray-500">{apName}</p><a href={apUrl} download className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600">Скачать файл</a></div>; })()}</div>
-          </div>
-        </div>
+        <Modal isOpen onClose={() => h.setAttachmentPreview(null)} title={apName} size="lg" footer={<a href={apUrl} download className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">Скачать</a>}>
+            <div className="flex-1 overflow-auto">{(() => { const ext = apUrl.split(".").pop()?.toLowerCase() || ""; if (["jpg","jpeg","png","gif","webp","svg","bmp"].includes(ext)) return <img src={apUrl} alt={apName} className="mx-auto max-h-[70vh] rounded-lg object-contain" />; if (["mp4","webm","ogg","mov"].includes(ext)) return <video src={apUrl} controls className="mx-auto max-h-[70vh] rounded-lg" />; if (["mp3","wav","aac"].includes(ext)) return <audio src={apUrl} controls className="mx-auto mt-8" />; return <div className="flex flex-col items-center gap-3 py-12 text-center"><FileSignature size={40} className="text-gray-300" /><p className="text-sm text-gray-500">{apName}</p><a href={apUrl} download className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600">Скачать файл</a></div>; })()}</div>
+        </Modal>
         );
       })()}
     </AppShell>

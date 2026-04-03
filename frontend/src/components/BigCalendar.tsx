@@ -4,6 +4,7 @@ import { Calendar, dateFnsLocalizer, View, ToolbarProps, NavigateAction } from "
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import { ru } from "date-fns/locale";
 import { useState, useEffect, useCallback } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiClient } from "@/lib/api";
 import { useCalendar } from "@/contexts/CalendarContext";
 import { X, Plus, Trash2, Settings, ChevronLeft, ChevronRight } from "lucide-react";
@@ -122,6 +123,9 @@ const CustomToolbar = ({ label, onNavigate, onView, view, date }: ToolbarProps<C
 };
 
 export function BigCalendar() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { calendars, selectedCalendarId, setSelectedCalendarId, reloadCalendars } = useCalendar();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
@@ -139,6 +143,14 @@ export function BigCalendar() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [showEventDetailsModal, setShowEventDetailsModal] = useState(false);
   const [viewingEvent, setViewingEvent] = useState<CalendarEvent | null>(null);
+  const linkedEventId = Number(searchParams.get("event") || "");
+
+  const clearEventParam = useCallback(() => {
+    if (!searchParams.get("event")) return;
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("event");
+    router.replace(nextParams.toString() ? `${pathname}?${nextParams.toString()}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   // Загрузка событий
   const loadEvents = useCallback(async () => {
@@ -219,6 +231,32 @@ export function BigCalendar() {
   useEffect(() => {
     loadEvents();
   }, [loadEvents]);
+
+  useEffect(() => {
+    if (!linkedEventId || viewingEvent?.id === linkedEventId) return;
+
+    let cancelled = false;
+
+    apiClient.getEvent(linkedEventId)
+      .then((event) => {
+        if (cancelled) return;
+
+        setViewingEvent({
+          ...event,
+          start: new Date(event.start),
+          end: new Date(event.end),
+        });
+        setCurrentDate(new Date(event.start));
+        setShowEventDetailsModal(true);
+      })
+      .catch((error) => {
+        console.error("Ошибка deep-link события календаря:", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [linkedEventId, viewingEvent?.id]);
 
   // Обработчики календаря
   const handleSelectSlot = useCallback(
@@ -464,6 +502,7 @@ export function BigCalendar() {
         onClose={() => {
           setShowEventDetailsModal(false);
           setViewingEvent(null);
+          clearEventParam();
         }}
         event={viewingEvent}
         onEdit={handleEditFromDetails}

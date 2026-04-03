@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, UserPlus, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
+import { Modal } from '@/components/ui';
 
 interface Participant {
   id: number;
@@ -182,14 +183,8 @@ export default function CalendarParticipantsModal({
   if (!isOpen) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4"
-      onClick={onClose}
-    >
-      <div
-        className="relative w-full max-w-[95vw] sm:max-w-2xl rounded-xl sm:rounded-2xl bg-white shadow-xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal isOpen={isOpen} onClose={onClose} size="md" noPadding>
+      <div className="overflow-y-auto">
         <div className="flex items-center justify-between border-b px-4 sm:px-6 py-3 sm:py-4">
           <div>
             <h2 className="text-base sm:text-lg font-semibold text-gray-900">Участники календаря</h2>
@@ -397,6 +392,6 @@ export default function CalendarParticipantsModal({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

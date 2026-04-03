@@ -3,7 +3,7 @@
 """
 
 import pytest
-from communications.models import Chat, ChatMembership, ChatUserSettings, Message
+from communications.models import Chat, ChatMembership, ChatReadState, ChatUserSettings, Message
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from employees.models import Department
@@ -200,6 +200,39 @@ class TestChatViewSet:
         assert response.status_code == status.HTTP_200_OK
         assert "messages" in response.data
         assert len(response.data["messages"]) == 5
+
+    def test_chat_messages_include_read_by_users(self, auth_client, private_chat, user1, user2):
+        """Payload сообщения содержит список пользователей, которые его прочитали."""
+        user2.avatar = "avatars/read-by-user2.jpg"
+        user2.save(update_fields=["avatar"])
+
+        message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content="Read me",
+        )
+        read_state = ChatReadState.objects.get(
+            chat=private_chat,
+            user=user2,
+        )
+        read_state.last_read_message = message
+        read_state.unread_count = 0
+        read_state.save(update_fields=["last_read_message", "unread_count", "updated_at"])
+
+        url = f"/api/v1/communications/chats/{private_chat.pk}/messages/"
+        response = auth_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        payload = response.data["messages"][0]
+        assert payload["is_read"] is True
+        assert payload["read_count"] == 1
+        assert payload["read_by"] == [
+            {
+                "id": user2.id,
+                "name": user2.get_full_name(),
+                "avatar": user2.avatar.url,
+            }
+        ]
 
     def test_mark_read(self, auth_client, private_chat, user1):
         """Пометка чата как прочитанного"""
@@ -2417,6 +2450,35 @@ class TestDeleteVariousMessageTypes:
         assert reply1.is_deleted is False
         assert reply2.is_deleted is False
         assert reply1.reply_to_id == original.id
+
+    def test_messages_around_keeps_deleted_reply_preview_context_contract(
+        self, auth_client, private_chat, user1
+    ):
+        """Ответ на удаленное сообщение сохраняет контекст preview и помечается как deleted."""
+        original = Message.objects.create(
+            chat=private_chat, author=user1, content="Original to delete"
+        )
+        reply = Message.objects.create(
+            chat=private_chat, author=user1, content="Reply", reply_to=original
+        )
+
+        delete_url = f"/api/v1/communications/messages/{original.pk}/"
+        delete_response = auth_client.delete(delete_url)
+
+        assert delete_response.status_code == status.HTTP_204_NO_CONTENT
+
+        url = f"/api/v1/communications/chats/{private_chat.pk}/messages-around/"
+        response = auth_client.get(url, {"around_id": reply.id})
+
+        assert response.status_code == status.HTTP_200_OK
+        serialized_reply = next(
+            item for item in response.data["messages"] if item["id"] == reply.id
+        )
+
+        assert serialized_reply["reply_to"]["id"] == original.id
+        assert serialized_reply["reply_to"]["is_deleted"] is True
+        assert serialized_reply["reply_to"]["content"] == "Original to delete"
+        assert "author_name" in serialized_reply["reply_to"]
 
     def test_bulk_delete_various_types(self, auth_client, private_chat, user1):
         """Массовое удаление сообщений разных типов"""

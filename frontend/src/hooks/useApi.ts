@@ -154,8 +154,8 @@ export function useChats() {
   useEffect(() => {
     async function fetchChats() {
       try {
-        const data = await apiClient.getChats();
-        setChats(data.results || data);
+        const data = await apiClient.getAllChats();
+        setChats(data);
       } catch (err) {
         setError(err as Error);
       } finally {

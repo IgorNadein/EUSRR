@@ -1,7 +1,11 @@
 "use client";
 
+import { useLayoutEffect, useState } from "react";
 import type React from "react";
 import { Paperclip, Send, Smile, X } from "lucide-react";
+
+const MIN_COMPOSER_HEIGHT = 38;
+const MAX_COMPOSER_HEIGHT = 128;
 
 type ReplyTarget = {
   id: number;
@@ -22,6 +26,7 @@ type MessageComposerProps = {
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   messageInputRef: React.RefObject<HTMLTextAreaElement | null>;
   onPickFiles: () => void;
+  onAddFiles: (files: File[]) => void;
   onFilesChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onRemoveFile: (index: number) => void;
   onToggleEmojiPicker: () => void;
@@ -47,6 +52,7 @@ export default function MessageComposer({
   fileInputRef,
   messageInputRef,
   onPickFiles,
+  onAddFiles,
   onFilesChange,
   onRemoveFile,
   onToggleEmojiPicker,
@@ -58,8 +64,43 @@ export default function MessageComposer({
   onCancelEdit,
   onCancelReply,
 }: MessageComposerProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const canSend = editingMessageId ? messageText.trim().length > 0 : messageText.trim().length > 0 || attachedFiles.length > 0;
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (editingMessageId) return;
+
+    const clipboardFiles = Array.from(event.clipboardData.files || []);
+    const clipboardItemFiles = Array.from(event.clipboardData.items || [])
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file));
+
+    const uniqueFiles = [...clipboardFiles, ...clipboardItemFiles].filter((file, index, files) => {
+      const signature = `${file.name}|${file.size}|${file.type}|${file.lastModified}`;
+      return files.findIndex((candidate) => `${candidate.name}|${candidate.size}|${candidate.type}|${candidate.lastModified}` === signature) === index;
+    });
+
+    if (uniqueFiles.length > 0) {
+      onAddFiles(uniqueFiles);
+    }
+  };
+
+  useLayoutEffect(() => {
+    const input = messageInputRef.current;
+    if (!input) return;
+
+    input.style.height = "0px";
+    const nextHeight = Math.min(input.scrollHeight, MAX_COMPOSER_HEIGHT);
+    const resolvedHeight = Math.max(nextHeight, MIN_COMPOSER_HEIGHT);
+
+    input.style.height = `${resolvedHeight}px`;
+    input.style.overflowY = input.scrollHeight > MAX_COMPOSER_HEIGHT ? "auto" : "hidden";
+    setIsExpanded(resolvedHeight > MIN_COMPOSER_HEIGHT + 2);
+  }, [messageText, messageInputRef]);
+
   return (
-    <div className="shrink-0 border-t border-gray-100 bg-white pt-3">
+    <>
       {editingMessageId ? (
         <div className="mb-2 flex items-start justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           <div className="min-w-0">
@@ -99,7 +140,7 @@ export default function MessageComposer({
           {attachedFiles.map((file, index) => (
             <span
               key={`${file.name}-${file.size}-${index}`}
-              className="inline-flex max-w-full items-center gap-1 rounded-full bg-sky-50 px-3 py-1 text-xs text-sky-700 ring-1 ring-sky-100"
+              className="inline-flex max-w-full items-center gap-1 rounded-full border border-sky-100 bg-white px-3 py-1 text-xs text-sky-700"
             >
               <span className="truncate max-w-[180px]">{file.name}</span>
               <button
@@ -116,7 +157,7 @@ export default function MessageComposer({
       ) : null}
 
       {canSendMessages ? (
-        <div className="flex items-start gap-2">
+        <div className="flex items-end gap-2">
           <input
             ref={fileInputRef}
             multiple
@@ -124,35 +165,47 @@ export default function MessageComposer({
             className="hidden"
             onChange={onFilesChange}
           />
-          <button
-            type="button"
-            onClick={onPickFiles}
-            disabled={Boolean(editingMessageId)}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 leading-none transition hover:bg-gray-50 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
-            title={editingMessageId ? "При редактировании вложения недоступны" : "Добавить файлы"}
+          <div
+            className={`relative min-w-0 flex-1 ${showEmojiPicker ? "overflow-visible" : "overflow-hidden"} border border-gray-200 bg-gray-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition focus-within:border-sky-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-sky-100 ${
+              isExpanded ? "rounded-[1.5rem]" : "h-10 rounded-full"
+            }`}
+            data-composer-emoji="true"
           >
-            <Paperclip size={15} />
-          </button>
+            <button
+              type="button"
+              onClick={onPickFiles}
+              disabled={Boolean(editingMessageId)}
+              className={`absolute left-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition hover:bg-white hover:text-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:opacity-50 ${
+                isExpanded ? "bottom-2.5" : "top-1/2 -translate-y-1/2"
+              }`}
+              title={editingMessageId ? "При редактировании вложения недоступны" : "Добавить файлы"}
+              aria-label={editingMessageId ? "При редактировании вложения недоступны" : "Добавить файлы"}
+            >
+              <Paperclip size={14} />
+            </button>
 
-          <div className="relative w-full" data-composer-emoji="true">
             <button
               type="button"
               onClick={onToggleEmojiPicker}
-              className="absolute right-2 top-1/2 z-10 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-sky-600"
+              className={`absolute right-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition hover:bg-white hover:text-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-100 ${
+                isExpanded ? "bottom-2.5" : "top-1/2 -translate-y-1/2"
+              }`}
               title="Смайлы"
+              aria-label="Открыть панель смайлов"
+              aria-expanded={showEmojiPicker}
             >
               <Smile size={14} />
             </button>
 
             {showEmojiPicker ? (
-              <div className="absolute bottom-full right-0 z-20 mb-2 w-[260px] rounded-lg border border-gray-200 bg-white p-2 shadow-xl">
+              <div className="absolute bottom-full right-0 z-20 mb-2 w-[260px] rounded-xl border border-gray-200 bg-white p-2 shadow-lg ring-1 ring-slate-100">
                 <div className="grid max-h-48 grid-cols-8 gap-1 overflow-y-auto">
                   {allReactions.map((emoji) => (
                     <button
                       key={`composer-${emoji}`}
                       type="button"
                       onClick={() => onSelectEmoji(emoji)}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-base hover:bg-sky-50"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-base transition hover:bg-sky-50"
                     >
                       {emoji}
                     </button>
@@ -169,6 +222,7 @@ export default function MessageComposer({
                 onTyping();
               }}
               onClick={onInputClick}
+              onPaste={handlePaste}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
@@ -177,16 +231,20 @@ export default function MessageComposer({
               }}
               rows={1}
               placeholder={editingMessageId ? "Редактируйте сообщение..." : "Введите сообщение..."}
-              className="h-9 w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 pr-10 text-sm text-gray-900 outline-none ring-0 transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              aria-label={editingMessageId ? "Редактирование сообщения" : "Поле ввода сообщения"}
+              className={`w-full resize-none bg-transparent py-2.5 pl-11 pr-12 text-sm leading-5 text-gray-800 outline-none placeholder:text-gray-400 ${
+                isExpanded ? "rounded-[1.5rem]" : "rounded-full"
+              }`}
             />
           </div>
 
           <button
             type="button"
             onClick={onSend}
-            disabled={sending || (editingMessageId ? !messageText.trim() : (!messageText.trim() && attachedFiles.length === 0))}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-500 text-white leading-none transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={sending || !canSend}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-500 text-white leading-none shadow-sm shadow-sky-200/70 transition hover:bg-sky-600 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:border disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:shadow-none disabled:opacity-100"
             title={editingMessageId ? "Сохранить" : "Отправить"}
+            aria-label={editingMessageId ? "Сохранить сообщение" : "Отправить сообщение"}
           >
             <Send size={15} />
           </button>
@@ -201,6 +259,6 @@ export default function MessageComposer({
           </p>
         </div>
       )}
-    </div>
+    </>
   );
 }

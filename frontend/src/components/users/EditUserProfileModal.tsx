@@ -1,7 +1,7 @@
 "use client";
 
 import type { ChangeEvent } from "react";
-import { X } from "lucide-react";
+import { Modal } from "@/components/ui";
 import type { User } from "@/types/api";
 import type { UserProfileEditForm, UserProfileTextField } from "@/lib/users/userDetailUtils";
 
@@ -32,25 +32,37 @@ export default function EditUserProfileModal({
   onTextFieldChange,
   person,
 }: EditUserProfileModalProps) {
-  if (!isOpen || !person) {
-    return null;
-  }
+  const footerContent = (
+    <div className="flex gap-3">
+      <button
+        type="button"
+        onClick={onClose}
+        disabled={actionLoading === "edit"}
+        className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50"
+      >
+        Отмена
+      </button>
+      <button
+        type="button"
+        onClick={onSave}
+        disabled={actionLoading === "edit" || !form.firstName.trim() || !form.lastName.trim() || !form.email.trim()}
+        className="flex-1 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-sky-700 disabled:opacity-50"
+      >
+        {actionLoading === "edit" ? "Сохранение..." : "Сохранить"}
+      </button>
+    </div>
+  );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-gray-900">Редактировать профиль</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-            disabled={actionLoading === "edit"}
-          >
-            <X size={24} />
-          </button>
-        </div>
-
+    <Modal
+      isOpen={isOpen && !!person}
+      onClose={onClose}
+      title="Редактировать профиль"
+      size="lg"
+      closeOnEsc={actionLoading !== "edit"}
+      footer={footerContent}
+    >
+      {person && (
         <div className="space-y-4">
           <div>
             <label className="mb-2 block text-sm font-medium text-gray-700">
@@ -212,26 +224,7 @@ export default function EditUserProfileModal({
             </div>
           </div>
         </div>
-
-        <div className="mt-6 flex gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={actionLoading === "edit"}
-            className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50"
-          >
-            Отмена
-          </button>
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={actionLoading === "edit" || !form.firstName.trim() || !form.lastName.trim() || !form.email.trim()}
-            className="flex-1 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-sky-700 disabled:opacity-50"
-          >
-            {actionLoading === "edit" ? "Сохранение..." : "Сохранить"}
-          </button>
-        </div>
-      </div>
-    </div>
+      )}
+    </Modal>
   );
 }

@@ -48,6 +48,100 @@ def _get_author_url(author) -> str:
         return ""
 
 
+def _is_message_read(m) -> bool:
+    """True, если сообщение прочитал хотя бы один другой участник."""
+    chat = getattr(m, "chat", None)
+    if (
+        not chat
+        or not getattr(m, "id", None)
+        or not getattr(m, "author_id", None)
+    ):
+        return False
+
+    prefetched = getattr(chat, "_prefetched_objects_cache", {})
+    read_states = prefetched.get("read_states")
+    if read_states is not None:
+        return any(
+            state.user_id != m.author_id
+            and state.last_read_message_id
+            and state.last_read_message_id >= m.id
+            for state in read_states
+        )
+
+    return chat.read_states.exclude(user_id=m.author_id).filter(
+        last_read_message_id__gte=m.id
+    ).exists()
+
+
+def _get_user_avatar_url(user) -> str:
+    if not user:
+        return ""
+
+    try:
+        if getattr(user, "avatar", None) and user.avatar:
+            return user.avatar.url
+    except Exception:
+        return ""
+
+    return ""
+
+
+def _serialize_reply_preview(reply_msg) -> dict:
+    is_deleted = bool(getattr(reply_msg, "is_deleted", False))
+
+    return {
+        "id": reply_msg.id,
+        "content": reply_msg.content[:100] if reply_msg.content else "",
+        "author_name": (
+            reply_msg.author.get_full_name()
+            if reply_msg.author
+            else "Неизвестный"
+        ),
+        "is_deleted": is_deleted,
+        "has_attachments": bool(getattr(reply_msg, "has_attachments", False)),
+    }
+
+
+def _get_message_read_by(m) -> list[dict]:
+    """Список участников, которые дочитали сообщение."""
+    chat = getattr(m, "chat", None)
+    if (
+        not chat
+        or not getattr(m, "id", None)
+        or not getattr(m, "author_id", None)
+    ):
+        return []
+
+    prefetched = getattr(chat, "_prefetched_objects_cache", {})
+    read_states = prefetched.get("read_states")
+    if read_states is None:
+        read_states = chat.read_states.select_related("user").filter(
+            last_read_message_id__gte=m.id
+        )
+
+    readers = []
+    for state in read_states:
+        if state.user_id == m.author_id:
+            continue
+        if not state.last_read_message_id or state.last_read_message_id < m.id:
+            continue
+
+        user = getattr(state, "user", None)
+        if not user:
+            continue
+
+        readers.append(
+            {
+                "id": user.id,
+                "name": user.get_full_name() or user.username,
+                "avatar": _get_user_avatar_url(user),
+            }
+        )
+
+    readers.sort(key=lambda item: item["name"].lower())
+    return readers
+
+
 def serialize_message(m) -> dict:
     """
     Сериализация сообщения с поддержкой всех полей.
@@ -63,12 +157,7 @@ def serialize_message(m) -> dict:
     """
     author = m.author
     author_name = author.get_full_name() or author.username
-    avatar = ""
-    try:
-        if getattr(author, "avatar", None) and author.avatar:
-            avatar = author.avatar.url
-    except Exception:
-        avatar = ""
+    avatar = _get_user_avatar_url(author)
 
     # Базовые поля
     data = {
@@ -83,12 +172,15 @@ def serialize_message(m) -> dict:
         # Статусные поля
         "is_edited": m.is_edited,
         "edited_at": m.edited_at.isoformat() if m.edited_at else None,
+        "is_read": _is_message_read(m),
+        "read_by": _get_message_read_by(m),
         "is_deleted": m.is_deleted,
         "is_pinned": m.is_pinned,
         "is_forwarded": m.is_forwarded,
         "is_system": m.is_system,
         "has_attachments": m.has_attachments,
     }
+    data["read_count"] = len(data["read_by"])
 
     # Информация о пересылке (используем forward_metadata)
     if m.is_forwarded:
@@ -205,17 +297,7 @@ def serialize_message(m) -> dict:
                     pk=m.reply_to_id
                 )
 
-            data["reply_to"] = {
-                "id": reply_msg.id,
-                "content": (
-                    reply_msg.content[:100] if reply_msg.content else ""
-                ),
-                "author_name": (
-                    reply_msg.author.get_full_name()
-                    if reply_msg.author
-                    else "Неизвестный"
-                ),
-            }
+            data["reply_to"] = _serialize_reply_preview(reply_msg)
         except Exception:
             # Если не удалось загрузить reply_to, просто пропускаем
             pass

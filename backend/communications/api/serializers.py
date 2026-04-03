@@ -134,12 +134,20 @@ class ChatListSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(ChatLastMessageSerializer)
     def get_last_message(self, obj):
-        """Последнее сообщение в чате"""
-        last_msg = (
-            obj.messages.filter(is_deleted=False)
-            .order_by("-created_at")
-            .first()
-        )
+        """Последнее сообщение в чате (использует prefetch если доступен)"""
+        last_msg = None
+        if (
+            hasattr(obj, '_prefetched_last_message')
+            and obj._prefetched_last_message
+        ):
+            last_msg = obj._prefetched_last_message[0]
+        else:
+            last_msg = (
+                obj.messages.filter(is_deleted=False)
+                .select_related('author')
+                .order_by("-created_at")
+                .first()
+            )
         if last_msg:
             return {
                 "id": last_msg.id,
@@ -153,12 +161,11 @@ class ChatListSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_participant_names(self, obj):
-        """Имена участников (для приватных чатов)"""
+        """Имена участников (для приватных чатов, из prefetch)"""
         if obj.type == "private":
-            active_members = obj.memberships.filter(
-                is_active=True
-            ).select_related("user")[:5]
-            return [m.user.get_full_name() for m in active_members]
+            # memberships уже prefetch'нуты в ChatViewSet.get_queryset
+            members = list(obj.memberships.all())[:5]
+            return [m.user.get_full_name() for m in members]
         return []
 
     @extend_schema_field(

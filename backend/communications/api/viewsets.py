@@ -72,6 +72,40 @@ def _parse_bool_query_param(value, default=True):
     return default
 
 
+def _build_message_search_snippet(message, query, max_length=140):
+    query_normalized = (query or '').strip().lower()
+    content = (message.content or '').strip()
+
+    if content:
+        if not query_normalized:
+            return f"{content[:max_length].rstrip()}…" if len(content) > max_length else content
+
+        content_normalized = content.lower()
+        match_index = content_normalized.find(query_normalized)
+
+        if match_index < 0:
+            return f"{content[:max_length].rstrip()}…" if len(content) > max_length else content
+
+        context_before = max_length // 3
+        context_after = max_length - context_before - len(query_normalized)
+        start = max(0, match_index - context_before)
+        end = min(len(content), match_index + len(query_normalized) + context_after)
+        snippet = content[start:end].strip()
+
+        if start > 0:
+            snippet = f"…{snippet}"
+        if end < len(content):
+            snippet = f"{snippet}…"
+        return snippet
+
+    attachment_names = [a.file_name for a in getattr(message, 'attachments').all() if a.file_name]
+    if attachment_names:
+        joined_names = ', '.join(attachment_names)
+        return f"Файлы: {joined_names}"
+
+    return 'Сообщение без текста'
+
+
 class ChatViewSet(viewsets.ModelViewSet):
     """
     ViewSet для управления чатами
@@ -116,7 +150,6 @@ class ChatViewSet(viewsets.ModelViewSet):
         queryset = Chat.objects.filter(
             Q(memberships__user=user, memberships__is_active=True)
             | Q(participants=user)
-            | Q(participants=user)
             | Q(include_all_users=True)
             | Q(created_by=user)  # Создатель всегда видит свои чаты
         ).select_related(
@@ -139,7 +172,15 @@ class ChatViewSet(viewsets.ModelViewSet):
                 'read_states',
                 queryset=ChatReadState.objects.filter(user=user),
                 to_attr='my_read_state'
-            )
+            ),
+            # Prefetch последнее сообщение чата (1 запрос вместо N)
+            Prefetch(
+                'messages',
+                queryset=Message.objects.filter(
+                    is_deleted=False,
+                ).select_related('author').order_by('-created_at')[:1],
+                to_attr='_prefetched_last_message'
+            ),
         ).distinct()
 
         # Исключаем чаты-комментарии из общего списка
@@ -562,14 +603,27 @@ class ChatViewSet(viewsets.ModelViewSet):
         self._send_marked_read_event(user.id, chat.id, last_message.id)
 
     def _send_marked_read_event(self, user_id, chat_id, message_id):
-        """WebSocket событие для синхронизации между вкладками"""
+        """WebSocket событие для синхронизации и read receipts."""
         channel_layer = get_channel_layer()
+        event_payload = {
+            'chat_id': chat_id,
+            'last_read_message_id': message_id,
+            'reader_user_id': user_id,
+        }
+
         async_to_sync(channel_layer.group_send)(
             f'user_{user_id}',
             {
+                'type': 'chat_marked_read_sync',
+                **event_payload,
+            }
+        )
+
+        async_to_sync(channel_layer.group_send)(
+            f'chat_{chat_id}',
+            {
                 'type': 'chat_marked_read',
-                'chat_id': chat_id,
-                'last_read_message_id': message_id
+                **event_payload,
             }
         )
 
@@ -607,7 +661,14 @@ class ChatViewSet(viewsets.ModelViewSet):
         queryset = chat.messages.filter(is_deleted=False).select_related(
             'author', 'reply_to', 'reply_to__author', 'poll'
         ).prefetch_related(
-            'attachments', 'reactions', 'reactions__user', 'poll__options'
+            'attachments',
+            'reactions',
+            'reactions__user',
+            'poll__options',
+            Prefetch(
+                'chat__read_states',
+                queryset=ChatReadState.objects.select_related('user'),
+            ),
         )
 
         # Определяем порядок сортировки в зависимости от типа запроса
@@ -706,7 +767,14 @@ class ChatViewSet(viewsets.ModelViewSet):
         queryset = chat.messages.filter(is_deleted=False).select_related(
             'author', 'reply_to', 'reply_to__author', 'poll'
         ).prefetch_related(
-            'attachments', 'reactions', 'reactions__user', 'poll__options'
+            'attachments',
+            'reactions',
+            'reactions__user',
+            'poll__options',
+            Prefetch(
+                'chat__read_states',
+                queryset=ChatReadState.objects.select_related('user'),
+            ),
         )
 
         # Если нет around_id, пытаемся получить last_read_message_id
@@ -819,6 +887,79 @@ class ChatViewSet(viewsets.ModelViewSet):
             'anchor_index': anchor_index,
             'has_more_before': len(before) >= before_limit,
             'has_more_after': len(after) > after_limit
+        })
+
+    @action(detail=True, methods=['get'], url_path='search-messages')
+    def search_messages(self, request, pk=None):
+        """Поиск сообщений внутри одного чата с пагинацией и сниппетами."""
+        chat = self.get_object()
+
+        if not user_can_access_chat(chat, request.user):
+            return Response(
+                {'error': 'Access denied'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        query = (request.query_params.get('q') or '').strip()
+
+        try:
+            limit = min(max(int(request.query_params.get('limit', 20)), 1), 100)
+        except (ValueError, TypeError):
+            limit = 20
+
+        try:
+            offset = max(int(request.query_params.get('offset', 0)), 0)
+        except (ValueError, TypeError):
+            offset = 0
+
+        if len(query) < 2:
+            return Response({
+                'query': query,
+                'count': 0,
+                'offset': offset,
+                'next_offset': None,
+                'results': [],
+            })
+
+        queryset = chat.messages.filter(
+            is_deleted=False,
+        ).select_related(
+            'author'
+        ).prefetch_related(
+            'attachments'
+        ).filter(
+            Q(content__icontains=query) | Q(attachments__file_name__icontains=query)
+        ).distinct().order_by('-created_at', '-id')
+
+        total_count = queryset.count()
+        matches = list(queryset[offset:offset + limit])
+        next_offset = offset + limit if (offset + limit) < total_count else None
+
+        results = []
+        for message in matches:
+            author = message.author
+            author_name = (
+                f"{getattr(author, 'last_name', '')} {getattr(author, 'first_name', '')}".strip()
+                or getattr(author, 'username', '')
+                or 'Сотрудник'
+            )
+            attachments = list(message.attachments.all())
+            results.append({
+                'message_id': message.id,
+                'content': message.content or '',
+                'snippet': _build_message_search_snippet(message, query),
+                'author_name': author_name,
+                'created_at': message.created_at,
+                'attachments_count': len(attachments),
+                'has_attachments': bool(attachments),
+            })
+
+        return Response({
+            'query': query,
+            'count': total_count,
+            'offset': offset,
+            'next_offset': next_offset,
+            'results': results,
         })
 
     @action(detail=True, methods=['post'], url_path='mark-read')
@@ -1058,9 +1199,15 @@ class MessageViewSet(viewsets.ModelViewSet):
 
         # Перезагружаем с prefetch
         message = Message.objects.select_related(
-            'author', 'reply_to', 'reply_to__author', 'poll'
+            'author', 'reply_to', 'reply_to__author', 'poll', 'chat'
         ).prefetch_related(
-            'attachments', 'reactions', 'reactions__user'
+            'attachments',
+            'reactions',
+            'reactions__user',
+            Prefetch(
+                'chat__read_states',
+                queryset=ChatReadState.objects.select_related('user'),
+            ),
         ).get(pk=message.id)
 
         # Отправляем через WebSocket
@@ -1215,9 +1362,16 @@ class MessageViewSet(viewsets.ModelViewSet):
         # Перезагружаем с нуля чтобы получить обновленные attachments
         # Используем новый запрос, чтобы избежать кэширования
         instance = Message.objects.select_related(
-            'author', 'reply_to', 'reply_to__author', 'poll'
+            'author', 'reply_to', 'reply_to__author', 'poll', 'chat'
         ).prefetch_related(
-            'attachments', 'reactions', 'reactions__user', 'poll__options'
+            'attachments',
+            'reactions',
+            'reactions__user',
+            'poll__options',
+            Prefetch(
+                'chat__read_states',
+                queryset=ChatReadState.objects.select_related('user'),
+            ),
         ).get(pk=instance.id)
 
         # WebSocket уведомление

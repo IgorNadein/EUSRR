@@ -507,6 +507,7 @@ export interface ChatUserSettings {
 export interface Message {
   id: number;
   chat?: number;
+  local_id?: string | null;
   sender?: User;
   author?: User;
   author_id?: number;
@@ -514,6 +515,10 @@ export interface Message {
   avatar?: string;
   content: string;
   is_read?: boolean;
+  read_count?: number;
+  read_by?: MessageReader[];
+  send_state?: 'pending' | 'delayed' | 'failed';
+  is_optimistic?: boolean;
   created_at?: string;
   created?: string;
   created_ts?: number;
@@ -522,13 +527,27 @@ export interface Message {
   has_attachments?: boolean;
   attachments?: MessageAttachment[];
   reply_to_id?: number;
-  reply_to?: number | Message | null;
-  reply_to_message?: Message | null;
+  reply_to?: number | MessageReplyPreview | Message | null;
+  reply_to_message?: MessageReplyPreview | Message | null;
   reactions_summary?: Record<string, {
     count: number;
     users?: number[];
     user_names?: string[];
   }>;
+}
+
+export interface MessageReplyPreview {
+  id: number;
+  content: string;
+  author_name?: string;
+  is_deleted?: boolean;
+  has_attachments?: boolean;
+}
+
+export interface MessageReader {
+  id: number;
+  name: string;
+  avatar?: string;
 }
 
 export interface MessageAttachment {
@@ -541,6 +560,25 @@ export interface MessageAttachment {
   width?: number;
   height?: number;
   thumbnail?: string | null;
+  is_local?: boolean;
+}
+
+export interface ChatMessageSearchResult {
+  message_id: number;
+  content: string;
+  snippet: string;
+  author_name: string;
+  created_at: string;
+  attachments_count: number;
+  has_attachments: boolean;
+}
+
+export interface ChatMessageSearchResponse {
+  query: string;
+  count: number;
+  offset: number;
+  next_offset: number | null;
+  results: ChatMessageSearchResult[];
 }
 
 // Calendar types (django-scheduler)
@@ -646,7 +684,6 @@ export interface SearchResult {
   object_id: number;
   title: string;
   description?: string;
-  url: string;
   meta?: Record<string, any>;
 }
 

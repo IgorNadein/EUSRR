@@ -122,3 +122,37 @@ export function uniqueMessagesById(items: Message[]): Message[] {
   });
   return Array.from(map.values());
 }
+
+export function getMessageTimestamp(message: Message): number {
+  if (typeof message.created_ts === "number") {
+    return message.created_ts;
+  }
+
+  if (message.created_at) {
+    const value = new Date(message.created_at).getTime();
+    if (!Number.isNaN(value)) {
+      return value;
+    }
+  }
+
+  return 0;
+}
+
+export function mergeDisplayMessages(serverMessages: Message[], pendingMessages: Message[]): Message[] {
+  const combined = [...serverMessages, ...pendingMessages].map((message, index) => ({ message, index }));
+
+  combined.sort((left, right) => {
+    const timestampDiff = getMessageTimestamp(left.message) - getMessageTimestamp(right.message);
+    if (timestampDiff !== 0) {
+      return timestampDiff;
+    }
+
+    if (left.message.is_optimistic !== right.message.is_optimistic) {
+      return left.message.is_optimistic ? 1 : -1;
+    }
+
+    return left.index - right.index;
+  });
+
+  return combined.map(({ message }) => message);
+}

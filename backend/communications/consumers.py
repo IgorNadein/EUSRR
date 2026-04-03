@@ -13,10 +13,10 @@ WebSocket Consumer Mixin для чатов.
 
 import logging
 from channels.db import database_sync_to_async
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.utils import timezone
 
-from .models import Chat, ChatMembership, Message, MessageReaction
+from .models import Chat, ChatMembership, ChatReadState, Message, MessageReaction
 from .serialization import serialize_message
 
 logger = logging.getLogger(__name__)
@@ -299,17 +299,21 @@ class ChatConsumerMixin:
                 }
             )
 
-    async def chat_marked_read(self, event):
-        """Синхронизация отметки прочитанного между вкладками.
-
-        Telegram-style.
-        """
+    async def _send_marked_read_to_client(self, event, *, allow_self: bool):
         chat_id = event.get("chat_id")
         last_read_message_id = event.get("last_read_message_id")
+        reader_user_id = event.get("reader_user_id")
+
+        if chat_id != self.active_chat_id:
+            return
+
+        if not allow_self and reader_user_id == getattr(self.user, "id", None):
+            return
 
         logger.info(
             f"[ChatMixin.chat_marked_read] Sending to client: "
-            f"chat={chat_id}, last_read_message_id={last_read_message_id}"
+            f"chat={chat_id}, last_read_message_id={last_read_message_id}, "
+            f"reader_user_id={reader_user_id}"
         )
 
         await self.send_json(
@@ -317,8 +321,17 @@ class ChatConsumerMixin:
                 "type": "marked_read",
                 "chat_id": chat_id,
                 "last_read_message_id": last_read_message_id,
+                "reader_user_id": reader_user_id,
             }
         )
+
+    async def chat_marked_read(self, event):
+        """Read receipt для других участников активного чата."""
+        await self._send_marked_read_to_client(event, allow_self=False)
+
+    async def chat_marked_read_sync(self, event):
+        """Синхронизация отметки прочитанного между вкладками читателя."""
+        await self._send_marked_read_to_client(event, allow_self=True)
 
     # ==================== Обработка действий пользователя ====================
 
@@ -710,8 +723,15 @@ class ChatConsumerMixin:
         """Получить последние сообщения чата"""
         messages = (
             Message.objects.filter(chat_id=chat_id)
-            .select_related("author")
-            .prefetch_related("attachments", "reactions")
+            .select_related("author", "chat")
+            .prefetch_related(
+                "attachments",
+                "reactions",
+                Prefetch(
+                    "chat__read_states",
+                    queryset=ChatReadState.objects.select_related("user"),
+                ),
+            )
             .order_by("-created_at")[:limit]
         )
 

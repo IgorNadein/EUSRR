@@ -11,6 +11,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useUser } from "@/contexts/UserContext";
 import { useRouter } from "next/navigation";
+import { Modal } from "@/components/ui";
 
 type UnreadFilter = "all" | "unread" | "read";
 type PinnedFilter = "all" | "pinned" | "unpinned";
@@ -112,8 +113,7 @@ export default function MessagesPage() {
       try {
         setLoading(true);
         setError(null);
-        const response = await apiClient.getChats();
-        const items = response.results || [];
+        const items = await apiClient.getAllChats();
 
         // FRONTEND-ONLY: добираем детали чатов, чтобы получить имя/аватар собеседника
         // для private/direct в случае, когда list не отдает avatar/participant_details.
@@ -662,19 +662,25 @@ export default function MessagesPage() {
       )}
       
       {/* Модальное окно создания чата */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-gray-900">Создать чат</h2>
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
-              >
-                <X size={20} />
-              </button>
+      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Создать чат" size="sm" closeOnEsc={!creating} footer={
+            <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateChat}
+                  disabled={creating}
+                  className="flex-1 rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-50"
+                >
+                  {creating ? 'Создание...' : 'Создать'}
+                </button>
             </div>
-
+      }>
             <div className="space-y-4">
               {/* Тип чата */}
               <div>
@@ -800,29 +806,8 @@ export default function MessagesPage() {
                   </label>
                 )}
               </div>
-
-              {/* Кнопки */}
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCreateChat}
-                  disabled={creating}
-                  className="flex-1 rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-50"
-                >
-                  {creating ? 'Создание...' : 'Создать'}
-                </button>
-              </div>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
     </AppShell>
   );
 }

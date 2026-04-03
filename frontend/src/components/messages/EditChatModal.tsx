@@ -6,6 +6,7 @@ import Image from "next/image";
 import { getChatAvatar, getChatInitials } from "@/lib/messages/chatUtils";
 import { resolveMediaUrl } from "@/lib/url";
 import type { Chat } from "@/types/api";
+import { Modal } from "@/components/ui";
 
 type EditChatModalProps = {
   chat: Chat | null;
@@ -36,15 +37,30 @@ export default function EditChatModal({
   onAvatarChange,
   onSave,
 }: EditChatModalProps) {
-  if (!open || !chat) return null;
-
-  const avatar = getChatAvatar(chat, currentUserId);
+  const footerContent = (
+    <div className="flex gap-3">
+      <button
+        type="button"
+        onClick={onClose}
+        disabled={actionLoading === "edit"}
+        className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50"
+      >
+        Отмена
+      </button>
+      <button
+        type="button"
+        onClick={onSave}
+        disabled={actionLoading === "edit" || !editName.trim()}
+        className="flex-1 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-sky-700 disabled:opacity-50"
+      >
+        {actionLoading === "edit" ? "Сохранение..." : "Сохранить"}
+      </button>
+    </div>
+  );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-        <h2 className="mb-4 text-xl font-bold text-gray-900">Редактировать чат</h2>
-
+    <Modal isOpen={open && !!chat} onClose={onClose} title="Редактировать чат" size="sm" closeOnEsc={actionLoading !== "edit"} footer={footerContent}>
+      {chat && (
         <div className="space-y-4">
           <div>
             <label className="mb-2 block text-sm font-medium text-gray-700">Аватар</label>
@@ -52,8 +68,8 @@ export default function EditChatModal({
               <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-lg font-semibold text-white">
                 {editAvatarPreview ? (
                   <Image src={editAvatarPreview} alt="Preview" width={64} height={64} unoptimized className="h-full w-full object-cover" />
-                ) : avatar ? (
-                  <Image src={resolveMediaUrl(avatar)} alt="Avatar" width={64} height={64} unoptimized className="h-full w-full object-cover" />
+                ) : getChatAvatar(chat, currentUserId) ? (
+                  <Image src={resolveMediaUrl(getChatAvatar(chat, currentUserId)!)} alt="Avatar" width={64} height={64} unoptimized className="h-full w-full object-cover" />
                 ) : (
                   getChatInitials(chat, currentUserId)
                 )}
@@ -96,26 +112,7 @@ export default function EditChatModal({
             />
           </div>
         </div>
-
-        <div className="mt-6 flex gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={actionLoading === "edit"}
-            className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50"
-          >
-            Отмена
-          </button>
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={actionLoading === "edit" || !editName.trim()}
-            className="flex-1 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-sky-700 disabled:opacity-50"
-          >
-            {actionLoading === "edit" ? "Сохранение..." : "Сохранить"}
-          </button>
-        </div>
-      </div>
-    </div>
+      )}
+    </Modal>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { X, Edit2, Trash2, Clock, Calendar, FileText, Users } from "lucide-react";
+import { Edit2, Trash2, Clock, Calendar, FileText, Users } from "lucide-react";
+import { Modal } from "@/components/ui";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { useState, useEffect } from "react";
@@ -98,37 +99,46 @@ export function ViewEventDetailsModal({
   const capitalizedEnd = formatDateTime(event.end).charAt(0).toUpperCase() + formatDateTime(event.end).slice(1);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
-      <div className="w-full max-w-[95vw] sm:max-w-md rounded-xl sm:rounded-2xl bg-white p-4 sm:p-6 shadow-xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
-        <div className="mb-4 flex items-start justify-between">
-          <div className="flex-1 min-w-0 pr-3">
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-lg font-semibold text-gray-900">
-                {event.title}
-              </h3>
-              {event.rule && (
-                <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex-shrink-0">
-                  ⟲
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              <div
-                className="h-2.5 w-2.5 rounded-full flex-shrink-0"
-                style={{ backgroundColor: event.color_event || "#3498db" }}
-              />
-              <span className="truncate">Календарь #{event.calendar}</span>
-            </div>
-          </div>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={event.title}
+      size="sm"
+      footer={
+        <div className="flex gap-2">
           <button
-            onClick={onClose}
-            className="rounded-full p-1 hover:bg-gray-100 flex-shrink-0"
+            onClick={onEdit}
+            className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600"
           >
-            <X size={20} className="text-gray-600" />
+            <Edit2 size={16} />
+            Редактировать
+          </button>
+          <button
+            onClick={onDelete}
+            className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-100"
+            title="Удалить событие"
+          >
+            <Trash2 size={16} />
           </button>
         </div>
-
-        <div className="space-y-4">
+      }
+    >
+      <div className="space-y-4">
+        {/* Event meta */}
+        <div className="flex items-center gap-2">
+          {event.rule && (
+            <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex-shrink-0">
+              ⟲
+            </span>
+          )}
+          <div className="flex items-center gap-1.5 text-xs text-gray-500">
+            <div
+              className="h-2.5 w-2.5 rounded-full flex-shrink-0"
+              style={{ backgroundColor: event.color_event || "#3498db" }}
+            />
+            <span className="truncate">Календарь #{event.calendar}</span>
+          </div>
+        </div>
           {/* Time */}
           <div className="flex items-start gap-2.5">
             <Clock size={18} className="text-gray-400 mt-0.5 flex-shrink-0" />
@@ -229,24 +239,7 @@ export function ViewEventDetailsModal({
             </div>
           )}
 
-          <div className="mt-4 flex gap-2">
-            <button
-              onClick={onEdit}
-              className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600"
-            >
-              <Edit2 size={16} />
-              Редактировать
-            </button>
-            <button
-              onClick={onDelete}
-              className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-100"
-              title="Удалить событие"
-            >
-              <Trash2 size={16} />
-            </button>
-          </div>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
