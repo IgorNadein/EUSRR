@@ -1,7 +1,11 @@
 "use client";
 
+import { useLayoutEffect, useState } from "react";
 import type React from "react";
 import { Paperclip, Send, Smile, X } from "lucide-react";
+
+const MIN_COMPOSER_HEIGHT = 42;
+const MAX_COMPOSER_HEIGHT = 128;
 
 type ReplyTarget = {
   id: number;
@@ -58,6 +62,22 @@ export default function MessageComposer({
   onCancelEdit,
   onCancelReply,
 }: MessageComposerProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const canSend = editingMessageId ? messageText.trim().length > 0 : messageText.trim().length > 0 || attachedFiles.length > 0;
+
+  useLayoutEffect(() => {
+    const input = messageInputRef.current;
+    if (!input) return;
+
+    input.style.height = "0px";
+    const nextHeight = Math.min(input.scrollHeight, MAX_COMPOSER_HEIGHT);
+    const resolvedHeight = Math.max(nextHeight, MIN_COMPOSER_HEIGHT);
+
+    input.style.height = `${resolvedHeight}px`;
+    input.style.overflowY = input.scrollHeight > MAX_COMPOSER_HEIGHT ? "auto" : "hidden";
+    setIsExpanded(resolvedHeight > MIN_COMPOSER_HEIGHT + 2);
+  }, [messageText, messageInputRef]);
+
   return (
     <>
       {editingMessageId ? (
@@ -124,22 +144,34 @@ export default function MessageComposer({
             className="hidden"
             onChange={onFilesChange}
           />
-          <button
-            type="button"
-            onClick={onPickFiles}
-            disabled={Boolean(editingMessageId)}
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-gray-500 leading-none transition hover:border-sky-200 hover:bg-white hover:text-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
-            title={editingMessageId ? "При редактировании вложения недоступны" : "Добавить файлы"}
+          <div
+            className={`relative min-w-0 flex-1 overflow-hidden border border-gray-200 bg-gray-50 transition focus-within:border-sky-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-sky-100 ${
+              isExpanded ? "rounded-[1.5rem]" : "rounded-full"
+            }`}
+            data-composer-emoji="true"
           >
-            <Paperclip size={15} />
-          </button>
+            <button
+              type="button"
+              onClick={onPickFiles}
+              disabled={Boolean(editingMessageId)}
+              className={`absolute left-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition hover:bg-white hover:text-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:opacity-50 ${
+                isExpanded ? "bottom-2.5" : "top-1/2 -translate-y-1/2"
+              }`}
+              title={editingMessageId ? "При редактировании вложения недоступны" : "Добавить файлы"}
+              aria-label={editingMessageId ? "При редактировании вложения недоступны" : "Добавить файлы"}
+            >
+              <Paperclip size={14} />
+            </button>
 
-          <div className="relative min-w-0 flex-1" data-composer-emoji="true">
             <button
               type="button"
               onClick={onToggleEmojiPicker}
-              className="absolute right-3 top-1/2 z-10 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-gray-400 transition hover:bg-white hover:text-sky-600"
+              className={`absolute right-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition hover:bg-white hover:text-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-100 ${
+                isExpanded ? "bottom-2.5" : "top-1/2 -translate-y-1/2"
+              }`}
               title="Смайлы"
+              aria-label="Открыть панель смайлов"
+              aria-expanded={showEmojiPicker}
             >
               <Smile size={14} />
             </button>
@@ -177,16 +209,20 @@ export default function MessageComposer({
               }}
               rows={1}
               placeholder={editingMessageId ? "Редактируйте сообщение..." : "Введите сообщение..."}
-              className="min-h-[42px] max-h-32 w-full resize-none rounded-[1.35rem] border border-gray-200 bg-gray-50 px-4 py-2.5 pr-12 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+              aria-label={editingMessageId ? "Редактирование сообщения" : "Поле ввода сообщения"}
+              className={`w-full resize-none bg-transparent py-2.5 pl-11 pr-12 text-sm leading-5 text-gray-800 outline-none placeholder:text-gray-400 ${
+                isExpanded ? "rounded-[1.5rem]" : "rounded-full"
+              }`}
             />
           </div>
 
           <button
             type="button"
             onClick={onSend}
-            disabled={sending || (editingMessageId ? !messageText.trim() : (!messageText.trim() && attachedFiles.length === 0))}
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-500 text-white leading-none transition hover:bg-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={sending || !canSend}
+            className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-sky-500 text-white leading-none transition hover:bg-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400 disabled:opacity-100"
             title={editingMessageId ? "Сохранить" : "Отправить"}
+            aria-label={editingMessageId ? "Сохранить сообщение" : "Отправить сообщение"}
           >
             <Send size={15} />
           </button>
