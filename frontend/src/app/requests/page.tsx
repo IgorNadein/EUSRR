@@ -3,10 +3,12 @@
 
 import { AppShell } from "../../components/AppShell";
 import { Modal } from "@/components/ui";
+import { apiClient } from "@/lib/api";
 import { useUser } from "@/contexts/UserContext";
 import { canManageRequests, canProcessRequests } from "@/lib/permissions";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { User } from "@/types/api";
 import { ArrowUpDown, Ban, ChevronDown, FileSignature, Filter, MessageSquare, Paperclip, Pencil, Plus, Search, ThumbsDown, ThumbsUp, Trash2, X, Zap } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -24,11 +26,29 @@ const SwipeApprovalMode = dynamic(() => import("@/components/requests/SwipeAppro
 
 export default function RequestsPage() {
   const { user } = useUser();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const canProcess = canProcessRequests(user);
   const canManage = canManageRequests(user);
   const auth = user?.auth;
   const h = useRequestsPage(user?.id);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const openedLinkedRequestIdRef = useRef<number | null>(null);
+  const loadingLinkedRequestIdRef = useRef<number | null>(null);
+  const linkedRequestId = Number(searchParams.get("request") || "");
+
+  const clearRequestParam = () => {
+    if (!searchParams.get("request")) return;
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("request");
+    router.replace(nextParams.toString() ? `${pathname}?${nextParams.toString()}` : pathname, { scroll: false });
+  };
+
+  const closeDetailsRequest = () => {
+    h.setDetailsRequest(null);
+    clearRequestParam();
+  };
 
   const renderUserBadge = (person: User, large = false) => {
     const personLink = userProfileLink(person, user?.id);
@@ -50,6 +70,57 @@ export default function RequestsPage() {
       ? <Link href={personLink} className={`${cls} hover:bg-gray-200`}>{chip}</Link>
       : <span className={cls}>{chip}</span>;
   };
+
+  useEffect(() => {
+    if (!linkedRequestId) {
+      openedLinkedRequestIdRef.current = null;
+      loadingLinkedRequestIdRef.current = null;
+      return;
+    }
+
+    if (h.detailsRequest?.id === linkedRequestId) {
+      openedLinkedRequestIdRef.current = linkedRequestId;
+      loadingLinkedRequestIdRef.current = null;
+      return;
+    }
+
+    if (openedLinkedRequestIdRef.current === linkedRequestId) {
+      return;
+    }
+
+    const existing = h.requests.find((item) => item.id === linkedRequestId);
+    if (existing) {
+      openedLinkedRequestIdRef.current = linkedRequestId;
+      loadingLinkedRequestIdRef.current = null;
+      h.setDetailsRequest(existing);
+      return;
+    }
+
+    if (loadingLinkedRequestIdRef.current === linkedRequestId) {
+      return;
+    }
+
+    loadingLinkedRequestIdRef.current = linkedRequestId;
+
+    let cancelled = false;
+
+    apiClient.getRequest(linkedRequestId)
+      .then((request) => {
+        if (!cancelled && openedLinkedRequestIdRef.current !== linkedRequestId) {
+          openedLinkedRequestIdRef.current = linkedRequestId;
+          loadingLinkedRequestIdRef.current = null;
+          h.setDetailsRequest(request);
+        }
+      })
+      .catch((error) => {
+        loadingLinkedRequestIdRef.current = null;
+        console.error("Ошибка deep-link заявления:", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [h.detailsRequest?.id, h.requests, h.setDetailsRequest, linkedRequestId]);
 
   return (
     <AppShell>
@@ -218,7 +289,7 @@ export default function RequestsPage() {
       )}
 
       {/* Detail modal */}
-      <Modal isOpen={Boolean(h.detailsRequest)} onClose={() => h.setDetailsRequest(null)} title="Полная информация по заявлению" size="lg">
+      <Modal isOpen={Boolean(h.detailsRequest)} onClose={closeDetailsRequest} title="Полная информация по заявлению" size="lg">
         {h.detailsRequest && (() => {
           const dr = h.detailsRequest; const da = dr.employee || dr.created_by; const dap = dr.approver || dr.assigned_to;
           const ds = statusMeta[String(dr.status || "").toLowerCase()] ?? defaultStatusMeta;
