@@ -1446,7 +1446,7 @@ export default function MessageDialogPage() {
         </div>
       ) : (
         <div className="min-h-0 h-full lg:sticky lg:top-22 lg:h-[calc(100dvh-7.5rem)]">
-        <section className="flex h-full min-h-0 flex-col overflow-hidden lg:bg-white lg:rounded-2xl lg:p-5 lg:shadow-sm lg:ring-1 lg:ring-gray-100">
+        <section className="flex h-full min-h-0 flex-col overflow-hidden lg:bg-white lg:rounded-xl lg:p-4 lg:ring-1 lg:ring-gray-100">
           {chat ? (
             <>
               <ChatDialogHeader
@@ -1536,7 +1536,7 @@ export default function MessageDialogPage() {
                   </div>
                 )}
 
-                <div className="shrink-0 -mx-4 border-t border-gray-100 bg-white px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.25rem)] sm:-mx-8 sm:px-8 lg:mx-0 lg:px-0 lg:pb-0">
+                <div className="shrink-0 border-t border-gray-100 bg-white px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.25rem)] lg:px-0 lg:pb-0">
                   {isTyping && (
                     <div className="mb-2 flex items-center gap-2 text-xs text-gray-500 italic">
                       <div className="flex gap-1">

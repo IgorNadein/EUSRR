@@ -4,7 +4,7 @@ import { useLayoutEffect, useState } from "react";
 import type React from "react";
 import { Paperclip, Send, Smile, X } from "lucide-react";
 
-const MIN_COMPOSER_HEIGHT = 40;
+const MIN_COMPOSER_HEIGHT = 38;
 const MAX_COMPOSER_HEIGHT = 128;
 
 type ReplyTarget = {
@@ -146,7 +146,7 @@ export default function MessageComposer({
           />
           <div
             className={`relative min-w-0 flex-1 overflow-hidden border border-gray-200 bg-gray-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition focus-within:border-sky-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-sky-100 ${
-              isExpanded ? "rounded-[1.5rem]" : "rounded-full"
+              isExpanded ? "rounded-[1.5rem]" : "h-10 rounded-full"
             }`}
             data-composer-emoji="true"
           >
@@ -220,7 +220,7 @@ export default function MessageComposer({
             type="button"
             onClick={onSend}
             disabled={sending || !canSend}
-            className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-sky-500 text-white leading-none shadow-sm shadow-sky-200/70 transition hover:bg-sky-600 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:border disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:shadow-none disabled:opacity-100"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-500 text-white leading-none shadow-sm shadow-sky-200/70 transition hover:bg-sky-600 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:border disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:shadow-none disabled:opacity-100"
             title={editingMessageId ? "Сохранить" : "Отправить"}
             aria-label={editingMessageId ? "Сохранить сообщение" : "Отправить сообщение"}
           >

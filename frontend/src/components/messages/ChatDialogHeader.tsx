@@ -50,7 +50,7 @@ export default function ChatDialogHeader({
   const title = getChatTitle(chat, currentUserId);
 
   return (
-    <header className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-100 pb-3">
+    <header className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-100 px-4 pt-3 pb-3 lg:px-0 lg:pt-0">
       <div className="flex items-center gap-3">
         <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white">
           {avatar ? (
