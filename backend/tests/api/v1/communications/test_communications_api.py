@@ -2451,10 +2451,10 @@ class TestDeleteVariousMessageTypes:
         assert reply2.is_deleted is False
         assert reply1.reply_to_id == original.id
 
-    def test_messages_around_keeps_deleted_reply_preview_non_clickable_contract(
+    def test_messages_around_keeps_deleted_reply_preview_context_contract(
         self, auth_client, private_chat, user1
     ):
-        """Ответ на удаленное сообщение сохраняет preview, но помечается как deleted."""
+        """Ответ на удаленное сообщение сохраняет контекст preview и помечается как deleted."""
         original = Message.objects.create(
             chat=private_chat, author=user1, content="Original to delete"
         )
@@ -2477,7 +2477,7 @@ class TestDeleteVariousMessageTypes:
 
         assert serialized_reply["reply_to"]["id"] == original.id
         assert serialized_reply["reply_to"]["is_deleted"] is True
-        assert serialized_reply["reply_to"]["content"] == ""
+        assert serialized_reply["reply_to"]["content"] == "Original to delete"
         assert "author_name" in serialized_reply["reply_to"]
 
     def test_bulk_delete_various_types(self, auth_client, private_chat, user1):

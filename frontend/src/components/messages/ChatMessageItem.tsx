@@ -17,6 +17,7 @@ import { resolveMediaUrl } from "@/lib/url";
 import {
   formatFileSize,
   getReplyPreview,
+  getReplyPreviewStatusLabel,
   getReplyPreviewText,
   getReplyToId,
   getMessageDate,
@@ -133,6 +134,7 @@ export default function ChatMessageItem({
   const replyPreviewMessage = getReplyPreview(message, repliedMessage);
   const replyToId = getReplyToId(message);
   const canJumpToReply = Boolean(replyToId && !isReplyPreviewDeleted(replyPreviewMessage));
+  const replyStatusLabel = getReplyPreviewStatusLabel(replyPreviewMessage);
   const isMine = Boolean(
     currentUserId &&
       (message.author_id === currentUserId || message.author?.id === currentUserId || message.sender?.id === currentUserId)
@@ -211,18 +213,25 @@ export default function ChatMessageItem({
               ) : (
                 <div
                   className={[
-                    "mb-2 block w-full rounded-xl border-l-2 px-2.5 py-1.5 text-left text-xs opacity-85",
+                    "mb-2 block w-full rounded-xl border-l-2 px-2.5 py-1.5 text-left text-xs opacity-95",
                     isMine
                       ? "border-sky-200/80 bg-sky-400/20 text-sky-50/95"
-                      : "border-gray-300 bg-gray-100 text-gray-500",
+                      : "border-gray-300 bg-gray-100 text-gray-600",
                   ].join(" ")}
                   title="Исходное сообщение удалено"
                   aria-label={`Исходное сообщение удалено${replyPreviewMessage?.author_name ? `, автор ${replyPreviewMessage.author_name}` : ""}`}
                 >
-                  <p className="font-medium">
-                    {replyPreviewMessage?.author_name || "Ответ на сообщение"}
-                  </p>
-                  <p className="truncate">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="min-w-0 truncate font-medium">
+                      {replyPreviewMessage?.author_name || "Ответ на сообщение"}
+                    </p>
+                    {replyStatusLabel ? (
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${isMine ? "bg-white/18 text-white/90" : "bg-gray-200 text-gray-600"}`}>
+                        {replyStatusLabel}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="truncate opacity-90">
                     {replyPreviewMessage ? getReplyPreviewText(replyPreviewMessage) : "Сообщение удалено"}
                   </p>
                 </div>

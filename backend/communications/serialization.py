@@ -91,9 +91,7 @@ def _serialize_reply_preview(reply_msg) -> dict:
 
     return {
         "id": reply_msg.id,
-        "content": ""
-        if is_deleted
-        else (reply_msg.content[:100] if reply_msg.content else ""),
+        "content": reply_msg.content[:100] if reply_msg.content else "",
         "author_name": (
             reply_msg.author.get_full_name()
             if reply_msg.author

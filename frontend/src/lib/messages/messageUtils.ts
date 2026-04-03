@@ -118,13 +118,21 @@ export function isReplyPreviewDeleted(preview: ReplyPreviewSource | null | undef
 }
 
 export function getReplyPreviewText(preview: ReplyPreviewSource): string {
-  if (preview.is_deleted) return "Сообщение удалено";
   if (preview.content?.trim()) return preview.content.trim();
   if ("attachments" in preview && Array.isArray(preview.attachments) && preview.attachments.length > 0) {
     return "[Вложение]";
   }
   if (preview.has_attachments) return "[Вложение]";
+  if (preview.is_deleted) return "Сообщение удалено";
   return "[Сообщение]";
+}
+
+export function getReplyPreviewStatusLabel(preview: ReplyPreviewSource | null | undefined): string | null {
+  if (!preview?.is_deleted) {
+    return null;
+  }
+
+  return "Удалено";
 }
 
 export function getReplyToId(message: Message): number | null {
