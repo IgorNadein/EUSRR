@@ -2,7 +2,7 @@
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { MessageCircle, ChevronDown } from "lucide-react";
+import { MessageCircle, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { AppShell } from "../../../components/AppShell";
 import ChatDialogHeader from "@/components/messages/ChatDialogHeader";
 import ChatMediaPreviewModal from "@/components/messages/ChatMediaPreviewModal";
@@ -66,6 +66,24 @@ function getMessageDayKey(message: Message): string | null {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
+function formatDateInputValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function shiftDateInputValue(value: string, deltaDays: number): string {
+  const baseDate = value ? new Date(`${value}T00:00:00`) : new Date();
+  if (Number.isNaN(baseDate.getTime())) {
+    return formatDateInputValue(new Date());
+  }
+
+  baseDate.setDate(baseDate.getDate() + deltaDays);
+  return formatDateInputValue(baseDate);
+}
+
 export default function MessageDialogPage() {
   const params = useParams<{ chatId: string }>();
   const chatId = Number(params.chatId);
@@ -93,7 +111,12 @@ export default function MessageDialogPage() {
   const [useOriginalImage, setUseOriginalImage] = useState<Record<number, boolean>>({});
   const [mediaPreview, setMediaPreview] = useState<MediaPreview | null>(null);
   const [floatingDate, setFloatingDate] = useState<string | null>(null);
+  const [floatingDateValue, setFloatingDateValue] = useState<string | null>(null);
   const [showFloatingDate, setShowFloatingDate] = useState(false);
+  const [isDateNavigatorOpen, setIsDateNavigatorOpen] = useState(false);
+  const [selectedHistoryDate, setSelectedHistoryDate] = useState("");
+  const [jumpingToDate, setJumpingToDate] = useState(false);
+  const [historyNavigationMode, setHistoryNavigationMode] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [newMessagesBelowCount, setNewMessagesBelowCount] = useState(0);
   const floatingDateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -149,6 +172,12 @@ export default function MessageDialogPage() {
   }, [pendingMessages]);
 
   useEffect(() => {
+    if (floatingDateValue && !isDateNavigatorOpen) {
+      setSelectedHistoryDate(floatingDateValue);
+    }
+  }, [floatingDateValue, isDateNavigatorOpen]);
+
+  useEffect(() => {
     lastConfirmedMarkReadIdRef.current = Math.max(
       lastConfirmedMarkReadIdRef.current,
       chat?.last_read_message_id ?? 0,
@@ -166,6 +195,7 @@ export default function MessageDialogPage() {
     lastConfirmedMarkReadIdRef.current = chat?.last_read_message_id ?? 0;
     unreadBelowMessageIdsRef.current.clear();
     setNewMessagesBelowCount(0);
+    setHistoryNavigationMode(false);
   }, [chatId, chat?.last_read_message_id]);
   
   // Определяем текущий membership и права на отправку сообщений
@@ -495,14 +525,19 @@ export default function MessageDialogPage() {
 
   const syncScrollToBottomState = useCallback(() => {
     const isAtBottom = isNearBottom();
-    setShowScrollToBottom(!isAtBottom);
+    const hasBufferedNewer = hasMoreNewerRef.current || unreadBelowMessageIdsRef.current.size > 0;
 
-    if (isAtBottom) {
+    if (isAtBottom && !hasMoreNewerRef.current) {
+      setShowScrollToBottom(false);
       resetNewMessagesBelow();
+      setHistoryNavigationMode(false);
+      return true;
     }
 
+    setShowScrollToBottom(!isAtBottom || hasBufferedNewer || historyNavigationMode);
+
     return isAtBottom;
-  }, [isNearBottom, resetNewMessagesBelow]);
+  }, [historyNavigationMode, isNearBottom, resetNewMessagesBelow]);
 
   // Автопрокрутка вниз
   const scrollToBottom = useCallback((smooth = false) => {
@@ -1094,7 +1129,7 @@ export default function MessageDialogPage() {
     }
 
     const newestMessage = messages[messages.length - 1];
-    const shouldMarkRead = isNearBottom();
+    const shouldMarkRead = !historyNavigationMode && isNearBottom();
 
     try {
       setLoadingNewer(true);
@@ -1126,7 +1161,7 @@ export default function MessageDialogPage() {
     } finally {
       setLoadingNewer(false);
     }
-  }, [chatId, hasMoreNewer, isNearBottom, loadingNewer, messages, messagesLoading, removePendingMessageByServerMessage, scheduleMarkRead]);
+  }, [chatId, hasMoreNewer, historyNavigationMode, isNearBottom, loadingNewer, messages, messagesLoading, removePendingMessageByServerMessage, scheduleMarkRead]);
 
   useChatFallbackSync({
     chatId: chatId || null,
@@ -1151,15 +1186,16 @@ export default function MessageDialogPage() {
         loadOlderMessages();
       }
 
-      // Загрузка новых сообщений при приближении к низу
-      const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-      if (!loadingNewer && !messagesLoading && hasMoreNewer && distanceFromBottom <= 120) {
+      // Загрузка новых сообщений при приближении к низу (щедрый порог для предзагрузки)
+      const distFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+      if (!loadingNewer && !messagesLoading && hasMoreNewer && distFromBottom <= 300) {
         loadNewerMessages();
       }
 
       const messageEls = viewport.querySelectorAll<HTMLElement>('[data-message-date]');
       const viewportTop = viewport.getBoundingClientRect().top;
       let topDate: string | null = null;
+      let topDateValue: string | null = null;
 
       for (let i = 0; i < messageEls.length; i += 1) {
         const el = messageEls[i];
@@ -1171,6 +1207,7 @@ export default function MessageDialogPage() {
             const date = new Date(isoDate);
             if (!Number.isNaN(date.getTime())) {
               topDate = formatDayDivider(date);
+              topDateValue = formatDateInputValue(date);
             }
           }
           break;
@@ -1179,6 +1216,7 @@ export default function MessageDialogPage() {
 
       if (topDate) {
         setFloatingDate(topDate);
+        setFloatingDateValue(topDateValue);
         setShowFloatingDate(true);
 
         if (floatingDateTimeoutRef.current) {
@@ -1409,6 +1447,135 @@ export default function MessageDialogPage() {
     setUseOriginalImage((prev) => ({ ...prev, [attachmentId]: true }));
   }, []);
 
+  const openDateNavigator = useCallback((dateValue?: string | null) => {
+    setSelectedHistoryDate(dateValue || floatingDateValue || formatDateInputValue(new Date()));
+    setShowFloatingDate(true);
+    setIsDateNavigatorOpen(true);
+  }, [floatingDateValue]);
+
+  const handleJumpToDate = useCallback(async (dateValue: string) => {
+    if (!chatId || Number.isNaN(chatId) || !dateValue || jumpingToDate) {
+      return;
+    }
+
+    const dayStart = new Date(`${dateValue}T00:00:00`);
+    if (Number.isNaN(dayStart.getTime())) {
+      return;
+    }
+
+    try {
+      setJumpingToDate(true);
+      setHistoryNavigationMode(true);
+      setMessagesLoading(true);
+      setIsDateNavigatorOpen(false);
+
+      const [olderResponse, newerResponse] = await Promise.all([
+        apiClient.getChatMessages(chatId, {
+          limit: 20,
+          before: dayStart.toISOString(),
+        }),
+        apiClient.getChatMessages(chatId, {
+          limit: 20,
+          after: dayStart.toISOString(),
+          mark_read: false,
+        }),
+      ]);
+
+      const olderMessages = olderResponse.messages || [];
+      const newerMessages = newerResponse.messages || [];
+      const combinedMessages = uniqueMessagesById([...olderMessages, ...newerMessages]);
+      const anchorMessage = newerMessages[0] || olderMessages[olderMessages.length - 1] || combinedMessages[0] || null;
+
+      if (!anchorMessage) {
+        return;
+      }
+
+      setMessages(combinedMessages);
+      setHasMoreOlder(Boolean(olderResponse.has_more));
+      setHasMoreNewer(Boolean(newerResponse.has_more));
+      setInitialAnchorId(anchorMessage.id);
+      setInitialAnchorIndex(combinedMessages.findIndex((message) => message.id === anchorMessage.id));
+      setAllowOneOlderProbe(Boolean(newerMessages[0]));
+
+      const anchorDate = getMessageDate(anchorMessage);
+      if (anchorDate) {
+        setFloatingDate(formatDayDivider(anchorDate));
+        setFloatingDateValue(formatDateInputValue(anchorDate));
+        setShowFloatingDate(true);
+      }
+
+      initialScrolledRef.current = false;
+      anchorScrollAttemptsRef.current = 0;
+      anchorOlderLoadAttemptsRef.current = 0;
+      setAnchorRetryTick(0);
+      resetNewMessagesBelow();
+    } catch (jumpError) {
+      console.error("Ошибка перехода к дате:", jumpError);
+    } finally {
+      setMessagesLoading(false);
+      setJumpingToDate(false);
+    }
+  }, [chatId, jumpingToDate, resetNewMessagesBelow]);
+
+  const handleReturnToNewMessages = useCallback(async () => {
+    if (!chatId || Number.isNaN(chatId)) {
+      return;
+    }
+
+    const component = messagesViewportRef.current;
+    const container = component?.containerRef?.current;
+    const lastReadMessageId = Math.max(chat?.last_read_message_id ?? 0, lastConfirmedMarkReadIdRef.current);
+    const shouldRestoreUnreadBoundary = (hasMoreNewer || historyNavigationMode) && lastReadMessageId > 0;
+
+    if (!shouldRestoreUnreadBoundary) {
+      setHistoryNavigationMode(false);
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+      resetNewMessagesBelow();
+      return;
+    }
+
+    try {
+      setMessagesLoading(true);
+
+      const around = await apiClient.getChatMessagesAround(chatId, {
+        limit: 30,
+        around_id: lastReadMessageId,
+      });
+
+      const normalized = uniqueMessagesById(around.messages || []);
+      if (normalized.length === 0) {
+        if (container) {
+          container.scrollTop = container.scrollHeight;
+        }
+        setHistoryNavigationMode(false);
+        resetNewMessagesBelow();
+        return;
+      }
+
+      setMessages(normalized);
+      setHasMoreOlder(
+        typeof around.has_more_before === "boolean" ? around.has_more_before : normalized.length >= 50
+      );
+      setHasMoreNewer(Boolean(around.has_more_after));
+      setInitialAnchorId(around.anchor_id ?? lastReadMessageId);
+      setInitialAnchorIndex(typeof around.anchor_index === "number" ? around.anchor_index : null);
+      setAllowOneOlderProbe(Boolean(around.anchor_id ?? lastReadMessageId));
+      setHistoryNavigationMode(Boolean(around.has_more_after));
+      setShowScrollToBottom(true);
+
+      initialScrolledRef.current = false;
+      anchorScrollAttemptsRef.current = 0;
+      anchorOlderLoadAttemptsRef.current = 0;
+      setAnchorRetryTick(0);
+    } catch (error) {
+      console.error("Ошибка возврата к непрочитанным сообщениям:", error);
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, [chat?.last_read_message_id, chatId, hasMoreNewer, historyNavigationMode, resetNewMessagesBelow]);
+
   const handleTogglePin = async () => {
     if (!chatId) return;
     
@@ -1452,11 +1619,14 @@ export default function MessageDialogPage() {
       if (target.closest("[data-reaction-picker='true']")) return;
       if (target.closest(".reaction-picker-modal")) return;
       if (target.closest("[data-composer-emoji='true']")) return;
+      if (target.closest("[data-date-navigator='true']")) return;
+      if (target.closest("[data-date-trigger='true']")) return;
 
       setExpandedReplyActionForId(null);
       setActionsMenuAnchor(null);
       setReactionPickerForMessageId(null);
       setShowComposerEmojiPicker(false);
+      setIsDateNavigatorOpen(false);
     };
 
     window.addEventListener("mousedown", onWindowClick);
@@ -1474,6 +1644,7 @@ export default function MessageDialogPage() {
         setActionsMenuAnchor(null);
         setReactionPickerForMessageId(null);
         setShowComposerEmojiPicker(false);
+        setIsDateNavigatorOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1551,17 +1722,76 @@ export default function MessageDialogPage() {
 
               <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
                 {floatingDate ? (
-                  <div className={`pointer-events-none absolute left-0 right-0 top-2 z-20 flex justify-center px-3 transition-opacity duration-200 ${showFloatingDate ? 'opacity-100' : 'opacity-0'}`}>
-                    <span className="inline-block rounded-full bg-white/95 px-3 py-1 text-xs text-gray-500 shadow-sm ring-1 ring-gray-200 backdrop-blur">
+                  <div className={`absolute left-0 right-0 top-2 z-20 flex justify-center px-3 transition-opacity duration-200 ${showFloatingDate ? 'opacity-100' : 'opacity-0'}`}>
+                    <button
+                      type="button"
+                      data-date-trigger="true"
+                      onClick={() => openDateNavigator()}
+                      className="inline-block rounded-full bg-white/95 px-3 py-1 text-xs text-gray-500 shadow-sm ring-1 ring-gray-200 backdrop-blur transition hover:bg-white hover:text-gray-700"
+                    >
                       {floatingDate}
-                    </span>
+                    </button>
+                  </div>
+                ) : null}
+
+                {isDateNavigatorOpen ? (
+                  <div data-date-navigator="true" className="absolute left-1/2 top-12 z-30 w-[min(22rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-2xl bg-white p-4 shadow-lg ring-1 ring-gray-200">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Перейти к дате</p>
+                    <div className="mt-3 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedHistoryDate((prev) => shiftDateInputValue(prev, -1))}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-600 transition hover:bg-gray-100"
+                        aria-label="Предыдущий день"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <input
+                        type="date"
+                        value={selectedHistoryDate}
+                        onChange={(event) => setSelectedHistoryDate(event.target.value)}
+                        className="h-9 flex-1 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setSelectedHistoryDate((prev) => shiftDateInputValue(prev, 1))}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-600 transition hover:bg-gray-100"
+                        aria-label="Следующий день"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedHistoryDate(formatDateInputValue(new Date()))}
+                        className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-100"
+                      >
+                        Сегодня
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsDateNavigatorOpen(false)}
+                        className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-50"
+                      >
+                        Закрыть
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleJumpToDate(selectedHistoryDate)}
+                        disabled={!selectedHistoryDate || jumpingToDate}
+                        className="ml-auto rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:bg-sky-300"
+                      >
+                        {jumpingToDate ? "Переход..." : "Перейти"}
+                      </button>
+                    </div>
                   </div>
                 ) : null}
 
                 <ScrollableMessageList
                   ref={messagesViewportRef}
-                  autoScrollToBottom={true}
-                  autoScrollToBottomOnMount={true}
+                  autoScrollToBottom={!hasMoreNewer && !historyNavigationMode}
+                  autoScrollToBottomOnMount={!hasMoreNewer && !historyNavigationMode}
                   scrollBehavior="smooth"
                   className="min-h-0 flex-1 bg-gray-50 p-3"
                 >
@@ -1586,9 +1816,14 @@ export default function MessageDialogPage() {
                           <React.Fragment key={message.id}>
                             {showDayDivider && currentMessageDate ? (
                               <div className="mb-3 flex justify-center px-2 pointer-events-none">
-                                <span className="inline-block rounded-full bg-white/95 px-3 py-1 text-xs text-gray-500 shadow-sm ring-1 ring-gray-200 backdrop-blur">
+                                <button
+                                  type="button"
+                                  data-date-trigger="true"
+                                  onClick={() => openDateNavigator(formatDateInputValue(currentMessageDate))}
+                                  className="pointer-events-auto inline-block rounded-full bg-white/95 px-3 py-1 text-xs text-gray-500 shadow-sm ring-1 ring-gray-200 backdrop-blur transition hover:bg-white hover:text-gray-700"
+                                >
                                   {formatDayDivider(currentMessageDate)}
-                                </span>
+                                </button>
                               </div>
                             ) : null}
                             <ChatMessageItem
@@ -1621,12 +1856,7 @@ export default function MessageDialogPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        const container = messagesViewportRef.current?.containerRef?.current;
-                        if (container) {
-                          container.scrollTop = container.scrollHeight;
-                        }
-
-                        resetNewMessagesBelow();
+                        void handleReturnToNewMessages();
                       }}
                       className="relative inline-flex h-10 w-10 items-center justify-center rounded-full bg-sky-500 text-white leading-none shadow-sm shadow-sky-200/70 transition hover:bg-sky-600 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-sky-100"
                       title="Вернуться к новым сообщениям"
