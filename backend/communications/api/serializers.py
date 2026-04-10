@@ -22,6 +22,33 @@ from ..serialization import serialize_message
 User = get_user_model()
 
 
+def _get_active_memberships(obj, *, limit: int | None = None):
+    if hasattr(obj, "_prefetched_objects_cache") and "memberships" in obj._prefetched_objects_cache:
+        memberships = list(obj.memberships.all())
+    else:
+        memberships = list(
+            obj.memberships.filter(is_active=True).select_related("user")
+        )
+
+    if limit is not None:
+        memberships = memberships[:limit]
+
+    return memberships
+
+
+def _get_last_message(obj):
+    if hasattr(obj, "_prefetched_last_message"):
+        prefetched = obj._prefetched_last_message
+        return prefetched[0] if prefetched else None
+
+    return (
+        obj.messages.filter(is_deleted=False)
+        .select_related("author")
+        .order_by("-created_at")
+        .first()
+    )
+
+
 class ChatLastMessageSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     content = serializers.CharField()
@@ -82,6 +109,7 @@ class ChatListSerializer(serializers.ModelSerializer):
 
     last_message = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
+    participant_details = serializers.SerializerMethodField()
     participant_names = serializers.SerializerMethodField()
     member_ids = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
@@ -113,6 +141,7 @@ class ChatListSerializer(serializers.ModelSerializer):
             # Messages & status
             "last_message",
             "unread_count",
+            "participant_details",
             "participant_names",
             "member_ids",
             "is_pinned",
@@ -135,19 +164,7 @@ class ChatListSerializer(serializers.ModelSerializer):
     @extend_schema_field(ChatLastMessageSerializer)
     def get_last_message(self, obj):
         """Последнее сообщение в чате (использует prefetch если доступен)"""
-        last_msg = None
-        if (
-            hasattr(obj, '_prefetched_last_message')
-            and obj._prefetched_last_message
-        ):
-            last_msg = obj._prefetched_last_message[0]
-        else:
-            last_msg = (
-                obj.messages.filter(is_deleted=False)
-                .select_related('author')
-                .order_by("-created_at")
-                .first()
-            )
+        last_msg = _get_last_message(obj)
         if last_msg:
             return {
                 "id": last_msg.id,
@@ -159,13 +176,24 @@ class ChatListSerializer(serializers.ModelSerializer):
             }
         return None
 
+    @extend_schema_field(ChatParticipantPreviewSerializer(many=True))
+    def get_participant_details(self, obj):
+        members = _get_active_memberships(obj, limit=20)
+        return [
+            {
+                "id": membership.user.id,
+                "name": membership.user.get_full_name(),
+                "avatar": membership.user.avatar.url if membership.user.avatar else None,
+            }
+            for membership in members
+        ]
+
     @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_participant_names(self, obj):
         """Имена участников (для приватных чатов, из prefetch)"""
         if obj.type == "private":
-            # memberships уже prefetch'нуты в ChatViewSet.get_queryset
-            members = list(obj.memberships.all())[:5]
-            return [m.user.get_full_name() for m in members]
+            members = _get_active_memberships(obj, limit=5)
+            return [membership.user.get_full_name() for membership in members]
         return []
 
     @extend_schema_field(
@@ -173,11 +201,7 @@ class ChatListSerializer(serializers.ModelSerializer):
     )
     def get_member_ids(self, obj):
         """ID участников (из prefetch, для поиска существующего чата)"""
-        return list(
-            obj.memberships.filter(is_active=True).values_list(
-                "user_id", flat=True
-            )
-        )
+        return [membership.user_id for membership in _get_active_memberships(obj)]
 
     @extend_schema_field(serializers.BooleanField())
     def get_is_pinned(self, obj):
@@ -213,6 +237,8 @@ class ChatDetailSerializer(serializers.ModelSerializer):
     is_pinned = serializers.SerializerMethodField()
     notifications_enabled = serializers.SerializerMethodField()
     last_read_message_id = serializers.SerializerMethodField()
+    last_message = serializers.SerializerMethodField()
+    unread_count = serializers.SerializerMethodField()
     context_content_type = serializers.PrimaryKeyRelatedField(
         queryset=ContentType.objects.all(),
         write_only=True,
@@ -260,6 +286,8 @@ class ChatDetailSerializer(serializers.ModelSerializer):
             "is_pinned",
             "notifications_enabled",
             "last_read_message_id",
+            "last_message",
+            "unread_count",
         ]
         read_only_fields = [
             "created_at",
@@ -289,18 +317,13 @@ class ChatDetailSerializer(serializers.ModelSerializer):
         """Детали участников
         MIGRATION: Используем memberships вместо participants
         """
-        # Получаем активных участников через memberships
-        active_memberships = obj.memberships.filter(
-            is_active=True
-        ).select_related("user")[:20]
-
         return [
             {
-                "id": m.user.id,
-                "name": m.user.get_full_name(),
-                "avatar": m.user.avatar.url if m.user.avatar else None,
+                "id": membership.user.id,
+                "name": membership.user.get_full_name(),
+                "avatar": membership.user.avatar.url if membership.user.avatar else None,
             }
-            for m in active_memberships
+            for membership in _get_active_memberships(obj, limit=20)
         ]
 
     @extend_schema_field(ChatUserSettingsSerializer)
@@ -330,6 +353,27 @@ class ChatDetailSerializer(serializers.ModelSerializer):
         if hasattr(obj, "my_read_state") and obj.my_read_state:
             return obj.my_read_state[0].last_read_message_id
         return None
+
+    @extend_schema_field(ChatLastMessageSerializer)
+    def get_last_message(self, obj):
+        last_msg = _get_last_message(obj)
+        if not last_msg:
+            return None
+
+        return {
+            "id": last_msg.id,
+            "content": last_msg.content[:100],
+            "author_name": last_msg.author.get_full_name()
+            if last_msg.author
+            else "Unknown",
+            "created_at": last_msg.created_at.isoformat(),
+        }
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_unread_count(self, obj):
+        if hasattr(obj, "my_read_state") and obj.my_read_state:
+            return obj.my_read_state[0].unread_count
+        return 0
 
 
 class MessageAttachmentSerializer(serializers.ModelSerializer):

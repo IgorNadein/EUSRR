@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/url";
@@ -12,6 +12,7 @@ import Image from "next/image";
 import { useUser } from "@/contexts/UserContext";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui";
+import wsManager from "@/lib/websocketManager";
 
 type UnreadFilter = "all" | "unread" | "read";
 type PinnedFilter = "all" | "pinned" | "unpinned";
@@ -20,6 +21,17 @@ type CreateChatPayload = {
   name: string;
   description?: string;
   avatar?: File;
+};
+
+type RealtimeChatEvent = {
+  type: string;
+  chat_id?: number;
+  notification?: {
+    verb?: string;
+    data?: {
+      chat_id?: number;
+    };
+  };
 };
 
 function getChatTypeIcon(chat: Chat) {
@@ -107,69 +119,111 @@ export default function MessagesPage() {
   const [newChatAvatar, setNewChatAvatar] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const refreshAllChatsInFlightRef = useRef(false);
+  const refreshChatInFlightRef = useRef<Set<number>>(new Set());
+  const hasCompletedInitialLoadRef = useRef(false);
+  const wasWsConnectedRef = useRef(false);
 
-  useEffect(() => {
-    async function loadChats() {
-      try {
+  const loadChats = useCallback(async (options?: { showLoader?: boolean }) => {
+    if (refreshAllChatsInFlightRef.current) {
+      return;
+    }
+
+    const showLoader = options?.showLoader ?? true;
+    refreshAllChatsInFlightRef.current = true;
+
+    try {
+      if (showLoader) {
         setLoading(true);
-        setError(null);
-        const items = await apiClient.getAllChats();
-
-        // FRONTEND-ONLY: добираем детали чатов, чтобы получить имя/аватар собеседника
-        // для private/direct в случае, когда list не отдает avatar/participant_details.
-        const needDetails = items.filter((chat: Chat) => {
-          const kind = chat.chat_type || chat.type;
-          if (kind !== "private" && kind !== "direct") return false;
-
-          const hasOtherAvatar = Boolean(getChatAvatar(chat, currentUserId));
-          const resolvedTitle = getChatTitle(chat, currentUserId, currentUserForMatch).trim();
-          const hasOtherName = Boolean(resolvedTitle && resolvedTitle.toLowerCase() !== "диалог");
-          return !(hasOtherAvatar && hasOtherName);
-        });
-
-        if (!needDetails.length) {
-          setChats(items);
-          return;
-        }
-
-        const details = await Promise.all(
-          needDetails.map(async (chat: Chat) => {
-            try {
-              return await apiClient.getChat(chat.id);
-            } catch {
-              return null;
-            }
-          })
-        );
-
-        const detailsMap = new Map<number, Chat>();
-        details.forEach((d) => {
-          if (d) detailsMap.set(d.id, d);
-        });
-
-        const merged = items.map((chat: Chat) => {
-          const detail = detailsMap.get(chat.id);
-          if (!detail) return chat;
-          return {
-            ...chat,
-            participants: detail.participants ?? chat.participants,
-            participant_details: detail.participant_details ?? chat.participant_details,
-            avatar: chat.avatar || detail.avatar,
-            name: chat.name || detail.name,
-          };
-        });
-
-        setChats(merged);
-      } catch (e: unknown) {
-        console.error("Ошибка загрузки чатов:", e);
-        setError("Не удалось загрузить чаты");
-      } finally {
+      }
+      setError(null);
+      const items = await apiClient.getAllChats();
+      setChats(items);
+      hasCompletedInitialLoadRef.current = true;
+    } catch (e: unknown) {
+      console.error("Ошибка загрузки чатов:", e);
+      setError("Не удалось загрузить чаты");
+    } finally {
+      refreshAllChatsInFlightRef.current = false;
+      if (showLoader) {
         setLoading(false);
       }
     }
+  }, []);
 
-    loadChats();
-  }, [currentUserForMatch, currentUserId]);
+  const refreshChat = useCallback(async (chatId: number) => {
+    if (!Number.isFinite(chatId) || chatId <= 0) {
+      return;
+    }
+
+    if (refreshAllChatsInFlightRef.current || refreshChatInFlightRef.current.has(chatId)) {
+      return;
+    }
+
+    refreshChatInFlightRef.current.add(chatId);
+
+    try {
+      const chat = await apiClient.getChat(chatId);
+      setChats((prev) => {
+        const existingIndex = prev.findIndex((item) => item.id === chatId);
+        if (existingIndex === -1) {
+          return [chat, ...prev];
+        }
+
+        const next = [...prev];
+        next[existingIndex] = {
+          ...prev[existingIndex],
+          ...chat,
+        };
+        return next;
+      });
+    } catch (e) {
+      console.warn(`Не удалось точечно обновить чат ${chatId}, перегружаю список`, e);
+      await loadChats({ showLoader: false });
+    } finally {
+      refreshChatInFlightRef.current.delete(chatId);
+    }
+  }, [loadChats]);
+
+  useEffect(() => {
+    void loadChats();
+  }, [loadChats]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !localStorage.getItem("access_token")) {
+      return;
+    }
+
+    const unsubscribeMessages = wsManager.subscribe((event) => {
+      const data = event as RealtimeChatEvent;
+
+      if ((data.type === "list_update" || data.type === "message_edited") && typeof data.chat_id === "number") {
+        void refreshChat(data.chat_id);
+        return;
+      }
+
+      if (data.type !== "notification" || !data.notification) {
+        return;
+      }
+
+      if (data.notification.verb === "chat_added_to_chat") {
+        void loadChats({ showLoader: false });
+        return;
+      }
+    });
+
+    const unsubscribeStatus = wsManager.subscribeStatus((status) => {
+      if (status.isConnected && !wasWsConnectedRef.current && hasCompletedInitialLoadRef.current) {
+        void loadChats({ showLoader: false });
+      }
+      wasWsConnectedRef.current = status.isConnected;
+    });
+
+    return () => {
+      unsubscribeMessages();
+      unsubscribeStatus();
+    };
+  }, [loadChats, refreshChat]);
 
   const filteredChats = useMemo(() => {
     const q = search.trim().toLowerCase();
