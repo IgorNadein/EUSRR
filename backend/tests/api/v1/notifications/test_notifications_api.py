@@ -3,6 +3,7 @@ from unittest.mock import patch
 import pytest
 
 from notifications.models import Notification
+from notifications.models import UserChannelPreferences
 
 
 pytestmark = pytest.mark.django_db
@@ -106,3 +107,54 @@ class TestNotificationRealtimeEvents:
         args, kwargs = send_event.call_args
         assert args == (user.id, [matching.id])
         assert kwargs == {"category": "Заявки"}
+
+
+class TestNotificationPreferencesApi:
+    def test_get_preferences_returns_never_frequency(
+        self, api_client, user_factory
+    ):
+        user = user_factory()
+        UserChannelPreferences.objects.create(
+            user=user,
+            email_enabled=True,
+            email_frequency="never",
+        )
+
+        api_client.force_authenticate(user=user)
+        response = api_client.get("/api/v1/notifications/preferences/")
+
+        assert response.status_code == 200
+        assert response.data["email_frequency"] == "never"
+
+    def test_put_preferences_accepts_legacy_disabled_alias(
+        self, api_client, user_factory
+    ):
+        user = user_factory()
+        api_client.force_authenticate(user=user)
+
+        response = api_client.put(
+            "/api/v1/notifications/preferences/",
+            {"email_enabled": True, "email_frequency": "disabled"},
+            format="json",
+        )
+
+        assert response.status_code == 200
+        prefs = UserChannelPreferences.objects.get(user=user)
+        assert prefs.email_enabled is True
+        assert prefs.email_frequency == "never"
+
+    def test_put_preferences_accepts_never(
+        self, api_client, user_factory
+    ):
+        user = user_factory()
+        api_client.force_authenticate(user=user)
+
+        response = api_client.put(
+            "/api/v1/notifications/preferences/",
+            {"email_frequency": "never"},
+            format="json",
+        )
+
+        assert response.status_code == 200
+        prefs = UserChannelPreferences.objects.get(user=user)
+        assert prefs.email_frequency == "never"

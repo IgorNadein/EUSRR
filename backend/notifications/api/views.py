@@ -446,11 +446,18 @@ def channel_preferences(request):
         user=request.user
     )
 
+    def _normalize_email_frequency(value):
+        if value == 'disabled':
+            return 'never'
+        return value
+
     if request.method == 'GET':
         data = {
             'web_enabled': prefs.web_enabled,
             'email_enabled': prefs.email_enabled,
-            'email_frequency': prefs.email_frequency,
+            'email_frequency': _normalize_email_frequency(
+                prefs.email_frequency
+            ),
             'push_enabled': prefs.push_enabled,
             'dnd_enabled': prefs.dnd_enabled,
             'dnd_start_time': _format_time_or_none(prefs.dnd_start_time),
@@ -468,8 +475,10 @@ def channel_preferences(request):
             prefs.email_enabled = request.data.get('email_enabled')
 
         if 'email_frequency' in request.data:
-            frequency = request.data.get('email_frequency')
-            if frequency in ['instant', 'daily', 'weekly', 'disabled']:
+            frequency = _normalize_email_frequency(
+                request.data.get('email_frequency')
+            )
+            if frequency in ['instant', 'daily', 'weekly', 'never']:
                 prefs.email_frequency = frequency
 
         if 'push_enabled' in request.data:
