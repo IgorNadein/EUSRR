@@ -77,8 +77,8 @@ export default function MessageComposer({
       .filter((file): file is File => Boolean(file));
 
     const uniqueFiles = [...clipboardFiles, ...clipboardItemFiles].filter((file, index, files) => {
-      const signature = `${file.name}|${file.size}|${file.type}|${file.lastModified}`;
-      return files.findIndex((candidate) => `${candidate.name}|${candidate.size}|${candidate.type}|${candidate.lastModified}` === signature) === index;
+      const signature = `${file.name}|${file.size}|${file.type}`;
+      return files.findIndex((candidate) => `${candidate.name}|${candidate.size}|${candidate.type}` === signature) === index;
     });
 
     if (uniqueFiles.length > 0) {
