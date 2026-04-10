@@ -479,7 +479,7 @@ class TestChatMarkedReadEvent:
     
     @pytest.mark.asyncio
     async def test_marked_read_sync_between_tabs(self, ws_communicator, user, test_chat):
-        """Отметка прочтения синхронизируется между вкладками пользователя."""
+        """Отметка прочтения синхронизируется между вкладками читателя."""
         # Имитируем две вкладки одного пользователя
         comm1 = await ws_communicator(user=user)
         comm2 = await ws_communicator(user=user)
@@ -487,18 +487,38 @@ class TestChatMarkedReadEvent:
         connected1, _ = await comm1.connect()
         connected2, _ = await comm2.connect()
         assert connected1 and connected2
+
+        await comm1.send_json_to(
+            {
+                "action": "open_chat",
+                "chat_id": test_chat.id,
+                "load_history": False,
+            }
+        )
+        await comm2.send_json_to(
+            {
+                "action": "open_chat",
+                "chat_id": test_chat.id,
+                "load_history": False,
+            }
+        )
+
+        opened1 = await comm1.receive_json_from(timeout=5)
+        opened2 = await comm2.receive_json_from(timeout=5)
+        assert opened1["type"] == "chat_opened"
+        assert opened2["type"] == "chat_opened"
         
-        # Отправляем событие marked_read в канал пользователя (имитируем API)
+        # Отправляем sync-событие в пользовательский канал (как делает API)
         channel_layer = get_channel_layer()
         mock_message_id = 988
         
         await channel_layer.group_send(
             f'user_{user.id}',
             {
-                'type': 'chat_marked_read',
+                'type': 'chat_marked_read_sync',
                 'chat_id': test_chat.id,
-                'last_read_at': '2026-01-21T10:00:00Z',
-                'last_read_message_id': mock_message_id
+                'last_read_message_id': mock_message_id,
+                'reader_user_id': user.id,
             }
         )
         
@@ -507,54 +527,87 @@ class TestChatMarkedReadEvent:
         assert response1["type"] == "marked_read"
         assert response1["chat_id"] == test_chat.id
         assert response1["last_read_message_id"] == mock_message_id
+        assert response1["reader_user_id"] == user.id
         
         response2 = await comm2.receive_json_from(timeout=5)
         assert response2["type"] == "marked_read"
         assert response2["chat_id"] == test_chat.id
+        assert response2["last_read_message_id"] == mock_message_id
+        assert response2["reader_user_id"] == user.id
         
         await comm1.disconnect()
         await comm2.disconnect()
     
     @pytest.mark.asyncio
-    async def test_marked_read_not_received_by_other_users(self, ws_communicator, user, user2, test_chat_with_users):
-        """Событие marked_read получает только тот пользователь, который отметил."""
-        comm1 = await ws_communicator(user=user)
-        comm2 = await ws_communicator(user=user2)
+    async def test_marked_read_receipt_is_sent_only_to_other_active_users(
+        self,
+        ws_communicator,
+        user,
+        user2,
+        test_chat_with_users,
+    ):
+        """Read receipt из chat-группы видят другие участники, но не читатель."""
+        import asyncio
+
+        comm_reader = await ws_communicator(user=user)
+        comm_other = await ws_communicator(user=user2)
         
-        connected1, _ = await comm1.connect()
-        connected2, _ = await comm2.connect()
+        connected1, _ = await comm_reader.connect()
+        connected2, _ = await comm_other.connect()
         assert connected1 and connected2
+
+        await comm_reader.send_json_to(
+            {
+                "action": "open_chat",
+                "chat_id": test_chat_with_users.id,
+                "load_history": False,
+            }
+        )
+        await comm_other.send_json_to(
+            {
+                "action": "open_chat",
+                "chat_id": test_chat_with_users.id,
+                "load_history": False,
+            }
+        )
+
+        opened1 = await comm_reader.receive_json_from(timeout=5)
+        opened2 = await comm_other.receive_json_from(timeout=5)
+        assert opened1["type"] == "chat_opened"
+        assert opened2["type"] == "chat_opened"
         
-        # User1 отмечает как прочитанное (имитируем API)
+        # Отправляем read receipt в канал чата (как делает API для других участников)
         channel_layer = get_channel_layer()
         mock_message_id = 987
         
         await channel_layer.group_send(
-            f'user_{user.id}',  # ТОЛЬКО user1
+            f'chat_{test_chat_with_users.id}',
             {
                 'type': 'chat_marked_read',
                 'chat_id': test_chat_with_users.id,
-                'last_read_at': '2026-01-21T10:00:00Z',
-                'last_read_message_id': mock_message_id
+                'last_read_message_id': mock_message_id,
+                'reader_user_id': user.id,
             }
         )
         
-        # User1 должен получить
-        response1 = await comm1.receive_json_from(timeout=5)
-        assert response1["type"] == "marked_read"
+        # Другой участник должен получить receipt
+        response_other = await comm_other.receive_json_from(timeout=5)
+        assert response_other["type"] == "marked_read"
+        assert response_other["chat_id"] == test_chat_with_users.id
+        assert response_other["last_read_message_id"] == mock_message_id
+        assert response_other["reader_user_id"] == user.id
         
-        # User2 НЕ должен получить
-        import asyncio
+        # Сам читатель не должен получать receipt из chat-группы
         with pytest.raises(asyncio.TimeoutError):
-            await comm2.receive_json_from(timeout=2)
+            await comm_reader.receive_json_from(timeout=2)
 
         # Cleanup: after TimeoutError, communicator may be in cancelled state
         try:
-            await comm2.disconnect()
+            await comm_other.disconnect()
         except asyncio.CancelledError:
             pass
         try:
-            await comm1.disconnect()
+            await comm_reader.disconnect()
         except asyncio.CancelledError:
             pass
 
