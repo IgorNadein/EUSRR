@@ -28,7 +28,7 @@ export function Modal({
   children,
   size = "md",
   showCloseButton = true,
-  closeOnClickOutside = true,
+  closeOnClickOutside = false,
   closeOnEsc = true,
   footer,
   className = "",
