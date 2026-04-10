@@ -172,6 +172,36 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             qs = qs.order_by("name")
         return qs
 
+    def _extract_department_ldap_changes(
+        self, instance: Department, data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Собирает diff значимых LDAP-полей до сохранения."""
+        changes: Dict[str, Any] = {}
+        for field in ("name", "description"):
+            if field not in data:
+                continue
+            new_value = data.get(field)
+            if new_value != getattr(instance, field):
+                changes[field] = new_value
+        return changes
+
+    def _mark_department_sync_attrs(
+        self,
+        instance: Department,
+        *,
+        changes: Dict[str, Any] | None = None,
+        sync_head: bool = False,
+    ) -> None:
+        """Передаёт post_save сигналу точный diff отдела."""
+        if changes:
+            existing = getattr(instance, "_ldap_changes", {}) or {}
+            if not isinstance(existing, dict):
+                existing = {}
+            existing.update(changes)
+            instance._ldap_changes = existing
+        if sync_head:
+            instance._ldap_sync_head = True
+
     # --- частичное изменение ---
 
     def _perform_set_head(
@@ -223,9 +253,26 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             instance.head_appointed_at = timezone.now()
         else:
             instance.head_appointed_at = None
+        self._mark_department_sync_attrs(instance, sync_head=True)
         instance.save(update_fields=["head", "head_appointed_at"])
 
         return instance
+
+    def perform_update(self, serializer):
+        """Обновление отдела с фиксацией LDAP diff до save()."""
+        instance = serializer.instance
+        validated_data = serializer.validated_data
+        self._mark_department_sync_attrs(
+            instance,
+            changes=self._extract_department_ldap_changes(
+                instance, validated_data
+            ),
+            sync_head=(
+                "head" in validated_data
+                and validated_data.get("head") != instance.head
+            ),
+        )
+        serializer.save()
 
     def partial_update(self, request, *args, **kwargs) -> Response:
         """Частичный апдейт отдела."""
@@ -268,14 +315,12 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             instance = result
 
         # --- NAME / DESCRIPTION ---
-        changes: Dict[str, Any] = {}
-        for k in ("name", "description"):
-            if k in data:
-                changes[k] = data.get(k)
+        changes = self._extract_department_ldap_changes(instance, data)
 
         if changes:
             for k, v in changes.items():
                 setattr(instance, k, v)
+            self._mark_department_sync_attrs(instance, changes=changes)
             instance.save(update_fields=list(changes.keys()))
 
         return Response(

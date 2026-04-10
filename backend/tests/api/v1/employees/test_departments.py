@@ -46,8 +46,10 @@
 # * `extract_results` — вытаскивает `results` из пагинированного ответа DRF или возвращает список как есть.
 
 import itertools
+from unittest.mock import patch
 
 import pytest
+from django.test import override_settings
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from employees.models import (
@@ -313,6 +315,128 @@ def test_partial_update_head_same_value_does_not_require_extra_perm(
     )
     d.refresh_from_db()
     assert d.head_id == a.id
+
+
+@override_settings(LDAP_ENABLED=True)
+def test_partial_update_passes_name_description_diff_to_ldap_sync(
+    api_client: APIClient,
+):
+    with override_settings(LDAP_ENABLED=False):
+        head = make_user("patch-head@example.com")
+        d = Department.objects.create(
+            name="Dept",
+            description="old description",
+            head=head,
+        )
+        emp = make_user("patch-manager@example.com")
+        role = make_role(d, "mgr", ["manage_department"])
+        EmployeeDepartment.objects.create(
+            employee=emp,
+            department=d,
+            is_active=True,
+            role=role,
+        )
+
+    api_client.force_authenticate(user=emp)
+    url = reverse("api:v1:departments-detail", args=[d.pk])
+
+    with patch(
+        "employees.signals.ldap.department.DepartmentService.sync_department_state"
+    ) as mock_sync:
+        resp = api_client.patch(
+            url,
+            {"name": "Dept Renamed", "description": "new description"},
+            format="json",
+        )
+
+    assert resp.status_code == status.HTTP_200_OK
+    mock_sync.assert_called_once_with(
+        d,
+        created=False,
+        changes={
+            "name": "Dept Renamed",
+            "description": "new description",
+        },
+        sync_head=False,
+    )
+
+
+@override_settings(LDAP_ENABLED=True)
+def test_partial_update_head_passes_sync_head_to_ldap_sync(
+    api_client: APIClient,
+):
+    with override_settings(LDAP_ENABLED=False):
+        head = make_user("head-old@example.com")
+        candidate = make_user("head-new@example.com")
+        d = Department.objects.create(name="Dept", head=head)
+        emp = make_user("head-manager@example.com")
+        role = make_role(
+            d, "mgr", ["manage_department", "change_department_head"]
+        )
+        EmployeeDepartment.objects.create(
+            employee=emp,
+            department=d,
+            is_active=True,
+            role=role,
+        )
+
+    api_client.force_authenticate(user=emp)
+    url = reverse("api:v1:departments-detail", args=[d.pk])
+
+    with patch(
+        "employees.signals.ldap.department.DepartmentService.sync_department_state"
+    ) as mock_sync:
+        resp = api_client.patch(url, {"head_id": candidate.id}, format="json")
+
+    assert resp.status_code == status.HTTP_200_OK
+    mock_sync.assert_called_once_with(
+        d,
+        created=False,
+        changes={},
+        sync_head=True,
+    )
+
+
+@override_settings(LDAP_ENABLED=True)
+def test_full_update_passes_department_diff_to_ldap_sync(
+    api_client: APIClient,
+):
+    with override_settings(LDAP_ENABLED=False):
+        d = Department.objects.create(
+            name="Dept Full",
+            description="before update",
+        )
+        emp = make_user("put-manager@example.com")
+        role = make_role(d, "mgr", ["manage_department"])
+        EmployeeDepartment.objects.create(
+            employee=emp,
+            department=d,
+            is_active=True,
+            role=role,
+        )
+
+    api_client.force_authenticate(user=emp)
+    url = reverse("api:v1:departments-detail", args=[d.pk])
+
+    with patch(
+        "employees.signals.ldap.department.DepartmentService.sync_department_state"
+    ) as mock_sync:
+        resp = api_client.put(
+            url,
+            {"name": "Dept Full Updated", "description": "after update"},
+            format="json",
+        )
+
+    assert resp.status_code == status.HTTP_200_OK
+    mock_sync.assert_called_once_with(
+        d,
+        created=False,
+        changes={
+            "name": "Dept Full Updated",
+            "description": "after update",
+        },
+        sync_head=False,
+    )
 
 # ---------- tests: action set_head ----------
 

@@ -1,5 +1,22 @@
 # Чеклист рефакторинга LDAP-сервисов
 
+## ✅ Завершено
+
+### Обновление 10 апреля 2026: canonical Department sync
+
+- [x] `DepartmentService` получил sync-oriented API:
+  - `sync_department_state()`
+  - `sync_department_delete()`
+  - `sync_member_state()`
+- [x] Signals и Celery retry для Department используют один и тот же service-path
+- [x] Удалены вызовы устаревших private-методов retry-пути (`_move_user_to_department`, `_move_user_to_base_ou`)
+- [x] `Department` diff теперь формируется до `save()` через `_ldap_changes`
+- [x] Head sync теперь передаётся явно через `_ldap_sync_head`
+- [x] Добавлены регрессионные тесты для:
+  - `department_member` retry (`is_active=True/False`)
+  - `department_save` retry
+  - API/view diff для `name`, `description`, `head`
+
 ## ✅ Завершено (19 марта 2026)
 
 ### Фаза 1: Фундамент архитектуры
@@ -44,9 +61,11 @@
 - [x] Добавить логирование через _log_operation()
 - [x] Рефакторить _touch_state на использование BaseService
 - [ ] Использовать GroupServiceRefactored
+- [x] Ввести единый Department sync contract для signals + retry
+- [x] Перенести `department_save`, `department_delete`, `department_member` на canonical service-path
 
 **Статус:** ✅ Завершено (кроме миграции на GroupServiceRefactored)  
-**Дата:** 19 марта 2026 г.
+**Дата:** 10 апреля 2026 г.
 
 #### PositionService
 - [x] Наследовать от BaseService
@@ -83,7 +102,7 @@
 - [ ] Создать unit-тесты для BaseService
 - [ ] Создать unit-тесты для подсервисов (Password, Login, Mapper)
 - [ ] Создать интеграционные тесты для GroupServiceRefactored
-- [ ] Обновить существующие тесты
+- [x] Обновить существующие тесты для Department retry/diff
 - [ ] Проверить покрытие тестами (цель: >80%)
 
 **Оценка:** 6-8 часов  
@@ -150,12 +169,12 @@
 | UserLoginService | ✅ Готов | 100% |
 | UserMapperService | ✅ Готов | 100% |
 | GroupServiceRefactored | ✅ Готов | 100% |
-| DepartmentService | ✅ Рефакторен | 90% |
+| DepartmentService | ✅ Рефакторен | 95% |
 | PositionService | ✅ Рефакторен | 90% |
 | UserService | 🔄 Legacy | 0% |
 | SyncService | 🔄 Legacy | 0% |
 
-**Общий прогресс:** 75% завершено (было 60%)
+**Общий прогресс:** 80% завершено
 
 ---
 
@@ -210,5 +229,5 @@
 
 ---
 
-**Последнее обновление:** 19 марта 2026 г.  
+**Последнее обновление:** 10 апреля 2026 г.  
 **Статус проекта:** 🟢 Активный рефакторинг
