@@ -23,6 +23,14 @@ type CreateChatPayload = {
   avatar?: File;
 };
 
+type RealtimeChatEvent = {
+  type: "notification" | "list_update" | "message_edited" | string;
+  chat_id?: number;
+  notification?: {
+    verb?: string;
+  } | null;
+};
+
 const chatTypeOptions = [
   { key: "all", label: "Все" },
   { key: "global", label: "Глобальный" },
