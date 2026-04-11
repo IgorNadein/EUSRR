@@ -2,6 +2,7 @@
 
 import { Edit2, Trash2, Clock, Calendar, FileText, Users } from "lucide-react";
 import { Modal } from "@/components/ui";
+import { resolveEventColor } from "@/lib/calendar-event-colors";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { useState, useEffect } from "react";
@@ -134,7 +135,7 @@ export function ViewEventDetailsModal({
           <div className="app-text-muted flex items-center gap-1.5 text-xs">
             <div
               className="h-2.5 w-2.5 rounded-full flex-shrink-0"
-              style={{ backgroundColor: event.color_event || "#3498db" }}
+              style={{ backgroundColor: resolveEventColor(event.color_event) }}
             />
             <span className="truncate">Календарь #{event.calendar}</span>
           </div>

@@ -2,6 +2,7 @@
 
 import { Plus, Clock, Calendar } from "lucide-react";
 import { Modal } from "@/components/ui";
+import { resolveEventColor } from "@/lib/calendar-event-colors";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 
@@ -91,7 +92,7 @@ export function ViewDayEventsModal({
                     {/* Color Indicator */}
                     <div
                       className="mt-1 h-8 w-1 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: event.color_event || "#3498db" }}
+                      style={{ backgroundColor: resolveEventColor(event.color_event) }}
                     />
 
                     <div className="flex-1 min-w-0">

@@ -149,6 +149,7 @@ export default function ProcurementPage() {
     urgencyFilter,
     userLink,
     scope,
+    scopeCounts,
   } = useProcurementPage(user);
 
   /* ══════════════════════════════════════════════════════
@@ -158,34 +159,34 @@ export default function ProcurementPage() {
   return (
     <AppShell>
       {loading ? (
-        <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-100">
+        <div className="app-surface rounded-2xl p-8 text-center">
           <Loader2 size={28} className="mx-auto mb-3 animate-spin text-sky-500" />
-          <p className="text-sm text-gray-500">Загрузка заявок на закупку...</p>
+          <p className="app-text-muted text-sm">Загрузка заявок на закупку...</p>
         </div>
       ) : error ? (
-        <div className="rounded-2xl bg-red-50 p-6 text-center">
+        <div className="app-feedback-danger rounded-2xl p-6 text-center">
           <p className="text-sm text-red-800">{error}</p>
         </div>
       ) : (
-        <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+        <section className="app-surface rounded-2xl p-4">
           {/* ── header ── */}
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">Закупки</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button type="button" onClick={() => setActiveSection("requests")} className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${activeSection === "requests" ? "bg-sky-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
+              <p className="app-text-muted text-sm font-semibold uppercase tracking-wide">Закупки</p>
+              {/* <div className="mt-2 flex flex-wrap gap-2">
+                <button type="button" onClick={() => setActiveSection("requests")} className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${activeSection === "requests" ? "app-pill-active" : "app-pill"}`}>
                   Заявки
                 </button>
-                <button type="button" onClick={() => setActiveSection("stats")} className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${activeSection === "stats" ? "bg-sky-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
+                <button type="button" onClick={() => setActiveSection("stats")} className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${activeSection === "stats" ? "app-pill-active" : "app-pill"}`}>
                   Статистика
                 </button>
-                <button type="button" onClick={() => setActiveSection("suppliers")} className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${activeSection === "suppliers" ? "bg-sky-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
+                <button type="button" onClick={() => setActiveSection("suppliers")} className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${activeSection === "suppliers" ? "app-pill-active" : "app-pill"}`}>
                   Поставщики
                 </button>
-              </div>
+              </div> */}
             </div>
             {activeSection === "requests" && (
-              <button type="button" onClick={openCreate} className="inline-flex items-center gap-1 rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-600">
+              <button type="button" onClick={openCreate} className="app-action-primary inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium transition">
                 <Plus size={14} /> Создать заявку
               </button>
             )}
@@ -212,14 +213,14 @@ export default function ProcurementPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") loadPage1(); }}
                 placeholder="Поиск по заявкам..."
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                className="app-input w-full rounded-lg py-2.5 pl-9 pr-3 text-sm"
               />
             </div>
             <button
               type="button"
               title="Фильтры"
               onClick={() => setFiltersOpen((v) => !v)}
-              className={`relative inline-flex items-center justify-center rounded-lg border p-2.5 transition ${filtersOpen ? "border-sky-400 bg-sky-50 text-sky-600" : "border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100"}`}
+              className={`relative inline-flex items-center justify-center rounded-lg p-2.5 transition ${filtersOpen ? "app-selected app-accent-text" : "app-surface-muted app-text-muted hover:bg-[var(--surface-tertiary)]"}`}
             >
               <Filter size={16} />
               {activeFilterCount > 0 && (
@@ -231,7 +232,7 @@ export default function ProcurementPage() {
               <select
                 value={ordering}
                 onChange={(e) => setOrdering(e.target.value)}
-                className="w-full appearance-none rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-8 text-xs font-medium text-gray-700 transition hover:bg-gray-100 focus:border-sky-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                className="app-select w-full appearance-none rounded-lg py-2.5 pl-9 pr-8 text-xs font-medium"
                 aria-label="Сортировка списка закупок"
               >
                 {orderingOptions.map((option) => (
@@ -251,35 +252,40 @@ export default function ProcurementPage() {
                 onClick={() => setScope(tab.value)}
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
                   scope === tab.value
-                    ? "bg-sky-600 text-white"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    ? "app-pill-active"
+                    : "app-pill"
                 }`}
               >
-                {tab.label}
+                <span>{tab.label}</span>
+                <span className={`app-badge px-1.5 py-0.5 text-[10px] font-bold ${
+                  scope === tab.value ? "app-pill-count-active" : "app-pill-count"
+                }`}>
+                  {scopeCounts[tab.value] ?? 0}
+                </span>
               </button>
             ))}
           </div>
 
           {/* ── filters panel ── */}
           {filtersOpen && (
-            <div className="mb-3 flex flex-col gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+            <div className="app-surface-muted mb-3 flex flex-col gap-2 rounded-xl p-3">
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="app-select rounded-lg px-3 py-2 text-sm">
                 <option value="">Все статусы</option>
                 {Object.entries(statusMeta).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
-              <select value={urgencyFilter} onChange={(e) => setUrgencyFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+              <select value={urgencyFilter} onChange={(e) => setUrgencyFilter(e.target.value)} className="app-select rounded-lg px-3 py-2 text-sm">
                 <option value="">Все уровни срочности</option>
                 {Object.entries(urgencyMeta).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
-              <select value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+              <select value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)} className="app-select rounded-lg px-3 py-2 text-sm">
                 <option value="">Все отделы</option>
                 {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
-              <select value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+              <select value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value)} className="app-select rounded-lg px-3 py-2 text-sm">
                 {periodOptions.map((option) => <option key={option.value || "all"} value={option.value}>{option.label}</option>)}
               </select>
               {activeFilterCount > 0 && (
-                <button type="button" onClick={() => { setStatusFilter(""); setUrgencyFilter(""); setDepartmentFilter(""); setPeriodFilter(""); }} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition">
+                <button type="button" onClick={() => { setStatusFilter(""); setUrgencyFilter(""); setDepartmentFilter(""); setPeriodFilter(""); }} className="app-action-secondary rounded-lg px-3 py-2 text-sm font-medium transition">
                   Очистить фильтры
                 </button>
               )}
@@ -526,8 +532,8 @@ export default function ProcurementPage() {
       {/* ══════════ Create / Edit modal ══════════ */}
       <Modal isOpen={isModalOpen} onClose={closeModal} title={modalMode === "create" ? "Новая заявка на закупку" : "Редактировать заявку"} size="lg" footer={
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <button type="button" onClick={closeModal} className="rounded-lg bg-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300">Отмена</button>
-              <button type="button" onClick={handleSave} disabled={busyKey === "save"} className="rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-60">
+              <button type="button" onClick={closeModal} className="app-action-secondary rounded-lg px-3 py-2 text-sm font-medium">Отмена</button>
+              <button type="button" onClick={handleSave} disabled={busyKey === "save"} className="app-action-primary rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-60">
                 {modalMode === "create" ? "Создать черновик" : "Сохранить"}
               </button>
             </div>
@@ -538,24 +544,24 @@ export default function ProcurementPage() {
             <div className="flex flex-col gap-3">
               {/* Название */}
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">Название заявки *</label>
+                <label className="app-text-muted mb-1 block text-xs font-medium">Название заявки *</label>
                 <input
                   value={form.title}
                   onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                   placeholder="Закупка офисной техники..."
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                  className="app-input w-full rounded-lg px-3 py-2 text-sm"
                 />
               </div>
 
               {/* Описание */}
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">Описание и обоснование *</label>
+                <label className="app-text-muted mb-1 block text-xs font-medium">Описание и обоснование *</label>
                 <textarea
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                   placeholder="Обоснуйте необходимость закупки..."
                   rows={3}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                  className="app-input w-full rounded-lg px-3 py-2 text-sm"
                 />
               </div>
 
@@ -569,11 +575,11 @@ export default function ProcurementPage() {
                   onSelect={(id) => setForm((f) => ({ ...f, department: id }))}
                 />
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500">Срочность</label>
+                  <label className="app-text-muted mb-1 block text-xs font-medium">Срочность</label>
                   <select
                     value={form.urgency}
                     onChange={(e) => setForm((f) => ({ ...f, urgency: e.target.value as UrgencyLevel }))}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                    className="app-select w-full rounded-lg px-3 py-2 text-sm"
                   >
                     <option value="low">Низкая</option>
                     <option value="medium">Средняя</option>
@@ -586,8 +592,8 @@ export default function ProcurementPage() {
               {/* ── Items ── */}
               <div>
                 <div className="mb-2 flex items-center justify-between">
-                  <label className="text-xs font-medium text-gray-500">Позиции *</label>
-                  <button type="button" onClick={addItemRow} className="inline-flex items-center gap-1 text-xs font-medium text-sky-600 hover:text-sky-700">
+                  <label className="app-text-muted text-xs font-medium">Позиции *</label>
+                  <button type="button" onClick={addItemRow} className="app-link-accent inline-flex items-center gap-1 text-xs font-medium">
                     <Plus size={13} /> Добавить
                   </button>
                 </div>
@@ -605,13 +611,13 @@ export default function ProcurementPage() {
                           value={it.name}
                           onChange={(e) => updateItemRow(idx, { name: e.target.value })}
                           placeholder="Название позиции *"
-                          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-sky-400 focus:outline-none"
+                          className="app-input w-full rounded-lg px-3 py-2 text-sm"
                         />
                         <input
                           value={it.description}
                           onChange={(e) => updateItemRow(idx, { description: e.target.value })}
                           placeholder="Описание (необязательно)"
-                          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-sky-400 focus:outline-none"
+                          className="app-input w-full rounded-lg px-3 py-2 text-sm"
                         />
                         <div className="grid grid-cols-4 gap-2">
                           <input
@@ -620,13 +626,13 @@ export default function ProcurementPage() {
                             onChange={(e) => updateItemRow(idx, { quantity: e.target.value })}
                             placeholder="Кол-во"
                             min={1}
-                            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-sky-400 focus:outline-none"
+                            className="app-input rounded-lg px-3 py-2 text-sm"
                           />
                           <input
                             value={it.unit}
                             onChange={(e) => updateItemRow(idx, { unit: e.target.value })}
                             placeholder="Ед."
-                            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-sky-400 focus:outline-none"
+                            className="app-input rounded-lg px-3 py-2 text-sm"
                           />
                           <input
                             type="number"
@@ -634,7 +640,7 @@ export default function ProcurementPage() {
                             value={it.estimated_unit_price}
                             onChange={(e) => updateItemRow(idx, { estimated_unit_price: e.target.value })}
                             placeholder="Цена/ед."
-                            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-sky-400 focus:outline-none"
+                            className="app-input rounded-lg px-3 py-2 text-sm"
                           />
                           <div className="flex items-center text-xs text-gray-500">
                             {it.quantity && it.estimated_unit_price ? money(Number(it.quantity) * Number(it.estimated_unit_price)) : "—"}
@@ -644,7 +650,7 @@ export default function ProcurementPage() {
                           value={it.supplier_info}
                           onChange={(e) => updateItemRow(idx, { supplier_info: e.target.value })}
                           placeholder="Информация о поставщике (необязательно)"
-                          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-sky-400 focus:outline-none"
+                          className="app-input w-full rounded-lg px-3 py-2 text-sm"
                         />
                       </div>
                     </div>

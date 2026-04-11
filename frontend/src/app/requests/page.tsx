@@ -181,7 +181,7 @@ function RequestsPageContent() {
           <div className="mb-4 flex items-center gap-2">
             <div className="relative flex-1">
               <Search size={16} className="app-text-muted pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
-              <input value={h.search} onChange={(e) => h.setSearch(e.target.value)} placeholder="Поиск по заявлениям" className="app-input w-full rounded-lg py-2.5 pl-9 pr-3 text-sm transition focus:bg-[var(--surface-elevated)]" />
+              <input value={h.search} onChange={(e) => h.setSearch(e.target.value)} placeholder="Поиск по заявлениям" className="app-input w-full rounded-lg py-2.5 pl-9 pr-3 text-sm" />
             </div>
             <button type="button" title="Фильтры" onClick={() => h.setFiltersOpen((v) => !v)} className={`relative inline-flex items-center justify-center rounded-lg p-2.5 transition ${h.filtersOpen ? "app-selected app-accent-text" : "app-surface-muted app-text-muted hover:bg-[var(--surface-tertiary)]"}`}>
               <Filter size={16} />
@@ -191,7 +191,7 @@ function RequestsPageContent() {
             </button>
             <div className="relative w-[148px] shrink-0">
               <ArrowUpDown size={15} className="app-text-muted pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
-              <select value={h.ordering} onChange={(e) => h.setOrdering(e.target.value)} className="app-select w-full appearance-none rounded-lg py-2.5 pl-9 pr-8 text-xs font-medium transition hover:bg-[var(--surface-tertiary)]" aria-label="Сортировка">
+              <select value={h.ordering} onChange={(e) => h.setOrdering(e.target.value)} className="app-select w-full appearance-none rounded-lg py-2.5 pl-9 pr-8 text-xs font-medium" aria-label="Сортировка">
                 {orderingOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
               <ChevronDown size={14} className="app-text-muted pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" />

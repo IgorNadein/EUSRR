@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { X, UserPlus, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
 import { Modal } from '@/components/ui';
+import { loadAllPages } from '@/lib/shared';
+import { resolveMediaUrl } from '@/lib/url';
 
 interface Participant {
   id: number;
@@ -12,6 +14,8 @@ interface Participant {
     username: string;
     first_name: string;
     last_name: string;
+    email?: string;
+    avatar?: string | null;
   };
   distinction: string;
 }
@@ -22,6 +26,7 @@ interface Employee {
   first_name: string;
   last_name: string;
   email?: string;
+  avatar?: string | null;
   departments?: Array<{
     id: number;
     name: string;
@@ -78,8 +83,8 @@ export default function CalendarParticipantsModal({
 
   const loadEmployees = async () => {
     try {
-      const data = await api.getEmployees({ limit: 200 });
-      setEmployees(data.results || []);
+      const allEmployees = await loadAllPages<Employee>((params) => api.getEmployees(params));
+      setEmployees(allEmployees);
     } catch (error) {
       console.error('Failed to load employees:', error);
     }
@@ -277,12 +282,27 @@ export default function CalendarParticipantsModal({
                         onChange={() => toggleUserSelection(emp.id)}
                         className="h-4 w-4 rounded border-[var(--border-strong)] text-[var(--accent-primary)]"
                       />
-                      <span className="text-sm text-[var(--foreground)]">
-                        {emp.first_name} {emp.last_name}
-                      </span>
-                      {emp.email && (
-                        <span className="app-text-muted text-xs">({emp.email})</span>
+                      {emp.avatar ? (
+                        <img
+                          src={resolveMediaUrl(emp.avatar)}
+                          alt={`${emp.first_name} ${emp.last_name}`.trim() || 'Сотрудник'}
+                          className="app-avatar-frame h-9 w-9 shrink-0 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="app-avatar-fallback flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
+                          <span className="text-xs font-medium">
+                            {emp.first_name?.[0] || emp.last_name?.[0] || '?'}
+                          </span>
+                        </div>
                       )}
+                      <div className="min-w-0">
+                        <div className="truncate text-sm text-[var(--foreground)]">
+                          {emp.first_name} {emp.last_name}
+                        </div>
+                        {emp.email && (
+                          <div className="truncate app-text-muted text-xs">{emp.email}</div>
+                        )}
+                      </div>
                     </label>
                   ))}
                 </div>
@@ -339,16 +359,24 @@ export default function CalendarParticipantsModal({
                       className="app-surface-elevated flex items-center justify-between rounded-lg px-4 py-3 transition hover:bg-[var(--surface-secondary)]"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="app-avatar-fallback flex h-10 w-10 items-center justify-center rounded-full">
-                          <span className="text-sm font-medium">
-                            {firstName[0]}{lastName[0]}
-                          </span>
-                        </div>
+                        {user.avatar ? (
+                          <img
+                            src={resolveMediaUrl(user.avatar)}
+                            alt={`${firstName} ${lastName}`.trim() || 'Сотрудник'}
+                            className="app-avatar-frame h-10 w-10 shrink-0 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="app-avatar-fallback flex h-10 w-10 items-center justify-center rounded-full">
+                            <span className="text-sm font-medium">
+                              {firstName[0]}{lastName[0]}
+                            </span>
+                          </div>
+                        )}
                         <div>
                           <div className="text-sm font-medium text-[var(--foreground)]">
                             {firstName} {lastName}
                           </div>
-                          <div className="app-text-muted text-xs">@{username}</div>
+                          <div className="app-text-muted text-xs">{user.email || `@${username}`}</div>
                         </div>
                       </div>
 

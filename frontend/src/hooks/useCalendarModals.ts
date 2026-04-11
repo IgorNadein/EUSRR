@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { apiClient } from "@/lib/api";
+import { DEFAULT_EVENT_COLOR } from "@/lib/calendar-event-colors";
 import type { CalendarEvent } from "@/services/calendarService";
 
 export interface CalendarModalsState {
@@ -84,7 +85,7 @@ export function useCalendarModals() {
       start: startDate.toISOString(),
       end: endDate.toISOString(),
       calendar: currentSelectedCalendarId,
-      color_event: "#3498db",
+      color_event: DEFAULT_EVENT_COLOR,
     } as CalendarEvent);
 
     setShowDayEventsModal(false);

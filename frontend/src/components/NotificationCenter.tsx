@@ -105,7 +105,7 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                 <div className="app-menu absolute right-0 top-12 z-[60] flex max-h-[600px] w-80 flex-col rounded-xl sm:w-96 animate-fade-in">
                     {/* Заголовок */}
                     <div className="app-divider flex items-center justify-between border-b p-4">
-                        <h3 className="text-base font-semibold text-[var(--foreground)]">Уведомления</h3>
+                        <p className="app-text-muted text-sm font-semibold uppercase tracking-wide">Уведомления</p>
                         <div className="flex items-center gap-2">
                             {unreadCount > 0 && (
                                 <button
@@ -149,9 +149,9 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                                 Загрузка...
                             </div>
                         ) : notifications.length === 0 ? (
-                            <div className="app-text-muted p-8 text-center">
-                                <Bell className="mx-auto mb-2 h-12 w-12 opacity-20" />
-                                <p className="text-sm">Нет уведомлений</p>
+                            <div className="app-text-muted p-10 text-center">
+                                <Bell className="mx-auto mb-3 h-12 w-12 opacity-30" />
+                                <p className="text-sm font-medium">Нет уведомлений</p>
                             </div>
                         ) : (
                             <ul>
@@ -208,7 +208,7 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                     </div>
 
                     {/* Футер */}
-                    <div className="app-divider app-surface-muted border-t p-3 text-center">
+                    <div className="app-divider border-t p-3 text-center">
                         <a
                             href="/notifications"
                             onClick={(e) => e.stopPropagation()}
@@ -240,7 +240,7 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
     return (
         <div className="app-menu flex max-h-[60vh] flex-col overflow-hidden rounded-xl">
             <div className="app-divider flex items-center justify-between border-b p-3">
-                <h3 className="text-sm font-semibold text-[var(--foreground)]">Уведомления</h3>
+                <p className="app-text-muted text-sm font-semibold uppercase tracking-wide">Уведомления</p>
                 <div className="flex items-center gap-2">
                     {unreadCount > 0 && (
                         <button 
@@ -276,9 +276,9 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
                 {loading ? (
                     <div className="app-text-muted p-8 text-center text-sm">Загрузка...</div>
                 ) : notifications.length === 0 ? (
-                    <div className="app-text-muted p-8 text-center">
-                        <Bell className="mx-auto mb-2 h-12 w-12 opacity-20" />
-                        <p className="text-sm">Нет уведомлений</p>
+                    <div className="app-text-muted p-10 text-center">
+                        <Bell className="mx-auto mb-3 h-12 w-12 opacity-30" />
+                        <p className="text-sm font-medium">Нет уведомлений</p>
                     </div>
                 ) : (
                     <ul>
@@ -314,7 +314,7 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
                 )}
             </div>
 
-            <div className="app-divider app-surface-muted border-t p-2 text-center">
+            <div className="app-divider border-t p-2 text-center">
                 <a 
                     href="/notifications" 
                     onClick={(e) => e.stopPropagation()}

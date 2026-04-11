@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Plus, Users } from "lucide-react";
 import { useCalendar } from "@/contexts/CalendarContext";
 import { useCalendarEvents } from "@/hooks/calendar/useCalendarEvents";
 import { calendarService, formatDateKey, type CalendarEvent } from "@/services/calendarService";
+import { DEFAULT_EVENT_COLOR, resolveEventColor } from "@/lib/calendar-event-colors";
 
 // Типы
 interface CalendarCardProps {
@@ -92,7 +93,7 @@ export const CalendarCard = memo(function CalendarCard({
       start: startDate.toISOString(),
       end: endDate.toISOString(),
       calendar: selectedCalendarId,
-      color_event: "#3498db",
+      color_event: DEFAULT_EVENT_COLOR,
     };
     onOpenEventModal(newEvent, date);
   }, [selectedCalendarId, onOpenEventModal]);
@@ -490,7 +491,7 @@ export const CalendarCard = memo(function CalendarCard({
                     <div className="flex items-center gap-1">
                       <div
                         className="h-2 w-2 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: event.color_event || event.color || "#3498db" }}
+                        style={{ backgroundColor: resolveEventColor(event.color_event || event.color) }}
                       />
                       <p className="truncate text-xs font-medium text-[var(--foreground)]">{event.title}</p>
                       {(event.is_recurring || event.rule) && (

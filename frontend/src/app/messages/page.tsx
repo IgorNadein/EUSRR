@@ -610,7 +610,7 @@ export default function MessagesPage() {
                   value={newChatName}
                   onChange={(e) => setNewChatName(e.target.value)}
                   placeholder="Введите название чата..."
-                  className="app-input w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-100"
+                  className="app-input w-full rounded-lg px-3 py-2 text-sm"
                 />
               </div>
               <div>
@@ -622,7 +622,7 @@ export default function MessagesPage() {
                   onChange={(e) => setNewChatDescription(e.target.value)}
                   placeholder="Краткое описание чата..."
                   rows={3}
-                  className="app-input w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-100"
+                  className="app-input w-full rounded-lg px-3 py-2 text-sm"
                 />
               </div>
 

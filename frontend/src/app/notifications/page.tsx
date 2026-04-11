@@ -2,12 +2,11 @@
 
 import { AppShell } from '@/components/AppShell';
 import { apiClient } from '@/lib/api';
-import { Bell, Check, CheckCheck, Filter, Search, Trash2, Settings } from 'lucide-react';
+import { Bell, CheckCheck, Filter, Search, Trash2 } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale/ru';
 import { getVerbCategory, getVerbName } from '@/lib/verbTranslations';
-import Link from 'next/link';
 
 export default function NotificationsPage() {
   // Локальное состояние для ВСЕХ уведомлений (не только непрочитанных)
@@ -165,20 +164,15 @@ export default function NotificationsPage() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-5xl px-4 py-6">
+      <section className="mx-auto max-w-5xl app-surface rounded-2xl p-4 sm:p-5">
         {/* Заголовок */}
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-[var(--foreground)]">Уведомления</h1>
-            <p className="app-text-muted mt-1 text-sm">
-              {unreadCount > 0 ? `${unreadCount} непрочитанных` : 'Все прочитано'}
-            </p>
-          </div>
-          <div className="flex gap-2">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <p className="app-text-muted text-sm font-semibold uppercase tracking-wide">Уведомления</p>
+          <div className="flex flex-wrap gap-2">
             {unreadCount > 0 && (
               <button
                 onClick={markAllAsRead}
-                className="app-action-primary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition"
+                className="app-action-primary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium"
               >
                 <CheckCheck size={16} />
                 Прочитать все
@@ -192,19 +186,12 @@ export default function NotificationsPage() {
                     console.log(`Удалено ${count} прочитанных уведомлений`);
                   }
                 }}
-                className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition"
+                className="app-feedback-danger inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium"
               >
                 <Trash2 size={16} />
                 Удалить прочитанные
               </button>
             )}
-            <Link
-              href="/notifications/settings"
-              className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition"
-            >
-              <Settings size={16} />
-              Настройки
-            </Link>
           </div>
         </div>
 
@@ -217,7 +204,7 @@ export default function NotificationsPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Поиск по уведомлениям..."
-                className="app-input w-full rounded-lg py-2.5 pl-9 pr-3 text-sm focus:bg-[var(--surface-elevated)] focus:outline-none focus:ring-2 focus:ring-sky-100"
+                className="app-input w-full rounded-lg py-2.5 pl-9 pr-3 text-sm"
               />
             </div>
             <button
@@ -277,6 +264,30 @@ export default function NotificationsPage() {
               )}
             </div>
           )}
+        </div>
+
+        <div className="mb-4 flex flex-wrap gap-2">
+          {[
+            { key: 'all', label: 'Все', count: notifications.length },
+            { key: 'unread', label: 'Непрочитанные', count: unreadCount },
+            { key: 'read', label: 'Прочитанные', count: readCount },
+          ].map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setFilterRead(item.key as 'all' | 'unread' | 'read')}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                filterRead === item.key ? 'app-pill-active' : 'app-pill'
+              }`}
+            >
+              <span>{item.label}</span>
+              <span className={`app-badge px-1.5 py-0.5 text-[10px] font-bold ${
+                filterRead === item.key ? 'app-pill-count-active' : 'app-pill-count'
+              }`}>
+                {item.count}
+              </span>
+            </button>
+          ))}
         </div>
 
         {/* Бейджи категорий с счетчиками */}
@@ -356,17 +367,17 @@ export default function NotificationsPage() {
             {filteredNotifications.map((notification: any) => (
               <article
                 key={notification.id}
-                className={`group rounded-xl border transition ${
+                className={`group overflow-hidden rounded-xl border transition ${
                   notification.is_read
-                    ? 'app-surface'
-                    : 'app-selected'
+                    ? 'app-surface hover:border-[var(--border-strong)]'
+                    : 'app-unread-surface border-[color:color-mix(in_srgb,var(--accent-primary)_20%,var(--border-subtle))] hover:border-[color:var(--accent-primary)]'
                 }`}
               >
                 <div className="flex gap-4 p-4">
                   {/* Иконка */}
                   <div
                     className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xl ${
-                      notification.is_read ? 'bg-[var(--surface-secondary)]' : 'bg-[var(--accent-soft)]'
+                      notification.is_read ? 'bg-[var(--surface-secondary)]' : 'bg-[color:color-mix(in_srgb,var(--accent-primary)_14%,var(--surface-primary))]'
                     }`}
                     style={
                       notification.color
@@ -435,7 +446,7 @@ export default function NotificationsPage() {
             ))}
           </div>
         )}
-      </div>
+      </section>
     </AppShell>
   );
 }

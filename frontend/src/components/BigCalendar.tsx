@@ -12,6 +12,7 @@ import { CalendarModal } from "@/components/CalendarModal";
 import { EventModal } from "@/components/EventModal";
 import { ViewDayEventsModal } from "@/components/ViewDayEventsModal";
 import { ViewEventDetailsModal } from "@/components/ViewEventDetailsModal";
+import { DEFAULT_EVENT_COLOR, resolveEventColor } from "@/lib/calendar-event-colors";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "../app/calendar/calendar.css";
 
@@ -213,7 +214,7 @@ export function BigCalendar() {
           end: new Date(occ.end),
           allDay: false, // Явно указываем что событие с временем
           calendar: occ.calendar, // Используем calendar из occurrence (важно для "Все события")
-          color_event: occ.color_event || '#3498db',
+          color_event: resolveEventColor(occ.color_event),
           event_id: occ.event_id,
           rule: occ.rule,
           isOccurrence: true, // Помечаем как occurrence для корректного отображения
@@ -290,7 +291,7 @@ export function BigCalendar() {
       start: startDate,
       end: endDate,
       calendar: selectedCalendarId,
-      color_event: "#3498db",
+      color_event: DEFAULT_EVENT_COLOR,
     });
 
     // Закрываем модал просмотра дня и открываем модал создания
@@ -353,7 +354,7 @@ export function BigCalendar() {
 
   // Стилизация событий по цвету
   const eventStyleGetter = (event: CalendarEvent) => {
-    const backgroundColor = event.color_event || "#3498db";
+    const backgroundColor = resolveEventColor(event.color_event);
     return {
       style: {
         backgroundColor,
