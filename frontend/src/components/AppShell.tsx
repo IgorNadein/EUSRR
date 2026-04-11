@@ -42,7 +42,7 @@ const navItems = [
   { href: "/equipment", label: "Оборудование", icon: Monitor },
   { href: "/procurement", label: "Закупки", icon: ShoppingCart, category: "Закупки" },
   { href: "/documents", label: "Документы", icon: FileText, category: "Документы" },
-  { href: "/finances", label: "Финансы", icon: Wallet },
+  // { href: "/finances", label: "Финансы", icon: Wallet },
 ];
 
 function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
