@@ -23,16 +23,14 @@ type CreateChatPayload = {
   avatar?: File;
 };
 
-type RealtimeChatEvent = {
-  type: string;
-  chat_id?: number;
-  notification?: {
-    verb?: string;
-    data?: {
-      chat_id?: number;
-    };
-  };
-};
+const chatTypeOptions = [
+  { key: "all", label: "Все" },
+  { key: "global", label: "Глобальный" },
+  { key: "channel", label: "Каналы" },
+  { key: "private", label: "Личные" },
+  { key: "group", label: "Группы" },
+  { key: "announcement", label: "Объявления" },
+] as const;
 
 function getChatTypeIcon(chat: Chat) {
   const chatType = chat.chat_type || chat.type;
@@ -371,22 +369,22 @@ export default function MessagesPage() {
   return (
     <AppShell>
       {loading ? (
-        <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-100">
+        <div className="app-surface rounded-2xl p-8 text-center">
           <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-sky-400 border-t-transparent" />
-          <p className="text-sm text-gray-500">Загрузка чатов...</p>
+          <p className="app-text-muted text-sm">Загрузка чатов...</p>
         </div>
       ) : error ? (
-        <div className="rounded-2xl bg-red-50 p-6 text-center">
+        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-6 text-center">
           <p className="text-sm text-red-800">{error}</p>
         </div>
       ) : (
-        <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+        <section className="app-surface rounded-2xl p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">Сообщения</p>
+            <p className="app-text-muted text-sm font-semibold uppercase tracking-wide">Сообщения</p>
             <button
               type="button"
               onClick={() => setShowCreateModal(true)}
-              className="inline-flex items-center gap-1 rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-600"
+              className="app-action-primary inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium transition"
             >
               <Plus size={14} /> Создать чат
             </button>
@@ -395,21 +393,21 @@ export default function MessagesPage() {
           {/* Поиск и кнопка фильтров */}
           <div className="mb-4 flex gap-2">
             <div className="relative flex-1">
-              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 app-text-muted" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Поиск по чатам"
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                className="app-input w-full rounded-lg py-2.5 pl-9 pr-3 text-sm"
               />
             </div>
             <button
               type="button"
               onClick={() => setFiltersOpen((v) => !v)}
-              className={`relative inline-flex items-center justify-center rounded-lg border p-2.5 transition ${
+              className={`relative inline-flex items-center justify-center rounded-lg p-2.5 transition ${
                 filtersOpen
-                  ? "border-sky-400 bg-sky-50 text-sky-600"
-                  : "border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100"
+                  ? "app-selected app-accent-text"
+                  : "app-surface-muted app-text-muted hover:bg-[var(--surface-tertiary)]"
               }`}
             >
               <Filter size={16} />
@@ -423,11 +421,11 @@ export default function MessagesPage() {
 
           {/* Панель дополнительных фильтров */}
           {filtersOpen && (
-            <div className="mb-4 flex flex-col gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
+            <div className="app-surface-muted mb-4 flex flex-col gap-2 rounded-xl p-3">
               <select
                 value={filterUnread}
                 onChange={(e) => setFilterUnread(e.target.value as UnreadFilter)}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
+                className="app-select rounded-lg px-3 py-2 text-sm"
               >
                 <option value="all">Все чаты</option>
                 <option value="unread">Только с непрочитанными</option>
@@ -437,7 +435,7 @@ export default function MessagesPage() {
               <select
                 value={filterPinned}
                 onChange={(e) => setFilterPinned(e.target.value as PinnedFilter)}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
+                className="app-select rounded-lg px-3 py-2 text-sm"
               >
                 <option value="all">Все чаты</option>
                 <option value="pinned">Только закрепленные</option>
@@ -451,7 +449,7 @@ export default function MessagesPage() {
                     setFilterUnread('all');
                     setFilterPinned('all');
                   }}
-                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition"
+                  className="app-surface-elevated rounded-lg px-3 py-2 text-sm font-medium text-[var(--muted-foreground)] transition hover:bg-[var(--surface-secondary)]"
                 >
                   Очистить фильтры
                 </button>
@@ -461,177 +459,41 @@ export default function MessagesPage() {
 
           {/* Фильтры по типу чата с бэйджами */}
           <div className="mb-4 flex flex-wrap gap-2">
-            <button
-              onClick={() => setChatTypeFilter("all")}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                chatTypeFilter === "all"
-                  ? "bg-sky-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              <span>Все</span>
-              <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                chatTypeFilter === "all"
-                  ? "bg-sky-500 text-white"
-                  : "bg-gray-200 text-gray-600"
-              }`}>
-                <span>{chatTypeCounts.all.total}</span>
-                {chatTypeCounts.all.unread > 0 && (
-                  <>
-                    <span className={chatTypeFilter === "all" ? "text-sky-300" : "text-gray-400"}>•</span>
-                    <span className={chatTypeFilter === "all" ? "text-sky-100" : "text-sky-600"}>
-                      {chatTypeCounts.all.unread}
+            {chatTypeOptions
+              .filter(({ key }) => key === "all" || (chatTypeCounts[key]?.total ?? 0) > 0)
+              .map(({ key, label }) => {
+                const counts = chatTypeCounts[key];
+                const active = chatTypeFilter === key;
+
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setChatTypeFilter(key)}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                      active ? "app-pill-active" : "app-pill"
+                    }`}
+                  >
+                    <span>{label}</span>
+                    <span className={`app-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold ${
+                      active ? "app-pill-count-active" : "app-pill-count"
+                    }`}>
+                      <span>{counts.total}</span>
+                      {counts.unread > 0 ? (
+                        <>
+                          <span className="app-text-muted">•</span>
+                          <span className="app-accent-text">{counts.unread}</span>
+                        </>
+                      ) : null}
                     </span>
-                  </>
-                )}
-              </span>
-            </button>
-
-            {chatTypeCounts.global.total > 0 && (
-              <button
-                onClick={() => setChatTypeFilter("global")}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                  chatTypeFilter === "global"
-                    ? "bg-sky-600 text-white"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                <span>Глобальный</span>
-                <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                  chatTypeFilter === "global"
-                    ? "bg-sky-500 text-white"
-                    : "bg-gray-200 text-gray-600"
-                }`}>
-                  <span>{chatTypeCounts.global.total}</span>
-                  {chatTypeCounts.global.unread > 0 && (
-                    <>
-                      <span className={chatTypeFilter === "global" ? "text-sky-300" : "text-gray-400"}>•</span>
-                      <span className={chatTypeFilter === "global" ? "text-sky-100" : "text-sky-600"}>
-                        {chatTypeCounts.global.unread}
-                      </span>
-                    </>
-                  )}
-                </span>
-              </button>
-            )}
-
-            {chatTypeCounts.channel.total > 0 && (
-              <button
-                onClick={() => setChatTypeFilter("channel")}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                  chatTypeFilter === "channel"
-                    ? "bg-sky-600 text-white"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                <span>Каналы</span>
-                <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                  chatTypeFilter === "channel"
-                    ? "bg-sky-500 text-white"
-                    : "bg-gray-200 text-gray-600"
-                }`}>
-                  <span>{chatTypeCounts.channel.total}</span>
-                  {chatTypeCounts.channel.unread > 0 && (
-                    <>
-                      <span className={chatTypeFilter === "channel" ? "text-sky-300" : "text-gray-400"}>•</span>
-                      <span className={chatTypeFilter === "channel" ? "text-sky-100" : "text-sky-600"}>
-                        {chatTypeCounts.channel.unread}
-                      </span>
-                    </>
-                  )}
-                </span>
-              </button>
-            )}
-
-            {chatTypeCounts.private.total > 0 && (
-              <button
-                onClick={() => setChatTypeFilter("private")}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                  chatTypeFilter === "private"
-                    ? "bg-sky-600 text-white"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                <span>Личные</span>
-                <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                  chatTypeFilter === "private"
-                    ? "bg-sky-500 text-white"
-                    : "bg-gray-200 text-gray-600"
-                }`}>
-                  <span>{chatTypeCounts.private.total}</span>
-                  {chatTypeCounts.private.unread > 0 && (
-                    <>
-                      <span className={chatTypeFilter === "private" ? "text-sky-300" : "text-gray-400"}>•</span>
-                      <span className={chatTypeFilter === "private" ? "text-sky-100" : "text-sky-600"}>
-                        {chatTypeCounts.private.unread}
-                      </span>
-                    </>
-                  )}
-                </span>
-              </button>
-            )}
-
-            {chatTypeCounts.group.total > 0 && (
-              <button
-                onClick={() => setChatTypeFilter("group")}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                  chatTypeFilter === "group"
-                    ? "bg-sky-600 text-white"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                <span>Группы</span>
-                <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                  chatTypeFilter === "group"
-                    ? "bg-sky-500 text-white"
-                    : "bg-gray-200 text-gray-600"
-                }`}>
-                  <span>{chatTypeCounts.group.total}</span>
-                  {chatTypeCounts.group.unread > 0 && (
-                    <>
-                      <span className={chatTypeFilter === "group" ? "text-sky-300" : "text-gray-400"}>•</span>
-                      <span className={chatTypeFilter === "group" ? "text-sky-100" : "text-sky-600"}>
-                        {chatTypeCounts.group.unread}
-                      </span>
-                    </>
-                  )}
-                </span>
-              </button>
-            )}
-
-            {chatTypeCounts.announcement.total > 0 && (
-              <button
-                onClick={() => setChatTypeFilter("announcement")}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                  chatTypeFilter === "announcement"
-                    ? "bg-sky-600 text-white"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                <span>Объявления</span>
-                <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                  chatTypeFilter === "announcement"
-                    ? "bg-sky-500 text-white"
-                    : "bg-gray-200 text-gray-600"
-                }`}>
-                  <span>{chatTypeCounts.announcement.total}</span>
-                  {chatTypeCounts.announcement.unread > 0 && (
-                    <>
-                      <span className={chatTypeFilter === "announcement" ? "text-sky-300" : "text-gray-400"}>•</span>
-                      <span className={chatTypeFilter === "announcement" ? "text-sky-100" : "text-sky-600"}>
-                        {chatTypeCounts.announcement.unread}
-                      </span>
-                    </>
-                  )}
-                </span>
-              </button>
-            )}
+                  </button>
+                );
+              })}
           </div>
 
           <div className="space-y-2">
             {filteredChats.length === 0 ? (
-              <div className="rounded-xl bg-gray-50 p-6 text-center">
-                <p className="text-sm text-gray-500">Чаты не найдены</p>
+              <div className="app-surface-muted rounded-xl p-6 text-center">
+                <p className="app-text-muted text-sm">Чаты не найдены</p>
               </div>
             ) : (
               filteredChats.map((chat: Chat) => (
@@ -642,10 +504,10 @@ export default function MessagesPage() {
                 <Link
                   key={chat.id}
                   href={`/messages/${chat.id}`}
-                  className={`block w-full rounded-xl border p-3 text-left transition hover:border-gray-300 hover:bg-gray-50 ${
+                  className={`block w-full rounded-xl border p-3 text-left transition ${
                     (chat.unread_count ?? 0) > 0
-                      ? "border-sky-100 bg-sky-50/30"
-                      : "border-transparent"
+                      ? "app-selected"
+                      : "border-transparent hover:border-[var(--border-subtle)] hover:bg-[var(--surface-secondary)]"
                   }`}
                 >
                   <div className="flex items-start gap-3">
@@ -678,20 +540,20 @@ export default function MessagesPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <p className={`truncate text-sm ${
-                            (chat.unread_count ?? 0) > 0 ? "font-bold text-gray-900" : "font-semibold text-gray-900"
+                          <p className={`truncate text-sm text-[var(--foreground)] ${
+                            (chat.unread_count ?? 0) > 0 ? "font-bold" : "font-semibold"
                           }`}>{chatTitle}</p>
                           {chat.is_pinned ? (
-                            <Pin size={12} className="shrink-0 text-sky-600 fill-current" />
+                            <Pin size={12} className="app-accent-text shrink-0 fill-current" />
                           ) : null}
                           {chat.notifications_enabled === false ? (
-                            <BellOff size={12} className="shrink-0 text-gray-400" />
+                            <BellOff size={12} className="app-text-muted shrink-0" />
                           ) : null}
                         </div>
-                        <span className="shrink-0 text-xs text-gray-500">{formatTime(chat.last_message?.created_at)}</span>
+                        <span className="app-text-muted shrink-0 text-xs">{formatTime(chat.last_message?.created_at)}</span>
                       </div>
                       <p className={`mt-1 truncate text-xs ${
-                        (chat.unread_count ?? 0) > 0 ? "font-medium text-gray-700" : "text-gray-500"
+                        (chat.unread_count ?? 0) > 0 ? "font-medium text-[var(--foreground)]" : "app-text-muted"
                       }`}>
                         {chat.last_message?.content || "Нет сообщений"}
                       </p>
@@ -705,10 +567,10 @@ export default function MessagesPage() {
           </div>
 
           {filteredChats.length === 0 ? (
-            <div className="mt-4 flex min-h-[120px] items-center justify-center rounded-xl bg-gray-50 text-center">
+            <div className="app-surface-muted mt-4 flex min-h-[120px] items-center justify-center rounded-xl text-center">
               <div>
-                <MessageCircle size={20} className="mx-auto mb-2 text-gray-400" />
-                <p className="text-sm text-gray-500">Создайте или найдите диалог</p>
+                <MessageCircle size={20} className="app-text-muted mx-auto mb-2" />
+                <p className="app-text-muted text-sm">Создайте или найдите диалог</p>
               </div>
             </div>
           ) : null}
@@ -721,7 +583,7 @@ export default function MessagesPage() {
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                  className="app-action-secondary flex-1 rounded-lg px-4 py-2 text-sm font-medium transition"
                 >
                   Отмена
                 </button>
@@ -729,7 +591,7 @@ export default function MessagesPage() {
                   type="button"
                   onClick={handleCreateChat}
                   disabled={creating}
-                  className="flex-1 rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-50"
+                  className="app-action-primary flex-1 rounded-lg px-4 py-2 text-sm font-medium transition disabled:opacity-50"
                 >
                   {creating ? 'Создание...' : 'Создать'}
                 </button>
@@ -738,17 +600,17 @@ export default function MessagesPage() {
             <div className="space-y-4">
               {/* Тип чата */}
               <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+                <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">
                   Тип чата
                 </label>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => setNewChatType('group')}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-lg border p-3 transition ${
+                    className={`flex flex-1 items-center justify-center gap-2 rounded-lg p-3 transition ${
                       newChatType === 'group'
-                        ? 'border-sky-500 bg-sky-50 text-sky-700'
-                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                        ? 'app-selected'
+                        : 'app-action-secondary'
                     }`}
                   >
                     <Users size={18} />
@@ -757,10 +619,10 @@ export default function MessagesPage() {
                   <button
                     type="button"
                     onClick={() => setNewChatType('channel')}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-lg border p-3 transition ${
+                    className={`flex flex-1 items-center justify-center gap-2 rounded-lg p-3 transition ${
                       newChatType === 'channel'
-                        ? 'border-sky-500 bg-sky-50 text-sky-700'
-                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                        ? 'app-selected'
+                        : 'app-action-secondary'
                     }`}
                   >
                     <Radio size={18} />
@@ -769,10 +631,10 @@ export default function MessagesPage() {
                   <button
                     type="button"
                     onClick={() => setNewChatType('global')}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-lg border p-3 transition ${
+                    className={`flex flex-1 items-center justify-center gap-2 rounded-lg p-3 transition ${
                       newChatType === 'global'
-                        ? 'border-sky-500 bg-sky-50 text-sky-700'
-                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                        ? 'app-selected'
+                        : 'app-action-secondary'
                     }`}
                   >
                     <Globe size={18} />
@@ -783,7 +645,7 @@ export default function MessagesPage() {
 
               {/* Название и описание */}
               <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+                <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">
                   Название *
                 </label>
                 <input
@@ -791,11 +653,11 @@ export default function MessagesPage() {
                   value={newChatName}
                   onChange={(e) => setNewChatName(e.target.value)}
                   placeholder="Введите название чата..."
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                  className="app-input w-full rounded-lg px-3 py-2 text-sm"
                 />
               </div>
               <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+                <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">
                   Описание (необязательно)
                 </label>
                 <textarea
@@ -803,13 +665,13 @@ export default function MessagesPage() {
                   onChange={(e) => setNewChatDescription(e.target.value)}
                   placeholder="Краткое описание чата..."
                   rows={3}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                  className="app-input w-full rounded-lg px-3 py-2 text-sm"
                 />
               </div>
 
               {/* Аватар */}
               <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+                <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">
                   Аватар (необязательно)
                 </label>
                 {avatarPreview ? (
@@ -825,11 +687,11 @@ export default function MessagesPage() {
                       />
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm text-gray-600 mb-2">{newChatAvatar?.name}</p>
+                      <p className="app-text-muted mb-2 text-sm">{newChatAvatar?.name}</p>
                       <button
                         type="button"
                         onClick={handleRemoveAvatar}
-                        className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 transition hover:bg-red-100"
+                        className="app-action-danger inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium transition"
                       >
                         <X size={14} />
                         Удалить
@@ -837,7 +699,7 @@ export default function MessagesPage() {
                     </div>
                   </div>
                 ) : (
-                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-6 transition hover:border-sky-400 hover:bg-sky-50">
+                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-[var(--border-strong)] bg-[var(--surface-secondary)] p-6 transition hover:border-[color:color-mix(in_srgb,var(--accent-primary)_30%,var(--border-strong))] hover:bg-[var(--accent-soft)]">
                     <input
                       type="file"
                       accept="image/*"
@@ -845,14 +707,14 @@ export default function MessagesPage() {
                       className="hidden"
                     />
                     <div className="flex flex-col items-center gap-2">
-                      <div className="rounded-full bg-sky-100 p-3">
-                        <ImageIcon size={24} className="text-sky-600" />
+                      <div className="rounded-full bg-[var(--accent-soft)] p-3">
+                        <ImageIcon size={24} className="app-accent-text" />
                       </div>
                       <div className="text-center">
-                        <p className="text-sm font-medium text-gray-700">
+                        <p className="text-sm font-medium text-[var(--foreground)]">
                           Загрузить изображение
                         </p>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="app-text-muted mt-1 text-xs">
                           PNG, JPG до 5MB
                         </p>
                       </div>

@@ -242,7 +242,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-800">
+        <div className="app-feedback-danger flex items-start gap-2 rounded-lg p-3 text-sm">
           <AlertCircle size={16} className="mt-0.5 shrink-0" />
           <span>{error}</span>
         </div>
@@ -250,7 +250,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
 
       {/* Current folder info */}
       {currentFolderId && (
-        <div className="rounded-lg bg-sky-50 p-3 text-sm text-sky-700">
+        <div className="app-selected app-accent-text rounded-lg p-3 text-sm">
           <div className="flex items-center gap-2">
             <FolderOpen size={16} />
             <span>Документ будет сохранён в выбранной папке</span>
@@ -260,7 +260,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
 
       {/* File Upload */}
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-gray-700">
+        <label className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
           Файл <span className="text-red-500">*</span>
         </label>
         
@@ -269,26 +269,26 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
             {...getRootProps()}
             className={`cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition ${
               isDragActive
-                ? "border-sky-500 bg-sky-50"
-                : "border-gray-300 bg-gray-50 hover:border-sky-400 hover:bg-sky-50"
+                ? "border-[var(--accent-primary)] bg-[color:color-mix(in_srgb,var(--accent-primary)_10%,var(--surface-secondary))]"
+                : "border-[var(--border-strong)] bg-[var(--surface-secondary)] hover:border-[var(--accent-primary)] hover:bg-[color:color-mix(in_srgb,var(--accent-primary)_8%,var(--surface-secondary))]"
             }`}
           >
             <input {...getInputProps()} />
-            <Upload size={32} className="mx-auto mb-3 text-gray-400" />
-            <p className="text-sm font-medium text-gray-700">
+            <Upload size={32} className="app-text-muted mx-auto mb-3" />
+            <p className="text-sm font-medium text-[var(--foreground)]">
               {isDragActive ? "Отпустите файл здесь" : "Перетащите файл или нажмите для выбора"}
             </p>
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="app-text-muted mt-1 text-xs">
               PDF, Word, Excel, изображения, текстовые файлы
             </p>
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3">
-              <FileText size={20} className="shrink-0 text-sky-600" />
+            <div className="app-surface flex items-center gap-3 rounded-lg p-3">
+              <FileText size={20} className="app-accent-text shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-gray-900">{file.name}</p>
-                <p className="text-xs text-gray-500">
+                <p className="truncate text-sm font-medium text-[var(--foreground)]">{file.name}</p>
+                <p className="app-text-muted text-xs">
                   {(file.size / 1024 / 1024).toFixed(2)} МБ
                 </p>
               </div>
@@ -300,7 +300,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
                   setExtractedText("");
                 }}
                 disabled={isProcessing}
-                className="shrink-0 rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+                className="app-action-ghost app-text-muted shrink-0 rounded-full p-1 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <X size={16} />
               </button>
@@ -308,20 +308,20 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
 
             {/* Индикатор обработки */}
             {isProcessing && processingProgress && (
-              <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <Loader2 size={16} className="animate-spin text-sky-600" />
-                  <span className="text-sm font-medium text-sky-900">
+              <div className="app-selected rounded-lg p-3">
+                <div className="mb-2 flex items-center gap-2">
+                  <Loader2 size={16} className="app-accent-text animate-spin" />
+                  <span className="text-sm font-medium text-[var(--foreground)]">
                     {STAGE_MESSAGES[processingProgress.stage] || "Обработка..."}
                   </span>
                 </div>
-                <div className="h-2 bg-sky-200 rounded-full overflow-hidden">
+                <div className="h-2 overflow-hidden rounded-full bg-[color:color-mix(in_srgb,var(--accent-primary)_18%,var(--surface-primary))]">
                   <div 
-                    className="h-full bg-sky-600 transition-all duration-300"
+                    className="h-full bg-[var(--accent-primary)] transition-all duration-300"
                     style={{ width: `${processingProgress.progress}%` }}
                   />
                 </div>
-                <p className="text-xs text-sky-700 mt-1">
+                <p className="app-accent-text mt-1 text-xs">
                   {processingProgress.progress}%
                 </p>
               </div>
@@ -329,7 +329,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
 
             {/* Сообщение о сжатии */}
             {processedFile && !isProcessing && (
-              <div className="rounded-lg border border-green-200 bg-green-50 p-2 text-xs text-green-800">
+              <div className="app-feedback-success rounded-lg p-2 text-xs">
                 ✓ Изображение сжато: {(file.size / 1024 / 1024).toFixed(2)} МБ → {(processedFile.size / 1024 / 1024).toFixed(2)} МБ
               </div>
             )}
@@ -339,7 +339,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
 
       {/* Title */}
       <div>
-        <label htmlFor="title" className="mb-1.5 block text-sm font-medium text-gray-700">
+        <label htmlFor="title" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
           Название <span className="text-red-500">*</span>
         </label>
         <input
@@ -349,13 +349,13 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Введите название документа"
           required
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+          className="app-input w-full rounded-lg px-3 py-2 text-sm"
         />
       </div>
 
       {/* Description */}
       <div>
-        <label htmlFor="description" className="mb-1.5 block text-sm font-medium text-gray-700">
+        <label htmlFor="description" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
           Описание
         </label>
         <textarea
@@ -364,13 +364,13 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Краткое описание документа"
           rows={3}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+          className="app-input w-full rounded-lg px-3 py-2 text-sm"
         />
       </div>
 
       {/* Divider */}
-      <div className="border-t border-gray-200 pt-4">
-        <h3 className="mb-3 text-sm font-semibold text-gray-700 flex items-center gap-2">
+      <div className="app-divider border-t pt-4">
+        <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
           <TagIcon size={16} />
           Категоризация
         </h3>
@@ -378,7 +378,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
 
       {/* Tags */}
       <div>
-        <label htmlFor="tags" className="mb-1.5 block text-sm font-medium text-gray-700">
+        <label htmlFor="tags" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
           Теги
         </label>
         <select
@@ -390,7 +390,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
             setSelectedTags(values);
           }}
           disabled={loadingDocumentTags}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+          className="app-select w-full rounded-lg px-3 py-2 text-sm"
           size={4}
         >
           {loadingDocumentTags ? (
@@ -405,7 +405,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
             ))
           )}
         </select>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="app-text-muted mt-1 text-xs">
           Удерживайте Ctrl/Cmd для выбора нескольких тегов
         </p>
       </div>
@@ -413,9 +413,9 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
       {/* Извлеченный текст */}
       {extractedText && (
         <div>
-          <label htmlFor="extractedText" className="mb-1.5 block text-sm font-medium text-gray-700">
+          <label htmlFor="extractedText" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
             Извлеченный текст
-            <span className="ml-1 text-xs font-normal text-gray-500">
+            <span className="app-text-muted ml-1 text-xs font-normal">
               (будет использован для поиска, можно отредактировать)
             </span>
           </label>
@@ -425,21 +425,21 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
             onChange={(e) => setExtractedText(e.target.value)}
             placeholder="Текст, извлеченный из документа"
             rows={5}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+            className="app-input w-full rounded-lg px-3 py-2 text-sm font-mono"
           />
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="app-text-muted mt-1 text-xs">
             Символов: {extractedText.length}
           </p>
         </div>
       )}
 
       {/* Divider */}
-      <div className="border-t border-gray-200 pt-4">
-        <h3 className="mb-3 text-sm font-semibold text-gray-700">Настройки доступа и уведомлений</h3>
+      <div className="app-divider border-t pt-4">
+        <h3 className="mb-3 text-sm font-semibold text-[var(--foreground)]">Настройки доступа и уведомлений</h3>
       </div>
 
       {/* Sent to All Toggle */}
-      <div className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+      <div className="app-surface-muted flex items-start gap-3 rounded-lg p-3">
         <input
           type="checkbox"
           id="sentToAll"
@@ -451,13 +451,13 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
               setSelectedRecipients([]);
             }
           }}
-          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-2 focus:ring-sky-100"
+          className="mt-0.5 h-4 w-4 rounded border-[var(--border-strong)] text-[var(--accent-primary)]"
         />
         <div className="flex-1">
-          <label htmlFor="sentToAll" className="block text-sm font-medium text-gray-900 cursor-pointer">
+          <label htmlFor="sentToAll" className="block cursor-pointer text-sm font-medium text-[var(--foreground)]">
             Отправить всем сотрудникам
           </label>
-          <p className="mt-0.5 text-xs text-gray-600">
+          <p className="app-text-muted mt-0.5 text-xs">
             Документ будет доступен всем активным сотрудникам
           </p>
         </div>
@@ -465,15 +465,15 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
 
       {/* Recipients section - only show when sentToAll is false */}
       {!sentToAll && (
-        <div className="space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
-          <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+        <div className="app-surface-muted space-y-4 rounded-lg p-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
             <Users size={16} />
             <span>Выберите получателей</span>
           </div>
 
           {/* Departments */}
           <div>
-            <label htmlFor="departments" className="mb-1.5 block text-sm font-medium text-gray-700">
+            <label htmlFor="departments" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
               <Building2 size={14} className="mr-1 inline" />
               Отделы
             </label>
@@ -486,7 +486,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
                 setSelectedDepartments(values);
               }}
               disabled={loadingDepartments}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+              className="app-select w-full rounded-lg px-3 py-2 text-sm"
               size={5}
             >
               {loadingDepartments ? (
@@ -501,14 +501,14 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
                 ))
               )}
             </select>
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="app-text-muted mt-1 text-xs">
               Удерживайте Ctrl/Cmd для выбора нескольких
             </p>
           </div>
 
           {/* Recipients */}
           <div>
-            <label htmlFor="recipients" className="mb-1.5 block text-sm font-medium text-gray-700">
+            <label htmlFor="recipients" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
               <Users size={14} className="mr-1 inline" />
               Конкретные сотрудники
             </label>
@@ -521,7 +521,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
                 setSelectedRecipients(values);
               }}
               disabled={loadingEmployees}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+              className="app-select w-full rounded-lg px-3 py-2 text-sm"
               size={8}
             >
               {loadingEmployees ? (
@@ -536,13 +536,13 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
                 ))
               )}
             </select>
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="app-text-muted mt-1 text-xs">
               Удерживайте Ctrl/Cmd для выбора нескольких
             </p>
           </div>
 
           {selectedDepartments.length === 0 && selectedRecipients.length === 0 && (
-            <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+            <div className="app-feedback-warning flex items-start gap-2 rounded-lg p-3 text-xs">
               <AlertCircle size={14} className="mt-0.5 shrink-0" />
               <span>Выберите хотя бы один отдел или сотрудника</span>
             </div>
@@ -551,20 +551,20 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
       )}
 
       {/* Acknowledgement Required */}
-      <div className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+      <div className="app-surface-muted flex items-start gap-3 rounded-lg p-3">
         <input
           type="checkbox"
           id="acknowledgementRequired"
           checked={acknowledgementRequired}
           onChange={(e) => setAcknowledgementRequired(e.target.checked)}
-          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-2 focus:ring-sky-100"
+          className="mt-0.5 h-4 w-4 rounded border-[var(--border-strong)] text-[var(--accent-primary)]"
         />
         <div className="flex-1">
-          <label htmlFor="acknowledgementRequired" className="block text-sm font-medium text-gray-900 cursor-pointer">
+          <label htmlFor="acknowledgementRequired" className="block cursor-pointer text-sm font-medium text-[var(--foreground)]">
             <CheckCircle size={14} className="mr-1 inline" />
             Требуется подтверждение ознакомления
           </label>
-          <p className="mt-0.5 text-xs text-gray-600">
+          <p className="app-text-muted mt-0.5 text-xs">
             Получатели должны будут подтвердить, что ознакомились с документом
           </p>
         </div>
@@ -575,7 +575,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
         <button
           type="submit"
           disabled={isSubmitting || isProcessing || !title || !file}
-          className="flex-1 rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="app-action-primary flex-1 rounded-lg px-4 py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isSubmitting ? "Загрузка..." : isProcessing ? "Обработка..." : "Загрузить документ"}
         </button>
@@ -585,7 +585,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
             type="button"
             onClick={onCancel}
             disabled={isProcessing}
-            className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="app-action-secondary rounded-lg px-4 py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
           >
             Отмена
           </button>

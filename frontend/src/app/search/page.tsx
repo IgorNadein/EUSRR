@@ -79,9 +79,9 @@ export default function SearchPage() {
   return (
     <Suspense fallback={
       <AppShell>
-        <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-          <div className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500">
-            <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600"></div>
+        <section className="app-surface rounded-2xl p-4">
+          <div className="app-surface-muted app-text-muted rounded-xl p-6 text-center text-sm">
+            <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-[var(--border-subtle)] border-t-[var(--accent-primary)]"></div>
             <p className="mt-2">Загрузка...</p>
           </div>
         </section>
@@ -153,33 +153,33 @@ function SearchPageContent() {
 
   return (
     <AppShell>
-      <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+      <section className="app-surface rounded-2xl p-4">
         <div className="mb-4 flex items-center gap-2">
-          <Search size={16} className="text-gray-400" />
-          <p className="text-sm text-gray-600">
+          <Search size={16} className="app-text-muted" />
+          <p className="app-text-muted text-sm">
             {query ? `Результаты по запросу: "${queryRaw}"` : "Введите запрос в поиске сверху"}
           </p>
         </div>
 
         {query && searchResponse && (
-          <div className="mb-4 text-sm text-gray-500">
+          <div className="app-text-muted mb-4 text-sm">
             Найдено результатов: <span className="font-semibold">{searchResponse.total}</span>
           </div>
         )}
 
         {loading ? (
-          <div className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500">
-            <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600"></div>
+          <div className="app-surface-muted app-text-muted rounded-xl p-6 text-center text-sm">
+            <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-[var(--border-subtle)] border-t-[var(--accent-primary)]"></div>
             <p className="mt-2">Поиск...</p>
           </div>
         ) : error ? (
-          <div className="rounded-xl bg-red-50 p-6 text-center text-sm text-red-800">{error}</div>
+          <div className="app-feedback-danger rounded-xl p-6 text-center text-sm">{error}</div>
         ) : !query ? (
-          <div className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500">
+          <div className="app-surface-muted app-text-muted rounded-xl p-6 text-center text-sm">
             Начните вводить запрос в строке поиска
           </div>
         ) : searchResponse?.total === 0 ? (
-          <div className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500">
+          <div className="app-surface-muted app-text-muted rounded-xl p-6 text-center text-sm">
             Ничего не найдено по запросу "{queryRaw}"
           </div>
         ) : (
@@ -192,8 +192,8 @@ function SearchPageContent() {
               return (
                 <div key={modelType}>
                   <div className="mb-3 flex items-center gap-2">
-                    <Icon size={16} className="text-gray-400" />
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    <Icon size={16} className="app-text-muted" />
+                    <p className="app-text-muted text-xs font-semibold uppercase tracking-wide">
                       {categoryName} <span className="font-normal">({results.length})</span>
                     </p>
                   </div>
@@ -202,13 +202,13 @@ function SearchPageContent() {
                       <Link
                         key={`${result.model_name}-${result.object_id}`}
                         href={buildSearchHref(result)}
-                        className="block rounded-lg border border-gray-200 p-3 transition-all hover:border-blue-300 hover:bg-blue-50/50 hover:shadow-sm"
+                        className="app-surface-muted block rounded-lg p-3 transition-all hover:border-[color:var(--accent-primary)] hover:bg-[color:var(--accent-soft)] hover:shadow-[var(--shadow-card)]"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">{result.title}</p>
+                            <p className="truncate text-sm font-medium text-[var(--foreground)]">{result.title}</p>
                             {result.description && (
-                              <p className="mt-1 text-xs text-gray-500 line-clamp-2">{result.description}</p>
+                              <p className="app-text-muted mt-1 line-clamp-2 text-xs">{result.description}</p>
                             )}
                             {result.meta && Object.keys(result.meta).length > 0 && (
                               <div className="mt-2 flex flex-wrap gap-2">
@@ -217,7 +217,7 @@ function SearchPageContent() {
                                   return (
                                     <span
                                       key={key}
-                                      className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"
+                                      className="app-badge inline-flex items-center px-2 py-0.5 text-xs"
                                     >
                                       {String(value)}
                                     </span>

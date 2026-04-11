@@ -397,9 +397,9 @@ export default function ChatSettingsPage() {
   if (loading) {
     return (
       <AppShell>
-        <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-100">
-          <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-sky-400 border-t-transparent" />
-          <p className="text-sm text-gray-500">Загрузка настроек...</p>
+        <div className="app-surface mx-auto max-w-3xl rounded-2xl p-8 text-center">
+          <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-[var(--border-subtle)] border-t-[var(--accent-primary)]" />
+          <p className="app-text-muted text-sm">Загрузка настроек...</p>
         </div>
       </AppShell>
     );
@@ -408,11 +408,11 @@ export default function ChatSettingsPage() {
   if (error || !chat) {
     return (
       <AppShell>
-        <div className="rounded-2xl bg-red-50 p-6 text-center">
-          <p className="text-sm text-red-800">{error || "Чат не найден"}</p>
+        <div className="app-feedback-danger mx-auto max-w-3xl rounded-2xl p-6 text-center">
+          <p className="text-sm">{error || "Чат не найден"}</p>
           <Link
             href="/messages"
-            className="mt-4 inline-block text-sm text-sky-600 hover:text-sky-700"
+            className="app-link-accent mt-4 inline-block text-sm"
           >
             Вернуться к списку чатов
           </Link>
@@ -439,18 +439,18 @@ export default function ChatSettingsPage() {
         <div className="mb-6 flex items-center gap-3">
           <Link
             href={`/messages/${chatId}`}
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 hover:text-sky-700"
+            className="app-action-secondary flex h-10 w-10 items-center justify-center rounded-full p-0"
             aria-label="Вернуться к чату"
           >
             <ArrowLeft size={16} />
           </Link>
-          <h1 className="text-xl font-bold text-gray-900">Настройки чата</h1>
+          <h1 className="text-xl font-bold text-[var(--foreground)]">Настройки чата</h1>
         </div>
 
         {/* Информация о чате */}
-        <section className="mb-4 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+        <section className="app-surface mb-4 rounded-2xl p-6">
           <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-lg font-semibold text-white">
+            <div className="app-avatar-fallback flex h-16 w-16 items-center justify-center overflow-hidden rounded-full text-lg font-semibold">
               {getChatAvatar(chat, currentUserId) ? (
                 <Image
                   src={resolveMediaUrl(getChatAvatar(chat, currentUserId))}
@@ -465,16 +465,16 @@ export default function ChatSettingsPage() {
               )}
             </div>
             <div className="flex-1">
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className="text-lg font-semibold text-[var(--foreground)]">
                 {getChatTitle(chat, currentUserId)}
               </h2>
-              <p className="text-sm text-gray-500">{getChatTypeLabel(chat)}</p>
+              <p className="app-text-muted text-sm">{getChatTypeLabel(chat)}</p>
             </div>
             {canEdit && (
               <button
                 type="button"
                 onClick={handleOpenEditModal}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 hover:text-sky-700"
+                className="app-action-secondary flex h-10 w-10 items-center justify-center rounded-full p-0"
                 aria-label="Редактировать чат"
                 title="Редактировать чат"
               >
@@ -484,15 +484,15 @@ export default function ChatSettingsPage() {
           </div>
 
           {chat.description && (
-            <div className="mt-4 rounded-lg bg-gray-50 p-3">
-              <p className="text-sm text-gray-700">{chat.description}</p>
+            <div className="app-surface-muted mt-4 rounded-xl p-3">
+              <p className="text-sm text-[var(--foreground)]">{chat.description}</p>
             </div>
           )}
         </section>
 
         {/* Быстрые действия */}
-        <section className="mb-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-          <h3 className="mb-3 text-sm font-semibold text-gray-700">Быстрые действия</h3>
+        <section className="app-surface mb-4 rounded-2xl p-4">
+          <h3 className="mb-3 text-sm font-semibold text-[var(--foreground)]">Быстрые действия</h3>
           
           <div className="space-y-2">
             {/* Закрепление */}
@@ -500,18 +500,18 @@ export default function ChatSettingsPage() {
               type="button"
               onClick={handleTogglePin}
               disabled={actionLoading === "pin"}
-              className="flex w-full items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 text-left transition hover:bg-gray-50 disabled:opacity-50"
+              className="app-surface-muted flex w-full items-center gap-3 rounded-xl p-3 text-left transition hover:bg-[var(--surface-elevated)] disabled:opacity-50"
             >
               <div className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                isPinned ? "bg-sky-100 text-sky-600" : "bg-gray-100 text-gray-600"
+                isPinned ? "app-selected app-accent-text" : "app-surface-elevated app-text-muted"
               }`}>
                 <Pin size={18} className={isPinned ? "fill-current" : ""} />
               </div>
               <div className="flex-1">
-                <p className="text-sm font-medium text-gray-900">
+                <p className="text-sm font-medium text-[var(--foreground)]">
                   {isPinned ? "Открепить чат" : "Закрепить чат"}
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="app-text-muted text-xs">
                   {isPinned 
                     ? "Убрать чат из списка закрепленных" 
                     : "Чат будет отображаться вверху списка"
@@ -525,18 +525,18 @@ export default function ChatSettingsPage() {
               type="button"
               onClick={handleToggleNotifications}
               disabled={actionLoading === "notifications"}
-              className="flex w-full items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 text-left transition hover:bg-gray-50 disabled:opacity-50"
+              className="app-surface-muted flex w-full items-center gap-3 rounded-xl p-3 text-left transition hover:bg-[var(--surface-elevated)] disabled:opacity-50"
             >
               <div className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                notificationsEnabled ? "bg-green-100 text-green-600" : "bg-amber-100 text-amber-600"
+                notificationsEnabled ? "app-feedback-success" : "app-feedback-warning"
               }`}>
                 {notificationsEnabled ? <Bell size={18} /> : <BellOff size={18} />}
               </div>
               <div className="flex-1">
-                <p className="text-sm font-medium text-gray-900">
+                <p className="text-sm font-medium text-[var(--foreground)]">
                   {notificationsEnabled ? "Отключить уведомления" : "Включить уведомления"}
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="app-text-muted text-xs">
                   {notificationsEnabled 
                     ? "Вы не будете получать уведомления из этого чата" 
                     : "Включить уведомления для новых сообщений"
@@ -568,8 +568,8 @@ export default function ChatSettingsPage() {
 
         {/* Опасная зона */}
         {(hasMembers || canEdit) && (
-          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-            <h3 className="mb-3 text-sm font-semibold text-red-700">Опасная зона</h3>
+          <section className="app-surface rounded-2xl p-4">
+            <h3 className="mb-3 text-sm font-semibold text-[var(--foreground)]">Опасная зона</h3>
             
             <div className="space-y-2">
               {hasMembers && (
@@ -577,14 +577,14 @@ export default function ChatSettingsPage() {
                   type="button"
                   onClick={handleLeaveChat}
                   disabled={actionLoading === "leave"}
-                  className="flex w-full items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-left transition hover:bg-red-100 disabled:opacity-50"
+                  className="app-feedback-danger flex w-full items-center gap-3 rounded-xl p-3 text-left transition hover:opacity-90 disabled:opacity-50"
                 >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 text-red-600">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--danger-soft)] text-[color:#dc2626]">
                     <UserMinus size={18} />
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-red-900">Покинуть чат</p>
-                    <p className="text-xs text-red-700">
+                    <p className="text-sm font-medium">Покинуть чат</p>
+                    <p className="text-xs opacity-80">
                       Вы больше не будете видеть сообщения из этого чата
                     </p>
                   </div>
@@ -596,14 +596,14 @@ export default function ChatSettingsPage() {
                   type="button"
                   onClick={handleDeleteChat}
                   disabled={actionLoading === "delete"}
-                  className="flex w-full items-center gap-3 rounded-lg border border-red-300 bg-red-100 p-3 text-left transition hover:bg-red-200 disabled:opacity-50"
+                  className="app-feedback-danger flex w-full items-center gap-3 rounded-xl p-3 text-left transition hover:opacity-90 disabled:opacity-50"
                 >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-200 text-red-700">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--danger-soft)] text-[color:#b91c1c]">
                     <Trash2 size={18} />
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-red-900">Удалить чат</p>
-                    <p className="text-xs text-red-700">
+                    <p className="text-sm font-medium">Удалить чат</p>
+                    <p className="text-xs opacity-80">
                       Чат и все сообщения будут удалены навсегда
                     </p>
                   </div>
@@ -642,4 +642,3 @@ export default function ChatSettingsPage() {
     </AppShell>
   );
 }
-

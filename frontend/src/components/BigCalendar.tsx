@@ -12,6 +12,7 @@ import { CalendarModal } from "@/components/CalendarModal";
 import { EventModal } from "@/components/EventModal";
 import { ViewDayEventsModal } from "@/components/ViewDayEventsModal";
 import { ViewEventDetailsModal } from "@/components/ViewEventDetailsModal";
+import { DEFAULT_EVENT_COLOR, resolveEventColor } from "@/lib/calendar-event-colors";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "../app/calendar/calendar.css";
 
@@ -81,20 +82,20 @@ const CustomToolbar = ({ label, onNavigate, onView, view, date }: ToolbarProps<C
         <div className="flex items-center gap-2">
           <button
             onClick={() => onNavigate("TODAY")}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+            className="app-action-secondary px-3 py-2"
           >
             Сегодня
           </button>
           <button
             onClick={() => onNavigate("PREV")}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 text-gray-700 transition hover:bg-gray-50"
+            className="app-action-secondary flex h-9 w-9 items-center justify-center p-0"
             title="Назад"
           >
             <ChevronLeft size={18} />
           </button>
           <button
             onClick={() => onNavigate("NEXT")}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 text-gray-700 transition hover:bg-gray-50"
+            className="app-action-secondary flex h-9 w-9 items-center justify-center p-0"
             title="Вперёд"
           >
             <ChevronRight size={18} />
@@ -102,7 +103,7 @@ const CustomToolbar = ({ label, onNavigate, onView, view, date }: ToolbarProps<C
         </div>
 
         {/* Текущая дата */}
-        <span className="text-lg font-semibold text-gray-800">{capitalizedLabel}</span>
+        <span className="text-lg font-semibold text-[var(--foreground)]">{capitalizedLabel}</span>
       </div>
 
       {/* Выбор вида */}
@@ -110,7 +111,7 @@ const CustomToolbar = ({ label, onNavigate, onView, view, date }: ToolbarProps<C
         <select
           value={view}
           onChange={(e) => onView(e.target.value as View)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+          className="app-select w-full"
         >
           <option value="month">{viewLabels.month}</option>
           <option value="week">{viewLabels.week}</option>
@@ -213,7 +214,7 @@ export function BigCalendar() {
           end: new Date(occ.end),
           allDay: false, // Явно указываем что событие с временем
           calendar: occ.calendar, // Используем calendar из occurrence (важно для "Все события")
-          color_event: occ.color_event || '#3498db',
+          color_event: resolveEventColor(occ.color_event),
           event_id: occ.event_id,
           rule: occ.rule,
           isOccurrence: true, // Помечаем как occurrence для корректного отображения
@@ -290,7 +291,7 @@ export function BigCalendar() {
       start: startDate,
       end: endDate,
       calendar: selectedCalendarId,
-      color_event: "#3498db",
+      color_event: DEFAULT_EVENT_COLOR,
     });
 
     // Закрываем модал просмотра дня и открываем модал создания
@@ -353,7 +354,7 @@ export function BigCalendar() {
 
   // Стилизация событий по цвету
   const eventStyleGetter = (event: CalendarEvent) => {
-    const backgroundColor = event.color_event || "#3498db";
+    const backgroundColor = resolveEventColor(event.color_event);
     return {
       style: {
         backgroundColor,
@@ -368,20 +369,20 @@ export function BigCalendar() {
 
   return (
     <>
-      <div className="rounded-2xl bg-white shadow-sm ring-1 ring-gray-100">
+      <div className="app-surface rounded-2xl">
         {/* Панель выбора календаря */}
         <div className="flex items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3 flex-1">
-            <label className="text-sm font-medium text-gray-700">Календарь:</label>
+            <label className="text-sm font-medium text-[var(--foreground)]">Календарь:</label>
             {calendars.length === 0 ? (
               <div className="flex items-center gap-2">
-                <p className="text-sm text-gray-500">Календарей нет.</p>
+                <p className="app-text-muted text-sm">Календарей нет.</p>
                 <button
                   onClick={() => {
                     setEditingCalendar({ name: "" });
                     setShowCalendarModal(true);
                   }}
-                  className="text-sm text-sky-500 hover:text-sky-600 font-medium transition-colors"
+                  className="app-link-accent text-sm font-medium"
                 >
                   Создать календарь
                 </button>
@@ -394,7 +395,7 @@ export function BigCalendar() {
                     const value = e.target.value;
                     setSelectedCalendarId(value === "" ? null : Number(value));
                   }}
-                  className="flex-1 max-w-xs rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                  className="app-select max-w-xs flex-1"
                 >
                   <option value="">📅 Все события</option>
                   {calendars.map((cal) => (
@@ -409,7 +410,7 @@ export function BigCalendar() {
                     setEditingCalendar({ name: "" });
                     setShowCalendarModal(true);
                   }}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 text-gray-700 transition hover:bg-gray-50"
+                  className="app-action-secondary flex h-9 w-9 items-center justify-center p-0"
                   title="Создать календарь"
                 >
                   <Plus size={16} />
@@ -424,7 +425,7 @@ export function BigCalendar() {
                         setShowCalendarModal(true);
                       }
                     }}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 text-gray-700 transition hover:bg-gray-50"
+                    className="app-action-secondary flex h-9 w-9 items-center justify-center p-0"
                     title="Настройки календаря"
                   >
                     <Settings size={16} />
@@ -435,8 +436,8 @@ export function BigCalendar() {
           </div>
 
           {loading && (
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-sky-500"></div>
+            <div className="app-text-muted flex items-center gap-2 text-sm">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--border-subtle)] border-t-[var(--accent-primary)]"></div>
               <span>Загрузка...</span>
             </div>
           )}

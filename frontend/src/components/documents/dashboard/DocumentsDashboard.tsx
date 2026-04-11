@@ -127,42 +127,42 @@ export function DocumentsDashboard({
       {/* Статистика - карточки */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         {/* Всего документов */}
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="app-surface rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Всего документов</p>
-              <p className="mt-1 text-2xl font-bold text-gray-900">{stats.totalDocuments}</p>
+              <p className="app-text-muted text-sm">Всего документов</p>
+              <p className="mt-1 text-2xl font-bold text-[var(--foreground)]">{stats.totalDocuments}</p>
             </div>
-            <div className="rounded-full bg-sky-100 p-3">
-              <FileText size={24} className="text-sky-600" />
+            <div className="app-selected app-accent-text rounded-full p-3">
+              <FileText size={24} />
             </div>
           </div>
         </div>
 
         {/* Мои документы */}
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="app-surface rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Мои документы</p>
-              <p className="mt-1 text-2xl font-bold text-gray-900">{stats.myDocuments}</p>
+              <p className="app-text-muted text-sm">Мои документы</p>
+              <p className="mt-1 text-2xl font-bold text-[var(--foreground)]">{stats.myDocuments}</p>
             </div>
-            <div className="rounded-full bg-green-100 p-3">
-              <Users size={24} className="text-green-600" />
+            <div className="app-feedback-success rounded-full p-3">
+              <Users size={24} />
             </div>
           </div>
         </div>
 
         {/* Активность */}
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="app-surface rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Активность (7 дней)</p>
-              <p className="mt-1 text-2xl font-bold text-gray-900">
+              <p className="app-text-muted text-sm">Активность (7 дней)</p>
+              <p className="mt-1 text-2xl font-bold text-[var(--foreground)]">
                 {stats.uploadsOverTime.slice(-7).reduce((sum, item) => sum + item.count, 0)}
               </p>
             </div>
-            <div className="rounded-full bg-purple-100 p-3">
-              <TrendingUp size={24} className="text-purple-600" />
+            <div className="app-selected app-accent-text rounded-full p-3">
+              <TrendingUp size={24} />
             </div>
           </div>
         </div>
@@ -171,8 +171,8 @@ export function DocumentsDashboard({
       {/* Графики */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* График загрузок по времени */}
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <h3 className="mb-4 text-base font-semibold text-gray-900">
+        <div className="app-surface rounded-lg p-4">
+          <h3 className="mb-4 text-base font-semibold text-[var(--foreground)]">
             Загрузки за последние 30 дней
           </h3>
           <ResponsiveContainer width="100%" height={250}>
@@ -203,8 +203,8 @@ export function DocumentsDashboard({
         </div>
 
         {/* Распределение по типам */}
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <h3 className="mb-4 text-base font-semibold text-gray-900">
+        <div className="app-surface rounded-lg p-4">
+          <h3 className="mb-4 text-base font-semibold text-[var(--foreground)]">
             Распределение по типам
           </h3>
           <ResponsiveContainer width="100%" height={250}>
@@ -229,8 +229,8 @@ export function DocumentsDashboard({
         </div>
 
         {/* Распределение по статусам */}
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <h3 className="mb-4 text-base font-semibold text-gray-900">
+        <div className="app-surface rounded-lg p-4">
+          <h3 className="mb-4 text-base font-semibold text-[var(--foreground)]">
             Распределение по статусам
           </h3>
           <ResponsiveContainer width="100%" height={250}>
@@ -249,23 +249,23 @@ export function DocumentsDashboard({
         </div>
 
         {/* Лента активности */}
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <h3 className="mb-4 text-base font-semibold text-gray-900">Последняя активность</h3>
+        <div className="app-surface rounded-lg p-4">
+          <h3 className="mb-4 text-base font-semibold text-[var(--foreground)]">Последняя активность</h3>
           <div className="space-y-3">
             {stats.recentActivity.slice(0, 5).map((activity) => {
               const Icon = ACTIVITY_ICONS[activity.type];
               return (
                 <div key={activity.id} className="flex items-start gap-3 text-sm">
-                  <div className="mt-0.5 rounded-full bg-gray-100 p-1.5">
-                    <Icon size={14} className="text-gray-600" />
+                  <div className="app-surface-muted mt-0.5 rounded-full p-1.5">
+                    <Icon size={14} className="app-text-muted" />
                   </div>
                   <div className="flex-1">
-                    <p className="text-gray-900">
+                    <p className="text-[var(--foreground)]">
                       <span className="font-medium">{activity.user}</span>{" "}
                       {ACTIVITY_LABELS[activity.type]}{" "}
                       <span className="font-medium">{activity.document}</span>
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="app-text-muted text-xs">
                       {new Date(activity.timestamp).toLocaleString("ru-RU")}
                     </p>
                   </div>
@@ -279,19 +279,19 @@ export function DocumentsDashboard({
       {/* Секции документов */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Недавние документы */}
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="app-surface rounded-lg p-4">
           <div className="mb-3 flex items-center gap-2">
-            <Clock size={16} className="text-gray-600" />
-            <h3 className="text-sm font-semibold text-gray-900">Недавние</h3>
+            <Clock size={16} className="app-text-muted" />
+            <h3 className="text-sm font-semibold text-[var(--foreground)]">Недавние</h3>
           </div>
           <div className="space-y-2">
             {recentDocuments.slice(0, 5).map((doc) => (
               <div
                 key={doc.id}
-                className="rounded border border-gray-100 p-2 hover:border-sky-300 hover:bg-sky-50"
+                className="app-surface-muted rounded p-2 hover:border-[color:var(--accent-primary)] hover:bg-[color:var(--accent-soft)]"
               >
-                <p className="truncate text-sm font-medium text-gray-900">{doc.title}</p>
-                <p className="text-xs text-gray-500">
+                <p className="truncate text-sm font-medium text-[var(--foreground)]">{doc.title}</p>
+                <p className="app-text-muted text-xs">
                   {doc.type && <span className="mr-2">📄 {doc.type}</span>}
                   {new Date(doc.uploaded_at).toLocaleDateString("ru-RU")}
                 </p>
@@ -301,42 +301,42 @@ export function DocumentsDashboard({
         </div>
 
         {/* Избранные документы */}
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="app-surface rounded-lg p-4">
           <div className="mb-3 flex items-center gap-2">
-            <Star size={16} className="text-amber-500" />
-            <h3 className="text-sm font-semibold text-gray-900">Избранные</h3>
+            <Star size={16} className="app-accent-text" />
+            <h3 className="text-sm font-semibold text-[var(--foreground)]">Избранные</h3>
           </div>
           <div className="space-y-2">
             {favoriteDocuments.length > 0 ? (
               favoriteDocuments.slice(0, 5).map((doc) => (
                 <div
                   key={doc.id}
-                  className="rounded border border-gray-100 p-2 hover:border-sky-300 hover:bg-sky-50"
+                  className="app-surface-muted rounded p-2 hover:border-[color:var(--accent-primary)] hover:bg-[color:var(--accent-soft)]"
                 >
-                  <p className="truncate text-sm font-medium text-gray-900">{doc.title}</p>
-                  {doc.type && <p className="text-xs text-gray-500">📄 {doc.type}</p>}
+                  <p className="truncate text-sm font-medium text-[var(--foreground)]">{doc.title}</p>
+                  {doc.type && <p className="app-text-muted text-xs">📄 {doc.type}</p>}
                 </div>
               ))
             ) : (
-              <p className="text-sm text-gray-500">Нет избранных документов</p>
+              <p className="app-text-muted text-sm">Нет избранных документов</p>
             )}
           </div>
         </div>
 
         {/* Мои документы */}
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="app-surface rounded-lg p-4">
           <div className="mb-3 flex items-center gap-2">
-            <Users size={16} className="text-gray-600" />
-            <h3 className="text-sm font-semibold text-gray-900">Мои документы</h3>
+            <Users size={16} className="app-text-muted" />
+            <h3 className="text-sm font-semibold text-[var(--foreground)]">Мои документы</h3>
           </div>
           <div className="space-y-2">
             {myDocuments.slice(0, 5).map((doc) => (
               <div
                 key={doc.id}
-                className="rounded border border-gray-100 p-2 hover:border-sky-300 hover:bg-sky-50"
+                className="app-surface-muted rounded p-2 hover:border-[color:var(--accent-primary)] hover:bg-[color:var(--accent-soft)]"
               >
-                <p className="truncate text-sm font-medium text-gray-900">{doc.title}</p>
-                <p className="text-xs text-gray-500">
+                <p className="truncate text-sm font-medium text-[var(--foreground)]">{doc.title}</p>
+                <p className="app-text-muted text-xs">
                   {new Date(doc.uploaded_at).toLocaleDateString("ru-RU")}
                 </p>
               </div>

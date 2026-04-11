@@ -120,14 +120,14 @@ export function DocumentAcknowledgementsReport({
   return (
     <Modal isOpen onClose={onClose} noHeader noPadding size="xl" className="h-[95vh] sm:h-[90vh]">
         {/* Header */}
-        <div className="flex shrink-0 items-start gap-2 sm:gap-3 justify-between border-b border-gray-200 p-3 sm:p-6">
+        <div className="app-divider flex shrink-0 items-start justify-between gap-2 border-b p-3 sm:gap-3 sm:p-6">
           <div className="min-w-0 flex-1">
-            <h2 className="text-sm sm:text-lg font-semibold text-gray-900">Ведомость ознакомлений</h2>
-            <p className="mt-1 text-xs text-gray-600 truncate" title={documentTitle}>{documentTitle}</p>
+            <h2 className="text-sm font-semibold text-[var(--foreground)] sm:text-lg">Ведомость ознакомлений</h2>
+            <p className="app-text-muted mt-1 truncate text-xs" title={documentTitle}>{documentTitle}</p>
           </div>
           <button
             onClick={onClose}
-            className="shrink-0 rounded-lg p-1.5 sm:p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            className="app-action-secondary shrink-0 rounded-lg p-1.5 sm:p-2"
           >
             <X size={18} className="sm:w-5 sm:h-5" />
           </button>
@@ -135,31 +135,31 @@ export function DocumentAcknowledgementsReport({
 
         {/* Stats */}
         {data && (
-          <div className="shrink-0 grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 border-b border-gray-200 p-3 sm:p-6">
-            <div className="rounded-lg sm:rounded-xl bg-blue-50 p-3 sm:p-4">
-              <div className="flex items-center gap-1.5 sm:gap-2 text-blue-700">
+          <div className="app-divider grid shrink-0 grid-cols-1 gap-2 border-b p-3 sm:grid-cols-3 sm:gap-4 sm:p-6">
+            <div className="app-selected rounded-lg p-3 sm:rounded-xl sm:p-4">
+              <div className="app-accent-text flex items-center gap-1.5 sm:gap-2">
                 <Users size={16} className="sm:w-5 sm:h-5" />
                 <span className="text-xs sm:text-sm font-medium">Всего</span>
               </div>
-              <p className="mt-1 sm:mt-2 text-xl sm:text-2xl font-bold text-blue-900">{data.counts.total}</p>
+              <p className="mt-1 text-xl font-bold text-[var(--foreground)] sm:mt-2 sm:text-2xl">{data.counts.total}</p>
             </div>
-            <div className="rounded-lg sm:rounded-xl bg-green-50 p-3 sm:p-4">
-              <div className="flex items-center gap-1.5 sm:gap-2 text-green-700">
+            <div className="app-feedback-success rounded-lg p-3 sm:rounded-xl sm:p-4">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 <CheckCircle size={16} className="sm:w-5 sm:h-5" />
                 <span className="text-xs sm:text-sm font-medium">Ознакомлены</span>
               </div>
-              <p className="mt-1 sm:mt-2 text-xl sm:text-2xl font-bold text-green-900">{data.counts.acknowledged}</p>
-              <p className="text-xs text-green-600">
+              <p className="mt-1 text-xl font-bold sm:mt-2 sm:text-2xl">{data.counts.acknowledged}</p>
+              <p className="text-xs opacity-80">
                 {data.counts.total > 0 ? Math.round((data.counts.acknowledged / data.counts.total) * 100) : 0}%
               </p>
             </div>
-            <div className="rounded-lg sm:rounded-xl bg-amber-50 p-3 sm:p-4">
-              <div className="flex items-center gap-1.5 sm:gap-2 text-amber-700">
+            <div className="app-feedback-warning rounded-lg p-3 sm:rounded-xl sm:p-4">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 <AlertCircle size={16} className="sm:w-5 sm:h-5" />
                 <span className="text-xs sm:text-sm font-medium">Не ознакомлены</span>
               </div>
-              <p className="mt-1 sm:mt-2 text-xl sm:text-2xl font-bold text-amber-900">{data.counts.unacknowledged}</p>
-              <p className="text-xs text-amber-600">
+              <p className="mt-1 text-xl font-bold sm:mt-2 sm:text-2xl">{data.counts.unacknowledged}</p>
+              <p className="text-xs opacity-80">
                 {data.counts.total > 0 ? Math.round((data.counts.unacknowledged / data.counts.total) * 100) : 0}%
               </p>
             </div>
@@ -167,21 +167,21 @@ export function DocumentAcknowledgementsReport({
         )}
 
         {/* Tabs & Search */}
-        <div className="shrink-0 border-b border-gray-200 p-3 sm:p-4">
-          <div className="mb-3 sm:mb-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+        <div className="app-divider shrink-0 border-b p-3 sm:p-4">
+          <div className="mb-3 flex flex-col items-stretch gap-2 sm:mb-4 sm:flex-row sm:items-center">
             <div className="relative flex-1">
-              <Search size={14} className="absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-gray-400 sm:w-4 sm:h-4" />
+              <Search size={14} className="app-text-muted absolute left-2.5 top-1/2 -translate-y-1/2 sm:left-3 sm:h-4 sm:w-4" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Поиск по ФИО или email..."
-                className="w-full rounded-lg border border-gray-300 py-1.5 sm:py-2 pl-8 sm:pl-10 pr-3 sm:pr-4 text-xs sm:text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                className="app-input w-full py-1.5 pl-8 pr-3 text-xs sm:py-2 sm:pl-10 sm:pr-4 sm:text-sm"
               />
             </div>
             <button
               onClick={exportToCSV}
-              className="inline-flex items-center justify-center gap-1.5 sm:gap-2 rounded-lg border border-gray-300 bg-white px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              className="app-action-secondary inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
             >
               <Download size={14} className="sm:w-4 sm:h-4" />
               <span className="hidden sm:inline">Экспорт CSV</span>
@@ -192,30 +192,30 @@ export function DocumentAcknowledgementsReport({
           <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1">
             <button
               onClick={() => setActiveTab("all")}
-              className={`shrink-0 rounded-lg px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition ${
+              className={`shrink-0 px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm ${
                 activeTab === "all"
-                  ? "bg-sky-100 text-sky-700"
-                  : "text-gray-600 hover:bg-gray-100"
+                  ? "app-pill-active"
+                  : "app-pill"
               }`}
             >
               Все ({data?.counts.total || 0})
             </button>
             <button
               onClick={() => setActiveTab("acknowledged")}
-              className={`shrink-0 rounded-lg px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition ${
+              className={`shrink-0 px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm ${
                 activeTab === "acknowledged"
-                  ? "bg-green-100 text-green-700"
-                  : "text-gray-600 hover:bg-gray-100"
+                  ? "app-pill-active"
+                  : "app-pill"
               }`}
             >
               Ознакомлены ({data?.counts.acknowledged || 0})
             </button>
             <button
               onClick={() => setActiveTab("unacknowledged")}
-              className={`shrink-0 rounded-lg px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition ${
+              className={`shrink-0 px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm ${
                 activeTab === "unacknowledged"
-                  ? "bg-amber-100 text-amber-700"
-                  : "text-gray-600 hover:bg-gray-100"
+                  ? "app-pill-active"
+                  : "app-pill"
               }`}
             >
               Не ознакомлены ({data?.counts.unacknowledged || 0})
@@ -227,11 +227,11 @@ export function DocumentAcknowledgementsReport({
         <div className="flex-1 overflow-y-auto p-3 sm:p-4">
           {loading ? (
             <div className="flex items-center justify-center py-8 sm:py-12">
-              <div className="h-6 w-6 sm:h-8 sm:w-8 animate-spin rounded-full border-3 sm:border-4 border-sky-400 border-t-transparent" />
+              <div className="h-6 w-6 animate-spin rounded-full border-[3px] border-[var(--border-subtle)] border-t-[var(--accent-primary)] sm:h-8 sm:w-8 sm:border-4" />
             </div>
           ) : displayList.length === 0 ? (
             <div className="py-8 sm:py-12 text-center">
-              <p className="text-xs sm:text-sm text-gray-500">Сотрудников не найдено</p>
+              <p className="app-text-muted text-xs sm:text-sm">Сотрудников не найдено</p>
             </div>
           ) : (
             <div className="space-y-1.5 sm:space-y-2">
@@ -240,23 +240,23 @@ export function DocumentAcknowledgementsReport({
                 return (
                   <div
                     key={emp.id}
-                    className={`flex items-center justify-between gap-2 rounded-lg border p-2 sm:p-3 ${
+                    className={`flex items-center justify-between gap-2 rounded-lg p-2 sm:p-3 ${
                       isAcknowledged
-                        ? "border-green-200 bg-green-50"
-                        : "border-amber-200 bg-amber-50"
+                        ? "app-feedback-success"
+                        : "app-feedback-warning"
                     }`}
                   >
                     <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                       {isAcknowledged ? (
-                        <CheckCircle size={16} className="shrink-0 text-green-600 sm:w-5 sm:h-5" />
+                        <CheckCircle size={16} className="shrink-0 sm:h-5 sm:w-5" />
                       ) : (
-                        <AlertCircle size={16} className="shrink-0 text-amber-600 sm:w-5 sm:h-5" />
+                        <AlertCircle size={16} className="shrink-0 sm:h-5 sm:w-5" />
                       )}
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">
+                        <p className="truncate text-xs font-medium text-[var(--foreground)] sm:text-sm">
                           {emp.last_name} {emp.first_name} {emp.patronymic || ""}
                         </p>
-                        <div className="flex flex-wrap gap-1 sm:gap-2 text-xs text-gray-600">
+                        <div className="app-text-muted flex flex-wrap gap-1 text-xs sm:gap-2">
                           <span className="truncate">{emp.email}</span>
                           {emp.position && <span className="shrink-0">• {emp.position.name}</span>}
                           {emp.department && <span className="shrink-0 hidden sm:inline">• {emp.department.name}</span>}
@@ -264,9 +264,7 @@ export function DocumentAcknowledgementsReport({
                       </div>
                     </div>
                     <span
-                      className={`shrink-0 text-xs font-medium ${
-                        isAcknowledged ? "text-green-700" : "text-amber-700"
-                      }`}
+                      className="shrink-0 text-xs font-medium"
                     >
                       {isAcknowledged ? "Ознакомлен" : "Требуется"}
                     </span>

@@ -87,12 +87,12 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                 onClick={toggleOpen}
                 className={
                     variant === 'mobile'
-                        ? "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-slate-100"
-                        : "relative flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100"
+                        ? "app-icon-button relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+                        : "app-icon-button relative flex h-10 w-10 items-center justify-center rounded-full"
                 }
                 aria-label="Уведомления"
             >
-                <Bell size={18} className="text-gray-600" />
+                <Bell size={18} />
                 {unreadCount > 0 && (
                     <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center font-bold">
                         {unreadCount > 9 ? '9+' : unreadCount}
@@ -102,10 +102,10 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
 
             {/* Dropdown — только для desktop */}
             {isOpen && variant === 'default' && (
-                <div className="absolute right-0 top-12 z-[60] w-80 sm:w-96 bg-white rounded-xl shadow-lg ring-1 ring-slate-100 max-h-[600px] flex flex-col animate-fade-in">
+                <div className="app-menu absolute right-0 top-12 z-[60] flex max-h-[600px] w-80 flex-col rounded-xl sm:w-96 animate-fade-in">
                     {/* Заголовок */}
-                    <div className="flex items-center justify-between p-4 border-b border-slate-100">
-                        <h3 className="font-semibold text-base">Уведомления</h3>
+                    <div className="app-divider flex items-center justify-between border-b p-4">
+                        <p className="app-text-muted text-sm font-semibold uppercase tracking-wide">Уведомления</p>
                         <div className="flex items-center gap-2">
                             {unreadCount > 0 && (
                                 <button
@@ -113,7 +113,7 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                                         e.stopPropagation();
                                         markAllAsRead();
                                     }}
-                                    className="text-xs text-sky-600 hover:text-sky-700 font-medium"
+                                    className="app-link-accent text-xs font-medium"
                                 >
                                     Прочитать все
                                 </button>
@@ -121,21 +121,21 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                             <Link
                                 href="/notifications/settings"
                                 onClick={(e) => e.stopPropagation()}
-                                className="p-1 hover:bg-slate-100 rounded"
+                                className="app-icon-button rounded p-1"
                                 aria-label="Настройки"
                                 title="Настройки уведомлений"
                             >
-                                <Settings className="w-4 h-4 text-gray-500" />
+                                <Settings className="h-4 w-4" />
                             </Link>
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     close();
                                 }}
-                                className="p-1 hover:bg-slate-100 rounded"
+                                className="app-icon-button rounded p-1"
                                 aria-label="Закрыть"
                             >
-                                <X className="w-4 h-4 text-gray-500" />
+                                <X className="h-4 w-4" />
                             </button>
                         </div>
                     </div>
@@ -145,13 +145,13 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                     {/* Список уведомлений */}
                     <div className="overflow-y-auto flex-1">
                         {loading ? (
-                            <div className="p-8 text-center text-gray-500 text-sm">
+                            <div className="app-text-muted p-8 text-center text-sm">
                                 Загрузка...
                             </div>
                         ) : notifications.length === 0 ? (
-                            <div className="p-8 text-center text-gray-500">
-                                <Bell className="w-12 h-12 mx-auto mb-2 opacity-20 text-gray-400" />
-                                <p className="text-sm">Нет уведомлений</p>
+                            <div className="app-text-muted p-10 text-center">
+                                <Bell className="mx-auto mb-3 h-12 w-12 opacity-30" />
+                                <p className="text-sm font-medium">Нет уведомлений</p>
                             </div>
                         ) : (
                             <ul>
@@ -164,25 +164,25 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                                     return (
                                     <li
                                         key={notification.id}
-                                        className={`group p-3 border-b border-slate-100 hover:bg-slate-100 transition-colors ${
-                                            isUnread ? 'bg-sky-50/50' : ''
+                                        className={`app-divider group border-b p-3 transition-colors hover:bg-[var(--surface-secondary)] ${
+                                            isUnread ? 'app-unread-surface' : ''
                                         }`}
                                     >
                                         <div className="flex items-start gap-2.5">
                                             {isUnread && (
-                                                <div className="w-1.5 h-1.5 bg-sky-600 rounded-full mt-1.5 flex-shrink-0" />
+                                                <div className="app-dot-accent mt-1.5 h-1.5 w-1.5 rounded-full flex-shrink-0" />
                                             )}
                                             <div 
                                                 onClick={() => handleNotificationClick(notification)}
                                                 className="flex-1 min-w-0 cursor-pointer"
                                             >
-                                                <h4 className="font-medium text-sm mb-0.5 truncate text-gray-800">
+                                                <h4 className="mb-0.5 truncate text-sm font-medium text-[var(--foreground)]">
                                                     {title}
                                                 </h4>
-                                                <p className="text-xs text-gray-600 line-clamp-2 mb-1">
+                                                <p className="app-text-muted mb-1 line-clamp-2 text-xs">
                                                     {message}
                                                 </p>
-                                                <p className="text-[10px] text-gray-400">
+                                                <p className="app-text-muted text-[10px]">
                                                     {timestamp ? formatDistanceToNow(new Date(timestamp), {
                                                         addSuffix: true,
                                                         locale: ru,
@@ -194,11 +194,11 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                                                     e.stopPropagation();
                                                     deleteNotification(notification.id);
                                                 }}
-                                                className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-50 rounded transition-all flex-shrink-0"
+                                                className="flex-shrink-0 rounded p-1.5 opacity-0 transition-all group-hover:opacity-100 hover:bg-[var(--danger-soft)]"
                                                 aria-label="Удалить"
                                                 title="Удалить уведомление"
                                             >
-                                                <Trash2 className="w-3.5 h-3.5 text-gray-400 hover:text-red-600" />
+                                                <Trash2 className="h-3.5 w-3.5 text-[var(--muted-foreground)] hover:text-red-500" />
                                             </button>
                                         </div>
                                     </li>
@@ -208,11 +208,11 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                     </div>
 
                     {/* Футер */}
-                    <div className="p-3 border-t border-slate-100 bg-slate-50 text-center">
+                    <div className="app-divider border-t p-3 text-center">
                         <a
                             href="/notifications"
                             onClick={(e) => e.stopPropagation()}
-                            className="text-xs text-sky-600 hover:text-sky-700 font-medium"
+                            className="app-link-accent text-xs font-medium"
                         >
                             Показать все уведомления
                         </a>
@@ -238,9 +238,9 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
     };
 
     return (
-        <div className="flex flex-col max-h-[60vh] bg-white rounded-xl shadow-sm ring-1 ring-gray-100 overflow-hidden">
-            <div className="flex items-center justify-between p-3 border-b border-slate-100">
-                <h3 className="font-semibold text-sm">Уведомления</h3>
+        <div className="app-menu flex max-h-[60vh] flex-col overflow-hidden rounded-xl">
+            <div className="app-divider flex items-center justify-between border-b p-3">
+                <p className="app-text-muted text-sm font-semibold uppercase tracking-wide">Уведомления</p>
                 <div className="flex items-center gap-2">
                     {unreadCount > 0 && (
                         <button 
@@ -248,7 +248,7 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
                                 e.stopPropagation();
                                 markAllAsRead();
                             }} 
-                            className="text-xs text-sky-600 hover:text-sky-700 font-medium"
+                            className="app-link-accent text-xs font-medium"
                         >
                             Прочитать все
                         </button>
@@ -256,15 +256,15 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
                     <Link
                         href="/notifications/settings"
                         onClick={(e) => e.stopPropagation()}
-                        className="p-1 hover:bg-slate-100 rounded"
+                        className="app-icon-button rounded p-1"
                         aria-label="Настройки"
                         title="Настройки уведомлений"
                     >
-                        <Settings className="w-4 h-4 text-gray-500" />
+                        <Settings className="h-4 w-4" />
                     </Link>
                     {onClose && (
-                        <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded" aria-label="Закрыть">
-                            <X className="w-4 h-4 text-gray-500" />
+                        <button onClick={onClose} className="app-icon-button rounded p-1" aria-label="Закрыть">
+                            <X className="h-4 w-4" />
                         </button>
                     )}
                 </div>
@@ -274,11 +274,11 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
 
             <div className="overflow-y-auto flex-1">
                 {loading ? (
-                    <div className="p-8 text-center text-gray-500 text-sm">Загрузка...</div>
+                    <div className="app-text-muted p-8 text-center text-sm">Загрузка...</div>
                 ) : notifications.length === 0 ? (
-                    <div className="p-8 text-center text-gray-500">
-                        <Bell className="w-12 h-12 mx-auto mb-2 opacity-20 text-gray-400" />
-                        <p className="text-sm">Нет уведомлений</p>
+                    <div className="app-text-muted p-10 text-center">
+                        <Bell className="mx-auto mb-3 h-12 w-12 opacity-30" />
+                        <p className="text-sm font-medium">Нет уведомлений</p>
                     </div>
                 ) : (
                     <ul>
@@ -292,18 +292,18 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
                             <li
                                 key={notification.id}
                                 onClick={() => handleNotificationClick(notification)}
-                                className={`p-3 border-b border-slate-100 hover:bg-slate-100 cursor-pointer transition-colors ${
-                                    isUnread ? 'bg-sky-50/50' : ''
+                                className={`app-divider cursor-pointer border-b p-3 transition-colors hover:bg-[var(--surface-secondary)] ${
+                                    isUnread ? 'app-unread-surface' : ''
                                 }`}
                             >
                                 <div className="flex items-start gap-2">
                                     {isUnread && (
-                                        <div className="w-1.5 h-1.5 bg-sky-600 rounded-full mt-1.5 flex-shrink-0" />
+                                        <div className="app-dot-accent mt-1.5 h-1.5 w-1.5 rounded-full flex-shrink-0" />
                                     )}
                                     <div className="flex-1 min-w-0">
-                                        <h4 className="font-medium text-sm mb-0.5 truncate text-gray-800">{title}</h4>
-                                        <p className="text-xs text-gray-600 line-clamp-2 mb-1">{message}</p>
-                                        <p className="text-[10px] text-gray-400">
+                                        <h4 className="mb-0.5 truncate text-sm font-medium text-[var(--foreground)]">{title}</h4>
+                                        <p className="app-text-muted mb-1 line-clamp-2 text-xs">{message}</p>
+                                        <p className="app-text-muted text-[10px]">
                                             {timestamp ? formatDistanceToNow(new Date(timestamp), { addSuffix: true, locale: ru }) : 'Только что'}
                                         </p>
                                     </div>
@@ -314,11 +314,11 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
                 )}
             </div>
 
-            <div className="p-2 border-t border-slate-100 bg-slate-50 text-center">
+            <div className="app-divider border-t p-2 text-center">
                 <a 
                     href="/notifications" 
                     onClick={(e) => e.stopPropagation()}
-                    className="text-xs text-sky-600 hover:text-sky-700 font-medium"
+                    className="app-link-accent text-xs font-medium"
                 >
                     Показать все
                 </a>

@@ -30,7 +30,7 @@ export const TagColorPicker: React.FC<TagColorPickerProps> = ({
 }) => {
   return (
     <div className="space-y-2">
-      <label className="block text-sm font-medium text-gray-700">
+      <label className="block text-sm font-medium text-[var(--foreground)]">
         {label}
       </label>
       <div className="grid grid-cols-6 gap-2">
@@ -41,8 +41,8 @@ export const TagColorPicker: React.FC<TagColorPickerProps> = ({
             onClick={() => onChange(color.value)}
             className={`
               w-10 h-10 rounded-md border-2 transition-all
-              hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
-              ${value === color.value ? 'border-blue-500 ring-2 ring-blue-500 ring-offset-2' : 'border-gray-300'}
+              hover:scale-110 focus:outline-none focus:shadow-[0_0_0_2px_var(--accent-soft-strong)]
+              ${value === color.value ? 'border-[var(--accent-primary)] ring-2 ring-[var(--accent-primary)]' : 'border-[var(--border-strong)]'}
             `}
             style={{ backgroundColor: color.value }}
             title={color.name}
@@ -51,14 +51,14 @@ export const TagColorPicker: React.FC<TagColorPickerProps> = ({
         ))}
       </div>
       <div className="flex items-center gap-2 mt-3">
-        <label className="text-sm text-gray-600">Свой цвет:</label>
+        <label className="app-text-muted text-sm">Свой цвет:</label>
         <input
           type="color"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-16 h-8 rounded border border-gray-300 cursor-pointer"
+          className="app-input h-8 w-16 cursor-pointer rounded p-1"
         />
-        <span className="text-xs text-gray-500 font-mono">{value}</span>
+        <span className="app-text-muted font-mono text-xs">{value}</span>
       </div>
     </div>
   );

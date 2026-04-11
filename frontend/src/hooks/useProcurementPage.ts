@@ -51,6 +51,7 @@ type ProcurementSection = "requests" | "stats" | "suppliers";
 type PaginatedLike<T> = {
   results?: T[];
   next?: string | null;
+  count?: number;
 };
 
 const getPaginatedResults = <T,>(response: unknown): T[] => {
@@ -74,6 +75,17 @@ const getPaginatedNext = (response: unknown): number | null => {
   }
 
   return extractNextPage((response as PaginatedLike<unknown>).next ?? null);
+};
+
+const getPaginatedCount = (response: unknown): number => {
+  if (!response || typeof response !== "object" || Array.isArray(response)) {
+    return 0;
+  }
+
+  const count = (response as PaginatedLike<unknown>).count;
+  return typeof count === "number" && Number.isFinite(count)
+    ? count
+    : getPaginatedResults(response).length;
 };
 
 const getReadableError = (error: unknown, fallback: string): string => {
@@ -110,6 +122,14 @@ export function useProcurementPage(user: User | null) {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [nextPage, setNextPage] = useState<number | null>(null);
+  const [scopeCounts, setScopeCounts] = useState<Record<ScopeTab, number>>({
+    all: 0,
+    mine: 0,
+    department: 0,
+    pending_approvals: 0,
+    my_work: 0,
+    available: 0,
+  });
 
   const [scope, setScope] = useState<ScopeTab>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -181,6 +201,23 @@ export function useProcurementPage(user: User | null) {
     [departmentFilter, periodFilter, scope, searchQuery, statusFilter, urgencyFilter],
   );
 
+  const buildScopeCountParams = useCallback(
+    (targetScope: ScopeTab): Record<string, string | number> => {
+      const params: Record<string, string | number> = { page: 1 };
+      if (targetScope === "mine") params.scope = "mine";
+      else if (targetScope === "department") params.scope = "department";
+      else if (targetScope === "my_work") params.scope = "my_work";
+      else if (targetScope === "available") params.scope = "available";
+      if (statusFilter) params.status = statusFilter;
+      if (urgencyFilter) params.urgency = urgencyFilter;
+      if (departmentFilter) params.department = departmentFilter;
+      if (periodFilter) params.period = periodFilter;
+      if (searchQuery.trim()) params.search = searchQuery.trim();
+      return params;
+    },
+    [departmentFilter, periodFilter, searchQuery, statusFilter, urgencyFilter],
+  );
+
   const loadPage1 = useCallback(async () => {
     try {
       setLoading(true);
@@ -203,6 +240,34 @@ export function useProcurementPage(user: User | null) {
   useEffect(() => {
     void loadPage1();
   }, [loadPage1]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const scopes: ScopeTab[] = ["all", "mine", "department", "pending_approvals", "my_work", "available"];
+        const results = await Promise.all(
+          scopes.map(async (scopeKey) => {
+            const response: unknown = scopeKey === "pending_approvals"
+              ? await apiClient.getPendingApprovals(buildScopeCountParams(scopeKey))
+              : await apiClient.getProcurementRequests(buildScopeCountParams(scopeKey));
+            return [scopeKey, getPaginatedCount(response)] as const;
+          }),
+        );
+
+        if (!cancelled) {
+          setScopeCounts(Object.fromEntries(results) as Record<ScopeTab, number>);
+        }
+      } catch (countsError) {
+        console.error("Load procurement scope counts error:", countsError);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [buildScopeCountParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -520,6 +585,7 @@ export function useProcurementPage(user: User | null) {
     actionSuccess,
     busyKey,
     nextPage,
+    scopeCounts,
     scope,
     setScope,
     searchQuery,

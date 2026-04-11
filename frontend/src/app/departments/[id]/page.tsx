@@ -45,32 +45,32 @@ export default function DepartmentDetailPage() {
       <div className="space-y-4">
         <Link
           href="/departments"
-          className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
         >
           <ArrowLeft size={14} />
           К списку отделов
         </Link>
 
         {loading ? (
-          <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-100">
-            <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-sky-400 border-t-transparent" />
-            <p className="text-sm text-gray-500">Загрузка отдела...</p>
+          <div className="app-surface rounded-2xl p-8 text-center">
+            <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-[var(--border-subtle)] border-t-[var(--accent-primary)]" />
+            <p className="app-text-muted text-sm">Загрузка отдела...</p>
           </div>
         ) : error ? (
-          <div className="rounded-2xl bg-red-50 p-6 text-center">
-            <p className="text-sm text-red-800">{error}</p>
+          <div className="app-feedback-danger rounded-2xl p-6 text-center">
+            <p className="text-sm">{error}</p>
           </div>
         ) : department ? (
-          <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
+          <section className="app-surface rounded-2xl p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-sky-50 px-2.5 py-1 text-xs text-sky-700 ring-1 ring-sky-100">
+                <div className="app-selected app-accent-text mb-2 inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs">
                   <Building2 size={12} />
                   Отдел
                 </div>
-                <h1 className="text-xl font-semibold text-gray-900">{department.name}</h1>
-                <p className="mt-2 text-sm text-gray-600">{department.description || "Описание не заполнено"}</p>
-                <p className="mt-3 text-sm text-gray-700">
+                <h1 className="text-xl font-semibold text-[var(--foreground)]">{department.name}</h1>
+                <p className="app-text-muted mt-2 text-sm">{department.description || "Описание не заполнено"}</p>
+                <p className="mt-3 text-sm text-[var(--foreground)]">
                   Руководитель:{" "}
                   <span className="font-medium">
                     {department.head
@@ -80,7 +80,7 @@ export default function DepartmentDetailPage() {
                 </p>
               </div>
 
-              <div className="inline-flex shrink-0 items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 text-xs text-sky-700 ring-1 ring-sky-100">
+              <div className="app-selected app-accent-text inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs">
                 <Users size={12} />
                 {department.employees_count ?? 0}
               </div>

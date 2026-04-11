@@ -31,32 +31,32 @@ export function MobileLeftDrawer({ isOpen, onClose, children }: LeftNavDrawerPro
     <div className={`fixed inset-0 z-[100] lg:hidden ${isOpen ? "pointer-events-auto" : "pointer-events-none"}`}>
       <button
         type="button"
-        className={`absolute inset-0 bg-black/40 transition-opacity ${isOpen ? "opacity-100" : "opacity-0"}`}
+        className={`app-overlay absolute inset-0 transition-opacity ${isOpen ? "opacity-100" : "opacity-0"}`}
         onClick={onClose}
         aria-label="Закрыть левое меню"
       />
       <div
-        className={`absolute inset-y-0 left-0 w-full overflow-y-auto bg-white p-4 transition-transform duration-300 ${
+        className={`app-surface-elevated absolute inset-y-0 left-0 w-full overflow-y-auto p-4 transition-transform duration-300 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="mb-4 flex items-center justify-between">
-          <p className="text-sm font-semibold text-gray-900">Меню</p>
+          <p className="text-sm font-semibold text-[var(--foreground)]">Меню</p>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100"
+            className="app-icon-button flex h-10 w-10 items-center justify-center rounded-full"
             aria-label="Закрыть меню"
           >
-            <X size={20} className="text-gray-700" />
+            <X size={20} />
           </button>
         </div>
 
         {/* Профиль пользователя */}
-        <div className="mb-6 rounded-xl bg-gradient-to-br from-sky-50 to-sky-100 ring-1 ring-sky-100 overflow-hidden">
+        <div className="app-selected mb-6 overflow-hidden rounded-xl">
           <button
             onClick={() => setIsProfileExpanded(!isProfileExpanded)}
-            className="w-full flex items-center gap-3 p-4 hover:bg-sky-200/50 transition-colors"
+            className="flex w-full items-center gap-3 p-4 transition-colors hover:bg-[var(--accent-soft)]"
           >
             <div className="h-12 w-12 overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white flex items-center justify-center flex-shrink-0">
               {user?.avatar ? (
@@ -66,25 +66,25 @@ export function MobileLeftDrawer({ isOpen, onClose, children }: LeftNavDrawerPro
               )}
             </div>
             <div className="min-w-0 flex-1 text-left">
-              <p className="text-sm font-semibold text-gray-900">{userName}</p>
+              <p className="text-sm font-semibold text-[var(--foreground)]">{userName}</p>
             </div>
             <ChevronDown
               size={20}
-              className={`text-gray-700 transition-transform flex-shrink-0 ${isProfileExpanded ? "rotate-180" : ""}`}
+              className={`app-text-muted flex-shrink-0 transition-transform ${isProfileExpanded ? "rotate-180" : ""}`}
             />
           </button>
           {isProfileExpanded && (
-            <div className="border-t border-sky-200 p-2 space-y-2">
+            <div className="space-y-2 border-t border-[color:color-mix(in_srgb,var(--accent-primary)_18%,var(--border-subtle))] p-2">
               <button
-                className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-white text-gray-700"
+                className="app-action-ghost w-full rounded-lg px-3 py-2 text-left text-sm transition"
                 onClick={() => { onClose(); router.push("/profile"); }}
               >Мой профиль</button>
               <button
-                className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-white text-gray-700"
+                className="app-action-ghost w-full rounded-lg px-3 py-2 text-left text-sm transition"
                 onClick={() => { onClose(); router.push("/settings"); }}
               >Настройки</button>
               <button
-                className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-red-50 text-red-600"
+                className="app-action-danger w-full rounded-lg px-3 py-2 text-left text-sm transition"
                 onClick={() => { onClose(); logout(); }}
               >Выйти</button>
             </div>
@@ -126,24 +126,24 @@ export function MobileCalendarDrawer({
     <div className={`fixed inset-0 z-[100] lg:hidden ${isOpen ? "pointer-events-auto" : "pointer-events-none"}`}>
       <button
         type="button"
-        className={`absolute inset-0 bg-black/40 transition-opacity ${isOpen ? "opacity-100" : "opacity-0"}`}
+        className={`app-overlay absolute inset-0 transition-opacity ${isOpen ? "opacity-100" : "opacity-0"}`}
         onClick={onClose}
         aria-label="Закрыть календарь"
       />
       <div
-        className={`absolute inset-y-0 right-0 w-full overflow-y-auto bg-white p-4 transition-transform duration-300 ${
+        className={`app-surface-elevated absolute inset-y-0 right-0 w-full overflow-y-auto p-4 transition-transform duration-300 ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
         <div className="mb-4 flex items-center justify-between">
-          <p className="text-sm font-semibold text-gray-900">Календарь</p>
+          <p className="text-sm font-semibold text-[var(--foreground)]">Календарь</p>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100"
+            className="app-icon-button flex h-10 w-10 items-center justify-center rounded-full"
             aria-label="Закрыть календарь"
           >
-            <X size={20} className="text-gray-700" />
+            <X size={20} />
           </button>
         </div>
         {isOpen && (

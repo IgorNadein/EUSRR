@@ -1,9 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, Trash2 } from "lucide-react";
+import { Check, X, Trash2 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { Modal } from "@/components/ui";
+import { EVENT_COLOR_OPTIONS, resolveEventColor } from "@/lib/calendar-event-colors";
+import { loadAllPages } from "@/lib/shared";
+import { resolveMediaUrl } from "@/lib/url";
 
 // Нормализация byweekday в массив чисел
 function normalizeByweekday(byweekday: any): number[] {
@@ -43,6 +46,7 @@ export function EventModal({
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [addingParticipants, setAddingParticipants] = useState(false);
   const [pendingParticipantIds, setPendingParticipantIds] = useState<number[]>([]);
+  const customColorInputRef = useRef<HTMLInputElement | null>(null);
 
   // Ref для отслеживания, был ли уже выполнен авто-выбор дня (чтобы не перезаписывать выбор пользователя)
   const autoWeekdaySetRef = useRef(false);
@@ -95,6 +99,7 @@ export function EventModal({
 
       setEditingEvent({
         ...event,
+        color_event: resolveEventColor(event.color_event),
         isRecurring: event.isRecurring ?? false,
         repeatMode,
       });
@@ -104,6 +109,10 @@ export function EventModal({
         loadEventParticipants(event.id);
       } else {
         setEventParticipants([]);
+      }
+
+      if (showParticipants) {
+        loadAvailableEmployees();
       }
 
       // Загружаем правило для повторяющегося события
@@ -219,8 +228,8 @@ export function EventModal({
   const loadAvailableEmployees = async () => {
     setLoadingEmployees(true);
     try {
-      const data = await apiClient.getEmployees({ limit: 200 });
-      setAvailableEmployees(data.results || []);
+      const allEmployees = await loadAllPages<any>((params) => apiClient.getEmployees(params));
+      setAvailableEmployees(allEmployees);
     } catch (error) {
       console.error('Failed to load employees:', error);
     } finally {
@@ -328,7 +337,7 @@ export function EventModal({
           ? editingEvent.end
           : editingEvent.end?.toISOString?.() || new Date(editingEvent.end).toISOString(),
         calendar: editingEvent.calendar,
-        color_event: editingEvent.color_event || '#3498db',
+        color_event: resolveEventColor(editingEvent.color_event),
         rule: ruleId,
       };
 
@@ -385,7 +394,7 @@ export function EventModal({
       <button
         onClick={handleSave}
         disabled={!editingEvent.title?.trim() || saving}
-        className="flex-1 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
+        className="app-action-primary flex-1 rounded-xl px-4 py-3 text-sm font-semibold shadow-sm"
       >
         {saving ? 'Сохранение...' : (editingEvent.id ? 'Сохранить' : 'Создать')}
       </button>
@@ -394,7 +403,7 @@ export function EventModal({
         <button
           onClick={handleDelete}
           disabled={saving}
-          className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-50"
+          className="app-action-danger rounded-xl px-4 py-3"
           title="Удалить событие"
         >
           <Trash2 size={16} />
@@ -402,6 +411,17 @@ export function EventModal({
       )}
     </div>
   );
+
+  const activeColor = resolveEventColor(editingEvent?.color_event);
+  const isPresetColor = EVENT_COLOR_OPTIONS.some((option) => option.value === activeColor);
+  const employeeMap = new Map(availableEmployees.map((employee) => [employee.id, employee]));
+  const filteredEmployees = availableEmployees.filter((emp) => {
+    const fullName = `${emp.first_name} ${emp.last_name} ${emp.email || ""}`.toLowerCase();
+    const matchesSearch = fullName.includes(searchQuery.toLowerCase());
+    const notParticipant = !eventParticipants.find((participant) => participant.object_id === emp.id);
+    const notPending = !pendingParticipantIds.includes(emp.id);
+    return matchesSearch && notParticipant && notPending;
+  });
 
   return (
     <Modal
@@ -412,29 +432,25 @@ export function EventModal({
       closeOnEsc={!saving}
       footer={footerContent}
     >
-      <div className="space-y-4">
+      <div className="space-y-5">
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Название
-            </label>
+            <label className="app-field-label">Название</label>
             <input
               type="text"
               value={editingEvent.title || ''}
               onChange={(e) => setEditingEvent({ ...editingEvent, title: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              className="app-input w-full rounded-lg px-3 py-2.5 text-sm"
               placeholder="Название события"
               autoFocus
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Описание
-            </label>
+            <label className="app-field-label">Описание</label>
             <textarea
               value={editingEvent.description || ''}
               onChange={(e) => setEditingEvent({ ...editingEvent, description: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              className="app-input min-h-28 w-full rounded-lg px-3 py-2.5 text-sm leading-6 resize-y"
               placeholder="Описание (необязательно)"
               rows={3}
             />
@@ -442,7 +458,7 @@ export function EventModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Начало</label>
+              <label className="app-field-label">Начало</label>
               <input
                 type="datetime-local"
                 value={
@@ -454,12 +470,12 @@ export function EventModal({
                   ...editingEvent,
                   start: new Date(e.target.value).toISOString()
                 })}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                className="app-input w-full rounded-lg px-3 py-2.5 text-sm"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Конец</label>
+              <label className="app-field-label">Конец</label>
               <input
                 type="datetime-local"
                 value={
@@ -471,30 +487,64 @@ export function EventModal({
                   ...editingEvent,
                   end: new Date(e.target.value).toISOString()
                 })}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                className="app-input w-full rounded-lg px-3 py-2.5 text-sm"
               />
             </div>
           </div>
 
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Цвет
-            </label>
-            <div className="flex items-center gap-2">
+            <label className="app-field-label">Цвет</label>
+            <div className="flex flex-wrap items-center gap-2">
+              {EVENT_COLOR_OPTIONS.map((option) => {
+                const isActive = activeColor === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setEditingEvent({ ...editingEvent, color_event: option.value })}
+                    className={`h-9 w-9 rounded-full border-2 transition ${
+                      isActive
+                        ? "scale-105 border-[color:var(--accent-primary)] shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent-primary)_22%,transparent)]"
+                        : "border-[color:var(--border-primary)] hover:border-[color:var(--accent-primary)]"
+                    }`}
+                    style={{ backgroundColor: option.value }}
+                    title={option.label}
+                    aria-label={option.label}
+                  />
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => customColorInputRef.current?.click()}
+                className={`relative h-9 w-9 rounded-full border-2 transition ${
+                  isPresetColor
+                    ? "border-[color:var(--border-primary)] hover:border-[color:var(--accent-primary)]"
+                    : "scale-105 border-[color:var(--accent-primary)] shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent-primary)_22%,transparent)]"
+                }`}
+                style={{
+                  background:
+                    "conic-gradient(from 180deg, #ef4444, #f59e0b, #22c55e, #1296ea, #8b5cf6, #ef4444)",
+                }}
+                title="Выбрать другой цвет"
+                aria-label="Выбрать другой цвет"
+              >
+                <span className="absolute inset-[7px] rounded-full border border-white/20 bg-[var(--surface-primary)]" />
+              </button>
               <input
+                ref={customColorInputRef}
                 type="color"
-                value={editingEvent.color_event || '#3498db'}
+                value={activeColor}
                 onChange={(e) => setEditingEvent({ ...editingEvent, color_event: e.target.value })}
-                className="h-10 w-20 rounded-lg border border-gray-300 cursor-pointer"
+                className="sr-only"
+                aria-label="Выбор произвольного цвета"
               />
-              <span className="text-xs text-gray-500">{editingEvent.color_event || '#3498db'}</span>
             </div>
           </div>
 
           {/* Повторяющееся событие */}
-          <div>
-            <label className="flex items-center gap-2 cursor-pointer">
+          <div className="space-y-3">
+            <label className="app-choice-label">
               <input
                 type="checkbox"
                 checked={editingEvent.isRecurring || false}
@@ -506,21 +556,27 @@ export function EventModal({
                       repeatMode: e.target.checked ? 'count' : undefined,
                       count: e.target.checked ? 10 : undefined
                     })}
-                    className="h-4 w-4 rounded border-gray-300 text-sky-500 focus:ring-2 focus:ring-sky-100"
+                    className="app-checkbox"
                   />
-                  <span className="text-sm font-medium text-gray-700">Повторяющееся событие</span>
+                  <span className="text-sm font-medium">Повторяющееся событие</span>
                 </label>
 
               {editingEvent.isRecurring && (
-                <div className="space-y-3 rounded-lg bg-gray-50 p-3">
+                <div className="app-surface-muted space-y-4 rounded-2xl p-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-[var(--foreground)]">Параметры повторения</p>
+                    <p className="app-text-muted text-xs">
+                      Настрой периодичность и правило завершения серии.
+                    </p>
+                  </div>
+
+                  <div className="app-surface space-y-4 rounded-xl p-4">
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">
-                      Частота повторения
-                    </label>
+                    <label className="app-field-label">Частота повторения</label>
                     <select
                       value={editingEvent.frequency || 'WEEKLY'}
                       onChange={(e) => setEditingEvent({ ...editingEvent, frequency: e.target.value })}
-                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                      className="app-select w-full rounded-lg px-3 py-2.5 text-sm"
                     >
                       <option value="DAILY">Ежедневно</option>
                       <option value="WEEKLY">Еженедельно</option>
@@ -530,20 +586,18 @@ export function EventModal({
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">
-                      Интервал
-                    </label>
+                    <label className="app-field-label">Интервал</label>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-600">Каждые</span>
+                      <span className="app-text-muted text-sm">Каждые</span>
                       <input
                         type="number"
                         min="1"
                         max="365"
                         value={editingEvent.interval || 1}
                         onChange={(e) => setEditingEvent({ ...editingEvent, interval: parseInt(e.target.value) })}
-                        className="w-20 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                        className="app-input w-24 rounded-lg px-3 py-2.5 text-center text-sm"
                       />
-                      <span className="text-sm text-gray-600">
+                      <span className="app-text-muted text-sm">
                         {editingEvent.frequency === 'DAILY' && 'дней'}
                         {editingEvent.frequency === 'WEEKLY' && (editingEvent.interval === 1 ? 'неделю' : 'недели')}
                         {editingEvent.frequency === 'MONTHLY' && (editingEvent.interval === 1 ? 'месяц' : 'месяца')}
@@ -554,9 +608,7 @@ export function EventModal({
 
                   {editingEvent.frequency === 'WEEKLY' && (
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-700">
-                        Дни недели
-                      </label>
+                      <label className="app-field-label">Дни недели</label>
                       <div className="grid grid-cols-7 gap-1">
                         {[
                           { value: 0, label: 'ПН' },
@@ -582,8 +634,8 @@ export function EventModal({
                               }}
                               className={`rounded-lg px-2 py-1.5 text-xs font-medium transition ${
                                 isSelected
-                                  ? 'bg-sky-500 text-white'
-                                  : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                                  ? 'app-pill-active'
+                                  : 'app-pill'
                               }`}
                             >
                               {day.label}
@@ -594,11 +646,11 @@ export function EventModal({
                       {(() => {
                         const firstOccurrence = getFirstOccurrenceDate();
                         return firstOccurrence ? (
-                          <div className="mt-2 flex items-start gap-2 rounded-lg bg-blue-50 px-3 py-2 border border-blue-200">
-                            <svg className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <div className="app-selected mt-2 flex items-start gap-2 rounded-xl px-3 py-2">
+                            <svg className="app-accent-text mt-0.5 h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            <p className="text-xs text-blue-800">
+                            <p className="app-accent-text text-xs">
                               Первое событие: <span className="font-medium">{firstOccurrence}</span>
                             </p>
                           </div>
@@ -608,27 +660,25 @@ export function EventModal({
                   )}
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-700">
-                      Окончание повторения
-                    </label>
-                    <div className="flex items-center gap-2 mb-2">
-                      <label className="flex items-center gap-2 cursor-pointer">
+                    <label className="app-field-label">Окончание повторения</label>
+                    <div className="mb-2 flex flex-wrap items-center gap-3">
+                      <label className="app-choice-label">
                         <input
                           type="radio"
                           checked={editingEvent.repeatMode === 'count'}
                           onChange={() => setEditingEvent({ ...editingEvent, repeatMode: 'count', end_recurring_period: undefined })}
-                          className="h-4 w-4 text-sky-500 focus:ring-sky-500"
+                          className="app-radio"
                         />
-                        <span className="text-sm text-gray-700">Количество раз</span>
+                        <span className="text-sm">Количество раз</span>
                       </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
+                      <label className="app-choice-label">
                         <input
                           type="radio"
                           checked={editingEvent.repeatMode === 'forever'}
                           onChange={() => setEditingEvent({ ...editingEvent, repeatMode: 'forever', count: undefined, end_recurring_period: undefined })}
-                          className="h-4 w-4 text-sky-500 focus:ring-sky-500"
+                          className="app-radio"
                         />
-                        <span className="text-sm text-gray-700">Бесконечно</span>
+                        <span className="text-sm">Бесконечно</span>
                       </label>
                     </div>
 
@@ -639,14 +689,15 @@ export function EventModal({
                         max="999"
                         value={editingEvent.count || 10}
                         onChange={(e) => setEditingEvent({ ...editingEvent, count: parseInt(e.target.value) })}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                        className="app-input w-full rounded-lg px-3 py-2.5 text-sm"
                         placeholder="Количество повторений"
                       />
                     ) : (
-                      <p className="text-xs text-gray-500 italic">
+                      <p className="app-text-muted text-xs italic">
                         Событие будет повторяться бесконечно
                       </p>
                     )}
+                  </div>
                   </div>
                 </div>
               )}
@@ -656,10 +707,10 @@ export function EventModal({
           {showParticipants && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-700">
+                <label className="app-field-label mb-0">
                   Участники события
                   {!eventParticipantsLoading && eventParticipants.length > 0 && (
-                    <span className="ml-1 text-gray-500">({eventParticipants.length})</span>
+                    <span className="app-text-muted ml-1">({eventParticipants.length})</span>
                   )}
                 </label>
                 <button
@@ -670,7 +721,7 @@ export function EventModal({
                       loadAvailableEmployees();
                     }
                   }}
-                  className="text-xs text-sky-600 hover:text-sky-700 font-medium"
+                  className="app-action-secondary rounded-lg px-3 py-2 text-xs font-medium"
                 >
                   {showAddParticipants ? 'Отмена' : '+ Добавить участников'}
                 </button>
@@ -679,29 +730,37 @@ export function EventModal({
               {/* Pending участники для нового события */}
               {!editingEvent.id && pendingParticipantIds.length > 0 && (
                 <div className="space-y-2 mb-3">
-                  <p className="text-xs text-blue-600 font-medium">Будут добавлены после создания:</p>
+                  <p className="app-accent-text text-xs font-medium">Будут добавлены после создания:</p>
                   {pendingParticipantIds.map(userId => {
                     const emp = availableEmployees.find(e => e.id === userId);
                     return emp ? (
                       <div
                         key={userId}
-                        className="flex items-center justify-between rounded-lg bg-blue-50 px-3 py-2"
+                        className="app-selected flex items-center justify-between rounded-xl px-3 py-2"
                       >
                         <div className="flex items-center gap-2">
-                          <div className="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center">
-                            <span className="text-xs font-medium text-blue-700">
-                              {emp.first_name?.[0] || '?'}
-                            </span>
-                          </div>
+                          {emp.avatar ? (
+                            <img
+                              src={resolveMediaUrl(emp.avatar)}
+                              alt={`${emp.first_name || ""} ${emp.last_name || ""}`.trim() || "Сотрудник"}
+                              className="app-avatar-frame h-6 w-6 shrink-0 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="app-avatar-fallback flex h-6 w-6 shrink-0 items-center justify-center rounded-full">
+                              <span className="text-xs font-medium">
+                                {emp.first_name?.[0] || emp.last_name?.[0] || '?'}
+                              </span>
+                            </div>
+                          )}
                           <div className="text-xs">
-                            <div className="font-medium text-gray-900">{emp.first_name} {emp.last_name}</div>
-                            <div className="text-gray-500">attendee</div>
+                            <div className="font-medium text-[var(--foreground)]">{emp.first_name} {emp.last_name}</div>
+                            <div className="app-text-muted">attendee</div>
                           </div>
                         </div>
                         <button
                           type="button"
                           onClick={() => setPendingParticipantIds(pendingParticipantIds.filter(id => id !== userId))}
-                          className="text-red-600 hover:text-red-700 p-1 rounded hover:bg-red-50"
+                          className="app-action-danger p-1.5"
                           title="Удалить"
                         >
                           <X size={14} />
@@ -713,91 +772,149 @@ export function EventModal({
               )}
 
               {eventParticipantsLoading ? (
-                <p className="text-xs text-gray-500 py-2">Загрузка...</p>
+                <p className="app-text-muted py-2 text-xs">Загрузка...</p>
               ) : editingEvent.id && eventParticipants.length > 0 ? (
                 <div className="space-y-2 max-h-32 overflow-y-auto">
-                  {eventParticipants.map((participant: any) => (
-                    <div
-                      key={participant.id}
-                      className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="h-6 w-6 rounded-full bg-sky-100 flex items-center justify-center">
-                          <span className="text-xs font-medium text-sky-700">
-                            {participant.user_name?.[0] || '?'}
-                          </span>
-                        </div>
-                        <div className="text-xs">
-                          <div className="font-medium text-gray-900">{participant.user_name}</div>
-                          <div className="text-gray-500">{participant.distinction || 'attendee'}</div>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveParticipant(participant.id)}
-                        className="text-red-600 hover:text-red-700 p-1 rounded hover:bg-red-50"
-                        title="Удалить участника"
+                  {eventParticipants.map((participant: any) => {
+                    const employee = employeeMap.get(participant.object_id);
+                    const participantName =
+                      participant.user_name ||
+                      [employee?.first_name, employee?.last_name].filter(Boolean).join(" ") ||
+                      "Сотрудник";
+                    const avatarUrl = participant.user_avatar || employee?.avatar;
+
+                    return (
+                      <div
+                        key={participant.id}
+                        className="app-surface-muted flex items-center justify-between rounded-xl px-3 py-2"
                       >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))}
+                        <div className="flex min-w-0 items-center gap-2">
+                          {avatarUrl ? (
+                            <img
+                              src={resolveMediaUrl(avatarUrl)}
+                              alt={participantName}
+                              className="app-avatar-frame h-8 w-8 shrink-0 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="app-avatar-fallback flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+                              <span className="text-xs font-medium">
+                                {participantName?.[0] || '?'}
+                              </span>
+                            </div>
+                          )}
+                          <div className="min-w-0 text-xs">
+                            <div className="truncate font-medium text-[var(--foreground)]">{participantName}</div>
+                            <div className="truncate app-text-muted">
+                              {employee?.email || participant.distinction || 'attendee'}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveParticipant(participant.id)}
+                          className="app-action-danger p-1.5"
+                          title="Удалить участника"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : editingEvent.id ? (
-                <p className="text-xs text-gray-500 py-2">Нет участников</p>
+                <p className="app-text-muted py-2 text-xs">Нет участников</p>
               ) : !pendingParticipantIds.length ? (
-                <p className="text-xs text-gray-500 py-2">Добавьте участников после создания или выберите их до сохранения</p>
+                <p className="app-text-muted py-2 text-xs">Добавьте участников после создания или выберите их до сохранения</p>
               ) : null}
 
               {/* Форма добавления участников */}
               {showAddParticipants && (
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
-                  <input
-                    type="text"
-                    placeholder="Поиск сотрудников..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  />
+                <div className="app-surface-muted space-y-3 rounded-2xl p-3">
+                  <div className="space-y-1">
+                    <input
+                      type="text"
+                      placeholder="Поиск сотрудников..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="app-input w-full rounded-lg px-3 py-2.5 text-sm"
+                    />
+                    <div className="flex items-center justify-between px-1 text-xs">
+                      <span className="app-text-muted">
+                        {loadingEmployees ? "Загружаю сотрудников..." : `Найдено: ${filteredEmployees.length}`}
+                      </span>
+                      <span className="app-accent-text font-medium">
+                        Выбрано: {selectedEmployeeIds.length}
+                      </span>
+                    </div>
+                  </div>
 
                   {loadingEmployees ? (
-                    <p className="text-xs text-gray-500 py-2">Загрузка сотрудников...</p>
+                    <p className="app-text-muted py-2 text-xs">Загрузка сотрудников...</p>
                   ) : (
                     <>
-                      <div className="max-h-48 overflow-y-auto space-y-1">
-                        {availableEmployees
-                          .filter(emp => {
-                            const fullName = `${emp.first_name} ${emp.last_name} ${emp.email || ''}`.toLowerCase();
-                            const matchesSearch = fullName.includes(searchQuery.toLowerCase());
-                            const notParticipant = !eventParticipants.find(p => p.object_id === emp.id);
-                            const notPending = !pendingParticipantIds.includes(emp.id);
-                            return matchesSearch && notParticipant && notPending;
-                          })
-                          .map(emp => (
-                            <label
-                              key={emp.id}
-                              className="flex items-center gap-2 p-2 rounded hover:bg-white cursor-pointer"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={selectedEmployeeIds.includes(emp.id)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setSelectedEmployeeIds([...selectedEmployeeIds, emp.id]);
+                      <div className="app-surface max-h-72 space-y-2 overflow-y-auto rounded-2xl p-2">
+                        {filteredEmployees.length > 0 ? (
+                          filteredEmployees.map((emp) => {
+                            const isSelected = selectedEmployeeIds.includes(emp.id);
+                            return (
+                              <button
+                                key={emp.id}
+                                type="button"
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setSelectedEmployeeIds(selectedEmployeeIds.filter((id) => id !== emp.id));
                                   } else {
-                                    setSelectedEmployeeIds(selectedEmployeeIds.filter(id => id !== emp.id));
+                                    setSelectedEmployeeIds([...selectedEmployeeIds, emp.id]);
                                   }
                                 }}
-                                className="h-4 w-4 rounded border-gray-300 text-sky-500 focus:ring-2 focus:ring-sky-100"
-                              />
-                              <div className="text-xs">
-                                <div className="font-medium text-gray-900">
-                                  {emp.first_name} {emp.last_name}
+                                className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
+                                  isSelected
+                                    ? "app-selected"
+                                    : "app-surface-muted hover:bg-[var(--surface-tertiary)]"
+                                }`}
+                              >
+                                {emp.avatar ? (
+                                  <img
+                                    src={resolveMediaUrl(emp.avatar)}
+                                    alt={`${emp.first_name || ""} ${emp.last_name || ""}`.trim() || "Сотрудник"}
+                                    className="app-avatar-frame h-10 w-10 shrink-0 rounded-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="app-avatar-fallback flex h-10 w-10 shrink-0 items-center justify-center rounded-full">
+                                    <span className="text-sm font-semibold">
+                                      {emp.first_name?.[0] || emp.last_name?.[0] || "?"}
+                                    </span>
+                                  </div>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate text-sm font-medium text-[var(--foreground)]">
+                                    {emp.first_name} {emp.last_name}
+                                  </div>
+                                  <div className="truncate text-xs text-[var(--muted-foreground)]">
+                                    {emp.email || "Почта не указана"}
+                                  </div>
                                 </div>
-                                {emp.email && <div className="text-gray-500">{emp.email}</div>}
-                              </div>
-                            </label>
-                          ))}
+                                <div
+                                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition ${
+                                    isSelected
+                                      ? "border-[color:var(--accent-primary)] bg-[var(--accent-primary)] text-white"
+                                      : "border-[color:var(--border-strong)] text-transparent"
+                                  }`}
+                                  aria-hidden="true"
+                                >
+                                  <Check size={14} />
+                                </div>
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <div className="app-surface-muted rounded-xl px-3 py-6 text-center">
+                            <p className="text-sm font-medium text-[var(--foreground)]">Ничего не найдено</p>
+                            <p className="app-text-muted mt-1 text-xs">
+                              Попробуй изменить запрос или очистить фильтр поиска.
+                            </p>
+                          </div>
+                        )}
                       </div>
 
                       {selectedEmployeeIds.length > 0 && (
@@ -805,7 +922,7 @@ export function EventModal({
                           type="button"
                           onClick={handleAddParticipants}
                           disabled={addingParticipants}
-                          className="w-full rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-50"
+                          className="app-action-primary w-full rounded-xl px-4 py-3 text-sm font-semibold"
                         >
                           {addingParticipants ? 'Добавление...' : `Добавить выбранных (${selectedEmployeeIds.length})`}
                         </button>
