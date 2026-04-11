@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
-import { useState } from "react";
 
 export interface ModalProps {
   isOpen: boolean;
@@ -35,13 +34,11 @@ export function Modal({
   noPadding = false,
   noHeader = false,
 }: ModalProps) {
-  const [isAnimating, setIsAnimating] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isOpen) {
-      setIsAnimating(true);
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "";
@@ -124,18 +121,14 @@ export function Modal({
       ref={modalRef}
       onClick={handleBackdropClick}
       data-overlay-root="true"
-      className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4 transition-opacity duration-200 ${
-        isAnimating ? "opacity-100" : "opacity-0"
-      }`}
+      className="app-overlay fixed inset-0 z-[100] flex items-center justify-center p-2 transition-opacity duration-200 opacity-100 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby={title ? "modal-title" : undefined}
     >
       <div
         ref={contentRef}
-        className={`flex flex-col rounded-xl sm:rounded-2xl bg-white shadow-xl overflow-hidden transition-all duration-200 ${modalSizeClass} ${
-          isAnimating ? "scale-100 opacity-100" : "scale-95 opacity-0"
-        } ${className}`}
+        className={`app-surface-elevated flex scale-100 flex-col overflow-hidden rounded-xl opacity-100 transition-all duration-200 sm:rounded-2xl ${modalSizeClass} ${className}`}
       >
         {/* Header */}
         {showHeader && (
@@ -143,7 +136,7 @@ export function Modal({
             {title && (
               <h3
                 id="modal-title"
-                className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 sm:text-base lg:text-lg"
+                className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--foreground)] sm:text-base lg:text-lg"
                 title={title}
               >
                 {title}
@@ -153,7 +146,7 @@ export function Modal({
               {showCloseButton && (
                 <button
                   onClick={onClose}
-                  className="rounded-full p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+                  className="app-icon-button rounded-full p-1"
                   title="Закрыть"
                 >
                   <X size={20} />
@@ -174,7 +167,7 @@ export function Modal({
 
         {/* Footer */}
         {footer && (
-          <div className="shrink-0 border-t border-gray-200 px-4 py-3 sm:px-6 sm:py-4">{footer}</div>
+          <div className="app-divider shrink-0 border-t px-4 py-3 sm:px-6 sm:py-4">{footer}</div>
         )}
 
         {/* Bottom padding */}

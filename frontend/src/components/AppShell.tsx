@@ -104,16 +104,16 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
   };
 
   return (
-    <header className="sticky top-0 z-[40] border-b border-slate-100 bg-white/90 backdrop-blur">
+    <header className="app-header sticky top-0 z-[40] border-b backdrop-blur">
       <div className="mx-auto max-w-6xl px-4 sm:px-8">
         <div className="flex h-10 lg:h-14 items-center justify-between gap-3">
           <button
             type="button"
             onClick={onOpenLeftNav}
-            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100 lg:hidden"
+            className="app-icon-button flex h-10 w-10 items-center justify-center rounded-full lg:hidden"
             aria-label="Открыть левое меню"
           >
-            <Menu size={20} className="text-gray-700"/>
+            <Menu size={20} />
           </button>
 
           <button
@@ -125,14 +125,18 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
               });
               setIsNotificationsOpen(false);
             }}
-            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100 lg:hidden"
+            className="app-icon-button flex h-10 w-10 items-center justify-center rounded-full lg:hidden"
             aria-label="Поиск"
           >
-            <Search size={20} className="text-gray-700" />
+            <Search size={20} />
           </button>
 
           <Link href="/" className="flex items-center justify-center">
-            <img src="/logo.png" alt="Логотип" className="mt-3 lg:mt-0 h-10 w-auto lg:h-11 bg-white lg:bg-transparent rounded pb-0.5 lg:pb-0" />
+            <img
+              src="/logo.png"
+              alt="Логотип"
+              className="mt-3 h-10 w-auto rounded bg-transparent pb-0.5 lg:mt-0 lg:h-11 lg:pb-0"
+            />
           </Link>
 
           <div className="lg:hidden">
@@ -145,15 +149,15 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
           <button
             type="button"
             onClick={onOpenCalendar}
-            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100 lg:hidden"
+            className="app-icon-button flex h-10 w-10 items-center justify-center rounded-full lg:hidden"
             aria-label="Открыть календарь"
           >
-            <CalendarDays size={20} className="text-gray-700" />
+            <CalendarDays size={20} />
           </button>
 
           <div className="hidden flex-1 items-center justify-center lg:flex">
             <div className="relative w-full max-w-xl">
-              <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 app-text-muted" />
               <input
                 type="text"
                 value={searchQuery}
@@ -164,7 +168,7 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
                     submitSearch();
                   }
                 }}
-                className="w-full rounded-full border border-gray-200 bg-gray-50 py-2.5 pl-11 pr-4 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                className="app-input w-full rounded-full py-2.5 pl-11 pr-4 text-sm"
                 placeholder="Поиск"
               />
             </div>
@@ -186,18 +190,18 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
               </div>
               {/* Меню пользователя */}
               {userMenuOpen && (
-                <div className="absolute right-0 top-12 z-[60] w-48 rounded-xl bg-white py-2 shadow-lg ring-1 ring-slate-100 animate-fade-in">
+                <div className="app-menu absolute right-0 top-12 z-[60] w-48 rounded-xl py-2 animate-fade-in">
                   <button
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-sky-50"
+                    className="app-action-ghost w-full px-4 py-2 text-left text-sm transition"
                     onClick={() => { setUserMenuOpen(false); router.push('/profile'); }}
                   >Мой профиль</button>
                   <button
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-sky-50"
+                    className="app-action-ghost w-full px-4 py-2 text-left text-sm transition"
                     onClick={() => { setUserMenuOpen(false); router.push('/settings'); }}
                   >Настройки</button>
-                  <div className="my-1 border-t border-slate-100" />
+                  <div className="app-divider my-1 border-t" />
                   <button
-                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                    className="app-action-danger w-full px-4 py-2 text-left text-sm transition"
                     onClick={() => { setUserMenuOpen(false); logout(); }}
                   >Выйти</button>
                 </div>
@@ -213,7 +217,7 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
           }`}
         >
           <div className="relative">
-            <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 app-text-muted" />
             <input
               ref={searchInputRef}
               type="text"
@@ -229,7 +233,7 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
                   setIsSearchOpen(false);
                 }
               }}
-              className="w-full rounded-full border border-gray-200 bg-gray-50 py-2.5 pl-11 pr-4 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+              className="app-input w-full rounded-full py-2.5 pl-11 pr-4 text-sm"
               placeholder="Поиск по сайту..."
             />
           </div>
@@ -283,14 +287,14 @@ function LeftNavContent({ onNavigate }: LeftNavContentProps) {
   };
 
   const navLinkClass = (href: string) =>
-    `flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-gray-50 ${pathname === href ? "bg-sky-50 text-sky-700 ring-1 ring-sky-100" : "text-gray-700"
+    `flex items-center gap-3 rounded-lg px-3 py-2 transition ${pathname === href ? "app-selected" : "text-[var(--foreground)] hover:bg-[var(--surface-secondary)]"
     }`;
 
-  const navIconClass = (href: string) => (pathname === href ? "text-sky-700" : "text-gray-400");
+  const navIconClass = (href: string) => (pathname === href ? "app-accent-text" : "app-text-muted");
 
   return (
-    <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-      <div className="space-y-2 text-sm text-gray-700">
+    <div className="app-surface rounded-2xl p-5">
+      <div className="space-y-2 text-sm">
         {navItems.map(({ href, label, icon: Icon, category }) => {
           const count = category ? categoryCounts[category] || 0 : 0;
           
@@ -328,17 +332,17 @@ function LeftNav() {
 
 export function PageHeader({ title, subtitle, badge, eyebrow = "Раздел" }: PageHeaderProps) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
+    <div className="app-surface flex flex-col gap-3 rounded-2xl p-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-sky-600">{eyebrow}</p>
-          <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+          <p className="app-accent-text text-sm font-semibold">{eyebrow}</p>
+          <h1 className="text-2xl font-bold text-[var(--foreground)]">{title}</h1>
         </div>
         {badge ? (
-          <div className="rounded-full bg-sky-50 px-4 py-2 text-xs font-medium text-sky-700 ring-1 ring-sky-100">{badge}</div>
+          <div className="app-badge app-badge-accent px-4 py-2 text-xs font-medium">{badge}</div>
         ) : null}
       </div>
-      {subtitle ? <p className="text-sm text-gray-600">{subtitle}</p> : null}
+      {subtitle ? <p className="app-text-muted text-sm">{subtitle}</p> : null}
     </div>
   );
 }
@@ -408,10 +412,10 @@ export function AppShell({ children }: AppShellProps) {
   // Показываем загрузку, пока проверяем авторизацию
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-sky-50 via-white to-white flex items-center justify-center">
+      <div className="app-shell min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="mb-4 inline-block h-12 w-12 animate-spin rounded-full border-4 border-sky-400 border-t-transparent"></div>
-          <p className="text-sm text-gray-500">Загрузка...</p>
+          <p className="app-text-muted text-sm">Загрузка...</p>
         </div>
       </div>
     );
@@ -423,7 +427,7 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <div className={`${isMessageDialogPage ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'} bg-gradient-to-b from-sky-50 via-white to-white text-gray-900 flex flex-col`}>
+    <div className={`${isMessageDialogPage ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'} app-shell flex flex-col`}>
         <Header onOpenLeftNav={() => setIsMobileLeftNavOpen(true)} onOpenCalendar={() => setIsMobileCalendarOpen(true)} />
         <div className={`mx-auto flex w-full flex-1 min-h-0 max-w-6xl ${isMessageDialogPage ? 'gap-0 px-0 py-0 lg:gap-6 lg:px-8 lg:py-8' : 'gap-6 px-4 py-4 sm:px-8 lg:py-8'}`}>
           <LeftNav />

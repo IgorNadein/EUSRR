@@ -178,13 +178,15 @@ export default function NotificationSettingsPage() {
     }
   };
 
+  const toggleTrackClass = "peer h-6 w-11 rounded-full bg-[var(--surface-tertiary)] after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-[var(--border-subtle)] after:bg-[var(--surface-primary)] after:transition-all after:content-[''] peer-checked:bg-[var(--accent-primary)] peer-checked:after:translate-x-full peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[color:var(--accent-soft)] peer-disabled:cursor-not-allowed peer-disabled:opacity-50";
+
   if (loading) {
     return (
       <AppShell>
         <div className="mx-auto max-w-3xl px-4 py-6">
-          <div className="rounded-xl bg-gray-50 p-12 text-center">
-            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-sky-500"></div>
-            <p className="text-sm text-gray-500">Загрузка настроек...</p>
+          <div className="app-surface-muted rounded-xl p-12 text-center">
+            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-[var(--border-subtle)] border-t-[var(--accent-primary)]"></div>
+            <p className="app-text-muted text-sm">Загрузка настроек...</p>
           </div>
         </div>
       </AppShell>
@@ -198,30 +200,30 @@ export default function NotificationSettingsPage() {
         <div className="mb-6">
           <Link
             href="/notifications"
-            className="mb-3 inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition"
+            className="app-link-accent mb-3 inline-flex items-center gap-2 text-sm transition"
           >
             <ArrowLeft size={16} />
             Вернуться к уведомлениям
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900">Настройки уведомлений</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-2xl font-bold text-[var(--foreground)]">Настройки уведомлений</h1>
+          <p className="app-text-muted mt-1 text-sm">
             Управляйте способами получения уведомлений · Изменения сохраняются автоматически
           </p>
         </div>
 
         <div className="space-y-6">
           {/* Каналы доставки */}
-          <section className="rounded-xl border border-gray-200 bg-white p-6">
-            <h2 className="mb-4 text-lg font-semibold text-gray-900">Каналы доставки</h2>
+          <section className="app-surface rounded-xl p-6">
+            <h2 className="mb-4 text-lg font-semibold text-[var(--foreground)]">Каналы доставки</h2>
             
             <div className="space-y-4">
               {/* Web уведомления */}
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-3">
-                  <Bell className="mt-0.5 h-5 w-5 text-sky-600" />
+                  <Bell className="app-accent-text mt-0.5 h-5 w-5" />
                   <div>
-                    <h3 className="font-medium text-gray-900">Web уведомления</h3>
-                    <p className="text-sm text-gray-500">
+                    <h3 className="font-medium text-[var(--foreground)]">Web уведомления</h3>
+                    <p className="app-text-muted text-sm">
                       Уведомления в браузере в реальном времени
                     </p>
                   </div>
@@ -235,18 +237,18 @@ export default function NotificationSettingsPage() {
                     }
                     className="peer sr-only"
                   />
-                  <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-sky-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-100"></div>
+                  <div className={toggleTrackClass}></div>
                 </label>
               </div>
 
               {/* Email уведомления */}
-              <div className="space-y-3 border-t border-gray-100 pt-4">
+              <div className="space-y-3 border-t border-[var(--border-subtle)] pt-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3">
-                    <Mail className="mt-0.5 h-5 w-5 text-sky-600" />
+                    <Mail className="app-accent-text mt-0.5 h-5 w-5" />
                     <div>
-                      <h3 className="font-medium text-gray-900">Email уведомления</h3>
-                      <p className="text-sm text-gray-500">
+                      <h3 className="font-medium text-[var(--foreground)]">Email уведомления</h3>
+                      <p className="app-text-muted text-sm">
                         Получать уведомления на электронную почту
                       </p>
                     </div>
@@ -260,13 +262,13 @@ export default function NotificationSettingsPage() {
                       }
                       className="peer sr-only"
                     />
-                    <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-sky-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-100"></div>
+                    <div className={toggleTrackClass}></div>
                   </label>
                 </div>
 
                 {preferences.email_enabled && (
                   <div className="ml-8">
-                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                    <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">
                       Частота отправки
                     </label>
                     <select
@@ -277,7 +279,7 @@ export default function NotificationSettingsPage() {
                           email_frequency: e.target.value as any,
                         })
                       }
-                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                      className="app-select w-full"
                     >
                       <option value="instant">Мгновенно</option>
                       <option value="daily">Ежедневно (дайджест)</option>
@@ -289,13 +291,13 @@ export default function NotificationSettingsPage() {
               </div>
 
               {/* Push уведомления */}
-              <div className="space-y-3 border-t border-gray-100 pt-4">
+              <div className="space-y-3 border-t border-[var(--border-subtle)] pt-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3">
-                    <Smartphone className="mt-0.5 h-5 w-5 text-sky-600" />
+                    <Smartphone className="app-accent-text mt-0.5 h-5 w-5" />
                     <div>
-                      <h3 className="font-medium text-gray-900">Push уведомления</h3>
-                      <p className="text-sm text-gray-500">
+                      <h3 className="font-medium text-[var(--foreground)]">Push уведомления</h3>
+                      <p className="app-text-muted text-sm">
                         Системные уведомления на устройстве
                       </p>
                     </div>
@@ -308,32 +310,32 @@ export default function NotificationSettingsPage() {
                       disabled={!isSupported || permission === 'denied'}
                       className="peer sr-only"
                     />
-                    <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-sky-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-100 peer-disabled:opacity-50 peer-disabled:cursor-not-allowed"></div>
+                    <div className={toggleTrackClass}></div>
                   </label>
                 </div>
 
                 {!isSupported && (
-                  <div className="ml-8 flex items-start gap-2 rounded-lg bg-amber-50 p-3">
-                    <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                    <p className="text-xs text-amber-800">
+                  <div className="app-feedback-warning ml-8 flex items-start gap-2 rounded-lg p-3">
+                    <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                    <p className="text-xs">
                       Ваш браузер не поддерживает Push уведомления
                     </p>
                   </div>
                 )}
 
                 {isSupported && permission === 'denied' && (
-                  <div className="ml-8 flex items-start gap-2 rounded-lg bg-red-50 p-3">
-                    <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
-                    <p className="text-xs text-red-800">
+                  <div className="app-feedback-danger ml-8 flex items-start gap-2 rounded-lg p-3">
+                    <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                    <p className="text-xs">
                       Вы запретили уведомления. Измените настройки браузера.
                     </p>
                   </div>
                 )}
 
                 {isSupported && permission === 'granted' && preferences.push_enabled && (
-                  <div className="ml-8 flex items-start gap-2 rounded-lg bg-green-50 p-3">
-                    <AlertCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                    <p className="text-xs text-green-800">
+                  <div className="app-feedback-success ml-8 flex items-start gap-2 rounded-lg p-3">
+                    <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                    <p className="text-xs">
                       Push уведомления активны {isSubscribed && '(подписка активна)'}
                     </p>
                   </div>
@@ -343,17 +345,17 @@ export default function NotificationSettingsPage() {
           </section>
 
           {/* Режим "Не беспокоить" */}
-          <section className="rounded-xl border border-gray-200 bg-white p-6">
+          <section className="app-surface rounded-xl p-6">
             <div className="mb-4 flex items-center gap-2">
-              <Moon className="h-5 w-5 text-purple-600" />
-              <h2 className="text-lg font-semibold text-gray-900">Не беспокоить</h2>
+              <Moon className="app-accent-text h-5 w-5" />
+              <h2 className="text-lg font-semibold text-[var(--foreground)]">Не беспокоить</h2>
             </div>
 
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-medium text-gray-900">Включить режим DND</h3>
-                  <p className="text-sm text-gray-500">
+                  <h3 className="font-medium text-[var(--foreground)]">Включить режим DND</h3>
+                  <p className="app-text-muted text-sm">
                     В указанный период Email и Push будут отключены, Web уведомления — без звука
                   </p>
                 </div>
@@ -364,7 +366,7 @@ export default function NotificationSettingsPage() {
                     onChange={(e) => handleDndToggle(e.target.checked)}
                     className="peer sr-only"
                   />
-                  <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-purple-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-100"></div>
+                  <div className={toggleTrackClass}></div>
                 </label>
               </div>
 
@@ -372,7 +374,7 @@ export default function NotificationSettingsPage() {
                 <>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-700">
+                      <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">
                         Начало периода
                       </label>
                       <input
@@ -382,12 +384,12 @@ export default function NotificationSettingsPage() {
                           setPreferences({ ...preferences, dnd_start_time: e.target.value })
                         }
                         required
-                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-100"
+                        className="app-input w-full"
                       />
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-700">
+                      <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">
                         Конец периода
                       </label>
                       <input
@@ -397,14 +399,14 @@ export default function NotificationSettingsPage() {
                           setPreferences({ ...preferences, dnd_end_time: e.target.value })
                         }
                         required
-                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-100"
+                        className="app-input w-full"
                       />
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-2 rounded-lg bg-purple-50 p-3 border border-purple-200">
-                    <AlertCircle className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
-                    <div className="text-xs text-purple-800">
+                  <div className="app-selected flex items-start gap-2 rounded-lg p-3">
+                    <AlertCircle className="app-accent-text mt-0.5 h-4 w-4 flex-shrink-0" />
+                    <div className="app-accent-text text-xs">
                       <p className="font-medium mb-1">Режим активен</p>
                       <p>
                         С {preferences.dnd_start_time || '00:00'} до {preferences.dnd_end_time || '23:59'} будут приходить только Web уведомления (без звука). 
@@ -424,9 +426,9 @@ export default function NotificationSettingsPage() {
 
           {/* Типы уведомлений */}
           {verbTypes.length > 0 && (
-            <section className="rounded-xl border border-gray-200 bg-white p-6">
-              <h2 className="mb-4 text-lg font-semibold text-gray-900">Типы уведомлений</h2>
-              <p className="mb-4 text-sm text-gray-500">
+            <section className="app-surface rounded-xl p-6">
+              <h2 className="mb-4 text-lg font-semibold text-[var(--foreground)]">Типы уведомлений</h2>
+              <p className="app-text-muted mb-4 text-sm">
                 Выберите, какие типы уведомлений вы хотите получать
               </p>
 
@@ -434,18 +436,18 @@ export default function NotificationSettingsPage() {
                 {verbTypes.map((verbType) => (
                   <label
                     key={verbType.verb}
-                    className="flex cursor-pointer items-center justify-between rounded-lg border border-gray-200 p-3 transition hover:bg-gray-50"
+                    className="app-surface-muted flex cursor-pointer items-center justify-between rounded-lg p-3 transition hover:bg-[var(--surface-elevated)]"
                   >
                     <div className="flex items-center gap-3">
                       <input
                         type="checkbox"
                         checked={!preferences.disabled_verbs.includes(verbType.verb)}
                         onChange={() => toggleVerbDisabled(verbType.verb)}
-                        className="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-2 focus:ring-sky-100"
+                        className="h-4 w-4 rounded accent-[var(--accent-primary)]"
                       />
                       <div>
-                        <div className="font-medium text-gray-900">{getVerbName(verbType.verb)}</div>
-                        <div className="text-xs text-gray-500">
+                        <div className="font-medium text-[var(--foreground)]">{getVerbName(verbType.verb)}</div>
+                        <div className="app-text-muted text-xs">
                           {verbType.total} всего • {verbType.unread} непрочитанных
                         </div>
                       </div>
@@ -460,7 +462,7 @@ export default function NotificationSettingsPage() {
           <div className="flex justify-start">
             <Link
               href="/notifications"
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-6 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              className="app-action-secondary inline-flex items-center gap-2 px-6 py-2.5"
             >
               <ArrowLeft size={16} />
               Вернуться к уведомлениям

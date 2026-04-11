@@ -134,7 +134,7 @@ export const TagManagementModal: React.FC<TagManagementModalProps> = ({
     >
       <div className="space-y-4">
         {error && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-800 text-sm">
+          <div className="app-feedback-danger rounded-md p-3 text-sm">
             {error}
           </div>
         )}
@@ -142,12 +142,12 @@ export const TagManagementModal: React.FC<TagManagementModalProps> = ({
         {viewMode === 'list' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <p className="text-sm text-gray-600">
+              <p className="app-text-muted text-sm">
                 Всего тегов: <span className="font-semibold">{tags.length}</span>
               </p>
               <button
                 onClick={() => setViewMode('create')}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
+                className="app-action-primary flex items-center gap-2 rounded-md px-4 py-2 text-sm"
               >
                 <Plus className="h-4 w-4" />
                 Создать тег
@@ -156,13 +156,13 @@ export const TagManagementModal: React.FC<TagManagementModalProps> = ({
 
             {isLoading && tags.length === 0 ? (
               <div className="flex justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[var(--accent-primary)]"></div>
               </div>
             ) : tags.length === 0 ? (
               <div className="text-center py-12">
-                <TagIcon className="mx-auto h-12 w-12 text-gray-400" />
-                <h3 className="mt-2 text-sm font-medium text-gray-900">Нет тегов</h3>
-                <p className="mt-1 text-sm text-gray-500">
+                <TagIcon className="app-text-muted mx-auto h-12 w-12" />
+                <h3 className="mt-2 text-sm font-medium text-[var(--foreground)]">Нет тегов</h3>
+                <p className="app-text-muted mt-1 text-sm">
                   Создайте первый тег для организации документов
                 </p>
               </div>
@@ -171,17 +171,17 @@ export const TagManagementModal: React.FC<TagManagementModalProps> = ({
                 {tags.map((tag) => (
                   <div
                     key={tag.id}
-                    className="flex items-center justify-between p-3 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+                    className="app-surface-muted flex items-center justify-between rounded-md p-3 transition-colors hover:bg-[var(--surface-elevated)]"
                   >
                     <div className="flex items-center gap-3">
                       <div
-                        className="w-8 h-8 rounded-md border border-gray-300 flex-shrink-0"
+                        className="h-8 w-8 flex-shrink-0 rounded-md border border-[var(--border-strong)]"
                         style={{ backgroundColor: tag.color }}
                         title={tag.color}
                       />
                       <div className="min-w-0">
-                        <p className="font-medium text-gray-900 truncate">{tag.name}</p>
-                        <p className="text-xs text-gray-500">
+                        <p className="truncate font-medium text-[var(--foreground)]">{tag.name}</p>
+                        <p className="app-text-muted text-xs">
                           ID: {tag.id} • Цвет: {tag.color}
                         </p>
                       </div>
@@ -190,7 +190,7 @@ export const TagManagementModal: React.FC<TagManagementModalProps> = ({
                       <button
                         onClick={() => handleEditClick(tag)}
                         disabled={isDeleting === tag.id}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-md transition-colors disabled:opacity-50"
+                        className="app-selected app-accent-text rounded-md p-2 transition-colors hover:opacity-90 disabled:opacity-50"
                         title="Редактировать"
                       >
                         <Edit2 className="h-4 w-4" />
@@ -198,11 +198,11 @@ export const TagManagementModal: React.FC<TagManagementModalProps> = ({
                       <button
                         onClick={() => handleDeleteTag(tag.id, tag.name)}
                         disabled={isDeleting === tag.id}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
+                        className="app-action-danger rounded-md p-2 transition-colors disabled:opacity-50"
                         title="Удалить"
                       >
                         {isDeleting === tag.id ? (
-                          <div className="animate-spin h-4 w-4 border-2 border-red-600 border-t-transparent rounded-full" />
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-[color:#dc2626] border-t-transparent" />
                         ) : (
                           <Trash2 className="h-4 w-4" />
                         )}

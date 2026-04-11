@@ -264,10 +264,10 @@ export function BulkActionsToolbar({
   return (
     <>
       {/* Toolbar */}
-      <div className="sticky top-0 z-10 rounded-lg border border-sky-200 bg-sky-50 p-3 shadow-sm">
+      <div className="app-selected sticky top-0 z-10 rounded-lg p-3 shadow-[var(--shadow-card)]">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm font-medium text-sky-900">
+            <div className="app-accent-text flex items-center gap-2 text-sm font-medium">
               <CheckSquare size={16} />
               <span>
                 Выбрано: <span className="font-bold">{selectedIds.length}</span>
@@ -282,7 +282,7 @@ export function BulkActionsToolbar({
                   onChange={(e) => handleMove(e.target.value)}
                   value=""
                   disabled={isProcessing}
-                  className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-sky-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  className="app-select rounded px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <option value="">Переместить в...</option>
                   {availableFolders.map((folder) => (
@@ -305,7 +305,7 @@ export function BulkActionsToolbar({
                   }}
                   value=""
                   disabled={isProcessing}
-                  className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-sky-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  className="app-select rounded px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <option value="">Добавить тег...</option>
                   {availableTags.map((tag) => (
@@ -322,7 +322,7 @@ export function BulkActionsToolbar({
                   onChange={(e) => handleChangeStatus(e.target.value)}
                   value=""
                   disabled={isProcessing}
-                  className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-sky-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  className="app-select rounded px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <option value="">Изменить статус...</option>
                   {availableStatuses.map((status) => (
@@ -338,7 +338,7 @@ export function BulkActionsToolbar({
                 <button
                   onClick={handleDelete}
                   disabled={isProcessing}
-                  className="flex items-center gap-1 rounded bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="app-action-danger flex items-center gap-1 rounded px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                   title="Удалить выбранные"
                 >
                   <Trash2 size={14} />
@@ -352,7 +352,7 @@ export function BulkActionsToolbar({
           <button
             onClick={onClearSelection}
             disabled={isProcessing}
-            className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+            className="app-text-muted flex items-center gap-1 text-sm hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <X size={14} />
             Отменить
@@ -362,14 +362,14 @@ export function BulkActionsToolbar({
         {/* Прогресс */}
         {isProcessing && (
           <div className="mt-3">
-            <div className="mb-1 flex items-center gap-2 text-xs text-sky-700">
+            <div className="app-accent-text mb-1 flex items-center gap-2 text-xs">
               <Loader2 size={12} className="animate-spin" />
               <span>{currentAction}...</span>
               <span className="font-medium">{progress}%</span>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-sky-200">
+            <div className="h-1.5 overflow-hidden rounded-full bg-[color:var(--accent-soft-strong)]">
               <div
-                className="h-full bg-sky-600 transition-all duration-300"
+                className="h-full bg-[var(--accent-primary)] transition-all duration-300"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -379,21 +379,21 @@ export function BulkActionsToolbar({
 
       {/* Undo уведомление */}
       {showUndoNotification && history.length > 0 && (
-        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 shadow-lg">
-          <CheckCircle2 size={20} className="text-green-600" />
-          <span className="text-sm font-medium text-green-900">
+        <div className="app-feedback-success fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg px-4 py-3 shadow-[var(--shadow-elevated)]">
+          <CheckCircle2 size={20} />
+          <span className="text-sm font-medium">
             Операция выполнена успешно
           </span>
           <button
             onClick={handleUndo}
-            className="flex items-center gap-1 rounded bg-green-600 px-3 py-1 text-xs text-white hover:bg-green-700"
+            className="app-action-primary flex items-center gap-1 rounded px-3 py-1 text-xs"
           >
             <Undo2 size={12} />
             Отменить
           </button>
           <button
             onClick={() => setShowUndoNotification(false)}
-            className="text-green-600 hover:text-green-800"
+            className="transition hover:opacity-80"
           >
             <X size={16} />
           </button>

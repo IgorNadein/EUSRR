@@ -287,15 +287,6 @@ export default function EquipmentPage() {
               </div>
             ) : (
               <>
-                <div className="hidden grid-cols-[minmax(0,2.3fr)_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 xl:grid">
-                  <span>Оборудование</span>
-                  <span>Ответственный</span>
-                  <span>Статус</span>
-                  <span>Стоимость</span>
-                  <span>Дата покупки</span>
-                  <span className="text-right">Действия</span>
-                </div>
-
                 {filteredItems.map((item) => {
                 const responsibleName = getResponsibleName(item);
                 const responsibleId = typeof item.responsible_person === "number" ? item.responsible_person : null;
@@ -316,7 +307,7 @@ export default function EquipmentPage() {
 
                 return (
                   <article key={item.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white transition hover:border-gray-300">
-                    <div className="px-4 py-3 xl:hidden">
+                    <div className="px-4 py-3">
                       <div className="flex items-start gap-3">
                         <button
                           type="button"
@@ -393,100 +384,23 @@ export default function EquipmentPage() {
                       </div>
                     </div>
 
-                    <div className="hidden gap-3 px-4 py-3 xl:grid xl:grid-cols-[minmax(0,2.3fr)_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto] xl:items-center">
-                      <div className="min-w-0">
-                        <div className="flex items-start gap-3">
-                          <button
-                            type="button"
-                            onClick={() => toggleRow(item.id)}
-                            aria-label={rowOpen ? "Свернуть детали" : "Развернуть детали"}
-                            className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-500 transition hover:bg-gray-100"
-                          >
-                            <ChevronDown size={15} className={`transition ${rowOpen ? "rotate-180" : ""}`} />
-                          </button>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className={`h-2 w-2 shrink-0 rounded-full ${st.accentClass}`} />
-                              <h3 className="truncate text-sm font-semibold text-gray-900">{item.name || "Без названия"}</h3>
-                            </div>
-                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                              <span className="font-medium text-gray-700">{item.inventory_number || "Без инв. номера"}</span>
-                              {item.serial_number && <span>SN: {item.serial_number}</span>}
-                              {item.location && <span>{item.location}</span>}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="min-w-0 text-sm">
-                        {responsibleId ? (
-                          <Link href={responsibleLink} className="group inline-flex max-w-full items-center gap-2 text-sm font-medium text-gray-700 transition hover:text-sky-700">
-                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[11px] font-semibold text-sky-700 ring-1 ring-sky-200">
-                              {responsibleName[0]?.toUpperCase() || "?"}
-                            </span>
-                            <span className="truncate">{responsibleName}</span>
-                          </Link>
-                        ) : (
-                          <span className="text-sm text-gray-400">Не назначен</span>
-                        )}
-                      </div>
-
-                      <div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {statusKey && <span className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${st.className}`}>{st.label}</span>}
-                          {item.is_under_warranty && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-[11px] font-medium text-gray-700 ring-1 ring-gray-200" title="На гарантии">
-                              <Shield size={11} /> Гарантия
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div>
-                        <p className="text-sm font-medium text-gray-700">{formatMoney(item.purchase_cost)}</p>
-                      </div>
-
-                      <div>
-                        <p className="text-sm text-gray-600">{formatDate(item.purchase_date) || "—"}</p>
-                      </div>
-
-                      <div className="flex items-center justify-end gap-2 lg:justify-self-end">
-                        <button type="button" title={`Комментарии (${commentsTotal})`} onClick={() => toggleComments(item.id)} className="relative inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700">
-                          <MessageSquare size={15} />
-                          {commentsTotal > 0 && (
-                            <span className="absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 py-0.5 text-[10px] font-bold text-white">{commentsTotal}</span>
-                          )}
-                        </button>
-                        {canEditThis && (
-                          <button type="button" title="Редактировать" onClick={() => openEdit(item)} className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-600 transition hover:bg-gray-50">
-                            <Pencil size={15} />
-                          </button>
-                        )}
-                        {canDeleteThis && (
-                          <button type="button" title="Удалить" onClick={() => handleDelete(item.id)} disabled={busyKey === `delete-${item.id}`} className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 p-2 text-rose-600 transition hover:bg-rose-100 disabled:opacity-60">
-                            <Trash2 size={15} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
                     {(rowOpen || commentsOpen) && (
-                      <div className="border-t border-gray-100 bg-gray-50/70 px-4 py-4">
+                      <div className="app-surface-muted mt-4 rounded-xl p-4">
                         {commentsOpen && (
-                          <div className="rounded-xl border border-gray-200 bg-white p-3">
+                          <div className="app-surface rounded-xl p-3">
                             <div className="space-y-2">
                               {comments.length === 0 ? (
-                                <p className="text-xs text-gray-500">Комментариев пока нет</p>
+                                <p className="app-text-muted text-xs">Комментариев пока нет</p>
                               ) : (
                                 comments.map((c) => {
                                   const canDel = Boolean(c.author?.id && (user?.id === c.author.id || auth?.is_staff || auth?.is_superuser));
                                   return (
-                                    <div key={c.id} className="rounded-lg bg-white px-3 py-2 text-xs text-gray-700 ring-1 ring-gray-100">
+                                    <div key={c.id} className="app-surface-muted rounded-lg px-3 py-2 text-xs text-[var(--foreground)]">
                                       <div className="mb-1 flex items-center justify-between gap-2">
                                         <span className="font-medium">{displayUserName(c.author)}</span>
                                         <div className="flex items-center gap-2">
-                                          <span className="text-gray-500">{formatDate(c.created_at)}</span>
-                                          {canDel && <button type="button" onClick={() => handleDeleteComment(item.id, c.id)} className="text-rose-600 hover:text-rose-700">удалить</button>}
+                                          <span className="app-text-muted">{formatDate(c.created_at)}</span>
+                                          {canDel && <button type="button" onClick={() => handleDeleteComment(item.id, c.id)} className="app-action-danger rounded-md px-1.5 py-0.5">удалить</button>}
                                         </div>
                                       </div>
                                       <p>{c.text}</p>
@@ -496,8 +410,8 @@ export default function EquipmentPage() {
                               )}
                             </div>
                             <div className="mt-2 flex items-center gap-2">
-                              <input value={commentDrafts[item.id] || ""} onChange={(e) => setCommentDrafts((p) => ({ ...p, [item.id]: e.target.value }))} placeholder="Добавить комментарий" className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs" />
-                              <button type="button" onClick={() => handleAddComment(item.id)} disabled={busyKey === `comment-${item.id}`} className="rounded-lg bg-sky-500 px-3 py-2 text-xs font-medium text-white hover:bg-sky-600 disabled:opacity-60">Отправить</button>
+                              <input value={commentDrafts[item.id] || ""} onChange={(e) => setCommentDrafts((p) => ({ ...p, [item.id]: e.target.value }))} placeholder="Добавить комментарий" className="app-input flex-1 rounded-lg px-3 py-2 text-xs" />
+                              <button type="button" onClick={() => handleAddComment(item.id)} disabled={busyKey === `comment-${item.id}`} className="app-action-primary rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-60">Отправить</button>
                             </div>
                           </div>
                         )}
@@ -505,80 +419,80 @@ export default function EquipmentPage() {
                         {rowOpen && (
                           <>
                             {rowLoading && (
-                              <div className={`${commentsOpen ? "mt-3 " : ""}mb-3 rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-sm text-sky-700`}>
+                              <div className={`${commentsOpen ? "mt-3 " : ""}app-selected mb-3 rounded-xl px-3 py-2 text-sm`}>
                                 Загружаем детали оборудования...
                               </div>
                             )}
 
                             <div className={`${commentsOpen ? "mt-3 " : ""}mb-3 flex flex-wrap gap-2`}>
-                              <button type="button" onClick={() => openOperationModal("transfer", detailItem)} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
+                              <button type="button" onClick={() => openOperationModal("transfer", detailItem)} className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium">
                                 <ArrowRightLeft size={15} /> Перевести
                               </button>
-                              <button type="button" onClick={() => openOperationModal("maintenance", detailItem)} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
+                              <button type="button" onClick={() => openOperationModal("maintenance", detailItem)} className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium">
                                 <Wrench size={15} /> Обслуживание
                               </button>
-                              <button type="button" onClick={() => handleOpenQr(item.id)} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
+                              <button type="button" onClick={() => handleOpenQr(item.id)} className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium">
                                 <QrCode size={15} /> QR-код
                               </button>
                               {item.status !== "retired" && (
-                                <button type="button" onClick={() => openOperationModal("writeoff", detailItem)} className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-100">
+                                <button type="button" onClick={() => openOperationModal("writeoff", detailItem)} className="app-action-danger inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium">
                                   <Archive size={15} /> Списать
                                 </button>
                               )}
                             </div>
 
                             {detailItem.notes && (
-                              <div className="mb-3 rounded-xl bg-white px-3 py-2.5 ring-1 ring-gray-100">
-                                <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Заметки</p>
-                                <p className="mt-1 text-sm leading-6 text-gray-700">{detailItem.notes}</p>
+                              <div className="app-surface mb-3 rounded-xl p-4">
+                                <p className="app-text-muted text-xs font-medium uppercase tracking-wide">Заметки</p>
+                                <p className="mt-2 text-sm leading-6 text-[var(--foreground)]">{detailItem.notes}</p>
                               </div>
                             )}
 
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
                               {metaItems.map((meta) => (
-                                <div key={meta.label} className="rounded-xl border border-gray-100 bg-white px-3 py-2">
-                                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">{meta.label}</p>
-                                  <p className="mt-1 text-sm font-medium text-gray-700">{meta.value}</p>
+                                <div key={meta.label} className="app-surface rounded-xl px-3 py-3">
+                                  <p className="app-text-muted text-[11px] font-medium uppercase tracking-wide">{meta.label}</p>
+                                  <p className="mt-1 text-sm font-medium text-[var(--foreground)]">{meta.value}</p>
                                 </div>
                               ))}
                             </div>
 
                             <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
-                              <div className="rounded-xl border border-gray-200 bg-white p-3">
-                                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">История переводов</p>
+                              <div className="app-surface rounded-xl p-4">
+                                <p className="app-text-muted mb-3 text-xs font-medium uppercase tracking-wide">История переводов</p>
                                 {transferHistory.length === 0 ? (
-                                  <p className="text-sm text-gray-500">Переводы пока не выполнялись</p>
+                                  <p className="app-text-muted text-sm">Переводы пока не выполнялись</p>
                                 ) : (
                                   <div className="space-y-2">
                                     {transferHistory.map((entry) => (
-                                      <div key={entry.id} className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                                      <div key={entry.id} className="app-surface-muted rounded-lg px-3 py-2 text-sm text-[var(--foreground)]">
                                         <div className="flex items-center justify-between gap-3">
                                           <span className="font-medium">{formatDate(entry.date)}</span>
-                                          <span className="text-xs text-gray-500">{entry.created_by || "—"}</span>
+                                          <span className="app-text-muted text-xs">{entry.created_by || "—"}</span>
                                         </div>
-                                        <p className="mt-1 text-xs text-gray-600">{entry.from_department || "—"} → {entry.to_department || "—"}</p>
-                                        {(entry.from_person || entry.to_person) && <p className="mt-1 text-xs text-gray-500">{entry.from_person || "—"} → {entry.to_person || "—"}</p>}
-                                        {entry.reason && <p className="mt-1 text-xs text-gray-500">Причина: {entry.reason}</p>}
+                                        <p className="app-text-muted mt-1 text-xs">{entry.from_department || "—"} → {entry.to_department || "—"}</p>
+                                        {(entry.from_person || entry.to_person) && <p className="app-text-muted mt-1 text-xs">{entry.from_person || "—"} → {entry.to_person || "—"}</p>}
+                                        {entry.reason && <p className="app-text-muted mt-1 text-xs">Причина: {entry.reason}</p>}
                                       </div>
                                     ))}
                                   </div>
                                 )}
                               </div>
 
-                              <div className="rounded-xl border border-gray-200 bg-white p-3">
-                                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">История обслуживания</p>
+                              <div className="app-surface rounded-xl p-4">
+                                <p className="app-text-muted mb-3 text-xs font-medium uppercase tracking-wide">История обслуживания</p>
                                 {maintenanceRecords.length === 0 ? (
-                                  <p className="text-sm text-gray-500">Записей обслуживания пока нет</p>
+                                  <p className="app-text-muted text-sm">Записей обслуживания пока нет</p>
                                 ) : (
                                   <div className="space-y-2">
                                     {maintenanceRecords.map((record) => (
-                                      <div key={record.id} className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                                      <div key={record.id} className="app-surface-muted rounded-lg px-3 py-2 text-sm text-[var(--foreground)]">
                                         <div className="flex items-center justify-between gap-3">
                                           <span className="font-medium">{record.type_display || record.type}</span>
-                                          <span className="text-xs text-gray-500">{formatDate(record.date)}</span>
+                                          <span className="app-text-muted text-xs">{formatDate(record.date)}</span>
                                         </div>
-                                        {record.description && <p className="mt-1 text-xs text-gray-600">{record.description}</p>}
-                                        <div className="mt-1 flex items-center justify-between gap-3 text-xs text-gray-500">
+                                        {record.description && <p className="app-text-muted mt-1 text-xs">{record.description}</p>}
+                                        <div className="app-text-muted mt-1 flex items-center justify-between gap-3 text-xs">
                                           <span>{record.performed_by_name || "—"}</span>
                                           <span>{formatMoney(record.cost)}</span>
                                         </div>

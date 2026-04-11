@@ -71,9 +71,9 @@ export default function MessageDialogPage() {
 function MessageDialogPageFallback() {
   return (
     <AppShell>
-      <section className="rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-gray-100">
-        <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-sky-600"></div>
-        <p className="mt-3 text-sm text-gray-500">Загрузка чата...</p>
+      <section className="app-surface rounded-2xl p-6 text-center">
+        <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-[var(--border-subtle)] border-t-[var(--accent-primary)]"></div>
+        <p className="app-text-muted mt-3 text-sm">Загрузка чата...</p>
       </section>
     </AppShell>
   );
@@ -977,17 +977,17 @@ function MessageDialogPageContent() {
   return (
     <AppShell>
       {cm.loading ? (
-        <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-100">
-          <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-sky-400 border-t-transparent" />
-          <p className="text-sm text-gray-500">Загрузка чатов...</p>
+        <div className="app-surface rounded-2xl p-8 text-center">
+          <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-[var(--border-subtle)] border-t-[var(--accent-primary)]" />
+          <p className="app-text-muted text-sm">Загрузка чатов...</p>
         </div>
       ) : cm.error ? (
-        <div className="rounded-2xl bg-red-50 p-6 text-center">
-          <p className="text-sm text-red-800">{cm.error}</p>
+        <div className="app-feedback-danger rounded-2xl p-6 text-center">
+          <p className="text-sm">{cm.error}</p>
         </div>
       ) : (
         <div className="min-h-0 h-full lg:sticky lg:top-22 lg:h-[calc(100dvh-7.5rem)]">
-        <section className="flex h-full min-h-0 flex-col overflow-hidden lg:bg-white lg:rounded-xl lg:p-4 lg:ring-1 lg:ring-gray-100">
+        <section className="flex h-full min-h-0 flex-col overflow-hidden lg:rounded-xl lg:border lg:border-[var(--border-subtle)] lg:bg-[var(--surface-primary)] lg:p-4 lg:shadow-[var(--shadow-card)]">
           {cm.chat ? (
             <>
               <ChatDialogHeader
@@ -1027,7 +1027,7 @@ function MessageDialogPageContent() {
                 {/* Floating date */}
                 {scroll.floatingDate ? (
                   <div className={`absolute left-0 right-0 top-2 z-20 flex justify-center px-3 transition-opacity duration-200 ${scroll.showFloatingDate ? "opacity-100" : "opacity-0"}`}>
-                    <button type="button" data-date-trigger="true" onClick={() => scroll.openDateNavigator()} className="inline-block rounded-full bg-white/95 px-3 py-1 text-xs text-gray-500 shadow-sm ring-1 ring-gray-200 backdrop-blur transition hover:bg-white hover:text-gray-700">
+                    <button type="button" data-date-trigger="true" onClick={() => scroll.openDateNavigator()} className="app-surface-elevated inline-block rounded-full px-3 py-1 text-xs text-[var(--muted-foreground)] backdrop-blur transition hover:text-[var(--foreground)]">
                       {scroll.floatingDate}
                     </button>
                   </div>
@@ -1035,17 +1035,17 @@ function MessageDialogPageContent() {
 
                 {/* Date navigator panel */}
                 {scroll.isDateNavigatorOpen ? (
-                  <div data-date-navigator="true" className="absolute left-1/2 top-12 z-30 w-[min(22rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-2xl bg-white p-4 shadow-lg ring-1 ring-gray-200">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Перейти к дате</p>
+                  <div data-date-navigator="true" className="app-menu absolute left-1/2 top-12 z-30 w-[min(22rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-2xl p-4">
+                    <p className="app-text-muted text-xs font-semibold uppercase tracking-wide">Перейти к дате</p>
                     <div className="mt-3 flex items-center gap-2">
-                      <button type="button" onClick={() => scroll.setSelectedHistoryDate(prev => shiftDateInputValue(prev, -1))} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-600 transition hover:bg-gray-100" aria-label="Предыдущий день"><ChevronLeft size={16} /></button>
-                      <input type="date" value={scroll.selectedHistoryDate} onChange={e => scroll.setSelectedHistoryDate(e.target.value)} className="h-9 flex-1 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100" />
-                      <button type="button" onClick={() => scroll.setSelectedHistoryDate(prev => shiftDateInputValue(prev, 1))} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-600 transition hover:bg-gray-100" aria-label="Следующий день"><ChevronRight size={16} /></button>
+                      <button type="button" onClick={() => scroll.setSelectedHistoryDate(prev => shiftDateInputValue(prev, -1))} className="app-surface-muted inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition hover:bg-[var(--surface-tertiary)]" aria-label="Предыдущий день"><ChevronLeft size={16} /></button>
+                      <input type="date" value={scroll.selectedHistoryDate} onChange={e => scroll.setSelectedHistoryDate(e.target.value)} className="app-input h-9 flex-1 rounded-lg px-3 text-sm" />
+                      <button type="button" onClick={() => scroll.setSelectedHistoryDate(prev => shiftDateInputValue(prev, 1))} className="app-surface-muted inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition hover:bg-[var(--surface-tertiary)]" aria-label="Следующий день"><ChevronRight size={16} /></button>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <button type="button" onClick={() => scroll.setSelectedHistoryDate(formatDateInputValue(new Date()))} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-100">Сегодня</button>
-                      <button type="button" onClick={() => scroll.setIsDateNavigatorOpen(false)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-50">Закрыть</button>
-                      <button type="button" onClick={() => void handleJumpToDate(scroll.selectedHistoryDate)} disabled={!scroll.selectedHistoryDate || jumpingToDate} className="ml-auto rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:bg-sky-300">{jumpingToDate ? "Переход..." : "Перейти"}</button>
+                      <button type="button" onClick={() => scroll.setSelectedHistoryDate(formatDateInputValue(new Date()))} className="app-surface-muted rounded-lg px-3 py-2 text-sm text-[var(--muted-foreground)] transition hover:bg-[var(--surface-tertiary)]">Сегодня</button>
+                      <button type="button" onClick={() => scroll.setIsDateNavigatorOpen(false)} className="app-surface-elevated rounded-lg px-3 py-2 text-sm text-[var(--muted-foreground)] transition hover:bg-[var(--surface-secondary)]">Закрыть</button>
+                      <button type="button" onClick={() => void handleJumpToDate(scroll.selectedHistoryDate)} disabled={!scroll.selectedHistoryDate || jumpingToDate} className="app-action-primary ml-auto rounded-lg px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50">{jumpingToDate ? "Переход..." : "Перейти"}</button>
                     </div>
                   </div>
                 ) : null}
@@ -1056,15 +1056,15 @@ function MessageDialogPageContent() {
                   autoScrollToBottom={!cm.hasMoreNewer && !cm.historyNavigationMode}
                   autoScrollToBottomOnMount={!cm.hasMoreNewer && !cm.historyNavigationMode}
                   scrollBehavior="smooth"
-                  className="min-h-0 flex-1 bg-gray-50 p-3"
+                  className="min-h-0 flex-1 bg-[var(--surface-secondary)] p-3"
                 >
                   {cm.messagesLoading ? (
-                    <p className="text-center text-sm text-gray-500">Загрузка сообщений...</p>
+                    <p className="app-text-muted text-center text-sm">Загрузка сообщений...</p>
                   ) : displayMessages.length === 0 ? (
-                    <p className="text-center text-sm text-gray-500">Пока нет сообщений. Напишите первым.</p>
+                    <p className="app-text-muted text-center text-sm">Пока нет сообщений. Напишите первым.</p>
                   ) : (
                     <div className="flex min-h-full flex-col justify-end">
-                      {cm.loadingOlder ? <p className="mb-3 text-center text-xs text-gray-500">Подгружаем старые сообщения...</p> : null}
+                      {cm.loadingOlder ? <p className="app-text-muted mb-3 text-center text-xs">Подгружаем старые сообщения...</p> : null}
                       {displayMessages.map((message, index) => {
                         const replyToId = getReplyToId(message);
                         const repliedMessage = replyToId ? messagesById.get(replyToId) : null;
@@ -1077,7 +1077,7 @@ function MessageDialogPageContent() {
                           <React.Fragment key={message.id}>
                             {showDayDivider && curDate ? (
                               <div className="mb-3 flex justify-center px-2 pointer-events-none">
-                                <button type="button" data-date-trigger="true" onClick={() => scroll.openDateNavigator(formatDateInputValue(curDate))} className="pointer-events-auto inline-block rounded-full bg-white/95 px-3 py-1 text-xs text-gray-500 shadow-sm ring-1 ring-gray-200 backdrop-blur transition hover:bg-white hover:text-gray-700">
+                                <button type="button" data-date-trigger="true" onClick={() => scroll.openDateNavigator(formatDateInputValue(curDate))} className="app-surface-elevated pointer-events-auto inline-block rounded-full px-3 py-1 text-xs text-[var(--muted-foreground)] backdrop-blur transition hover:text-[var(--foreground)]">
                                   {formatDayDivider(curDate)}
                                 </button>
                               </div>
@@ -1116,7 +1116,7 @@ function MessageDialogPageContent() {
                     <button
                       type="button"
                       onClick={() => void handleReturnToNewMessages()}
-                      className="relative inline-flex h-10 w-10 items-center justify-center rounded-full bg-sky-500 text-white leading-none shadow-sm shadow-sky-200/70 transition hover:bg-sky-600 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-sky-100"
+                      className="app-action-primary relative inline-flex h-10 w-10 items-center justify-center rounded-full p-0 leading-none shadow-[var(--shadow-card)] active:scale-[0.98]"
                       title="Вернуться к новым сообщениям"
                       aria-label={displayedUnreadCount > 0 ? `Вернуться к новым сообщениям (${displayedUnreadCount > 99 ? "99+" : displayedUnreadCount})` : "Вернуться к новым сообщениям"}
                     >
@@ -1131,13 +1131,13 @@ function MessageDialogPageContent() {
                 )}
 
                 {/* Composer area */}
-                <div className="shrink-0 border-t border-gray-100 bg-white px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.25rem)] lg:px-0 lg:pb-0">
+                <div className="app-divider app-header shrink-0 border-t px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.25rem)] lg:px-0 lg:pb-0">
                   {isTyping && (
-                    <div className="mb-2 flex items-center gap-2 text-xs text-gray-500 italic">
+                    <div className="app-text-muted mb-2 flex items-center gap-2 text-xs italic">
                       <div className="flex gap-1">
-                        <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "0ms" }} />
-                        <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "150ms" }} />
-                        <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "300ms" }} />
+                        <span className="app-text-muted inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-current" style={{ animationDelay: "0ms" }} />
+                        <span className="app-text-muted inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-current" style={{ animationDelay: "150ms" }} />
+                        <span className="app-text-muted inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-current" style={{ animationDelay: "300ms" }} />
                       </div>
                       <span>Собеседник печатает...</span>
                     </div>
@@ -1177,10 +1177,10 @@ function MessageDialogPageContent() {
               </div>
             </>
           ) : (
-            <div className="flex h-full min-h-[280px] items-center justify-center rounded-xl bg-gray-50 text-center">
+            <div className="app-surface-muted flex h-full min-h-[280px] items-center justify-center rounded-xl text-center">
               <div>
-                <MessageCircle size={20} className="mx-auto mb-2 text-gray-400" />
-                <p className="text-sm text-gray-500">Диалог не найден</p>
+                <MessageCircle size={20} className="app-text-muted mx-auto mb-2" />
+                <p className="app-text-muted text-sm">Диалог не найден</p>
               </div>
             </div>
           )}

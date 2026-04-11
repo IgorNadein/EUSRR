@@ -169,15 +169,15 @@ export function DocumentPreview({ fileUrl, fileName, onClose }: DocumentPreviewP
   return (
     <Modal isOpen onClose={onClose ?? (() => {})} noHeader noPadding size="xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4">
-          <h3 className="truncate text-sm sm:text-lg font-semibold text-gray-900">{fileName}</h3>
+        <div className="app-divider flex items-center justify-between border-b px-3 py-3 sm:px-6 sm:py-4">
+          <h3 className="truncate text-sm font-semibold text-[var(--foreground)] sm:text-lg">{fileName}</h3>
           <div className="flex items-center gap-2">
             <a
               href={fileUrl}
               download
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-lg p-2 text-gray-600 transition hover:bg-gray-100"
+              className="app-action-secondary rounded-lg p-2"
               title="Скачать"
             >
               <Download size={20} />
@@ -185,7 +185,7 @@ export function DocumentPreview({ fileUrl, fileName, onClose }: DocumentPreviewP
             {onClose && (
               <button
                 onClick={onClose}
-                className="rounded-lg p-2 text-gray-600 transition hover:bg-gray-100"
+                className="app-action-secondary rounded-lg p-2"
                 title="Закрыть"
               >
                 <X size={20} />
@@ -200,12 +200,12 @@ export function DocumentPreview({ fileUrl, fileName, onClose }: DocumentPreviewP
             <div className="flex flex-col items-center">
               {loading && (
                 <div className="flex items-center justify-center py-12">
-                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-sky-400 border-t-transparent" />
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--border-subtle)] border-t-[var(--accent-primary)]" />
                 </div>
               )}
               
               {error && (
-                <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800">
+                <div className="app-feedback-danger rounded-lg p-4 text-sm">
                   {error}
                 </div>
               )}
@@ -238,13 +238,13 @@ export function DocumentPreview({ fileUrl, fileName, onClose }: DocumentPreviewP
             <div className="h-full">
               {loading && (
                 <div className="flex items-center justify-center py-12">
-                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-sky-400 border-t-transparent" />
-                  <span className="ml-3 text-sm text-gray-600">Загрузка документа...</span>
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--border-subtle)] border-t-[var(--accent-primary)]" />
+                  <span className="app-text-muted ml-3 text-sm">Загрузка документа...</span>
                 </div>
               )}
               
               {error && (
-                <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800">
+                <div className="app-feedback-danger rounded-lg p-4 text-sm">
                   {error}
                   <div className="mt-2">
                     <a
@@ -252,7 +252,7 @@ export function DocumentPreview({ fileUrl, fileName, onClose }: DocumentPreviewP
                       download
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-red-700"
+                      className="app-action-danger inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium"
                     >
                       <Download size={14} />
                       Скачать файл
@@ -262,7 +262,7 @@ export function DocumentPreview({ fileUrl, fileName, onClose }: DocumentPreviewP
               )}
               
               {!loading && !error && docxContent && (
-                <div className="rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
+                <div className="app-surface rounded-lg p-8">
                   <div 
                     className="prose prose-sm max-w-none"
                     dangerouslySetInnerHTML={{ __html: docxContent }}
@@ -274,13 +274,13 @@ export function DocumentPreview({ fileUrl, fileName, onClose }: DocumentPreviewP
             <div className="h-full">
               {loading && (
                 <div className="flex items-center justify-center py-12">
-                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-sky-400 border-t-transparent" />
-                  <span className="ml-3 text-sm text-gray-600">Загрузка таблицы...</span>
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--border-subtle)] border-t-[var(--accent-primary)]" />
+                  <span className="app-text-muted ml-3 text-sm">Загрузка таблицы...</span>
                 </div>
               )}
               
               {error && (
-                <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800">
+                <div className="app-feedback-danger rounded-lg p-4 text-sm">
                   {error}
                   <div className="mt-2">
                     <a
@@ -288,7 +288,7 @@ export function DocumentPreview({ fileUrl, fileName, onClose }: DocumentPreviewP
                       download
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-red-700"
+                      className="app-action-danger inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium"
                     >
                       <Download size={14} />
                       Скачать файл
@@ -301,15 +301,15 @@ export function DocumentPreview({ fileUrl, fileName, onClose }: DocumentPreviewP
                 <div className="flex h-full flex-col">
                   {/* Sheet Tabs */}
                   {excelSheets.length > 1 && (
-                    <div className="mb-4 flex gap-2 overflow-x-auto border-b border-gray-200 pb-2">
+                    <div className="app-divider mb-4 flex gap-2 overflow-x-auto border-b pb-2">
                       {excelSheets.map((sheet, index) => (
                         <button
                           key={index}
                           onClick={() => setActiveSheet(index)}
-                          className={`flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition ${
+                          className={`flex items-center gap-2 whitespace-nowrap px-4 py-2 text-sm ${
                             activeSheet === index
-                              ? 'bg-sky-100 text-sky-900'
-                              : 'text-gray-600 hover:bg-gray-100'
+                              ? 'app-pill-active'
+                              : 'app-pill'
                           }`}
                         >
                           <Table size={16} />
@@ -320,15 +320,15 @@ export function DocumentPreview({ fileUrl, fileName, onClose }: DocumentPreviewP
                   )}
                   
                   {/* Excel Table */}
-                  <div className="flex-1 overflow-auto rounded-lg border border-gray-200 bg-white shadow-sm">
+                  <div className="app-surface-elevated flex-1 overflow-auto rounded-lg">
                     <table className="w-full border-collapse text-sm">
                       <tbody>
                         {excelSheets[activeSheet]?.data.map((row, rowIndex) => (
-                          <tr key={rowIndex} className="border-b border-gray-200 hover:bg-gray-50">
+                          <tr key={rowIndex} className="border-b border-[var(--border-subtle)] hover:bg-[var(--surface-secondary)]">
                             {row.map((cell, cellIndex) => (
                               <td
                                 key={cellIndex}
-                                className="border-r border-gray-200 px-3 py-2 text-gray-900 last:border-r-0"
+                                className="border-r border-[var(--border-subtle)] px-3 py-2 text-[var(--foreground)] last:border-r-0"
                               >
                                 {cell !== null && cell !== undefined ? String(cell) : ''}
                               </td>
@@ -339,7 +339,7 @@ export function DocumentPreview({ fileUrl, fileName, onClose }: DocumentPreviewP
                     </table>
                     
                     {excelSheets[activeSheet]?.data.length === 0 && (
-                      <div className="flex items-center justify-center py-12 text-sm text-gray-500">
+                      <div className="app-text-muted flex items-center justify-center py-12 text-sm">
                         Лист пуст
                       </div>
                     )}
@@ -351,33 +351,33 @@ export function DocumentPreview({ fileUrl, fileName, onClose }: DocumentPreviewP
             <div className="h-full">
               {loading && (
                 <div className="flex items-center justify-center py-12">
-                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-sky-400 border-t-transparent" />
-                  <span className="ml-3 text-sm text-gray-600">Загрузка файла...</span>
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--border-subtle)] border-t-[var(--accent-primary)]" />
+                  <span className="app-text-muted ml-3 text-sm">Загрузка файла...</span>
                 </div>
               )}
               
               {error && (
-                <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800">
+                <div className="app-feedback-danger rounded-lg p-4 text-sm">
                   {error}
                 </div>
               )}
               
               {!loading && !error && (
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 shadow-sm">
-                  <pre className="overflow-auto text-xs text-gray-900">
+                <div className="app-surface-muted rounded-lg p-4">
+                  <pre className="overflow-auto text-xs text-[var(--foreground)]">
                     <code>{textContent}</code>
                   </pre>
                 </div>
               )}
             </div>
           ) : (
-            <div className="flex items-center justify-center rounded-xl bg-gray-50 p-12">
+            <div className="app-surface-muted flex items-center justify-center rounded-xl p-12">
               <div className="text-center">
-                <FileText size={48} className="mx-auto mb-4 text-gray-400" />
-                <p className="mb-2 text-sm font-medium text-gray-900">
+                <FileText size={48} className="app-text-muted mx-auto mb-4" />
+                <p className="mb-2 text-sm font-medium text-[var(--foreground)]">
                   Неизвестный тип файла
                 </p>
-                <p className="mb-4 text-sm text-gray-600">
+                <p className="app-text-muted mb-4 text-sm">
                   Предпросмотр недоступен для этого типа файла
                 </p>
                 <a
@@ -385,7 +385,7 @@ export function DocumentPreview({ fileUrl, fileName, onClose }: DocumentPreviewP
                   download
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
+                  className="app-action-primary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium"
                 >
                   <Download size={16} />
                   Скачать файл
@@ -397,23 +397,23 @@ export function DocumentPreview({ fileUrl, fileName, onClose }: DocumentPreviewP
 
         {/* PDF Navigation */}
         {fileType === 'pdf' && numPages > 0 && (
-          <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
+          <div className="app-divider flex items-center justify-between border-t px-6 py-4">
             <button
               onClick={goToPrevPage}
               disabled={pageNumber <= 1}
-              className="rounded-lg p-2 text-gray-600 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+              className="app-action-secondary rounded-lg p-2 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronLeft size={20} />
             </button>
 
-            <span className="text-sm text-gray-600">
+            <span className="app-text-muted text-sm">
               Страница {pageNumber} из {numPages}
             </span>
 
             <button
               onClick={goToNextPage}
               disabled={pageNumber >= numPages}
-              className="rounded-lg p-2 text-gray-600 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+              className="app-action-secondary rounded-lg p-2 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronRight size={20} />
             </button>

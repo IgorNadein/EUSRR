@@ -29,9 +29,9 @@ export default function Home() {
 function HomePageFallback() {
   return (
     <AppShell>
-      <section className="rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-gray-100">
-        <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-sky-600"></div>
-        <p className="mt-3 text-sm text-gray-500">Загрузка ленты...</p>
+      <section className="app-surface rounded-2xl p-6 text-center">
+        <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-[var(--border-strong)] border-t-[var(--accent-primary)]"></div>
+        <p className="app-text-muted mt-3 text-sm">Загрузка ленты...</p>
       </section>
     </AppShell>
   );
@@ -536,8 +536,8 @@ function HomePageContent() {
       <AppShell>
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
-            <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-sky-400 border-t-transparent"></div>
-            <p className="text-sm text-gray-500">Загрузка ленты...</p>
+            <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-[var(--border-strong)] border-t-[var(--accent-primary)]"></div>
+            <p className="app-text-muted text-sm">Загрузка ленты...</p>
           </div>
         </div>
       </AppShell>
@@ -547,8 +547,8 @@ function HomePageContent() {
   if (error) {
     return (
       <AppShell>
-        <div className="rounded-2xl bg-red-50 p-6 text-center">
-          <p className="text-sm text-red-800">{error}</p>
+        <div className="app-feedback-danger rounded-2xl p-6 text-center">
+          <p className="text-sm">{error}</p>
         </div>
       </AppShell>
     );
@@ -560,7 +560,7 @@ function HomePageContent() {
           <button
             type="button"
             onClick={openCreatePostModal}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-sky-600"
+            className="app-action-primary inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition"
           >
             <Plus size={16} />
             Создать публикацию
@@ -570,8 +570,8 @@ function HomePageContent() {
 
       <div className="space-y-4">
         {posts.length === 0 ? (
-          <div className="rounded-2xl bg-gray-50 p-8 text-center">
-            <p className="text-sm text-gray-500">Пока нет постов в ленте</p>
+          <div className="app-surface-muted rounded-2xl p-8 text-center">
+            <p className="app-text-muted text-sm">Пока нет постов в ленте</p>
           </div>
         ) : (
           posts.map((post) => {
@@ -596,11 +596,11 @@ function HomePageContent() {
                 : `${Math.floor(diffHours / 24)} дн. назад`;
 
             return (
-              <article id={`post-${post.id}`} key={post.id} className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
+              <article id={`post-${post.id}`} key={post.id} className="app-surface rounded-2xl p-5">
                 <header className="mb-3 flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div className="relative h-10 w-10">
-                      <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white">
+                      <div className="app-avatar-fallback flex h-10 w-10 items-center justify-center overflow-hidden rounded-full text-sm font-semibold">
                         {post.author?.avatar ? (
                           <img src={resolveMediaUrl(post.author.avatar)} alt={authorName} className="h-full w-full object-cover" />
                         ) : (
@@ -609,8 +609,8 @@ function HomePageContent() {
                       </div>
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-gray-900">{authorName}</p>
-                      <p className="text-xs text-gray-500">{timeAgo}</p>
+                      <p className="text-sm font-semibold text-[var(--foreground)]">{authorName}</p>
+                      <p className="app-text-muted text-xs">{timeAgo}</p>
                     </div>
                   </div>
 
@@ -620,7 +620,7 @@ function HomePageContent() {
                         <button
                           type="button"
                           onClick={() => openEditPostModal(post)}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                          className="app-action-ghost flex h-8 w-8 items-center justify-center rounded-md"
                           title="Редактировать публикацию"
                         >
                           <Pencil size={15} />
@@ -632,7 +632,7 @@ function HomePageContent() {
                           type="button"
                           disabled={postActionId === post.id}
                           onClick={() => removePost(post)}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-red-100 hover:text-red-600 disabled:opacity-50"
+                          className="app-action-danger flex h-8 w-8 items-center justify-center rounded-md disabled:opacity-50"
                           title="Удалить публикацию"
                         >
                           <Trash2 size={15} />
@@ -642,10 +642,10 @@ function HomePageContent() {
                   ) : null}
                 </header>
                 {post.title ? (
-                  <h3 className="mb-1 text-base font-semibold text-gray-900">{post.title}</h3>
+                  <h3 className="mb-1 text-base font-semibold text-[var(--foreground)]">{post.title}</h3>
                 ) : null}
                 {postText ? (
-                  <p className="text-sm leading-6 text-gray-800 whitespace-pre-line">{postText}</p>
+                  <p className="text-sm leading-6 text-[var(--foreground)] whitespace-pre-line">{postText}</p>
                 ) : null}
                 {post.image && (
                   <div className="mt-3 overflow-hidden rounded-lg">
@@ -658,13 +658,13 @@ function HomePageContent() {
                       href={resolveMediaUrl(post.attachment || post.attachment_url)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-sky-600 ring-1 ring-gray-200 hover:bg-gray-100"
+                      className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
                     >
                       📎 Вложение
                     </a>
                   </div>
                 )}
-                <div className="mt-4 flex items-center gap-4 text-sm text-gray-600">
+                <div className="app-text-muted mt-4 flex items-center gap-4 text-sm">
                   <div
                     className="relative"
                     onMouseEnter={() => openLikesPopover(post.id, post.likes_count || 0)}
@@ -674,24 +674,24 @@ function HomePageContent() {
                       type="button"
                       disabled={likeBusyId === post.id}
                       onClick={() => handleLikeToggle(post)}
-                      className={`flex items-center gap-2 rounded-lg px-3 py-2 transition hover:bg-gray-50 ${post.is_liked ? "text-sky-500" : "text-gray-600"}`}
+                      className={`flex items-center gap-2 rounded-lg px-3 py-2 transition ${post.is_liked ? "app-selected-soft app-accent-text" : "app-action-ghost"}`}
                     >
                       <Heart
                         size={16}
-                        className={post.is_liked ? "fill-sky-500 text-sky-500" : "text-gray-400"}
+                        className={post.is_liked ? "fill-[var(--accent-primary)] text-[var(--accent-primary)]" : "app-text-muted"}
                       />
                       {post.likes_count || 0}
                     </button>
 
                     {likesPopoverPostId === post.id ? (
-                      <div className="absolute left-0 top-full z-20 mt-1 w-64 rounded-xl bg-white p-2 shadow-lg ring-1 ring-gray-200">
-                        <p className="px-1 pb-1 text-xs font-semibold text-gray-600">Лайкнули</p>
+                      <div className="app-menu absolute left-0 top-full z-20 mt-1 w-64 rounded-xl p-2">
+                        <p className="app-text-muted px-1 pb-1 text-xs font-semibold">Лайкнули</p>
                         {likesLoadingPostId === post.id ? (
-                          <p className="px-1 py-1 text-xs text-gray-500">Загрузка...</p>
+                          <p className="app-text-muted px-1 py-1 text-xs">Загрузка...</p>
                         ) : likesUsersEndpointUnavailable ? (
-                          <p className="px-1 py-1 text-xs text-gray-500">Список лайкнувших временно недоступен</p>
+                          <p className="app-text-muted px-1 py-1 text-xs">Список лайкнувших временно недоступен</p>
                         ) : (likesUsersMap[post.id] || []).length === 0 ? (
-                          <p className="px-1 py-1 text-xs text-gray-500">Пока нет лайков</p>
+                          <p className="app-text-muted px-1 py-1 text-xs">Пока нет лайков</p>
                         ) : (
                           <div className="max-h-56 space-y-1 overflow-y-auto">
                             {(likesUsersMap[post.id] || []).map((u) => {
@@ -699,15 +699,15 @@ function HomePageContent() {
                               const initials = formatInitials(u.first_name, u.last_name);
 
                               return (
-                                <div key={u.id} className="flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-gray-50">
-                                  <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-[10px] font-semibold text-white">
+                                <div key={u.id} className="flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-[var(--surface-secondary)]">
+                                  <div className="app-avatar-fallback flex h-6 w-6 items-center justify-center overflow-hidden rounded-full text-[10px] font-semibold">
                                     {u.avatar ? (
                                       <img src={resolveMediaUrl(u.avatar)} alt={name} className="h-full w-full object-cover" />
                                     ) : (
                                       initials
                                     )}
                                   </div>
-                                  <p className="truncate text-xs text-gray-700">{name}</p>
+                                  <p className="truncate text-xs text-[var(--foreground)]">{name}</p>
                                 </div>
                               );
                             })}
@@ -719,9 +719,9 @@ function HomePageContent() {
                   <button
                     type="button"
                     onClick={() => openComments(post)}
-                    className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-gray-50"
+                    className="app-action-ghost flex items-center gap-2 rounded-lg px-3 py-2"
                   >
-                    <MessageSquare size={16} className="text-gray-400" /> {post.comments_count || 0}
+                    <MessageSquare size={16} className="app-text-muted" /> {post.comments_count || 0}
                   </button>
                 </div>
               </article>
@@ -741,7 +741,7 @@ function HomePageContent() {
             <button
               type="button"
               onClick={() => setCreatePostOpen(false)}
-              className="rounded-lg bg-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300"
+              className="app-action-secondary rounded-lg px-3 py-2 text-sm font-medium"
             >
               Отмена
             </button>
@@ -749,7 +749,7 @@ function HomePageContent() {
               type="button"
               disabled={createSubmitting}
               onClick={handleCreatePost}
-              className="rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-50"
+              className="app-action-primary rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-50"
             >
               {createSubmitting ? (editingPostId ? "Сохраняем..." : "Публикуем...") : (editingPostId ? "Сохранить" : "Опубликовать")}
             </button>
@@ -758,16 +758,16 @@ function HomePageContent() {
       >
         <div className="space-y-4">
           {createError ? (
-            <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{createError}</div>
+            <div className="app-feedback-danger rounded-lg px-3 py-2 text-sm">{createError}</div>
           ) : null}
 
           {(canCreateCompanyPost || canCreateDepartmentPost) ? (
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Тип публикации</label>
+              <label className="app-text-muted mb-1 block text-xs font-semibold uppercase tracking-wide">Тип публикации</label>
               <select
                 value={createType}
                 onChange={(e) => setCreateType(e.target.value as "company" | "department")}
-                className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                className="app-select h-10 w-full rounded-lg px-3 text-sm"
               >
                 {canCreateCompanyPost ? <option value="company">Новость компании</option> : null}
                 {canCreateDepartmentPost ? <option value="department">Новость отдела</option> : null}
@@ -777,11 +777,11 @@ function HomePageContent() {
 
           {createType === "department" ? (
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Отдел</label>
+              <label className="app-text-muted mb-1 block text-xs font-semibold uppercase tracking-wide">Отдел</label>
               <select
                 value={createDepartmentId}
                 onChange={(e) => setCreateDepartmentId(e.target.value)}
-                className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                className="app-select h-10 w-full rounded-lg px-3 text-sm"
               >
                 <option value="">Выберите отдел</option>
                 {userDepartments.map((dept) => (
@@ -792,40 +792,40 @@ function HomePageContent() {
           ) : null}
 
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Заголовок</label>
+            <label className="app-text-muted mb-1 block text-xs font-semibold uppercase tracking-wide">Заголовок</label>
             <input
               type="text"
               value={createTitle}
               onChange={(e) => setCreateTitle(e.target.value)}
-              className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              className="app-input h-10 w-full rounded-lg px-3 text-sm"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Содержание</label>
+            <label className="app-text-muted mb-1 block text-xs font-semibold uppercase tracking-wide">Содержание</label>
             <textarea
               value={createBody}
               onChange={(e) => setCreateBody(e.target.value)}
-              className="min-h-32 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              className="app-input min-h-32 w-full rounded-lg px-3 py-2 text-sm"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Изображение</label>
+            <label className="app-text-muted mb-1 block text-xs font-semibold uppercase tracking-wide">Изображение</label>
             <input
               type="file"
               accept="image/*"
               onChange={(e) => setCreateImage(e.target.files?.[0] || null)}
-              className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-sky-50 file:px-3 file:py-2 file:text-sm file:text-sky-700 hover:file:bg-sky-100"
+              className="block w-full text-sm text-[var(--foreground)] file:mr-3 file:rounded-md file:border-0 file:bg-[var(--accent-soft)] file:px-3 file:py-2 file:text-sm file:text-[var(--accent-primary-strong)] hover:file:bg-[color:color-mix(in_srgb,var(--accent-primary)_18%,var(--surface-primary))]"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Вложение</label>
+            <label className="app-text-muted mb-1 block text-xs font-semibold uppercase tracking-wide">Вложение</label>
             <input
               type="file"
               onChange={(e) => setCreateAttachment(e.target.files?.[0] || null)}
-              className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:text-gray-700 hover:file:bg-gray-200"
+              className="block w-full text-sm text-[var(--foreground)] file:mr-3 file:rounded-md file:border-0 file:bg-[var(--surface-secondary)] file:px-3 file:py-2 file:text-sm file:text-[var(--foreground)] hover:file:bg-[var(--surface-tertiary)]"
             />
           </div>
         </div>
@@ -842,17 +842,17 @@ function HomePageContent() {
             {(commentImage || commentAttachment) && (
               <div className="mb-2 flex flex-wrap gap-2">
                 {commentImage && (
-                  <div className="flex items-center gap-1.5 rounded-md bg-sky-50 px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-200">
+                  <div className="app-badge app-badge-accent flex items-center gap-1.5 rounded-md px-2 py-1 text-xs">
                     <ImageIcon size={12} />
                     <span className="max-w-[120px] truncate">{commentImage.name}</span>
-                    <button type="button" onClick={() => setCommentImage(null)} className="ml-0.5 text-sky-400 hover:text-sky-700"><X size={12} /></button>
+                    <button type="button" onClick={() => setCommentImage(null)} className="app-accent-text ml-0.5 hover:text-[var(--accent-primary)]"><X size={12} /></button>
                   </div>
                 )}
                 {commentAttachment && (
-                  <div className="flex items-center gap-1.5 rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700 ring-1 ring-gray-200">
+                  <div className="app-badge flex items-center gap-1.5 rounded-md px-2 py-1 text-xs">
                     <Paperclip size={12} />
                     <span className="max-w-[120px] truncate">{commentAttachment.name}</span>
-                    <button type="button" onClick={() => setCommentAttachment(null)} className="ml-0.5 text-gray-400 hover:text-gray-700"><X size={12} /></button>
+                    <button type="button" onClick={() => setCommentAttachment(null)} className="app-text-muted ml-0.5 hover:text-[var(--foreground)]"><X size={12} /></button>
                   </div>
                 )}
               </div>
@@ -863,7 +863,7 @@ function HomePageContent() {
               <button
                 type="button"
                 onClick={() => commentImageRef.current?.click()}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                className="app-action-ghost flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
                 title="Прикрепить изображение"
               >
                 <ImageIcon size={18} />
@@ -871,7 +871,7 @@ function HomePageContent() {
               <button
                 type="button"
                 onClick={() => commentAttachmentRef.current?.click()}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                className="app-action-ghost flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
                 title="Прикрепить файл"
               >
                 <Paperclip size={18} />
@@ -887,13 +887,13 @@ function HomePageContent() {
                   }
                 }}
                 placeholder="Напишите комментарий..."
-                className="h-10 flex-1 rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                className="app-input h-10 flex-1 rounded-lg px-3 text-sm"
               />
               <button
                 type="button"
                 disabled={commentSending || (!newComment.trim() && !commentImage && !commentAttachment)}
                 onClick={handleCreateComment}
-                className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-500 text-white disabled:cursor-not-allowed disabled:opacity-50"
+                className="app-action-primary flex h-10 w-10 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Send size={16} />
               </button>
@@ -903,14 +903,14 @@ function HomePageContent() {
       >
         {activePost && (
           <>
-            <p className="px-4 pt-1 pb-2 text-[10px] sm:text-xs text-gray-500">Публикация #{activePost.id}</p>
+            <p className="app-text-muted px-4 pb-2 pt-1 text-[10px] sm:text-xs">Публикация #{activePost.id}</p>
             <div className="flex-1 overflow-y-auto px-4 py-3">
               {commentsLoading ? (
-                <p className="text-sm text-gray-500">Загрузка комментариев...</p>
+                <p className="app-text-muted text-sm">Загрузка комментариев...</p>
               ) : commentsError ? (
-                <p className="text-sm text-red-600">{commentsError}</p>
+                <p className="app-feedback-danger rounded-lg px-3 py-2 text-sm">{commentsError}</p>
               ) : comments.length === 0 ? (
-                <p className="text-sm text-gray-500">Комментариев пока нет</p>
+                <p className="app-text-muted text-sm">Комментариев пока нет</p>
               ) : (
                 <div className="space-y-3">
                   {comments.map((comment) => {
@@ -923,9 +923,9 @@ function HomePageContent() {
                       : "П";
 
                     return (
-                      <div key={comment.id} className="rounded-xl bg-gray-50 px-3 py-2.5">
+                      <div key={comment.id} className="app-surface-muted rounded-xl px-3 py-2.5">
                         <div className="flex items-start gap-2.5">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-[11px] font-semibold text-white">
+                          <div className="app-avatar-fallback flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[11px] font-semibold">
                             {comment.author?.avatar ? (
                               <img src={resolveMediaUrl(comment.author.avatar)} alt={authorName} className="h-full w-full object-cover" />
                             ) : (
@@ -934,13 +934,13 @@ function HomePageContent() {
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-start justify-between gap-2">
-                              <p className="text-xs font-semibold text-gray-900">{authorName}</p>
+                              <p className="text-xs font-semibold text-[var(--foreground)]">{authorName}</p>
                               <div className="flex items-center gap-1">
                                 {canEditComment(comment) ? (
                                   <button
                                     type="button"
                                     onClick={() => startEditComment(comment)}
-                                    className="flex h-6 w-6 items-center justify-center rounded-md text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+                                    className="app-action-ghost flex h-6 w-6 items-center justify-center rounded-md"
                                     title="Редактировать"
                                   >
                                     <Pencil size={13} />
@@ -952,7 +952,7 @@ function HomePageContent() {
                                     type="button"
                                     disabled={commentActionId === comment.id}
                                     onClick={() => removeComment(comment)}
-                                    className="flex h-6 w-6 items-center justify-center rounded-md text-gray-500 hover:bg-red-100 hover:text-red-600 disabled:opacity-50"
+                                    className="app-action-danger flex h-6 w-6 items-center justify-center rounded-md disabled:opacity-50"
                                     title="Удалить"
                                   >
                                     <Trash2 size={13} />
@@ -966,14 +966,14 @@ function HomePageContent() {
                                 <textarea
                                   value={editingCommentText}
                                   onChange={(e) => setEditingCommentText(e.target.value)}
-                                  className="min-h-20 w-full rounded-lg border border-gray-300 px-2.5 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                                  className="app-input min-h-20 w-full rounded-lg px-2.5 py-2 text-sm"
                                 />
                                 <div className="flex items-center gap-2">
                                   <button
                                     type="button"
                                     disabled={commentActionId === comment.id || !editingCommentText.trim()}
                                     onClick={() => saveEditComment(comment.id)}
-                                    className="rounded-md bg-sky-500 px-2.5 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                                    className="app-action-primary rounded-md px-2.5 py-1.5 text-xs font-medium disabled:opacity-50"
                                   >
                                     Сохранить
                                   </button>
@@ -981,7 +981,7 @@ function HomePageContent() {
                                     type="button"
                                     disabled={commentActionId === comment.id}
                                     onClick={cancelEditComment}
-                                    className="rounded-md bg-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700"
+                                    className="app-action-secondary rounded-md px-2.5 py-1.5 text-xs font-medium"
                                   >
                                     Отмена
                                   </button>
@@ -989,7 +989,7 @@ function HomePageContent() {
                               </div>
                             ) : (
                               <>
-                                {commentText && <p className="mt-1 text-sm leading-6 text-gray-800">{commentText}</p>}
+                                {commentText && <p className="mt-1 text-sm leading-6 text-[var(--foreground)]">{commentText}</p>}
                                 {comment.image && (
                                   <div className="mt-2 overflow-hidden rounded-lg">
                                     <img src={resolveMediaUrl(comment.image)} alt="" className="max-h-60 rounded-lg" />
@@ -1001,7 +1001,7 @@ function HomePageContent() {
                                       href={resolveMediaUrl(comment.attachment)}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1.5 rounded-md bg-white px-2.5 py-1.5 text-xs text-sky-600 ring-1 ring-gray-200 hover:bg-gray-50"
+                                      className="app-action-secondary inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs"
                                     >
                                       📎 Вложение
                                     </a>

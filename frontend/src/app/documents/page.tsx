@@ -14,17 +14,13 @@ import {
   X,
   FolderOpen,
   Tags,
-  LayoutGrid,
-  CheckSquare,
   Filter,
   CheckCircle,
   AlertCircle,
   Calendar,
   User,
   Users,
-  Building2,
   Download,
-  Edit,
   ChevronDown,
 } from "lucide-react";
 import { DocumentAcknowledgementsReport } from "@/components/documents/DocumentAcknowledgementsReport";
@@ -62,6 +58,13 @@ function formatDate(value?: string): string {
   });
 }
 
+function formatFileSize(value?: number): string {
+  if (!value || value <= 0) return "";
+  if (value < 1024) return `${value} Б`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} КБ`;
+  return `${(value / (1024 * 1024)).toFixed(value >= 10 * 1024 * 1024 ? 0 : 1)} МБ`;
+}
+
 export default function DocumentsPage() {
   return (
     <Suspense fallback={<DocumentsPageFallback />}>
@@ -73,9 +76,9 @@ export default function DocumentsPage() {
 function DocumentsPageFallback() {
   return (
     <AppShell>
-      <section className="rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-gray-100">
-        <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-sky-600"></div>
-        <p className="mt-3 text-sm text-gray-500">Загрузка документов...</p>
+      <section className="app-surface rounded-2xl p-6 text-center">
+        <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-[var(--border-subtle)] border-t-[var(--accent-primary)]"></div>
+        <p className="app-text-muted mt-3 text-sm">Загрузка документов...</p>
       </section>
     </AppShell>
   );
@@ -288,12 +291,12 @@ function DocumentsPageContent() {
     <AppShell>
       <div className="space-y-4">
         {/* Top Bar */}
-        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+        <div className="app-surface rounded-2xl p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">Документы</p>
+            <p className="app-text-muted text-sm font-semibold uppercase tracking-wide">Документы</p>
             <button
               onClick={() => setShowUploadForm(true)}
-              className="inline-flex items-center gap-1 rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-600"
+              className="app-action-primary inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium"
             >
               <Plus size={14} /> Загрузить документ
             </button>
@@ -303,13 +306,13 @@ function DocumentsPageContent() {
             <div className="relative flex-1">
               <Search
                 size={16}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                className="app-text-muted pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
               />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Поиск по документам"
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                className="app-input w-full rounded-lg py-2.5 pl-9 pr-3 text-sm"
               />
             </div>
             <button
@@ -317,14 +320,14 @@ function DocumentsPageContent() {
               onClick={() => setShowFilters(!showFilters)}
               className={`relative inline-flex items-center justify-center rounded-lg border p-2.5 transition ${
                 showFilters || activeFilterCount > 0
-                  ? 'border-sky-400 bg-sky-50 text-sky-600'
-                  : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'
+                  ? 'app-selected app-accent-text border-[color:var(--accent-primary)]'
+                  : 'app-surface-muted app-text-muted hover:bg-[var(--surface-elevated)]'
               }`}
               title="Фильтры"
             >
               <Filter size={16} />
               {activeFilterCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-bold text-white">
+                <span className="app-counter absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold">
                   {activeFilterCount}
                 </span>
               )}
@@ -337,8 +340,8 @@ function DocumentsPageContent() {
                 onClick={() => setShowFolderDropdown(!showFolderDropdown)}
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
                   selectedFolderId
-                    ? 'bg-sky-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ? 'app-pill-active'
+                    : 'app-pill'
                 }`}
               >
                 <FolderOpen size={14} />
@@ -370,14 +373,14 @@ function DocumentsPageContent() {
                 )}
               </button>
               {showFolderDropdown && (
-                <div className="absolute left-0 top-full z-10 mt-2 w-72 rounded-lg border border-gray-200 bg-white shadow-lg">
-                  <div className="border-b border-gray-100 p-2">
+                <div className="app-menu absolute left-0 top-full z-10 mt-2 w-72 rounded-lg">
+                  <div className="app-divider border-b p-2">
                     <button
                       onClick={() => {
                         setShowCreateFolder(true);
                         setShowFolderDropdown(false);
                       }}
-                      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-sky-600 transition hover:bg-sky-50"
+                      className="app-link-accent flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition hover:bg-[color:var(--accent-soft)]"
                     >
                       <Plus size={16} />
                       Создать папку
@@ -407,13 +410,13 @@ function DocumentsPageContent() {
                 return tag ? (
                   <span
                     key={tagId}
-                    className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-3 py-1 text-xs text-sky-700"
+                    className="app-selected app-accent-text inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs"
                   >
                     <Tags size={12} />
                     {tag.name}
                     <button
                       onClick={() => setSelectedTags(prev => prev.filter(id => id !== tagId))}
-                      className="hover:text-sky-900"
+                      className="transition hover:opacity-80"
                     >
                       <X size={12} />
                     </button>
@@ -421,24 +424,24 @@ function DocumentsPageContent() {
                 ) : null;
               })}
               {dateFrom && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-3 py-1 text-xs text-purple-700">
+                <span className="app-badge-accent inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs">
                   <Calendar size={12} />
                   С: {new Date(dateFrom).toLocaleDateString('ru')}
                   <button
                     onClick={() => setDateFrom('')}
-                    className="hover:text-purple-900"
+                    className="transition hover:opacity-80"
                   >
                     <X size={12} />
                   </button>
                 </span>
               )}
               {dateTo && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-3 py-1 text-xs text-purple-700">
+                <span className="app-badge-accent inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs">
                   <Calendar size={12} />
                   До: {new Date(dateTo).toLocaleDateString('ru')}
                   <button
                     onClick={() => setDateTo('')}
-                    className="hover:text-purple-900"
+                    className="transition hover:opacity-80"
                   >
                     <X size={12} />
                   </button>
@@ -450,7 +453,7 @@ function DocumentsPageContent() {
                   setDateFrom('');
                   setDateTo('');
                 }}
-                className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 hover:bg-gray-200"
+                className="app-badge inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs hover:bg-[var(--surface-tertiary)]"
               >
                 Сбросить все
               </button>
@@ -459,15 +462,15 @@ function DocumentsPageContent() {
 
           {/* Filters Panel */}
           {showFilters && (
-            <div className="mb-3 flex flex-col gap-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
+            <div className="app-surface-muted mb-3 flex flex-col gap-4 rounded-xl p-3">
               {/* Tags Filter */}
               <div>
                 <div className="mb-2 flex items-center justify-between">
-                  <label className="text-sm font-medium text-gray-700">Теги</label>
+                  <label className="text-sm font-medium text-[var(--foreground)]">Теги</label>
                   <button
                     type="button"
                     onClick={() => setShowTagManagement(true)}
-                    className="text-xs text-blue-600 hover:text-blue-700 hover:underline"
+                    className="app-link-accent text-xs hover:underline"
                   >
                     Управление
                   </button>
@@ -477,7 +480,7 @@ function DocumentsPageContent() {
                     {availableTags.map(tag => (
                       <label
                         key={tag.id}
-                        className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm transition hover:border-sky-300 hover:bg-sky-50"
+                        className="app-surface flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm transition hover:border-[color:var(--accent-primary)] hover:bg-[color:var(--accent-soft)]"
                       >
                         <input
                           type="checkbox"
@@ -489,39 +492,39 @@ function DocumentsPageContent() {
                               setSelectedTags(prev => prev.filter(id => id !== tag.id));
                             }
                           }}
-                          className="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-2 focus:ring-sky-100"
+                          className="h-4 w-4 rounded accent-[var(--accent-primary)]"
                         />
                         <span className="truncate">{tag.name}</span>
                       </label>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm italic text-gray-500">Нет доступных тегов</p>
+                  <p className="app-text-muted text-sm italic">Нет доступных тегов</p>
                 )}
               </div>
 
               {/* Date Range */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                  <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">
                     Дата создания (с)
                   </label>
                   <input
                     type="date"
                     value={dateFrom}
                     onChange={(e) => setDateFrom(e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                    className="app-input w-full rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                  <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">
                     Дата создания (до)
                   </label>
                   <input
                     type="date"
                     value={dateTo}
                     onChange={(e) => setDateTo(e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                    className="app-input w-full rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
               </div>
@@ -529,26 +532,26 @@ function DocumentsPageContent() {
               {/* Sorting */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                  <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">
                     Сортировать по
                   </label>
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value as "date" | "title")}
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                    className="app-select w-full rounded-lg px-3 py-2 text-sm"
                   >
                     <option value="date">Дата создания</option>
                     <option value="title">Название</option>
                   </select>
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                  <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">
                     Порядок
                   </label>
                   <select
                     value={sortOrder}
                     onChange={(e) => setSortOrder(e.target.value as "asc" | "desc")}
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                    className="app-select w-full rounded-lg px-3 py-2 text-sm"
                   >
                     <option value="desc">По убыванию</option>
                     <option value="asc">По возрастанию</option>
@@ -564,7 +567,7 @@ function DocumentsPageContent() {
                     setDateFrom('');
                     setDateTo('');
                   }}
-                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
+                  className="app-action-secondary rounded-lg px-3 py-2 text-sm font-medium"
                 >
                   Очистить фильтры
                 </button>
@@ -576,19 +579,19 @@ function DocumentsPageContent() {
         {/* Main Content */}
         <div className="space-y-4">
           {loading ? (
-            <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-100">
-              <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-sky-400 border-t-transparent" />
-              <p className="text-sm text-gray-500">Загрузка документов...</p>
+            <div className="app-surface rounded-2xl p-8 text-center">
+              <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-[var(--border-subtle)] border-t-[var(--accent-primary)]" />
+              <p className="app-text-muted text-sm">Загрузка документов...</p>
             </div>
           ) : error ? (
-            <div className="rounded-2xl bg-red-50 p-6 text-center">
-              <p className="text-sm text-red-800">{error}</p>
+            <div className="app-feedback-danger rounded-2xl p-6 text-center">
+              <p className="text-sm">{error}</p>
             </div>
           ) : (
             <>
                 {/* Bulk Actions Toolbar */}
                 {selection.selectedIds.length > 0 && (
-                  <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+                  <div className="app-surface rounded-2xl p-4">
                     <BulkActionsToolbar
                       selectedIds={selection.selectedIds}
                       documents={filteredDocuments.map((d) => ({
@@ -602,19 +605,19 @@ function DocumentsPageContent() {
 
                 {/* Breadcrumbs */}
                 {breadcrumbs.length > 0 && (
-                  <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-4 py-2 text-sm">
-                    <FolderOpen size={14} className="text-gray-500" />
+                  <div className="app-surface-muted flex items-center gap-2 rounded-lg px-4 py-2 text-sm">
+                    <FolderOpen size={14} className="app-text-muted" />
                     <nav className="flex items-center gap-1">
                       <button
                         onClick={() => setSelectedFolderId(null)}
-                        className="text-gray-600 hover:text-sky-600"
+                        className="app-link-accent"
                       >
                         Все документы
                       </button>
                       {breadcrumbs.map((crumb, index) => (
                         <span key={index} className="flex items-center gap-1">
-                          <span className="text-gray-400">/</span>
-                          <span className={index === breadcrumbs.length - 1 ? "font-medium text-gray-900" : "text-gray-600"}>
+                          <span className="app-text-muted">/</span>
+                          <span className={index === breadcrumbs.length - 1 ? "font-medium text-[var(--foreground)]" : "app-text-muted"}>
                             {crumb}
                           </span>
                         </span>
@@ -624,25 +627,25 @@ function DocumentsPageContent() {
                 )}
 
                 {/* Documents List */}
-                <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+                <div className="app-surface rounded-2xl p-4">
                   <div className="space-y-3">
                     {filteredDocuments.length === 0 ? (
-                      <div className="rounded-xl bg-gray-50 p-8 text-center">
-                        <FileText size={22} className="mx-auto mb-2 text-gray-400" />
-                        <p className="text-sm text-gray-500">Документы не найдены</p>
+                      <div className="app-surface-muted rounded-xl p-8 text-center">
+                        <FileText size={22} className="app-text-muted mx-auto mb-2" />
+                        <p className="app-text-muted text-sm">Документы не найдены</p>
                       </div>
                     ) : (
                       <>
                         {/* Select All */}
                         {filteredDocuments.length > 0 && (
-                          <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
+                          <div className="app-surface-muted flex items-center gap-2 rounded-lg px-3 py-2">
                             <input
                               type="checkbox"
                               checked={selection.isAllSelected}
                               onChange={selection.toggleAll}
-                              className="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500"
+                              className="h-4 w-4 rounded accent-[var(--accent-primary)]"
                             />
-                            <span className="text-sm text-gray-700">
+                            <span className="text-sm text-[var(--foreground)]">
                               Выбрать все ({filteredDocuments.length})
                             </span>
                           </div>
@@ -655,6 +658,10 @@ function DocumentsPageContent() {
                             : null;
                           const createdDate = formatDate(doc.created_at);
                           const isSelected = selection.isSelected(doc.id);
+                          const fileSize = formatFileSize(doc.file_size);
+                          const recipientsCount = doc.recipients?.length || 0;
+                          const departmentsCount = doc.departments?.length || 0;
+                          const hasPreview = Boolean(doc.file_url && doc.file_name?.toLowerCase().endsWith(".pdf"));
 
                           // DEBUG: Проверка данных документа
                           if (!authorName || !createdDate) {
@@ -671,169 +678,206 @@ function DocumentsPageContent() {
                           return (
                             <article
                               key={doc.id}
-                              className={`group rounded-xl border transition-all ${
+                              className={`overflow-hidden rounded-xl transition ${
                                 isSelected
-                                  ? "border-sky-300 bg-sky-50/50 shadow-sm"
-                                  : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-md"
+                                  ? "app-selected shadow-[var(--shadow-card)]"
+                                  : "app-surface hover:border-[var(--border-strong)]"
                               }`}
                             >
-                              {/* Header - Checkbox + View Actions */}
-                              <div className="flex items-start gap-3 border-b border-gray-100 bg-gray-50/50 px-4 py-3">
-                                {/* Checkbox */}
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => selection.toggleDocument(doc.id)}
-                                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500"
-                                />
+                              <div className="p-4">
+                                <div className="flex items-start gap-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => selection.toggleDocument(doc.id)}
+                                    className="mt-1 h-4 w-4 rounded accent-[var(--accent-primary)]"
+                                  />
 
-                                {/* Spacer */}
-                                <div className="flex-1"></div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0 flex-1">
+                                        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                                          {doc.folder_path && (
+                                            <span className="app-badge inline-flex max-w-full items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium">
+                                              <FolderOpen size={12} className="shrink-0" />
+                                              <span className="truncate">{doc.folder_path}</span>
+                                            </span>
+                                          )}
+                                          {doc.tags?.slice(0, 3).map((tag) => (
+                                            <span
+                                              key={tag.id}
+                                              className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium"
+                                              style={{
+                                                backgroundColor: tag.color
+                                                  ? `color-mix(in srgb, ${tag.color} 12%, var(--surface-primary))`
+                                                  : "var(--surface-secondary)",
+                                                color: tag.color || "var(--muted-foreground)",
+                                                borderColor: tag.color
+                                                  ? `color-mix(in srgb, ${tag.color} 28%, var(--border-subtle))`
+                                                  : "var(--border-subtle)",
+                                              }}
+                                            >
+                                              <Tags size={10} />
+                                              {tag.name}
+                                            </span>
+                                          ))}
+                                          {doc.tags && doc.tags.length > 3 && (
+                                            <span className="app-badge px-2 py-0.5 text-[11px] font-medium">
+                                              +{doc.tags.length - 3} тег.
+                                            </span>
+                                          )}
+                                        </div>
 
-                                {/* View/Info Actions - Right Side with wrapping */}
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  {/* PDF Button - only for PDF files */}
-                                  {doc.file_url && doc.file_name?.toLowerCase().endsWith(".pdf") && (
-                                    <button
-                                      onClick={() =>
-                                        setPdfViewerFile({
-                                          url: doc.file_url!,
-                                          name: doc.file_name || doc.title,
-                                        })
-                                      }
-                                      className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-sky-700"
-                                      title="Открыть PDF"
-                                    >
-                                      <Eye size={14} className="shrink-0" />
-                                      <span className="truncate">PDF</span>
-                                    </button>
-                                  )}
-                                  
-                                  {/* Details Button */}
-                                  <button
-                                    onClick={() => setSelectedDocument(doc)}
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50"
-                                    title="Подробная информация"
-                                  >
-                                    <FileText size={14} className="shrink-0" />
-                                    <span className="truncate">Детали</span>
-                                  </button>
-                                  
-                                  {/* Acknowledgements Report */}
-                                  {doc.acknowledgement_required && (
-                                    <button
-                                      onClick={() =>
-                                        setShowAcknowledgementsReport({
-                                          documentId: doc.id,
-                                          documentTitle: doc.title,
-                                        })
-                                      }
-                                      className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition hover:bg-blue-100"
-                                      title="Посмотреть кто ознакомился"
-                                    >
-                                      <Users size={14} className="shrink-0" />
-                                      <span className="truncate">Ведомость</span>
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedDocument(doc)}
+                                          className="block w-full text-left"
+                                        >
+                                          <h3
+                                            className="truncate text-base font-semibold text-[var(--foreground)] transition hover:text-[var(--accent-primary-strong)]"
+                                            title={doc.title}
+                                          >
+                                            {doc.title}
+                                          </h3>
+                                        </button>
 
-                              {/* Body */}
-                              <div className="px-4 py-3">
-                                {/* Title - с обрезкой */}
-                                <h3 className="mb-2 truncate text-base font-semibold text-gray-900" title={doc.title}>
-                                  {doc.title}
-                                </h3>
+                                        <div className="app-text-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                                          {authorName && (
+                                            <span className="inline-flex items-center gap-1.5">
+                                              <User size={13} />
+                                              {authorName}
+                                            </span>
+                                          )}
+                                          {createdDate && (
+                                            <span className="inline-flex items-center gap-1.5">
+                                              <Calendar size={13} />
+                                              {createdDate}
+                                            </span>
+                                          )}
+                                          {fileSize && (
+                                            <span className="inline-flex items-center gap-1.5">
+                                              <FileText size={13} />
+                                              {fileSize}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
 
-                                {/* Tags - отображаем теги документа */}
-                                {doc.tags && doc.tags.length > 0 && (
-                                  <div className="mb-2 flex flex-wrap items-center gap-1.5">
-                                    {doc.tags.map((tag) => (
-                                      <span
-                                        key={tag.id}
-                                        className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset"
-                                        style={{
-                                          backgroundColor: tag.color ? `${tag.color}15` : '#f3f4f6',
-                                          color: tag.color || '#6b7280',
-                                          borderColor: tag.color ? `${tag.color}40` : '#e5e7eb',
-                                        }}
+                                      <div className="shrink-0 text-right">
+                                        {doc.acknowledgement_required ? (
+                                          doc.is_acknowledged ? (
+                                            <span className="app-feedback-success inline-flex rounded-full px-2.5 py-1 text-xs font-medium">
+                                              Ознакомлен
+                                            </span>
+                                          ) : (
+                                            <span className="app-feedback-warning inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium">
+                                              <AlertCircle size={11} />
+                                              Требует ознакомления
+                                            </span>
+                                          )
+                                        ) : (
+                                          <span className="app-badge px-2.5 py-1 text-xs font-medium">
+                                            Документ
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {(doc.sent_to_all || recipientsCount > 0 || departmentsCount > 0) && (
+                                      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                                        {doc.sent_to_all && (
+                                          <span className="app-selected-soft inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium">
+                                            <Users size={12} />
+                                            Для всей компании
+                                          </span>
+                                        )}
+                                        {recipientsCount > 0 && (
+                                          <span className="app-badge inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium">
+                                            <Users size={12} />
+                                            {recipientsCount} получ.
+                                          </span>
+                                        )}
+                                        {departmentsCount > 0 && (
+                                          <span className="app-badge inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium">
+                                            {departmentsCount} отдел.
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {doc.description && (
+                                      <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-[var(--foreground)]">
+                                        {doc.description}
+                                      </p>
+                                    )}
+
+                                    <div className={`${doc.description ? "mt-3" : "mt-2"} flex flex-wrap items-center gap-1.5`}>
+                                      <button
+                                        onClick={() => setSelectedDocument(doc)}
+                                        className="app-action-secondary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+                                        title="Подробная информация"
                                       >
-                                        <Tags size={10} />
-                                        {tag.name}
-                                      </span>
-                                    ))}
+                                        <FileText size={14} className="shrink-0" />
+                                        <span className="truncate">Детали</span>
+                                      </button>
+
+                                      {hasPreview && (
+                                        <button
+                                          onClick={() =>
+                                            setPdfViewerFile({
+                                              url: doc.file_url!,
+                                              name: doc.file_name || doc.title,
+                                            })
+                                          }
+                                          className="app-action-secondary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+                                          title="Открыть PDF"
+                                        >
+                                          <Eye size={14} className="shrink-0" />
+                                          <span className="truncate">PDF</span>
+                                        </button>
+                                      )}
+
+                                      {doc.file_url && (
+                                        <a
+                                          href={doc.file_url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="app-action-secondary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+                                          title="Скачать документ"
+                                        >
+                                          <Download size={14} className="shrink-0" />
+                                          <span className="truncate">Скачать</span>
+                                        </a>
+                                      )}
+
+                                      {doc.acknowledgement_required && (
+                                        <button
+                                          onClick={() =>
+                                            setShowAcknowledgementsReport({
+                                              documentId: doc.id,
+                                              documentTitle: doc.title,
+                                            })
+                                          }
+                                          className="app-action-secondary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+                                          title="Посмотреть ведомость ознакомления"
+                                        >
+                                          <Users size={14} className="shrink-0" />
+                                          <span className="truncate">Ведомость</span>
+                                        </button>
+                                      )}
+
+                                      {doc.acknowledgement_required && !doc.is_acknowledged && (
+                                        <button
+                                          onClick={() => setSelectedDocument(doc)}
+                                          className="app-action-primary ml-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+                                          title="Ознакомиться с документом"
+                                        >
+                                          <CheckCircle size={14} className="shrink-0" />
+                                          <span className="truncate">Ознакомиться</span>
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
-                                )}
-
-                                {/* Metadata - показываем только если есть хотя бы одно значение */}
-                                {(authorName || createdDate || doc.folder_path) && (
-                                  <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-gray-600">
-                                    {authorName && (
-                                      <>
-                                        <span className="inline-flex items-center gap-1.5">
-                                          <User size={13} className="text-gray-400" />
-                                          {authorName}
-                                        </span>
-                                        {(createdDate || doc.folder_path) && <span className="text-gray-300">•</span>}
-                                      </>
-                                    )}
-                                    {createdDate && (
-                                      <>
-                                        <span className="inline-flex items-center gap-1.5">
-                                          <Calendar size={13} className="text-gray-400" />
-                                          {createdDate}
-                                        </span>
-                                        {doc.folder_path && <span className="text-gray-300">•</span>}
-                                      </>
-                                    )}
-                                    {doc.folder_path && (
-                                      <span className="inline-flex items-center gap-1.5">
-                                        <FolderOpen size={13} className="text-sky-500" />
-                                        <span className="text-sky-600">{doc.folder_path}</span>
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Status Badges */}
-                                <div className="mb-3 flex flex-wrap items-center gap-2">
-                                  {doc.acknowledgement_required && (
-                                    doc.is_acknowledged ? (
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700 ring-1 ring-green-600/20">
-                                        <CheckCircle size={10} />
-                                        Ознакомлен
-                                      </span>
-                                    ) : (
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-600/20">
-                                        <AlertCircle size={10} />
-                                        Требуется ознакомление
-                                      </span>
-                                    )
-                                  )}
-                                </div>
-
-                                {/* Description */}
-                                {doc.description && (
-                                  <p className="text-sm leading-relaxed text-gray-600">
-                                    {doc.description}
-                                  </p>
-                                )}
-                              </div>
-
-                              {/* Footer - Workflow Actions */}
-                              <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-3">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  {/* Acknowledgement Action */}
-                                  {doc.acknowledgement_required && !doc.is_acknowledged && (
-                                    <button
-                                      onClick={() => setSelectedDocument(doc)}
-                                      className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-amber-600"
-                                      title="Ознакомиться с документом"
-                                    >
-                                      <CheckCircle size={14} className="shrink-0" />
-                                      <span className="truncate">Ознакомиться</span>
-                                    </button>
-                                  )}
                                 </div>
                               </div>
                             </article>
@@ -944,7 +988,7 @@ function DocumentsPageContent() {
           className="space-y-4"
         >
           <div>
-            <label htmlFor="folderName" className="mb-1 block text-sm font-medium text-gray-700">
+            <label htmlFor="folderName" className="mb-1 block text-sm font-medium text-[var(--foreground)]">
               Название папки
             </label>
             <input
@@ -952,15 +996,15 @@ function DocumentsPageContent() {
               name="name"
               type="text"
               required
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              className="app-input w-full rounded-lg px-3 py-2 text-sm"
               placeholder="Введите название..."
               autoFocus
             />
           </div>
 
           {selectedFolderId && (
-            <div className="rounded-lg bg-sky-50 p-3">
-              <p className="text-xs text-sky-700">
+            <div className="app-selected rounded-lg p-3">
+              <p className="app-accent-text text-xs">
                 <FolderOpen className="mr-1 inline" size={14} />
                 Будет создана в выбранной папке
               </p>
@@ -971,13 +1015,13 @@ function DocumentsPageContent() {
             <button
               type="button"
               onClick={() => setShowCreateFolder(false)}
-              className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              className="app-action-secondary flex-1 rounded-lg px-4 py-2 text-sm font-medium"
             >
               Отмена
             </button>
             <button
               type="submit"
-              className="flex-1 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
+              className="app-action-primary flex-1 rounded-lg px-4 py-2 text-sm font-medium"
             >
               Создать
             </button>

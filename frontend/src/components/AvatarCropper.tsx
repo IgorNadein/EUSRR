@@ -62,17 +62,17 @@ export default function AvatarCropper({ onCropComplete, onCancel, initialImage }
   return (
     <Modal isOpen onClose={onCancel} noHeader noPadding size="lg">
         {/* Заголовок */}
-        <div className="border-b border-gray-200 px-6 py-4">
-          <h3 className="text-lg font-semibold text-gray-900">
+        <div className="app-divider border-b px-6 py-4">
+          <h3 className="text-lg font-semibold text-[var(--foreground)]">
             Настройка фото профиля
           </h3>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="app-text-muted mt-1 text-sm">
             Разместите лицо в центре овала. Фото будет использоваться для распознавания.
           </p>
         </div>
 
         {/* Область кадрирования */}
-        <div className="relative h-96 bg-gray-100">
+        <div className="app-surface-muted relative h-96">
           <Cropper
             image={initialImage}
             crop={crop}
@@ -132,9 +132,9 @@ export default function AvatarCropper({ onCropComplete, onCancel, initialImage }
         </div>
 
         {/* Контролы масштабирования */}
-        <div className="border-t border-gray-200 px-6 py-4">
+        <div className="app-divider border-t px-6 py-4">
           <div className="flex items-center gap-4">
-            <svg className="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="app-text-muted h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
             </svg>
             <input
@@ -146,29 +146,29 @@ export default function AvatarCropper({ onCropComplete, onCancel, initialImage }
               onChange={(e) => setZoom(Number(e.target.value))}
               className="flex-1"
             />
-            <svg className="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="app-text-muted h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
             </svg>
           </div>
-          <p className="mt-2 text-center text-xs text-gray-500">
+          <p className="app-text-muted mt-2 text-center text-xs">
             Используйте ползунок для масштабирования
           </p>
         </div>
 
         {/* Кнопки действий */}
-        <div className="border-t border-gray-200 px-6 py-4">
+        <div className="app-divider border-t px-6 py-4">
           <div className="flex gap-3">
             <button
               type="button"
               onClick={onCancel}
-              className="flex-1 rounded-lg border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-200"
+              className="app-action-secondary flex-1 rounded-lg px-4 py-3 text-sm font-semibold"
             >
               Отмена
             </button>
             <button
               type="button"
               onClick={createCroppedImage}
-              className="flex-1 rounded-lg bg-sky-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-300"
+              className="app-action-primary flex-1 rounded-lg px-4 py-3 text-sm font-semibold"
             >
               Применить
             </button>

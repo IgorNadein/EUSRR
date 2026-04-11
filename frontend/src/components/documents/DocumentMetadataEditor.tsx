@@ -133,46 +133,46 @@ export function DocumentMetadataEditor({
     >
       <div className="space-y-4">
         {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-            <p className="text-sm text-red-800">{error}</p>
+          <div className="app-feedback-danger rounded-lg p-3">
+            <p className="text-sm">{error}</p>
           </div>
         )}
 
         {/* Document info */}
-        <div className="rounded-lg bg-gray-50 p-3">
-          <p className="text-sm font-medium text-gray-900">{document.title}</p>
-          <p className="mt-1 text-xs text-gray-500">ID: {document.id}</p>
+        <div className="app-surface-muted rounded-lg p-3">
+          <p className="text-sm font-medium text-[var(--foreground)]">{document.title}</p>
+          <p className="app-text-muted mt-1 text-xs">ID: {document.id}</p>
         </div>
 
         {/* Tags */}
         <div>
-          <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+          <label className="mb-2 flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
             <TagIcon className="h-4 w-4" />
             Теги
           </label>
           {loadingTags ? (
-            <div className="flex items-center justify-center rounded-md border border-gray-200 py-8">
-              <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+            <div className="app-surface flex items-center justify-center rounded-md py-8">
+              <Loader2 className="app-text-muted h-5 w-5 animate-spin" />
             </div>
           ) : documentTags.length === 0 ? (
-            <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-center text-sm text-gray-500">
+            <div className="app-surface-muted app-text-muted rounded-md p-3 text-center text-sm">
               Нет доступных тегов
             </div>
           ) : (
-            <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border border-gray-200 bg-white p-3">
+            <div className="app-surface max-h-48 space-y-2 overflow-y-auto rounded-md p-3">
               {documentTags.map((tag) => (
                 <label
                   key={tag.id}
-                  className="flex cursor-pointer items-center gap-2 rounded p-2 transition hover:bg-gray-50"
+                  className="flex cursor-pointer items-center gap-2 rounded p-2 transition hover:bg-[var(--surface-secondary)]"
                 >
                   <input
                     type="checkbox"
                     checked={selectedTags.includes(tag.id)}
                     onChange={() => toggleTag(tag.id)}
                     disabled={isSaving}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-100"
+                    className="h-4 w-4 rounded border-[var(--border-strong)] text-[var(--accent-primary)]"
                   />
-                  <span className="text-sm text-gray-900">{tag.name}</span>
+                  <span className="text-sm text-[var(--foreground)]">{tag.name}</span>
                   {tag.color && (
                     <span
                       className="ml-auto h-3 w-3 rounded-full"
@@ -183,14 +183,14 @@ export function DocumentMetadataEditor({
               ))}
             </div>
           )}
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="app-text-muted mt-1 text-xs">
             Выбрано: {selectedTags.length} {selectedTags.length === 1 ? 'тег' : 'тегов'}
           </p>
         </div>
 
         {/* Folder */}
         <div>
-          <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+          <label className="mb-2 flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
             <Folder className="h-4 w-4" />
             Папка
           </label>
@@ -198,7 +198,7 @@ export function DocumentMetadataEditor({
             value={selectedFolder || ''}
             onChange={(e) => setSelectedFolder(e.target.value ? Number(e.target.value) : null)}
             disabled={loadingFolders || isSaving}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+            className="app-select w-full rounded-md px-3 py-2 text-sm"
           >
             <option value="">Без папки (корень)</option>
             {folders.map((folder) => (
@@ -210,12 +210,12 @@ export function DocumentMetadataEditor({
         </div>
 
         {/* Actions */}
-        <div className="flex items-center justify-end gap-3 border-t pt-4">
+        <div className="app-divider flex items-center justify-end gap-3 border-t pt-4">
           <button
             type="button"
             onClick={onClose}
             disabled={isSaving}
-            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            className="app-action-secondary rounded-md px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
           >
             Отмена
           </button>
@@ -223,7 +223,7 @@ export function DocumentMetadataEditor({
             type="button"
             onClick={handleSave}
             disabled={isSaving}
-            className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            className="app-action-primary flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSaving ? (
               <>

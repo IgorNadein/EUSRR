@@ -22,7 +22,6 @@ import {
   getReplyToId,
   getMessageDate,
   getMessageInitials,
-  getMessagePreviewText,
   isReplyPreviewDeleted,
   isAudioAttachment,
   isImageAttachment,
@@ -166,7 +165,7 @@ export default function ChatMessageItem({
         ) : null}
 
         <div className={`flex min-w-0 items-start gap-1 ${isMine ? "max-w-[88%] flex-row-reverse" : "max-w-[calc(100%-2.5rem)]"}`}>
-          <div className={`relative min-w-0 rounded-2xl px-3 py-2 pr-9 transition-shadow duration-300 ${isMine ? "bg-sky-500 text-white" : "bg-white text-gray-900 ring-1 ring-gray-100"} ${isHighlighted ? (isMine ? "shadow-[0_0_0_3px_rgba(125,211,252,0.45)]" : "ring-2 ring-sky-300 shadow-[0_0_0_4px_rgba(186,230,253,0.65)]") : ""}`}>
+          <div className={`relative min-w-0 rounded-2xl px-3 py-2 pr-9 transition-shadow duration-300 ${isMine ? "bg-sky-500 text-white" : "app-surface-elevated text-[var(--foreground)]"} ${isHighlighted ? (isMine ? "shadow-[0_0_0_3px_rgba(125,211,252,0.45)]" : "ring-2 ring-sky-300 shadow-[0_0_0_4px_rgba(186,230,253,0.28)]") : ""}`}>
             {hasActions ? (
               <div className="absolute right-1 top-1 z-20">
                 <button
@@ -176,7 +175,7 @@ export default function ChatMessageItem({
                     const rect = event.currentTarget.getBoundingClientRect();
                     onToggleActions(message.id, { x: rect.right, y: rect.top });
                   }}
-                  className={`inline-flex h-6 w-6 items-center justify-center rounded-full border border-transparent bg-transparent text-gray-500 transition hover:text-sky-600 ${
+                  className={`inline-flex h-6 w-6 items-center justify-center rounded-full border border-transparent bg-transparent text-[var(--muted-foreground)] transition hover:text-sky-600 ${
                     isActionsOpen ? "rotate-90" : ""
                   }`}
                   title="Действия"
@@ -187,7 +186,7 @@ export default function ChatMessageItem({
               </div>
             ) : null}
 
-            {!isMine ? <p className="mb-1 text-[11px] font-medium text-gray-500">{getMessageAuthorLabel(message)}</p> : null}
+            {!isMine ? <p className="app-text-muted mb-1 text-[11px] font-medium">{getMessageAuthorLabel(message)}</p> : null}
 
             {replyToId ? (
               canJumpToReply ? (
@@ -198,7 +197,7 @@ export default function ChatMessageItem({
                     "group mb-2 block w-full rounded-xl border-l-2 px-2.5 py-1.5 text-left text-xs transition focus-visible:outline-none",
                     isMine
                       ? "border-sky-200 bg-sky-400/30 text-sky-50 hover:bg-sky-400/40 focus-visible:bg-sky-400/40 focus-visible:ring-2 focus-visible:ring-white/35"
-                      : "border-gray-300 bg-gray-100 text-gray-600 hover:bg-gray-200 focus-visible:bg-gray-200 focus-visible:ring-2 focus-visible:ring-sky-200",
+                      : "border-[var(--border-strong)] bg-[var(--surface-secondary)] text-[var(--muted-foreground)] hover:bg-[var(--surface-tertiary)] focus-visible:bg-[var(--surface-tertiary)] focus-visible:ring-2 focus-visible:ring-sky-200",
                   ].join(" ")}
                   title="Перейти к исходному сообщению"
                   aria-label={`Перейти к сообщению ${replyPreviewMessage?.author_name || `#${replyToId}`}`}
@@ -216,7 +215,7 @@ export default function ChatMessageItem({
                     "mb-2 block w-full rounded-xl border-l-2 px-2.5 py-1.5 text-left text-xs opacity-95",
                     isMine
                       ? "border-sky-200/80 bg-sky-400/20 text-sky-50/95"
-                      : "border-gray-300 bg-gray-100 text-gray-600",
+                      : "border-[var(--border-strong)] bg-[var(--surface-secondary)] text-[var(--muted-foreground)]",
                   ].join(" ")}
                   title="Исходное сообщение удалено"
                   aria-label={`Исходное сообщение удалено${replyPreviewMessage?.author_name ? `, автор ${replyPreviewMessage.author_name}` : ""}`}
@@ -226,7 +225,7 @@ export default function ChatMessageItem({
                       {replyPreviewMessage?.author_name || "Ответ на сообщение"}
                     </p>
                     {replyStatusLabel ? (
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${isMine ? "bg-white/18 text-white/90" : "bg-gray-200 text-gray-600"}`}>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${isMine ? "bg-white/18 text-white/90" : "bg-[var(--surface-tertiary)] text-[var(--muted-foreground)]"}`}>
                         {replyStatusLabel}
                       </span>
                     ) : null}
@@ -239,7 +238,7 @@ export default function ChatMessageItem({
             ) : null}
 
             {message.is_deleted ? (
-              <p className={`italic text-sm ${isMine ? "text-sky-100" : "text-gray-500"}`}>Сообщение удалено</p>
+              <p className={`italic text-sm ${isMine ? "text-sky-100" : "app-text-muted"}`}>Сообщение удалено</p>
             ) : message.content ? (
               <p className="whitespace-pre-wrap break-words text-sm leading-5">{message.content}</p>
             ) : null}
@@ -251,11 +250,11 @@ export default function ChatMessageItem({
                     return (
                       <div
                         key={attachment.id}
-                        className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${isMine ? "bg-sky-400/25 text-sky-50" : "bg-white/80 text-gray-700 ring-1 ring-gray-200"}`}
+                        className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${isMine ? "bg-sky-400/25 text-sky-50" : "app-surface-muted text-[var(--foreground)]"}`}
                       >
                         <FileText size={16} className="shrink-0" />
                         <span className="min-w-0 flex-1 truncate">{attachment.file_name}</span>
-                        <span className={`shrink-0 text-xs ${isMine ? "text-sky-100" : "text-gray-500"}`}>{formatFileSize(attachment.file_size)}</span>
+                        <span className={`shrink-0 text-xs ${isMine ? "text-sky-100" : "app-text-muted"}`}>{formatFileSize(attachment.file_size)}</span>
                       </div>
                     );
                   }
@@ -392,11 +391,11 @@ export default function ChatMessageItem({
                       href={fileUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-sm text-sky-700 hover:bg-white"
+                      className="app-surface-muted flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-sky-700 hover:bg-[var(--surface-elevated)]"
                     >
                       <FileText size={16} className="shrink-0" />
                       <span className="min-w-0 flex-1 truncate">{attachment.file_name}</span>
-                      <span className="shrink-0 text-xs text-gray-500">{formatFileSize(attachment.file_size)}</span>
+                      <span className="app-text-muted shrink-0 text-xs">{formatFileSize(attachment.file_size)}</span>
                     </a>
                   );
                 })}
@@ -404,7 +403,7 @@ export default function ChatMessageItem({
             ) : null}
 
             <div className={`mt-1 flex items-center ${isMine ? "justify-end gap-1.5" : "justify-end"}`}>
-              <p className={`text-right text-[11px] ${isMine ? "text-sky-100" : "text-gray-400"}`}>{messageTime(message)}</p>
+              <p className={`text-right text-[11px] ${isMine ? "text-sky-100" : "app-text-muted"}`}>{messageTime(message)}</p>
               {isMine ? <MessageDeliveryStatus sendState={sendState} isRead={isRead} /> : null}
             </div>
 
@@ -418,7 +417,7 @@ export default function ChatMessageItem({
                       type="button"
                       onClick={() => onReact(message, emoji)}
                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition ${
-                        mine ? "bg-sky-100 text-sky-700 ring-1 ring-sky-300" : "bg-white/80 text-gray-700 ring-1 ring-gray-200 hover:bg-white"
+                        mine ? "bg-sky-100 text-sky-700 ring-1 ring-sky-300" : "app-surface-muted text-[var(--foreground)] ring-1 ring-[var(--border-subtle)] hover:bg-[var(--surface-elevated)]"
                       }`}
                       title="Реакция"
                     >

@@ -108,14 +108,14 @@ export function ViewEventDetailsModal({
         <div className="flex gap-2">
           <button
             onClick={onEdit}
-            className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600"
+            className="app-action-primary flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium"
           >
             <Edit2 size={16} />
             Редактировать
           </button>
           <button
             onClick={onDelete}
-            className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-100"
+            className="app-action-danger rounded-lg px-4 py-2.5 text-sm font-medium"
             title="Удалить событие"
           >
             <Trash2 size={16} />
@@ -127,11 +127,11 @@ export function ViewEventDetailsModal({
         {/* Event meta */}
         <div className="flex items-center gap-2">
           {event.rule && (
-            <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex-shrink-0">
+            <span className="app-badge app-badge-accent shrink-0 rounded px-1.5 py-0.5 text-xs">
               ⟲
             </span>
           )}
-          <div className="flex items-center gap-1.5 text-xs text-gray-500">
+          <div className="app-text-muted flex items-center gap-1.5 text-xs">
             <div
               className="h-2.5 w-2.5 rounded-full flex-shrink-0"
               style={{ backgroundColor: event.color_event || "#3498db" }}
@@ -141,13 +141,13 @@ export function ViewEventDetailsModal({
         </div>
           {/* Time */}
           <div className="flex items-start gap-2.5">
-            <Clock size={18} className="text-gray-400 mt-0.5 flex-shrink-0" />
+            <Clock size={18} className="app-text-muted mt-0.5 flex-shrink-0" />
             <div className="flex-1">
-              <p className="text-sm font-medium text-gray-700 mb-1">Время</p>
-              <p className="text-xs text-gray-600">
+              <p className="mb-1 text-sm font-medium text-[var(--foreground)]">Время</p>
+              <p className="app-text-muted text-xs">
                 <span className="font-medium">Начало:</span> {capitalizedStart}
               </p>
-              <p className="text-xs text-gray-600 mt-0.5">
+              <p className="app-text-muted mt-0.5 text-xs">
                 <span className="font-medium">Конец:</span> {capitalizedEnd}
               </p>
             </div>
@@ -155,12 +155,12 @@ export function ViewEventDetailsModal({
 
           {/* Recurring Info */}
           {event.rule && event.rule_data && (
-            <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 space-y-2">
-              <div className="flex items-center gap-2 text-blue-700 font-medium text-sm">
+            <div className="app-selected space-y-2 rounded-lg p-4">
+              <div className="app-accent-text flex items-center gap-2 text-sm font-medium">
                 <Calendar size={16} />
                 <span>Повторяющееся событие</span>
               </div>
-              <div className="text-sm text-blue-600 space-y-1">
+              <div className="app-accent-text space-y-1 text-sm">
                 <div>
                   Частота: <span className="font-medium">{FREQUENCY_LABELS[event.rule_data.frequency] || event.rule_data.frequency}</span>
                 </div>
@@ -189,10 +189,10 @@ export function ViewEventDetailsModal({
           {/* Description */}
           {event.description && (
             <div className="flex items-start gap-2.5">
-              <FileText size={18} className="text-gray-400 mt-0.5 flex-shrink-0" />
+              <FileText size={18} className="app-text-muted mt-0.5 flex-shrink-0" />
               <div className="flex-1">
-                <p className="text-sm font-medium text-gray-700 mb-1">Описание</p>
-                <p className="text-xs text-gray-600 whitespace-pre-wrap">
+                <p className="mb-1 text-sm font-medium text-[var(--foreground)]">Описание</p>
+                <p className="app-text-muted whitespace-pre-wrap text-xs">
                   {event.description}
                 </p>
               </div>
@@ -202,30 +202,30 @@ export function ViewEventDetailsModal({
           {/* Participants */}
           {showParticipants && (
             <div className="flex items-start gap-2.5">
-              <Users size={18} className="text-gray-400 mt-0.5 flex-shrink-0" />
+              <Users size={18} className="app-text-muted mt-0.5 flex-shrink-0" />
               <div className="flex-1">
-                <p className="text-sm font-medium text-gray-700 mb-1.5">
+                <p className="mb-1.5 text-sm font-medium text-[var(--foreground)]">
                   Участники {participants.length > 0 && `(${participants.length})`}
                 </p>
                 {loadingParticipants ? (
-                  <p className="text-xs text-gray-500">Загрузка...</p>
+                  <p className="app-text-muted text-xs">Загрузка...</p>
                 ) : participants.length > 0 ? (
                   <div className="space-y-1.5">
                     {participants.map((participant: any) => (
                       <div
                         key={participant.id}
-                        className="flex items-center gap-2 rounded-lg bg-gray-50 px-2.5 py-2"
+                        className="app-surface-muted flex items-center gap-2 rounded-lg px-2.5 py-2"
                       >
-                        <div className="h-6 w-6 rounded-full bg-sky-100 flex items-center justify-center flex-shrink-0">
-                          <span className="text-xs font-medium text-sky-700">
+                        <div className="app-avatar-fallback flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full">
+                          <span className="text-xs font-medium">
                             {participant.user_name?.[0] || "?"}
                           </span>
                         </div>
                         <div className="text-xs flex-1 min-w-0">
-                          <div className="font-medium text-gray-900 truncate">
+                          <div className="truncate font-medium text-[var(--foreground)]">
                             {participant.user_name}
                           </div>
-                          <div className="text-gray-500">
+                          <div className="app-text-muted">
                             {participant.distinction || "attendee"}
                           </div>
                         </div>
@@ -233,7 +233,7 @@ export function ViewEventDetailsModal({
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-gray-500">Нет участников</p>
+                  <p className="app-text-muted text-xs">Нет участников</p>
                 )}
               </div>
             </div>

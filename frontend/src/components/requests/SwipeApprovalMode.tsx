@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import type { Request, User } from "@/types/api";
 import { Check, ChevronUp, Flame, ThumbsDown, ThumbsUp, Undo2, X } from "lucide-react";
 
@@ -200,7 +199,7 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
 
   const renderCard = (req: Request) => {
     const st = String(req.status).toLowerCase();
-    const sMeta = statusMeta[st] ?? { label: st, cls: "bg-gray-50 text-gray-700" };
+    const sMeta = statusMeta[st] ?? { label: st, cls: "app-badge" };
     const typeKey = String(req.type || req.request_type || "").toLowerCase();
     const typeLabel = typeLabels[typeKey] || typeKey || "Другое";
     const author = req.employee || req.created_by;
@@ -213,38 +212,38 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
           <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${sMeta.cls}`}>
             {sMeta.label}
           </span>
-          <span className="text-xs text-gray-400">#{req.id}</span>
+          <span className="app-text-muted text-xs">#{req.id}</span>
         </div>
 
         {/* author */}
         <div className="mb-3 flex items-center gap-2">
           {author?.avatar ? (
-            <img src={author.avatar} alt="" className="h-10 w-10 rounded-full object-cover ring-1 ring-gray-200" />
+            <img src={author.avatar} alt="" className="app-avatar-frame h-10 w-10 rounded-full object-cover" />
           ) : (
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-100 text-sm font-semibold text-sky-700 ring-1 ring-sky-200">
+            <span className="app-avatar-fallback flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold">
               {(author?.first_name?.[0] || author?.last_name?.[0] || "?").toUpperCase()}
             </span>
           )}
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-gray-900">{userName(author)}</p>
-            <p className="text-xs text-gray-500">Автор заявления</p>
+            <p className="truncate text-sm font-semibold text-[var(--foreground)]">{userName(author)}</p>
+            <p className="app-text-muted text-xs">Автор заявления</p>
           </div>
         </div>
 
         {/* title */}
-        <h3 className="mb-2 break-all text-base font-bold text-gray-900">
-          <span className="text-gray-500">{typeLabel}:</span> {req.display_title || req.title || "Без заголовка"}
+        <h3 className="mb-2 break-all text-base font-bold text-[var(--foreground)]">
+          <span className="app-text-muted">{typeLabel}:</span> {req.display_title || req.title || "Без заголовка"}
         </h3>
 
         {/* period */}
-        <div className="mb-3 flex flex-wrap items-center gap-3 text-xs text-gray-500">
+        <div className="app-text-muted mb-3 flex flex-wrap items-center gap-3 text-xs">
           <span>Период: {fmt(req.date_from)} — {fmt(req.date_to)}</span>
           <span>Создано: {fmt(req.created_at)}</span>
         </div>
 
         {/* description */}
         {summaryText && (
-          <div className={`rounded-lg bg-gray-50 p-3 text-sm leading-relaxed text-gray-700 break-all ${detailOpen ? "" : "line-clamp-3"}`}>
+          <div className={`app-surface-muted rounded-lg p-3 text-sm leading-relaxed text-[var(--foreground)] break-all ${detailOpen ? "" : "line-clamp-3"}`}>
             {summaryText}
           </div>
         )}
@@ -253,7 +252,7 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setDetailOpen(!detailOpen); }}
-            className="mt-1 text-xs font-medium text-sky-600 hover:text-sky-700"
+            className="app-link-accent mt-1 text-xs font-medium"
           >
             {detailOpen ? "Свернуть" : "Подробнее..."}
           </button>
@@ -265,11 +264,11 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
   /* ── empty state ── */
   if (!current && total === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-100">
+      <div className="app-surface flex flex-col items-center justify-center rounded-2xl p-8 text-center">
         <Check size={40} className="mb-3 text-emerald-400" />
-        <h3 className="text-lg font-bold text-gray-900">Нет заявлений на рассмотрение</h3>
-        <p className="mt-1 text-sm text-gray-500">Все заявления обработаны или отсутствуют</p>
-        <button type="button" onClick={onClose} className="mt-4 rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">
+        <h3 className="text-lg font-bold text-[var(--foreground)]">Нет заявлений на рассмотрение</h3>
+        <p className="app-text-muted mt-1 text-sm">Все заявления обработаны или отсутствуют</p>
+        <button type="button" onClick={onClose} className="app-action-secondary mt-4 rounded-lg px-4 py-2 text-sm font-medium">
           Вернуться к списку
         </button>
       </div>
@@ -279,15 +278,15 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
   /* ── all done ── */
   if (!current && total > 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-100">
+      <div className="app-surface flex flex-col items-center justify-center rounded-2xl p-8 text-center">
         <Flame size={40} className="mb-3 text-amber-400" />
-        <h3 className="text-lg font-bold text-gray-900">Все разобрано!</h3>
+        <h3 className="text-lg font-bold text-[var(--foreground)]">Все разобрано!</h3>
         <div className="mt-3 flex items-center gap-4 text-sm">
-          <span className="text-emerald-600 font-semibold">✓ {stats.approved}</span>
-          <span className="text-rose-600 font-semibold">✗ {stats.rejected}</span>
-          <span className="text-gray-500">↑ {stats.skipped} пропущено</span>
+          <span className="font-semibold text-emerald-600">✓ {stats.approved}</span>
+          <span className="font-semibold text-rose-600">✗ {stats.rejected}</span>
+          <span className="app-text-muted">↑ {stats.skipped} пропущено</span>
         </div>
-        <button type="button" onClick={onClose} className="mt-4 rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">
+        <button type="button" onClick={onClose} className="app-action-secondary mt-4 rounded-lg px-4 py-2 text-sm font-medium">
           Вернуться к списку
         </button>
       </div>
@@ -304,13 +303,13 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
   return (
     <div className="relative flex flex-col items-center">
       {/* stats bar */}
-      <div className="mb-4 flex w-full items-center justify-between rounded-xl bg-gray-50 px-4 py-2.5 text-xs ring-1 ring-gray-100">
+      <div className="app-surface-muted mb-4 flex w-full items-center justify-between rounded-xl px-4 py-2.5 text-xs">
         <div className="flex items-center gap-3">
           <span className="font-semibold text-emerald-600">✓ {stats.approved}</span>
           <span className="font-semibold text-rose-600">✗ {stats.rejected}</span>
-          <span className="text-gray-500">↑ {stats.skipped}</span>
+          <span className="app-text-muted">↑ {stats.skipped}</span>
         </div>
-        <span className="text-gray-400">Осталось: <span className="font-semibold text-gray-700">{remaining}</span></span>
+        <span className="app-text-muted">Осталось: <span className="font-semibold text-[var(--foreground)]">{remaining}</span></span>
       </div>
 
       {/* swipe hint overlays on card */}
@@ -328,8 +327,8 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
         </div>
         <div className={`pointer-events-none absolute inset-x-0 top-0 z-0 flex justify-center transition-opacity ${swipeIntent === "skipped" ? "opacity-100" : "opacity-0"}`}>
           <div className="flex flex-col items-center pt-4">
-            <div className="rounded-full bg-gray-200 p-3"><ChevronUp size={28} className="text-gray-600" /></div>
-            <span className="mt-1 text-xs font-bold text-gray-600">Пропустить</span>
+            <div className="app-surface-muted rounded-full p-3"><ChevronUp size={28} className="app-text-muted" /></div>
+            <span className="app-text-muted mt-1 text-xs font-bold">Пропустить</span>
           </div>
         </div>
 
@@ -346,7 +345,7 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
             transition,
             touchAction: "none",
           }}
-          className="relative z-10 cursor-grab select-none rounded-2xl border border-gray-200 bg-white p-5 shadow-lg active:cursor-grabbing"
+          className="app-surface relative z-10 cursor-grab select-none rounded-2xl p-5 active:cursor-grabbing"
         >
           {current && renderCard(current)}
 
@@ -358,15 +357,15 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
             <div className="pointer-events-none absolute inset-0 rounded-2xl ring-4 ring-rose-300/50" />
           )}
           {swipeIntent === "skipped" && (
-            <div className="pointer-events-none absolute inset-0 rounded-2xl ring-4 ring-gray-300/50" />
+            <div className="pointer-events-none absolute inset-0 rounded-2xl ring-4 ring-slate-300/40" />
           )}
         </div>
 
         {/* next card peek */}
         {queue[1] && (
-          <div className="absolute inset-x-2 top-2 -z-10 rounded-2xl border border-gray-100 bg-gray-50 p-5 opacity-60">
-            <div className="h-4 w-24 rounded bg-gray-200" />
-            <div className="mt-2 h-3 w-40 rounded bg-gray-200" />
+          <div className="app-surface-muted absolute inset-x-2 top-2 -z-10 rounded-2xl p-5 opacity-60">
+            <div className="h-4 w-24 rounded bg-[var(--surface-tertiary)]" />
+            <div className="mt-2 h-3 w-40 rounded bg-[var(--surface-tertiary)]" />
           </div>
         )}
       </div>
@@ -377,7 +376,7 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
           type="button"
           onClick={() => { setFlyOut("left"); setTimeout(() => performAction("rejected"), 250); }}
           disabled={busy}
-          className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-rose-200 bg-white text-rose-500 shadow-sm transition hover:bg-rose-50 hover:shadow-md active:scale-95 disabled:opacity-50"
+          className="app-feedback-danger flex h-14 w-14 items-center justify-center rounded-full transition hover:shadow-md active:scale-95 disabled:opacity-50"
           title="Отклонить (←)"
         >
           <ThumbsDown size={22} />
@@ -387,7 +386,7 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
           type="button"
           onClick={() => { setFlyOut("up"); setTimeout(() => performAction("skipped"), 250); }}
           disabled={busy}
-          className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-gray-200 bg-white text-gray-500 shadow-sm transition hover:bg-gray-50 hover:shadow-md active:scale-95 disabled:opacity-50"
+          className="app-action-secondary app-text-muted flex h-11 w-11 items-center justify-center rounded-full transition hover:shadow-md active:scale-95 disabled:opacity-50"
           title="Пропустить (↑)"
         >
           <ChevronUp size={20} />
@@ -397,7 +396,7 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
           type="button"
           onClick={() => { setFlyOut("right"); setTimeout(() => performAction("approved"), 250); }}
           disabled={busy}
-          className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-emerald-200 bg-white text-emerald-500 shadow-sm transition hover:bg-emerald-50 hover:shadow-md active:scale-95 disabled:opacity-50"
+          className="app-feedback-success flex h-14 w-14 items-center justify-center rounded-full transition hover:shadow-md active:scale-95 disabled:opacity-50"
           title="Одобрить (→)"
         >
           <ThumbsUp size={22} />
@@ -405,7 +404,7 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
       </div>
 
       {/* hint */}
-      <p className="mt-3 text-center text-[11px] text-gray-400">
+      <p className="app-text-muted mt-3 text-center text-[11px]">
         Свайп ← отклонить · → одобрить · ↑ пропустить
       </p>
 

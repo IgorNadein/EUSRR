@@ -37,32 +37,32 @@ export default function AddChatMemberModal({
           value={memberSearchQuery}
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder="Введите имя или email..."
-          className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+          className="app-input w-full rounded-lg px-4 py-2 text-sm"
           autoFocus
         />
-        <p className="mt-1 text-xs text-gray-500">Минимум 2 символа для поиска</p>
+        <p className="app-text-muted mt-1 text-xs">Минимум 2 символа для поиска</p>
       </div>
 
       <div className="max-h-96 overflow-y-auto">
         {memberSearchLoading ? (
           <div className="py-8 text-center">
-            <div className="mx-auto mb-2 h-6 w-6 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
-            <p className="text-sm text-gray-500">Поиск...</p>
+            <div className="mx-auto mb-2 h-6 w-6 animate-spin rounded-full border-2 border-[var(--accent-primary)] border-t-transparent" />
+            <p className="app-text-muted text-sm">Поиск...</p>
           </div>
         ) : memberSearchQuery.trim().length < 2 ? (
           <div className="py-8 text-center">
-            <Users className="mx-auto mb-2 h-12 w-12 text-gray-300" />
-            <p className="text-sm text-gray-500">Начните вводить имя или email для поиска</p>
+            <Users className="app-text-muted mx-auto mb-2 h-12 w-12 opacity-40" />
+            <p className="app-text-muted text-sm">Начните вводить имя или email для поиска</p>
           </div>
         ) : memberSearchResults.length === 0 ? (
           <div className="py-8 text-center">
-            <p className="text-sm text-gray-500">Пользователи не найдены</p>
+            <p className="app-text-muted text-sm">Пользователи не найдены</p>
           </div>
         ) : (
           <div className="space-y-2">
             {memberSearchResults.map((result) => (
-              <div key={result.id} className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 transition hover:bg-gray-50">
-                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white">
+              <div key={result.id} className="app-surface-elevated flex items-center gap-3 rounded-lg p-3 transition hover:bg-[var(--surface-secondary)]">
+                <div className="app-avatar-fallback flex h-10 w-10 items-center justify-center overflow-hidden rounded-full text-sm font-semibold">
                   {result.avatar ? (
                     <Image
                       src={resolveMediaUrl(result.avatar)}
@@ -77,14 +77,14 @@ export default function AddChatMemberModal({
                   )}
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900">{result.name || getUserFullName(result.last_name, result.first_name)}</p>
-                  {result.email ? <p className="text-xs text-gray-500">{result.email}</p> : null}
+                  <p className="text-sm font-medium text-[var(--foreground)]">{result.name || getUserFullName(result.last_name, result.first_name)}</p>
+                  {result.email ? <p className="app-text-muted text-xs">{result.email}</p> : null}
                 </div>
                 <button
                   type="button"
                   onClick={() => onAddMember(result.id)}
                   disabled={actionLoading === `add-member-${result.id}`}
-                  className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-sky-700 disabled:opacity-50"
+                  className="app-action-primary rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-50"
                 >
                   {actionLoading === `add-member-${result.id}` ? "..." : "Добавить"}
                 </button>

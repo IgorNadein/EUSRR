@@ -43,7 +43,7 @@ export default function EditChatModal({
         type="button"
         onClick={onClose}
         disabled={actionLoading === "edit"}
-        className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50"
+        className="app-action-secondary flex-1 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
       >
         Отмена
       </button>
@@ -51,7 +51,7 @@ export default function EditChatModal({
         type="button"
         onClick={onSave}
         disabled={actionLoading === "edit" || !editName.trim()}
-        className="flex-1 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-sky-700 disabled:opacity-50"
+        className="app-action-primary flex-1 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
       >
         {actionLoading === "edit" ? "Сохранение..." : "Сохранить"}
       </button>
@@ -63,9 +63,9 @@ export default function EditChatModal({
       {chat && (
         <div className="space-y-4">
           <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">Аватар</label>
+            <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">Аватар</label>
             <div className="flex items-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-lg font-semibold text-white">
+              <div className="app-avatar-fallback flex h-16 w-16 items-center justify-center overflow-hidden rounded-full text-lg font-semibold">
                 {editAvatarPreview ? (
                   <Image src={editAvatarPreview} alt="Preview" width={64} height={64} unoptimized className="h-full w-full object-cover" />
                 ) : getChatAvatar(chat, currentUserId) ? (
@@ -74,16 +74,16 @@ export default function EditChatModal({
                   getChatInitials(chat, currentUserId)
                 )}
               </div>
-              <label className="cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50">
+              <label className="app-action-secondary cursor-pointer rounded-lg px-4 py-2 text-sm font-medium">
                 <input type="file" accept="image/*" onChange={onAvatarChange} className="hidden" />
                 Загрузить
               </label>
             </div>
-            <p className="mt-1 text-xs text-gray-500">Максимальный размер: 5MB. Форматы: JPG, PNG, GIF</p>
+            <p className="app-text-muted mt-1 text-xs">Максимальный размер: 5MB. Форматы: JPG, PNG, GIF</p>
           </div>
 
           <div>
-            <label htmlFor="edit-name" className="mb-2 block text-sm font-medium text-gray-700">
+            <label htmlFor="edit-name" className="mb-2 block text-sm font-medium text-[var(--foreground)]">
               Название чата
             </label>
             <input
@@ -92,13 +92,13 @@ export default function EditChatModal({
               value={editName}
               onChange={(event) => onNameChange(event.target.value)}
               placeholder="Введите название чата"
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+              className="app-input w-full rounded-lg px-4 py-2 text-sm"
               maxLength={100}
             />
           </div>
 
           <div>
-            <label htmlFor="edit-description" className="mb-2 block text-sm font-medium text-gray-700">
+            <label htmlFor="edit-description" className="mb-2 block text-sm font-medium text-[var(--foreground)]">
               Описание
             </label>
             <textarea
@@ -107,7 +107,7 @@ export default function EditChatModal({
               onChange={(event) => onDescriptionChange(event.target.value)}
               placeholder="Введите описание чата (необязательно)"
               rows={3}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+              className="app-input w-full rounded-lg px-4 py-2 text-sm"
               maxLength={500}
             />
           </div>

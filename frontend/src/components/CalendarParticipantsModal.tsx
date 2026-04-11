@@ -185,28 +185,28 @@ export default function CalendarParticipantsModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="md" noPadding noHeader>
       <div className="overflow-y-auto">
-        <div className="flex items-center justify-between border-b px-4 sm:px-6 py-3 sm:py-4">
+        <div className="app-divider flex items-center justify-between border-b px-4 py-3 sm:px-6 sm:py-4">
           <div>
-            <h2 className="text-base sm:text-lg font-semibold text-gray-900">Участники календаря</h2>
-            <p className="text-xs sm:text-sm text-gray-500">{calendarName}</p>
+            <h2 className="text-base font-semibold text-[var(--foreground)] sm:text-lg">Участники календаря</h2>
+            <p className="app-text-muted text-xs sm:text-sm">{calendarName}</p>
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-2 hover:bg-gray-100 transition"
+            className="app-action-ghost rounded-lg p-2 transition"
           >
-            <X size={20} className="text-gray-500" />
+            <X size={20} className="app-text-muted" />
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="space-y-6 p-6">
           {/* Add Participant Section - только для владельца */}
           {isOwner && (
-            <div className="rounded-lg bg-gray-50 p-4 space-y-3">
+            <div className="app-surface-muted space-y-3 rounded-lg p-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium text-gray-900">
+                <h3 className="text-sm font-medium text-[var(--foreground)]">
                   Добавить участников 
                   {selectedUserIds.length > 0 && (
-                    <span className="ml-2 text-sky-600">
+                    <span className="app-accent-text ml-2">
                       (выбрано: {selectedUserIds.length})
                     </span>
                   )}
@@ -215,14 +215,14 @@ export default function CalendarParticipantsModal({
                   <button
                     onClick={selectAll}
                     disabled={availableEmployees.length === 0}
-                    className="text-xs text-sky-600 hover:text-sky-700 disabled:opacity-50"
+                    className="app-link-accent text-xs disabled:opacity-50"
                   >
                     Выбрать всех
                   </button>
                   {selectedDepartment && (
                     <button
                       onClick={selectAllFromDepartment}
-                      className="text-xs text-sky-600 hover:text-sky-700"
+                      className="app-link-accent text-xs"
                     >
                       Добавить весь отдел
                     </button>
@@ -230,7 +230,7 @@ export default function CalendarParticipantsModal({
                   <button
                     onClick={deselectAll}
                     disabled={selectedUserIds.length === 0}
-                    className="text-xs text-gray-600 hover:text-gray-700 disabled:opacity-50"
+                    className="app-text-muted text-xs hover:text-[var(--foreground)] disabled:opacity-50"
                   >
                     Снять выбор
                   </button>
@@ -243,7 +243,7 @@ export default function CalendarParticipantsModal({
                   placeholder="Поиск сотрудника..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                  className="app-input flex-1 rounded-lg px-3 py-2 text-sm"
                 />
                 
                 <select
@@ -252,7 +252,7 @@ export default function CalendarParticipantsModal({
                     setSelectedDepartment(e.target.value);
                     setSelectedUserIds([]); // Сбрасываем выбор при смене отдела
                   }}
-                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                  className="app-select rounded-lg px-3 py-2 text-sm"
                 >
                   <option value="">Все отделы</option>
                   {departments.map(dept => (
@@ -265,23 +265,23 @@ export default function CalendarParticipantsModal({
 
               {/* Employee list with checkboxes */}
               {availableEmployees.length > 0 && (
-                <div className="max-h-60 overflow-y-auto rounded-lg border border-gray-200 bg-white">
+                <div className="app-surface max-h-60 overflow-y-auto rounded-lg">
                   {availableEmployees.map(emp => (
                     <label
                       key={emp.id}
-                      className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer transition"
+                      className="flex cursor-pointer items-center gap-3 px-3 py-2 transition hover:bg-[var(--surface-secondary)]"
                     >
                       <input
                         type="checkbox"
                         checked={selectedUserIds.includes(emp.id)}
                         onChange={() => toggleUserSelection(emp.id)}
-                        className="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500"
+                        className="h-4 w-4 rounded border-[var(--border-strong)] text-[var(--accent-primary)]"
                       />
-                      <span className="text-sm text-gray-900">
+                      <span className="text-sm text-[var(--foreground)]">
                         {emp.first_name} {emp.last_name}
                       </span>
                       {emp.email && (
-                        <span className="text-xs text-gray-500">({emp.email})</span>
+                        <span className="app-text-muted text-xs">({emp.email})</span>
                       )}
                     </label>
                   ))}
@@ -289,7 +289,7 @@ export default function CalendarParticipantsModal({
               )}
 
               {availableEmployees.length === 0 && (
-                <p className="text-sm text-gray-500 text-center py-4">
+                <p className="app-text-muted py-4 text-center text-sm">
                   {searchQuery ? 'Сотрудники не найдены' : 'Все сотрудники уже добавлены'}
                 </p>
               )}
@@ -298,7 +298,7 @@ export default function CalendarParticipantsModal({
                 <select
                   value={selectedRole}
                   onChange={(e) => setSelectedRole(e.target.value)}
-                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                  className="app-select flex-1 rounded-lg px-3 py-2 text-sm"
                 >
                   <option value="viewer">Просмотр</option>
                   <option value="editor">Редактор</option>
@@ -308,7 +308,7 @@ export default function CalendarParticipantsModal({
                 <button
                   onClick={handleAddParticipants}
                   disabled={selectedUserIds.length === 0 || loading}
-                  className="flex items-center gap-2 rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="app-action-primary flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <UserPlus size={16} />
                   {loading ? 'Добавление...' : `Добавить (${selectedUserIds.length})`}
@@ -319,13 +319,13 @@ export default function CalendarParticipantsModal({
 
           {/* Participants List */}
           <div>
-            <h3 className="text-sm font-medium text-gray-900 mb-3">
+            <h3 className="mb-3 text-sm font-medium text-[var(--foreground)]">
               Текущие участники ({participants.length})
             </h3>
             
             <div className="space-y-2">
               {participants.length === 0 ? (
-                <p className="text-sm text-gray-500 py-4 text-center">Нет участников</p>
+                <p className="app-text-muted py-4 text-center text-sm">Нет участников</p>
               ) : (
                 participants.map((participant) => {
                   const user = participant.user || {};
@@ -336,29 +336,29 @@ export default function CalendarParticipantsModal({
                   return (
                     <div
                       key={participant.id}
-                      className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 hover:bg-gray-50 transition"
+                      className="app-surface-elevated flex items-center justify-between rounded-lg px-4 py-3 transition hover:bg-[var(--surface-secondary)]"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-sky-100 flex items-center justify-center">
-                          <span className="text-sm font-medium text-sky-700">
+                        <div className="app-avatar-fallback flex h-10 w-10 items-center justify-center rounded-full">
+                          <span className="text-sm font-medium">
                             {firstName[0]}{lastName[0]}
                           </span>
                         </div>
                         <div>
-                          <div className="text-sm font-medium text-gray-900">
+                          <div className="text-sm font-medium text-[var(--foreground)]">
                             {firstName} {lastName}
                           </div>
-                          <div className="text-xs text-gray-500">@{username}</div>
+                          <div className="app-text-muted text-xs">@{username}</div>
                         </div>
                       </div>
 
                     <div className="flex items-center gap-3">
                       <span className={`rounded-full px-3 py-1 text-xs font-medium ${
                         participant.distinction === 'owner'
-                          ? 'bg-purple-100 text-purple-700'
+                          ? 'app-badge'
                           : participant.distinction === 'editor'
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'bg-gray-100 text-gray-700'
+                          ? 'app-selected app-accent-text'
+                          : 'app-badge'
                       }`}>
                         {participant.distinction === 'owner' ? 'Владелец' :
                          participant.distinction === 'editor' ? 'Редактор' : 'Просмотр'}
@@ -368,7 +368,7 @@ export default function CalendarParticipantsModal({
                         <button
                           onClick={() => handleRemoveParticipant(participant.user.id)}
                           disabled={loading}
-                          className="rounded-lg p-2 hover:bg-red-50 text-red-600 transition disabled:opacity-50"
+                          className="app-action-danger rounded-lg p-2 transition disabled:opacity-50"
                           title="Удалить участника"
                         >
                           <Trash2 size={16} />
@@ -383,10 +383,10 @@ export default function CalendarParticipantsModal({
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 border-t px-6 py-4">
+        <div className="app-divider flex justify-end gap-3 border-t px-6 py-4">
           <button
             onClick={onClose}
-            className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-200"
+            className="app-action-secondary rounded-lg px-4 py-2 text-sm font-medium"
           >
             Закрыть
           </button>
