@@ -3,18 +3,24 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 
+from django.conf import settings
 from api.v1.employees.serializers import (
     EmailSerializer,
     EmailVerifySerializer,
     RegisterSerializer,
 )
 from api.v1.employees.views._helpers import Employee
-from api.v1.employees.views.mixins import LdapUserCreationMixin
+from api.v1.employees.views.mixins import LdapPasswordMixin, LdapUserCreationMixin
 from common.emails import send_templated_mail
+from django.contrib.auth import authenticate
+from django.contrib.auth.tokens import default_token_generator
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 from django.utils.crypto import get_random_string
+from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from drf_spectacular.utils import (
     OpenApiExample,
     OpenApiParameter,
@@ -33,7 +39,13 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .models import UserAuthSession
 from .serializers import (
+    ChangePasswordRequestSerializer,
+    ChangePasswordResponseSerializer,
     PhoneOrEmailTokenObtainPairSerializer,
+    PasswordResetConfirmRequestSerializer,
+    PasswordResetConfirmResponseSerializer,
+    PasswordResetRequestResponseSerializer,
+    PasswordResetRequestSerializer,
     SessionBulkActionResponseSerializer,
     SessionSerializer,
     SessionTokenRefreshSerializer,
@@ -44,6 +56,25 @@ from .serializers import (
 from .services import SESSION_ID_CLAIM
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_employee_by_login(login: str) -> Employee | None:
+    normalized_login = (login or "").strip()
+    if not normalized_login:
+        return None
+
+    if "@" in normalized_login:
+        return Employee.objects.filter(email__iexact=normalized_login).first()
+
+    normalized_phone = _normalize_phone(normalized_login)
+    if not normalized_phone:
+        return None
+    return Employee.objects.filter(phone_number=normalized_phone).first()
+
+
+def _build_frontend_password_reset_link(*, uid: str, token: str) -> str:
+    site_url = getattr(settings, "SITE_URL", "https://corp.robotail.pro").rstrip("/")
+    return f"{site_url}/reset-password?uid={uid}&token={token}"
 
 
 class AnonymousAPIView(APIView):
@@ -373,6 +404,139 @@ class SessionBaseAPIView(APIView):
         if token is None:
             return None
         return token.get(SESSION_ID_CLAIM)
+
+
+class ChangePasswordAPIView(LdapPasswordMixin, SessionBaseAPIView):
+    @extend_schema(
+        tags=["Auth"],
+        summary="Сменить пароль текущего пользователя",
+        request=ChangePasswordRequestSerializer,
+        responses={
+            200: ChangePasswordResponseSerializer,
+            400: OpenApiResponse(
+                description="Текущий пароль неверен или новый пароль невалиден."
+            ),
+            502: OpenApiResponse(
+                description="Не удалось обновить пароль в LDAP."
+            ),
+        },
+    )
+    def post(self, request):
+        serializer = ChangePasswordRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        current_password = serializer.validated_data["current_password"]
+        new_password = serializer.validated_data["new_password"]
+        user = request.user
+
+        verified_user = authenticate(
+            request=request,
+            email=user.email,
+            password=current_password,
+        )
+        if verified_user is None or verified_user.pk != user.pk:
+            return Response(
+                {
+                    "current_password": [
+                        "Текущий пароль указан неверно."
+                    ]
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            updated, error_response = self.update_ldap_password(user, new_password)
+        except DjangoValidationError as exc:
+            return Response(
+                {"new_password": exc.messages},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not updated:
+            return error_response
+
+        return Response({"ok": True}, status=status.HTTP_200_OK)
+
+
+class PasswordResetAPIView(AnonymousAPIView):
+    @extend_schema(
+        tags=["Auth"],
+        summary="Запросить письмо для сброса пароля",
+        request=PasswordResetRequestSerializer,
+        responses={200: PasswordResetRequestResponseSerializer},
+    )
+    def post(self, request):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = _resolve_employee_by_login(serializer.validated_data["login"])
+        if user and user.email:
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            token = default_token_generator.make_token(user)
+            reset_link = _build_frontend_password_reset_link(uid=uid, token=token)
+
+            send_templated_mail(
+                subject="Восстановление пароля",
+                to=[user.email],
+                template_base="emails/password_reset_link",
+                context={
+                    "user": user,
+                    "reset_link": reset_link,
+                    "site_url": getattr(settings, "SITE_URL", "https://corp.robotail.pro"),
+                },
+            )
+
+        # Намеренно не раскрываем, существует ли пользователь.
+        return Response({"ok": True}, status=status.HTTP_200_OK)
+
+
+class PasswordResetConfirmAPIView(LdapPasswordMixin, AnonymousAPIView):
+    @extend_schema(
+        tags=["Auth"],
+        summary="Подтвердить сброс пароля по uid и token",
+        request=PasswordResetConfirmRequestSerializer,
+        responses={
+            200: PasswordResetConfirmResponseSerializer,
+            400: OpenApiResponse(description="Ссылка недействительна или пароль невалиден."),
+            502: OpenApiResponse(description="Не удалось обновить пароль в LDAP."),
+        },
+    )
+    def post(self, request):
+        serializer = PasswordResetConfirmRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            user_id = force_str(
+                urlsafe_base64_decode(serializer.validated_data["uid"])
+            )
+        except (TypeError, ValueError, OverflowError):
+            return Response(
+                {"token": ["Ссылка для восстановления недействительна."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = Employee.objects.filter(pk=user_id).first()
+        if user is None or not default_token_generator.check_token(
+            user, serializer.validated_data["token"]
+        ):
+            return Response(
+                {"token": ["Ссылка для восстановления недействительна или устарела."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            updated, error_response = self.update_ldap_password(
+                user,
+                serializer.validated_data["new_password"],
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {"new_password": exc.messages},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not updated:
+            return error_response
+
+        return Response({"ok": True}, status=status.HTTP_200_OK)
 
 
 class SessionListAPIView(SessionBaseAPIView):

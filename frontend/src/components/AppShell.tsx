@@ -330,7 +330,7 @@ function LeftNav() {
   );
 }
 
-export function PageHeader({ title, subtitle, badge, eyebrow = "Раздел" }: PageHeaderProps) {
+export function PageHeader({ title, subtitle, badge, eyebrow  }: PageHeaderProps) {
   return (
     <div className="app-surface flex flex-col gap-3 rounded-2xl p-5">
       <div className="flex items-center justify-between gap-3">

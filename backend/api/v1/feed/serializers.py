@@ -35,6 +35,11 @@ class AuthorMiniSerializer(serializers.ModelSerializer):
         return build_media_url(obj.avatar, request)
 
 
+class PostLikerSerializer(AuthorMiniSerializer):
+    class Meta(AuthorMiniSerializer.Meta):
+        fields = ["id", "first_name", "last_name", "full_name", "avatar"]
+
+
 class PostListSerializer(serializers.ModelSerializer):
     author_id = serializers.IntegerField(read_only=True)
     author = AuthorMiniSerializer(read_only=True)

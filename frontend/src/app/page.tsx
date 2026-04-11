@@ -555,19 +555,6 @@ function HomePageContent() {
   }
   return (
     <AppShell>
-      {canCreatePost ? (
-        <div className="mb-4">
-          <button
-            type="button"
-            onClick={openCreatePostModal}
-            className="app-action-primary inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition"
-          >
-            <Plus size={16} />
-            Создать публикацию
-          </button>
-        </div>
-      ) : null}
-
       <div className="space-y-4">
         {posts.length === 0 ? (
           <div className="app-surface-muted rounded-2xl p-8 text-center">
@@ -674,7 +661,7 @@ function HomePageContent() {
                       type="button"
                       disabled={likeBusyId === post.id}
                       onClick={() => handleLikeToggle(post)}
-                      className={`flex items-center gap-2 rounded-lg px-3 py-2 transition ${post.is_liked ? "app-selected-soft app-accent-text" : "app-action-ghost"}`}
+                      className={`flex items-center gap-2 rounded-lg px-3 py-2 transition ${post.is_liked ? "app-selected app-accent-text" : "app-action-ghost"}`}
                     >
                       <Heart
                         size={16}
@@ -729,6 +716,20 @@ function HomePageContent() {
           })
         )}
       </div>
+
+      {canCreatePost && !createPostOpen ? (
+        <div className="pointer-events-none fixed bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] right-4 z-30 lg:bottom-6 lg:right-[max(2rem,calc((100vw-72rem)/2+21.5rem))]">
+          <button
+            type="button"
+            onClick={openCreatePostModal}
+            className="app-action-primary pointer-events-auto inline-flex h-12 w-12 items-center justify-center rounded-full p-0 leading-none shadow-[var(--shadow-card)] transition active:scale-[0.98]"
+            title="Создать публикацию"
+            aria-label="Создать публикацию"
+          >
+            <Plus size={22} />
+          </button>
+        </div>
+      ) : null}
 
       <Modal
         isOpen={createPostOpen}

@@ -6,6 +6,9 @@ import {
   Bell,
   Check,
   Clock3,
+  Eye,
+  EyeOff,
+  KeyRound,
   LogOut,
   Mail,
   Monitor,
@@ -224,6 +227,17 @@ export default function SettingsPage() {
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sessionsUnavailable, setSessionsUnavailable] = useState(false);
   const [sessionActionKey, setSessionActionKey] = useState<string | null>(null);
+  const [passwordForm, setPasswordForm] = useState({
+    current_password: "",
+    new_password: "",
+    new_password_confirm: "",
+  });
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [showPasswordFields, setShowPasswordFields] = useState({
+    current: false,
+    next: false,
+    confirm: false,
+  });
 
   const {
     isSupported,
@@ -569,6 +583,37 @@ export default function SettingsPage() {
     }
   };
 
+  const handleChangePassword = async () => {
+    if (!passwordForm.current_password || !passwordForm.new_password || !passwordForm.new_password_confirm) {
+      toast.error("Заполните все поля пароля");
+      return;
+    }
+    if (passwordForm.new_password !== passwordForm.new_password_confirm) {
+      toast.error("Подтверждение пароля не совпадает");
+      return;
+    }
+
+    try {
+      setChangingPassword(true);
+      await apiClient.changePassword(passwordForm);
+      setPasswordForm({
+        current_password: "",
+        new_password: "",
+        new_password_confirm: "",
+      });
+      toast.success("Пароль обновлен");
+    } catch (error) {
+      console.error(error);
+      toast.error(
+        error instanceof Error && error.message.includes("current_password")
+          ? "Текущий пароль указан неверно"
+          : "Не удалось изменить пароль",
+      );
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   if (loading || !user) {
     return (
       <AppShell>
@@ -585,11 +630,10 @@ export default function SettingsPage() {
   return (
     <AppShell>
       <div className="space-y-6">
-        <PageHeader
+        {/* <PageHeader
           title="Настройки"
-          eyebrow="Личный кабинет"
           subtitle="Единая точка для темы, профиля, контактов и правил доставки уведомлений."
-        />
+        /> */}
 
         <div className="space-y-6">
             <SectionCard
@@ -1042,7 +1086,7 @@ export default function SettingsPage() {
             <SectionCard
               id="access"
               title="Доступ"
-              description="Текущее устройство, остальные активные сессии и действия по безопасности аккаунта."
+              description="Пароль, текущее устройство, остальные активные сессии и действия по безопасности аккаунта."
             >
               <div className="space-y-4">
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr),minmax(280px,0.8fr)]">
@@ -1077,6 +1121,133 @@ export default function SettingsPage() {
                         </p>
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                <div className="app-surface-muted rounded-2xl p-4">
+                  <div className="mb-4 flex items-start gap-3">
+                    <span className="app-badge flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+                      <KeyRound size={18} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[var(--foreground)]">Смена пароля</p>
+                      <p className="app-text-muted mt-1 text-sm">
+                        Обновляет пароль для входа в аккаунт{user.is_ldap_managed ? " и LDAP-профиль" : ""}.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <label className="block">
+                      <span className="app-text-muted mb-2 block text-sm">Текущий пароль</span>
+                      <div className="relative">
+                        <input
+                          type={showPasswordFields.current ? "text" : "password"}
+                          autoComplete="current-password"
+                          value={passwordForm.current_password}
+                          onChange={(event) =>
+                            setPasswordForm((prev) => ({
+                              ...prev,
+                              current_password: event.target.value,
+                            }))
+                          }
+                          className="app-input w-full rounded-lg px-4 py-3 pr-12 text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowPasswordFields((prev) => ({
+                              ...prev,
+                              current: !prev.current,
+                            }))
+                          }
+                          className="app-icon-button absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full"
+                          aria-label={showPasswordFields.current ? "Скрыть пароль" : "Показать пароль"}
+                        >
+                          {showPasswordFields.current ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                    </label>
+                    <label className="block">
+                      <span className="app-text-muted mb-2 block text-sm">Новый пароль</span>
+                      <div className="relative">
+                        <input
+                          type={showPasswordFields.next ? "text" : "password"}
+                          autoComplete="new-password"
+                          value={passwordForm.new_password}
+                          onChange={(event) =>
+                            setPasswordForm((prev) => ({
+                              ...prev,
+                              new_password: event.target.value,
+                            }))
+                          }
+                          className="app-input w-full rounded-lg px-4 py-3 pr-12 text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowPasswordFields((prev) => ({
+                              ...prev,
+                              next: !prev.next,
+                            }))
+                          }
+                          className="app-icon-button absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full"
+                          aria-label={showPasswordFields.next ? "Скрыть пароль" : "Показать пароль"}
+                        >
+                          {showPasswordFields.next ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                    </label>
+                    <label className="block">
+                      <span className="app-text-muted mb-2 block text-sm">Подтверждение</span>
+                      <div className="relative">
+                        <input
+                          type={showPasswordFields.confirm ? "text" : "password"}
+                          autoComplete="new-password"
+                          value={passwordForm.new_password_confirm}
+                          onChange={(event) =>
+                            setPasswordForm((prev) => ({
+                              ...prev,
+                              new_password_confirm: event.target.value,
+                            }))
+                          }
+                          className="app-input w-full rounded-lg px-4 py-3 pr-12 text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowPasswordFields((prev) => ({
+                              ...prev,
+                              confirm: !prev.confirm,
+                            }))
+                          }
+                          className="app-icon-button absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full"
+                          aria-label={showPasswordFields.confirm ? "Скрыть пароль" : "Показать пароль"}
+                        >
+                          {showPasswordFields.confirm ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                    <p className="app-text-muted text-sm">
+                      После смены пароля текущая сессия сохранится, остальные устройства можно завершить ниже.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void handleChangePassword()}
+                      disabled={
+                        changingPassword ||
+                        !passwordForm.current_password ||
+                        !passwordForm.new_password ||
+                        !passwordForm.new_password_confirm
+                      }
+                      className="app-action-primary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+                    >
+                      <KeyRound size={16} />
+                      {changingPassword ? "Сохраняем..." : "Сменить пароль"}
+                    </button>
                   </div>
                 </div>
 
@@ -1143,7 +1314,7 @@ export default function SettingsPage() {
                               className="app-action-danger inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
                             >
                               <LogOut size={16} />
-                              {sessionActionKey === `delete:${currentSession.session_id}` ? "Выходим..." : "Выйти с этого устройства"}
+                              {sessionActionKey === `delete:${currentSession.session_id}` ? "Выходим..." : "Завершить"}
                             </button>
                           </div>
                         </div>
@@ -1171,7 +1342,7 @@ export default function SettingsPage() {
                           className="app-action-secondary inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
                         >
                           <LogOut size={16} />
-                          {sessionActionKey === "logout-others" ? "Завершаем..." : "Завершить все остальные"}
+                          {sessionActionKey === "logout-others" ? "Завершаем..." : "Завершить все"}
                         </button>
                       </div>
 

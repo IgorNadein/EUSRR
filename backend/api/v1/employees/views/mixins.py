@@ -227,6 +227,10 @@ class LdapPasswordMixin:
                 group_cns=None,
                 move_to_department_dn=None,
             )
+            # Сохраняем локальный пароль в unusable-состоянии заново,
+            # чтобы инвалидировать любые reset-токены Django.
+            employee.set_unusable_password()
+            employee.save(update_fields=["password"])
             return True, None
         except DirectoryLdapError as e:
             logger.error(

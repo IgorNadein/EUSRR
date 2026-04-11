@@ -46,6 +46,7 @@ export interface User {
   skills?: Skill[];
   actions?: EmployeeAction[];
   email_verified?: boolean;
+  is_ldap_managed?: boolean;
   created_at?: string;
   updated_at?: string;
   last_login?: string;
@@ -73,6 +74,35 @@ export interface AuthSession {
 
 export interface SessionBulkActionResult {
   revoked: number;
+}
+
+export interface ChangePasswordPayload {
+  current_password: string;
+  new_password: string;
+  new_password_confirm: string;
+}
+
+export interface ChangePasswordResult {
+  ok: boolean;
+}
+
+export interface PasswordResetRequestPayload {
+  login: string;
+}
+
+export interface PasswordResetRequestResult {
+  ok: boolean;
+}
+
+export interface PasswordResetConfirmPayload {
+  uid: string;
+  token: string;
+  new_password: string;
+  new_password_confirm: string;
+}
+
+export interface PasswordResetConfirmResult {
+  ok: boolean;
 }
 
 export interface Department {

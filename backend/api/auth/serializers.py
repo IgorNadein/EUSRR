@@ -62,6 +62,80 @@ class SessionBulkActionResponseSerializer(serializers.Serializer):
     revoked = serializers.IntegerField(read_only=True)
 
 
+class ChangePasswordRequestSerializer(serializers.Serializer):
+    current_password = serializers.CharField(
+        write_only=True,
+        trim_whitespace=False,
+        style={"input_type": "password"},
+    )
+    new_password = serializers.CharField(
+        write_only=True,
+        min_length=6,
+        trim_whitespace=False,
+        style={"input_type": "password"},
+    )
+    new_password_confirm = serializers.CharField(
+        write_only=True,
+        trim_whitespace=False,
+        style={"input_type": "password"},
+    )
+
+    def validate(self, attrs):
+        if attrs["new_password"] != attrs["new_password_confirm"]:
+            raise serializers.ValidationError(
+                {"new_password_confirm": "Подтверждение пароля не совпадает."}
+            )
+        if attrs["current_password"] == attrs["new_password"]:
+            raise serializers.ValidationError(
+                {"new_password": "Новый пароль должен отличаться от текущего."}
+            )
+        return attrs
+
+
+class ChangePasswordResponseSerializer(serializers.Serializer):
+    ok = serializers.BooleanField(read_only=True)
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    login = serializers.CharField(
+        write_only=True,
+        allow_blank=False,
+        trim_whitespace=True,
+        help_text="Email или телефон пользователя.",
+    )
+
+
+class PasswordResetRequestResponseSerializer(serializers.Serializer):
+    ok = serializers.BooleanField(read_only=True)
+
+
+class PasswordResetConfirmRequestSerializer(serializers.Serializer):
+    uid = serializers.CharField(write_only=True)
+    token = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(
+        write_only=True,
+        min_length=6,
+        trim_whitespace=False,
+        style={"input_type": "password"},
+    )
+    new_password_confirm = serializers.CharField(
+        write_only=True,
+        trim_whitespace=False,
+        style={"input_type": "password"},
+    )
+
+    def validate(self, attrs):
+        if attrs["new_password"] != attrs["new_password_confirm"]:
+            raise serializers.ValidationError(
+                {"new_password_confirm": "Подтверждение пароля не совпадает."}
+            )
+        return attrs
+
+
+class PasswordResetConfirmResponseSerializer(serializers.Serializer):
+    ok = serializers.BooleanField(read_only=True)
+
+
 class PhoneOrEmailTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
     Принимает email ИЛИ phone/phone_number + password.
