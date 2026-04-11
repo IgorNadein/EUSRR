@@ -61,6 +61,20 @@ export interface User {
   };
 }
 
+export interface AuthSession {
+  session_id: string;
+  is_current: boolean;
+  device_name?: string | null;
+  ip_address?: string | null;
+  created_at: string;
+  last_seen_at: string;
+  revoked_at?: string | null;
+}
+
+export interface SessionBulkActionResult {
+  revoked: number;
+}
+
 export interface Department {
   id: number;
   name: string;

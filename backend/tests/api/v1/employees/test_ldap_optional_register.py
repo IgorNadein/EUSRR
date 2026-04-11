@@ -4,6 +4,7 @@
 Покрывает тест-кейсы R1-R9 из плана тестирования.
 """
 import itertools
+from unittest.mock import patch
 
 import pytest
 from django.urls import reverse
@@ -45,8 +46,9 @@ def test_user_data():
 # ---------- Тесты БЕЗ LDAP (LDAP_ENABLED=False) ----------
 
 
+@pytest.mark.parametrize("route_name", ["api:register", "api:v1:register"])
 def test_register_without_ldap_creates_user_only_in_db(
-    api_client, test_user_data, settings
+    api_client, test_user_data, settings, route_name
 ):
     """
     R7: Успешная регистрация без LDAP.
@@ -56,7 +58,7 @@ def test_register_without_ldap_creates_user_only_in_db(
     """
     settings.LDAP_ENABLED = False
 
-    url = reverse("api:v1:register")
+    url = reverse(route_name)
     response = api_client.post(url, test_user_data, format="json")
 
     assert response.status_code == status.HTTP_201_CREATED
@@ -69,8 +71,9 @@ def test_register_without_ldap_creates_user_only_in_db(
     assert user.check_password(test_user_data["password"])
 
 
+@pytest.mark.parametrize("route_name", ["api:register", "api:v1:register"])
 def test_register_without_ldap_duplicate_email_returns_400(
-    api_client, test_user_data, settings
+    api_client, test_user_data, settings, route_name
 ):
     """R9: Дублирование email без LDAP возвращает 400"""
     settings.LDAP_ENABLED = False
@@ -84,8 +87,35 @@ def test_register_without_ldap_duplicate_email_returns_400(
         email_verified=True,  # Верифицирован - нельзя регистрировать снова
     )
 
-    url = reverse("api:v1:register")
+    url = reverse(route_name)
     response = api_client.post(url, test_user_data, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
+
+@pytest.mark.parametrize("route_name", ["api:register", "api:v1:register"])
+@patch("api.auth.views.RegisterAPIView.create_ldap_user")
+def test_register_with_ldap_uses_ldap_creation_path(
+    mock_create_ldap_user,
+    api_client,
+    test_user_data,
+    settings,
+    route_name,
+):
+    settings.LDAP_ENABLED = True
+
+    emp = Employee(
+        email=test_user_data["email"],
+        phone_number=test_user_data["phone_number"],
+        first_name=test_user_data["first_name"],
+        last_name=test_user_data["last_name"],
+        is_active=False,
+        email_verified=False,
+        is_ldap_managed=True,
+    )
+    mock_create_ldap_user.return_value = (emp, None)
+
+    response = api_client.post(reverse(route_name), test_user_data, format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED
+    mock_create_ldap_user.assert_called_once()

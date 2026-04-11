@@ -4,6 +4,7 @@
  */
 import { ApiClientBase } from './client';
 import { createEmployeesApi } from './employees';
+import { createAuthApi } from './auth';
 import { createDocumentsApi } from './documents';
 import { createMessagesApi } from './messages';
 import { createNotificationsApi } from './notifications';
@@ -18,6 +19,7 @@ const req = base.request.bind(base);
 const tok = base.getToken.bind(base);
 
 export const apiClient = Object.assign(base, {
+    ...createAuthApi(req),
     ...createEmployeesApi(req),
     ...createDocumentsApi(req),
     ...createMessagesApi(req, tok),

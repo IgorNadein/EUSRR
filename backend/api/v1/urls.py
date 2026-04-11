@@ -24,10 +24,7 @@ from .employees.views import (
     EmployeeViewSet,
     GroupViewSet,
     PositionViewSet,
-    RegisterAPIView,
-    ResendEmailAPIView,
     SkillViewSet,
-    VerifyEmailAPIView,
 )
 from .feed.views import PostViewSet
 from .requests_app.views import RequestViewSet
@@ -90,17 +87,7 @@ router.register(r"communications/polls", PollViewSet, basename="polls")
 
 
 urlpatterns = [
-    path("auth/register/", RegisterAPIView.as_view(), name="register"),
-    path(
-        "auth/resend-email/",
-        ResendEmailAPIView.as_view(),
-        name="resend-email",
-    ),
-    path(
-        "auth/verify-email/",
-        VerifyEmailAPIView.as_view(),
-        name="verify-email",
-    ),
+    path("auth/", include("api.auth.urls")),
     # Notifications API (из самого модуля notifications)
     path("notifications/", include("notifications.api.urls")),
     # Procurement API

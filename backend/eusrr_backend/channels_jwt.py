@@ -6,6 +6,7 @@ from urllib.parse import parse_qs
 
 from channels.db import database_sync_to_async
 from channels.middleware import BaseMiddleware
+from django.contrib.auth.models import AnonymousUser
 
 
 class JWTAuthMiddleware(BaseMiddleware):
@@ -28,22 +29,23 @@ class JWTAuthMiddleware(BaseMiddleware):
         return None
 
     @database_sync_to_async
-    def _get_user(self, validated_token):
-        from rest_framework_simplejwt.authentication import JWTAuthentication
+    def _authenticate_raw_token(self, raw_token: str):
+        from api.auth.authentication import SessionAwareJWTAuthentication
 
-        auth = JWTAuthentication()
+        auth = SessionAwareJWTAuthentication()
+        validated_token = auth.get_validated_token(raw_token)
         user = auth.get_user(validated_token)
-        return user
+        auth.validate_session(validated_token, user)
+        return user, validated_token
 
     async def __call__(self, scope, receive, send):
+        scope.setdefault("user", AnonymousUser())
         try:
             raw = self._get_raw_token(scope)
             if raw:
-                from rest_framework_simplejwt.tokens import UntypedToken
-
-                token = UntypedToken(raw)  # валидация подписи/срока
-                user = await self._get_user(token)
+                user, token = await self._authenticate_raw_token(raw)
                 scope["user"] = user
+                scope["auth"] = token
         except Exception:
             # оставим scope["user"] анонимным — соединение сам consumer решит
             pass

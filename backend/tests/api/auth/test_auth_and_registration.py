@@ -6,8 +6,10 @@ from django.core import mail
 from django.urls import reverse
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from api.auth.models import UserAuthSession
 from rest_framework import status
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 pytestmark = pytest.mark.django_db
 User = get_user_model()
@@ -25,6 +27,8 @@ def api():
 def _locmem_email_backend(settings):
     # Все письма складываются в mail.outbox
     settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+    settings.LDAP_ENABLED = False
+    settings.LDAP_WRITE_ENABLED = False
 
 
 # ======== утилиты ========
@@ -98,6 +102,10 @@ def jwt_obtain(
     else:
         payload = {"phone_number": phone, "password": password}
     return api.post(url, payload, format="json")
+
+
+def auth_headers(access: str) -> dict[str, str]:
+    return {"HTTP_AUTHORIZATION": f"Bearer {access}"}
 
 
 # ======== регистрация: happy-path ========
@@ -288,3 +296,110 @@ def test_login_wrong_password(api):
 
     r = jwt_obtain(api, email="ivan@example.com", password="BAD")
     assert r.status_code in (status.HTTP_400_BAD_REQUEST, status.HTTP_401_UNAUTHORIZED)
+
+
+@pytest.mark.parametrize(
+    ("route_name", "path"),
+    [
+        ("api:register", "/api/auth/register/"),
+        ("api:v1:register", "/api/v1/auth/register/"),
+        ("api:resend-email", "/api/auth/resend-email/"),
+        ("api:v1:resend-email", "/api/v1/auth/resend-email/"),
+        ("api:verify-email", "/api/auth/verify-email/"),
+        ("api:v1:verify-email", "/api/v1/auth/verify-email/"),
+        ("api:token_obtain_pair", "/api/auth/token/"),
+        ("api:v1:token_obtain_pair", "/api/v1/auth/token/"),
+        ("api:token_refresh", "/api/auth/token/refresh/"),
+        ("api:v1:token_refresh", "/api/v1/auth/token/refresh/"),
+        ("api:sessions", "/api/auth/sessions/"),
+        ("api:v1:sessions", "/api/v1/auth/sessions/"),
+        ("api:logout-others", "/api/auth/sessions/logout-others/"),
+        ("api:v1:logout-others", "/api/v1/auth/sessions/logout-others/"),
+    ],
+)
+def test_auth_routes_are_mirrored(route_name, path):
+    assert reverse(route_name) == path
+
+
+def test_login_creates_auth_session_and_embeds_session_id(api):
+    assert register(api).status_code == status.HTTP_201_CREATED
+    code = extract_code_from_last_email()
+    assert verify(api, email="ivan@example.com", code=code).status_code in (200, 204)
+
+    response = jwt_obtain(api, email="ivan@example.com")
+    assert response.status_code == status.HTTP_200_OK
+
+    payload = response.json()
+    access = AccessToken(payload["access"])
+    refresh = RefreshToken(payload["refresh"])
+
+    assert access["session_id"] == refresh["session_id"]
+
+    session = UserAuthSession.objects.get(session_id=access["session_id"])
+    assert session.user.email == "ivan@example.com"
+    assert session.refresh_token_hash
+
+
+def test_sessions_list_and_logout_others_revoke_other_session(api):
+    assert register(api).status_code == status.HTTP_201_CREATED
+    code = extract_code_from_last_email()
+    assert verify(api, email="ivan@example.com", code=code).status_code in (200, 204)
+
+    first = jwt_obtain(api, email="ivan@example.com")
+    second = jwt_obtain(api, email="ivan@example.com")
+    assert first.status_code == second.status_code == status.HTTP_200_OK
+
+    access1 = first.json()["access"]
+    access2 = second.json()["access"]
+    refresh2 = second.json()["refresh"]
+    session_id_2 = str(AccessToken(access2)["session_id"])
+
+    listed = api.get(reverse("api:sessions"), **auth_headers(access1))
+    assert listed.status_code == status.HTTP_200_OK
+    assert len(listed.json()) == 2
+
+    logout_others = api.post(reverse("api:logout-others"), **auth_headers(access1))
+    assert logout_others.status_code == status.HTTP_200_OK
+    assert logout_others.json()["revoked"] == 1
+
+    listed_after = api.get(reverse("api:v1:sessions"), **auth_headers(access1))
+    assert listed_after.status_code == status.HTTP_200_OK
+    assert len(listed_after.json()) == 1
+    assert listed_after.json()[0]["is_current"] is True
+
+    profile = api.get(reverse("api:v1:employees-me"), **auth_headers(access2))
+    assert profile.status_code == status.HTTP_401_UNAUTHORIZED
+
+    refresh_resp = api.post(
+        reverse("api:v1:token_refresh"),
+        {"refresh": refresh2},
+        format="json",
+    )
+    assert refresh_resp.status_code == status.HTTP_401_UNAUTHORIZED
+
+    session = UserAuthSession.objects.get(session_id=session_id_2)
+    assert session.revoked_at is not None
+
+
+def test_delete_current_session_revokes_access_immediately(api):
+    assert register(api).status_code == status.HTTP_201_CREATED
+    code = extract_code_from_last_email()
+    assert verify(api, email="ivan@example.com", code=code).status_code in (200, 204)
+
+    login = jwt_obtain(api, email="ivan@example.com")
+    assert login.status_code == status.HTTP_200_OK
+
+    access = login.json()["access"]
+    session_id = AccessToken(access)["session_id"]
+
+    before = api.get(reverse("api:v1:employees-me"), **auth_headers(access))
+    assert before.status_code == status.HTTP_200_OK
+
+    deleted = api.delete(
+        reverse("api:session-detail", kwargs={"session_id": session_id}),
+        **auth_headers(access),
+    )
+    assert deleted.status_code == status.HTTP_204_NO_CONTENT
+
+    after = api.get(reverse("api:v1:employees-me"), **auth_headers(access))
+    assert after.status_code == status.HTTP_401_UNAUTHORIZED

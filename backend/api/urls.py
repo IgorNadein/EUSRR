@@ -8,7 +8,6 @@ from drf_spectacular.views import (
 )
 from rest_framework.permissions import AllowAny
 
-from .auth.views import JWTTokenRefreshView, PhoneOrEmailTokenObtainPairView
 from .docs_views import AsyncAPIDocsView, AsyncAPISchemaView
 app_name = "api"
 
@@ -42,14 +41,5 @@ urlpatterns = [
     path("ws/schema/", AsyncAPISchemaView.as_view(), name="ws-schema"),
     path("ws/docs/", AsyncAPIDocsView.as_view(), name="ws-docs"),
     path("v1/", include(("api.v1.urls", "v1"), namespace="v1")),
-    path(
-        "auth/token/",
-        PhoneOrEmailTokenObtainPairView.as_view(),
-        name="token_obtain_pair",
-    ),
-    path(
-        "auth/token/refresh/",
-        JWTTokenRefreshView.as_view(),
-        name="token_refresh",
-    ),
+    path("auth/", include("api.auth.urls")),
 ]

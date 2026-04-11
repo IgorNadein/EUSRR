@@ -23,7 +23,11 @@ def test_openapi_schema_is_available(api_client: APIClient):
     payload = response.json()
     assert payload["openapi"].startswith("3.")
     assert "/api/auth/token/" in payload["paths"]
+    assert "/api/auth/register/" in payload["paths"]
+    assert "/api/auth/sessions/" in payload["paths"]
+    assert "/api/v1/auth/token/" in payload["paths"]
     assert "/api/v1/auth/register/" in payload["paths"]
+    assert "/api/v1/auth/sessions/" in payload["paths"]
     assert "/api/v1/documents/" in payload["paths"]
     assert "/api/v1/notifications/" in payload["paths"]
     assert "/api/v1/procurement/stats/overview/" in payload["paths"]
