@@ -1,7 +1,10 @@
 "use client";
 
 import { History, Pencil, Trash2 } from "lucide-react";
-import { getEmployeeActionBadgeClass, getEmployeeActionBorderColor } from "@/lib/users/userDetailUtils";
+import {
+  getEmployeeActionBadgeClass,
+  getEmployeeActionBorderColor,
+} from "@/lib/users/userDetailUtils";
 import type { EmployeeAction } from "@/types/api";
 
 type EmployeeActionsTimelineProps = {
@@ -14,6 +17,16 @@ type EmployeeActionsTimelineProps = {
   onEditAction: (action: EmployeeAction) => void;
   sortedActions: EmployeeAction[];
 };
+
+function formatActionDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
 
 export default function EmployeeActionsTimeline({
   actionLoading,
@@ -30,65 +43,81 @@ export default function EmployeeActionsTimeline({
   }
 
   return (
-    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-          <History size={16} />
-          История кадровых событий
-        </h2>
+    <section className="app-surface rounded-[24px] p-5">
+      <div className="mb-4 flex items-start justify-between gap-4">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">
-            {sortedActions.length} {sortedActions.length === 1 ? "событие" : sortedActions.length < 5 ? "события" : "событий"}
+          <History size={18} className="app-text-muted" />
+          <h2 className="app-card-caption">Кадровые события</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="app-text-muted text-sm">
+            {sortedActions.length}{" "}
+            {sortedActions.length === 1
+              ? "событие"
+              : sortedActions.length < 5
+                ? "события"
+                : "событий"}
           </span>
-          {canManageActions && (
+          {canManageActions ? (
             <button
               onClick={onAddAction}
-              className="rounded-lg bg-sky-100 px-2 py-1 text-xs font-medium text-sky-700 hover:bg-sky-200 transition"
+              className="app-action-secondary rounded-xl px-3 py-2 text-sm font-medium"
             >
               + Добавить
             </button>
-          )}
+          ) : null}
         </div>
       </div>
+
       <div className="space-y-3">
         {sortedActions.map((action) => {
           const isCurrent = latestActionId === action.id;
           const deleteKey = `delete-${action.id}`;
+          const tone = getEmployeeActionBadgeClass(action.action);
+          const lineColor = getEmployeeActionBorderColor(action.action);
 
           return (
-            <div
-              key={action.id}
-              className="flex gap-3 border-l-2 py-1 pl-3"
-              style={{ borderColor: getEmployeeActionBorderColor(action.action) }}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${getEmployeeActionBadgeClass(action.action)}`}>
+            <div key={action.id} className="relative pl-5">
+              <span
+                className="absolute bottom-0 left-1.5 top-0 w-px"
+                style={{ backgroundColor: lineColor }}
+              />
+              {isCurrent ? (
+                <span
+                  className="absolute left-0 top-2 h-3.5 w-3.5 rounded-full border-4 border-[var(--surface-primary)]"
+                  style={{ backgroundColor: lineColor }}
+                />
+              ) : null}
+              <div className="app-surface-muted rounded-2xl px-4 py-3">
+                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${tone}`}
+                      >
                         {action.action_display || action.action}
                       </span>
-                      {isCurrent && (
-                        <span className="text-xs text-gray-500">текущий</span>
-                      )}
+                      {isCurrent ? (
+                        <span className="app-text-muted text-xs font-medium">
+                          текущий
+                        </span>
+                      ) : null}
                     </div>
-                    {action.comment && (
-                      <p className="mt-1 text-sm text-gray-600">{action.comment}</p>
-                    )}
+                    {action.comment ? (
+                      <p className="app-text-muted mt-2 text-sm leading-6">
+                        {action.comment}
+                      </p>
+                    ) : null}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <time className="flex-shrink-0 text-xs text-gray-500">
-                      {new Date(action.date).toLocaleDateString("ru-RU", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
+                  <div className="flex shrink-0 items-start gap-2">
+                    <time className="app-text-muted pt-1 text-sm">
+                      {formatActionDate(action.date)}
                     </time>
-                    {canManageActions && (
+                    {canManageActions ? (
                       <div className="flex gap-1">
                         <button
                           onClick={() => onEditAction(action)}
-                          className="rounded p-1 text-gray-400 transition hover:bg-gray-100 hover:text-sky-600"
+                          className="app-action-secondary inline-flex h-9 w-9 items-center justify-center rounded-xl"
                           title="Редактировать"
                           disabled={actionLoading === deleteKey}
                         >
@@ -96,18 +125,18 @@ export default function EmployeeActionsTimeline({
                         </button>
                         <button
                           onClick={() => onDeleteAction(action.id)}
-                          className="rounded p-1 text-gray-400 transition hover:bg-red-50 hover:text-red-600"
+                          className="app-action-secondary inline-flex h-9 w-9 items-center justify-center rounded-xl text-red-400 hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300"
                           title="Удалить"
                           disabled={actionLoading === deleteKey}
                         >
                           {actionLoading === deleteKey ? (
-                            <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
+                            <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-red-400 border-t-transparent" />
                           ) : (
                             <Trash2 size={14} />
                           )}
                         </button>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </div>

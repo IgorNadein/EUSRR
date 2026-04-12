@@ -24,6 +24,14 @@ export function createEmployeesApi(request: RequestFn) {
             return request(`/api/v1/employees/${qs ? '?' + qs : ''}`);
         },
         getEmployee: (id: number | string) => request(`/api/v1/employees/${id}/`),
+        addEmployeeSkill: (
+            id: number | string,
+            data: { skill_id?: number; name?: string },
+        ) =>
+            request(`/api/v1/employees/${id}/add_skill/`, {
+                method: 'POST',
+                body: JSON.stringify(data),
+            }),
         updateEmployee: (id: number | string, data: Record<string, any>) =>
             request(`/api/v1/employees/${id}/`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
         uploadEmployeeAvatar: (id: number | string, file: File) => {

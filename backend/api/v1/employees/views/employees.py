@@ -16,6 +16,7 @@ from employees.models import (
     EmployeeAction,
     EmployeeDepartment,
     RoleAssignment,
+    Skill,
 )
 from employees.utils import _to_bool
 from rest_framework import filters, viewsets
@@ -289,6 +290,35 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         )
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
+        return Response(serializer.data, status=200)
+
+    @action(detail=True, methods=["post"])
+    def add_skill(self, request, pk=None):
+        """Добавить навык сотруднику.
+
+        Доступно любому аутентифицированному пользователю.
+        Можно передать либо skill_id, либо name.
+        """
+        instance = self.get_object()
+        skill_id = request.data.get("skill_id")
+        skill_name = (request.data.get("name") or "").strip()
+
+        if not skill_id and not skill_name:
+            return Response(
+                {"detail": "Нужно передать skill_id или name"},
+                status=400,
+            )
+
+        if skill_id:
+            try:
+                skill = Skill.objects.get(pk=int(skill_id))
+            except (TypeError, ValueError, Skill.DoesNotExist):
+                return Response({"detail": "Skill не найден"}, status=404)
+        else:
+            skill, _ = Skill.objects.get_or_create(name=skill_name)
+
+        instance.skills.add(skill)
+        serializer = self.get_serializer(instance)
         return Response(serializer.data, status=200)
 
     def get_serializer_context(self):

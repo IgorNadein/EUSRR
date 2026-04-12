@@ -342,3 +342,32 @@ def test_me_patch_updates_profile(api_client: APIClient):
     me.refresh_from_db()
     assert me.first_name == "Updated"
 
+
+def test_add_skill_allowed_for_any_authenticated_user(api_client: APIClient):
+    actor = make_user("actor@example.com")
+    target = make_user("target-skill@example.com")
+    skill = Skill.objects.create(name="Python")
+
+    api_client.force_authenticate(user=actor)
+    url = reverse("api:v1:employees-add-skill", args=[target.pk])
+
+    resp = api_client.post(url, {"skill_id": skill.id}, format="json")
+    assert resp.status_code == status.HTTP_200_OK
+
+    target.refresh_from_db()
+    assert target.skills.filter(pk=skill.pk).exists()
+
+
+def test_add_skill_can_create_skill_by_name(api_client: APIClient):
+    actor = make_user("actor2@example.com")
+    target = make_user("target-create-skill@example.com")
+
+    api_client.force_authenticate(user=actor)
+    url = reverse("api:v1:employees-add-skill", args=[target.pk])
+
+    resp = api_client.post(url, {"name": "TypeScript"}, format="json")
+    assert resp.status_code == status.HTTP_200_OK
+
+    created = Skill.objects.get(name="TypeScript")
+    target.refresh_from_db()
+    assert target.skills.filter(pk=created.pk).exists()

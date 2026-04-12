@@ -397,7 +397,7 @@ export default function ProfilePage() {
             <p className="app-card-caption">Мой профиль</p>
             {currentAction ? (
               <span
-                className={`${getActionTone(currentAction.action).badgeClass} inline-flex items-center rounded-full px-3 py-1 text-sm font-medium`}
+                className={`${getActionTone(currentAction.action).badgeClass} inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium`}
               >
                 {currentAction.action_display || currentAction.action}
               </span>
@@ -434,7 +434,7 @@ export default function ProfilePage() {
                     {user.position?.name || "Должность не указана"}
                   </span>
                   {!!user.departments?.length && (
-                    <span className="app-pill inline-flex items-center rounded-full px-3 py-1 text-sm font-medium">
+                    <span className="app-pill inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium">
                       {user.departments.length === 1
                         ? user.departments[0].name
                         : `${user.departments.length} отделов`}
@@ -640,7 +640,7 @@ export default function ProfilePage() {
                       type="button"
                       onClick={() => void handleRemoveSkill(skill.id)}
                       disabled={skillsSaving}
-                      className="app-pill inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium transition hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)] disabled:opacity-50"
+                      className="app-pill inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)] disabled:opacity-50"
                       title="Удалить навык"
                     >
                       <span>{skill.name}</span>
@@ -660,15 +660,15 @@ export default function ProfilePage() {
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {suggestedSkills.map((skill) => (
-                    <button
-                      key={skill.id}
-                      type="button"
-                      onClick={() => void handleAddSkill(skill)}
-                      disabled={skillsSaving}
-                      className="app-action-secondary rounded-full px-3 py-2 text-sm font-medium disabled:opacity-50"
-                    >
-                      {skill.name}
-                    </button>
+                        <button
+                          key={skill.id}
+                          type="button"
+                          onClick={() => void handleAddSkill(skill)}
+                          disabled={skillsSaving}
+                          className="app-action-secondary rounded-full px-2.5 py-1 text-xs font-medium disabled:opacity-50"
+                        >
+                          {skill.name}
+                        </button>
                   ))}
                 </div>
               </div>
@@ -764,7 +764,7 @@ export default function ProfilePage() {
                       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                         <div className="min-w-0">
                           <span
-                            className={`${tone.badgeClass} inline-flex rounded-full px-3 py-1 text-sm font-medium`}
+                            className={`${tone.badgeClass} inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium`}
                           >
                             {action.action_display || action.action}
                           </span>
