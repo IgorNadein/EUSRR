@@ -13,7 +13,6 @@ import {
   Mail,
   Monitor,
   Moon,
-  RefreshCw,
   Save,
   Smartphone,
   Sun,
@@ -28,7 +27,7 @@ import { useWebPush } from "@/hooks/useWebPush";
 import { apiClient } from "@/lib/api";
 import type { ThemePreference } from "@/lib/theme";
 import { resolveMediaUrl } from "@/lib/url";
-import type { AuthSession, DirectoryLoginResult } from "@/types/api";
+import type { AuthSession } from "@/types/api";
 import { getVerbName } from "@/lib/verbTranslations";
 
 type NotificationPreferences = {
@@ -186,7 +185,7 @@ function SectionCard({
     <section id={id} className="app-surface scroll-mt-24 rounded-2xl p-5">
       <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h2 className="text-base font-semibold text-[var(--foreground)]">{title}</h2>
+          <h2 className="app-card-caption">{title}</h2>
           <p className="app-text-muted mt-1 text-sm">{description}</p>
         </div>
         {action ? <div className="shrink-0">{action}</div> : null}
@@ -239,11 +238,6 @@ export default function SettingsPage() {
     next: false,
     confirm: false,
   });
-  const [directoryLogin, setDirectoryLogin] = useState<string | null>(null);
-  const [directoryLoginLoading, setDirectoryLoginLoading] = useState(false);
-  const [directoryLoginRefreshing, setDirectoryLoginRefreshing] = useState(false);
-  const [directoryLoginError, setDirectoryLoginError] = useState<string | null>(null);
-
   const {
     isSupported,
     isSubscribed,
@@ -268,43 +262,7 @@ export default function SettingsPage() {
       whatsapp: user.whatsapp || "",
       wechat: user.wechat || "",
     });
-    setDirectoryLogin(user.username?.trim() || null);
-    setDirectoryLoginError(null);
   }, [user]);
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadDirectoryLogin() {
-      if (!user?.is_ldap_managed || user.username?.trim()) {
-        return;
-      }
-
-      try {
-        setDirectoryLoginLoading(true);
-        setDirectoryLoginError(null);
-        const response = (await apiClient.getDirectoryLogin()) as DirectoryLoginResult;
-        if (!mounted) return;
-        setDirectoryLogin(response.username?.trim() || null);
-      } catch (error) {
-        console.error(error);
-        if (!mounted) return;
-        setDirectoryLoginError(
-          error instanceof Error ? error.message : "Не удалось получить логин из каталога",
-        );
-      } finally {
-        if (mounted) {
-          setDirectoryLoginLoading(false);
-        }
-      }
-    }
-
-    void loadDirectoryLogin();
-
-    return () => {
-      mounted = false;
-    };
-  }, [user?.id, user?.is_ldap_managed, user?.username]);
 
   useEffect(() => {
     const section = new URLSearchParams(window.location.search).get("section");
@@ -655,32 +613,6 @@ export default function SettingsPage() {
     }
   };
 
-  const handleRefreshDirectoryLogin = async () => {
-    try {
-      setDirectoryLoginRefreshing(true);
-      setDirectoryLoginError(null);
-      const response =
-        (await apiClient.refreshDirectoryLogin()) as DirectoryLoginResult;
-      setDirectoryLogin(response.username?.trim() || null);
-      await refreshUser();
-      toast.success(
-        response.username
-          ? "Логин в каталоге обновлен"
-          : "Логин в каталоге не найден",
-      );
-    } catch (error) {
-      console.error(error);
-      setDirectoryLoginError(
-        error instanceof Error
-          ? error.message
-          : "Не удалось обновить логин из каталога",
-      );
-      toast.error("Не удалось обновить логин из каталога");
-    } finally {
-      setDirectoryLoginRefreshing(false);
-    }
-  };
-
   if (loading || !user) {
     return (
       <AppShell>
@@ -774,47 +706,6 @@ export default function SettingsPage() {
                   <div className="app-surface-muted rounded-2xl p-4 md:col-span-2">
                     <p className="text-sm font-semibold text-[var(--foreground)]">{fullName}</p>
                     <p className="app-text-muted mt-1 text-sm">{user.email || "Почта не указана"}</p>
-                  </div>
-                  <div className="app-surface-muted rounded-2xl p-4 md:col-span-2">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0">
-                        <p className="app-text-muted text-xs uppercase tracking-[0.16em]">
-                          Логин в каталоге
-                        </p>
-                        <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">
-                          {!user.is_ldap_managed
-                            ? "Не используется"
-                            : directoryLoginLoading
-                              ? "Загружаем..."
-                              : directoryLogin || "Не найден"}
-                        </p>
-                        {directoryLoginError ? (
-                          <p className="mt-1 text-sm text-[var(--danger-foreground)]">
-                            {directoryLoginError}
-                          </p>
-                        ) : user.is_ldap_managed ? (
-                          <p className="app-text-muted mt-1 text-sm">
-                            Берется из кэша БД и при необходимости обновляется из LDAP.
-                          </p>
-                        ) : (
-                          <p className="app-text-muted mt-1 text-sm">
-                            Для локального аккаунта логин каталога не используется.
-                          </p>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => void handleRefreshDirectoryLogin()}
-                        disabled={!user.is_ldap_managed || directoryLoginRefreshing}
-                        className="app-action-secondary inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-50"
-                      >
-                        <RefreshCw
-                          size={16}
-                          className={directoryLoginRefreshing ? "animate-spin" : ""}
-                        />
-                        Обновить
-                      </button>
-                    </div>
                   </div>
                   <label className="block">
                     <span className="app-text-muted mb-2 block text-sm">Имя</span>

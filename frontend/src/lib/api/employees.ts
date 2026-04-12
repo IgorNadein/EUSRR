@@ -3,6 +3,12 @@ import { type RequestFn } from './utils';
 
 export function createEmployeesApi(request: RequestFn) {
     return {
+        getSkills: () => request('/api/v1/skills/'),
+        createSkill: (data: { name: string; description?: string }) =>
+            request('/api/v1/skills/', {
+                method: 'POST',
+                body: JSON.stringify(data),
+            }),
         getDirectoryLogin: () =>
             request('/api/v1/directory/me/login/'),
         refreshDirectoryLogin: () =>

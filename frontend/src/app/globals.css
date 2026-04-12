@@ -271,6 +271,14 @@ html[data-bs-theme="dark"] .app-input::-webkit-calendar-picker-indicator {
   color: var(--muted-foreground);
 }
 
+.app-card-caption {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
 .app-divider {
   border-color: var(--border-subtle);
 }
