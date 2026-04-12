@@ -268,7 +268,13 @@ function RequestsPageContent() {
                 <article key={item.id} className={`app-surface-muted rounded-xl transition hover:border-[var(--border-strong)] ${requestMenuOpenId === item.id ? "relative z-20 overflow-visible" : "overflow-hidden"}`}>
                   <div className="p-4">
                     <div className="flex items-start gap-3">
-                      <button type="button" onClick={() => h.toggleRow(item.id)} className="app-action-secondary mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition"><ChevronDown size={15} className={`transition ${rowOpen ? "rotate-180" : ""}`} /></button>
+                      <div className="flex shrink-0 flex-col items-center gap-3 pt-0.5">
+                        <button type="button" onClick={() => h.toggleRow(item.id)} className="app-action-secondary inline-flex h-8 w-8 items-center justify-center rounded-lg transition"><ChevronDown size={15} className={`transition ${rowOpen ? "rotate-180" : ""}`} /></button>
+                        <button type="button" title={`Комментарии (${item.comments_count ?? comments.length})`} onClick={() => h.toggleComments(item.id)} className="app-action-secondary relative inline-flex h-8 w-8 items-center justify-center rounded-lg">
+                          <MessageSquare size={15} />
+                          {(item.comments_count ?? comments.length) > 0 && <span className="app-counter absolute -right-1.5 -top-1.5 flex h-4 min-w-4 px-1 text-[10px] font-bold">{item.comments_count ?? comments.length}</span>}
+                        </button>
+                      </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
@@ -360,10 +366,7 @@ function RequestsPageContent() {
                           </div>
                         </div>
                         {summary && <p className={`${rowOpen ? "app-text-wrap line-clamp-10" : "app-text-wrap line-clamp-3"} mt-3 text-sm text-[var(--foreground)]`}>{summary}</p>}
-                        <div className={`${summary ? "mt-3" : "mt-2"} flex flex-wrap items-center gap-1.5`}>
-                          <button type="button" title={`Комментарии (${item.comments_count ?? comments.length})`} onClick={() => h.toggleComments(item.id)} className="app-action-secondary relative inline-flex items-center justify-center rounded-lg p-1.5"><MessageSquare size={15} />{(item.comments_count ?? comments.length) > 0 && <span className="app-counter absolute -right-1.5 -top-1.5 flex h-4 min-w-4 px-1 text-[10px] font-bold">{item.comments_count ?? comments.length}</span>}</button>
-                          {canPr && <span className="ml-auto inline-flex items-center gap-2"><button type="button" title="Одобрить" onClick={() => h.handleApprove(item.id)} disabled={h.busyKey === `approve-${item.id}`} className="app-feedback-success inline-flex items-center justify-center rounded-lg p-2 disabled:opacity-60"><ThumbsUp size={18} /></button><button type="button" title="Отклонить" onClick={() => h.handleReject(item.id)} disabled={h.busyKey === `reject-${item.id}`} className="app-action-danger inline-flex items-center justify-center rounded-lg p-2 disabled:opacity-60"><ThumbsDown size={18} /></button></span>}
-                        </div>
+                        {canPr && <div className={`${summary ? "mt-3" : "mt-2"} flex flex-wrap items-center gap-1.5`}><span className="ml-auto inline-flex items-center gap-2"><button type="button" title="Одобрить" onClick={() => h.handleApprove(item.id)} disabled={h.busyKey === `approve-${item.id}`} className="app-feedback-success inline-flex items-center justify-center rounded-lg p-2 disabled:opacity-60"><ThumbsUp size={18} /></button><button type="button" title="Отклонить" onClick={() => h.handleReject(item.id)} disabled={h.busyKey === `reject-${item.id}`} className="app-action-danger inline-flex items-center justify-center rounded-lg p-2 disabled:opacity-60"><ThumbsDown size={18} /></button></span></div>}
                       </div>
                     </div>
 

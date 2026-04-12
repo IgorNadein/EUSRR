@@ -357,12 +357,6 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             )
 
         with transaction.atomic():
-            procurement_request.status = ProcurementStatus.PENDING
-            procurement_request.submitted_at = timezone.now()
-            procurement_request.save(
-                update_fields=["status", "submitted_at", "updated_at"]
-            )
-
             for priority, approver, step_name in resolved_approvals:
                 Approval.objects.create(
                     request=procurement_request,
@@ -372,10 +366,13 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                     status=ApprovalStatus.PENDING,
                 )
 
-            procurement_request.refresh_from_db()
+            procurement_request.status = ProcurementStatus.PENDING
+            procurement_request.submitted_at = timezone.now()
+            procurement_request.save(
+                update_fields=["status", "submitted_at", "updated_at"]
+            )
 
-        # Уведомления согласующим отправит сигнал post_save(Approval,
-        # created=True)
+            procurement_request.refresh_from_db()
 
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)

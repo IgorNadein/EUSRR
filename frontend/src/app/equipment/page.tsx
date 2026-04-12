@@ -593,14 +593,22 @@ function EquipmentPageContent() {
                   <article id={`equipment-${item.id}`} key={item.id} className={`app-surface-muted rounded-xl transition hover:border-[var(--border-strong)] ${equipmentMenuOpenId === item.id ? "relative z-20 overflow-visible" : "overflow-hidden"}`}>
                     <div className="px-4 py-3">
                       <div className="flex items-start gap-3">
-                        <button
-                          type="button"
-                          onClick={() => toggleRow(item.id)}
-                          aria-label={rowOpen ? "Свернуть детали" : "Развернуть детали"}
-                          className="app-action-secondary mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                        >
-                          <ChevronDown size={15} className={`transition ${rowOpen ? "rotate-180" : ""}`} />
-                        </button>
+                        <div className="flex shrink-0 flex-col items-center gap-3 pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => toggleRow(item.id)}
+                            aria-label={rowOpen ? "Свернуть детали" : "Развернуть детали"}
+                            className="app-action-secondary inline-flex h-8 w-8 items-center justify-center rounded-lg"
+                          >
+                            <ChevronDown size={15} className={`transition ${rowOpen ? "rotate-180" : ""}`} />
+                          </button>
+                          <button type="button" title={`Комментарии (${commentsTotal})`} onClick={() => toggleComments(item.id)} className="app-action-secondary relative inline-flex h-8 w-8 items-center justify-center rounded-lg">
+                            <MessageSquare size={15} />
+                            {commentsTotal > 0 && (
+                              <span className="app-counter absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center px-1 py-0.5 text-[10px] font-bold text-white">{commentsTotal}</span>
+                            )}
+                          </button>
+                        </div>
 
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-3">
@@ -702,14 +710,6 @@ function EquipmentPageContent() {
                             )}
                           </div>
 
-                          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                            <button type="button" title={`Комментарии (${commentsTotal})`} onClick={() => toggleComments(item.id)} className="app-action-secondary relative inline-flex h-8 w-8 items-center justify-center rounded-lg">
-                              <MessageSquare size={15} />
-                              {commentsTotal > 0 && (
-                                <span className="app-counter absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center px-1 py-0.5 text-[10px] font-bold text-white">{commentsTotal}</span>
-                              )}
-                            </button>
-                          </div>
                         </div>
                       </div>
                     </div>

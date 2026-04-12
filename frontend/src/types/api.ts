@@ -455,6 +455,7 @@ export interface ProcurementRequest {
   total_cost?: string | number;
   total_estimated_cost?: string | number;
   comments_count?: number;
+  can_current_user_approve?: boolean;
   created_at: string;
   updated_at: string;
   submitted_at?: string | null;

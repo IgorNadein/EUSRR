@@ -202,8 +202,6 @@ class ProcurementApprovalResolver:
     def user_can_approve(cls, user, procurement_request) -> bool:
         if not user or not user.is_authenticated:
             return False
-        if user.is_superuser:
-            return True
         return cls.get_available_approval(user, procurement_request) is not None
 
 

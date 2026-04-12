@@ -86,6 +86,7 @@ const periodOptions = [
 
 const fmt = formatDate;
 const money = formatMoney;
+type RequestActionDialogKind = "approve" | "reject" | "cancel" | "delete";
 
 const getReadableError = (error: unknown, fallback: string): string => {
   const raw = String((error as Error)?.message || fallback);
@@ -114,6 +115,7 @@ function ProcurementRequestActionButtons({
   isAuthor,
   isExecutor,
   isFinal,
+  showApprovalActions = true,
   showSecondaryActions = true,
   onSubmit,
   onEdit,
@@ -130,21 +132,23 @@ function ProcurementRequestActionButtons({
   isAuthor: boolean;
   isExecutor: boolean;
   isFinal: (status?: string) => boolean;
+  showApprovalActions?: boolean;
   showSecondaryActions?: boolean;
-  onSubmit: (id: number) => void | Promise<void>;
+  onSubmit: (id: number) => void | Promise<unknown>;
   onEdit: (request: ProcurementRequest) => void;
-  onDelete: (id: number) => void | Promise<void>;
-  onApprove: (id: number) => void | Promise<void>;
-  onReject: (id: number) => void | Promise<void>;
-  onStart: (id: number) => void | Promise<void>;
-  onComplete: (id: number) => void | Promise<void>;
-  onCancel: (id: number) => void | Promise<void>;
+  onDelete: (id: number) => void | Promise<unknown>;
+  onApprove: (id: number) => void | Promise<unknown>;
+  onReject: (id: number) => void | Promise<unknown>;
+  onStart: (id: number) => void | Promise<unknown>;
+  onComplete: (id: number) => void | Promise<unknown>;
+  onCancel: (id: number) => void | Promise<unknown>;
 }) {
   const status = String(request.status || "").toLowerCase();
   const isDraft = status === "draft";
   const isPending = status === "pending";
   const isApproved = status === "approved";
   const isInProgress = status === "in_progress";
+  const canApproveThis = Boolean(request.can_current_user_approve);
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 pt-1">
@@ -180,7 +184,7 @@ function ProcurementRequestActionButtons({
           <Trash2 size={14} />
         </button>
       ) : null}
-      {isPending && !isAuthor ? (
+      {showApprovalActions && isPending && canApproveThis ? (
         <>
           <button
             type="button"
@@ -323,6 +327,8 @@ export default function ProcurementPage() {
   const [detailModalError, setDetailModalError] = useState<string | null>(null);
   const procurementMenuRef = useRef<HTMLDivElement | null>(null);
   const [procurementMenuOpenId, setProcurementMenuOpenId] = useState<number | null>(null);
+  const [requestActionDialog, setRequestActionDialog] = useState<{ kind: RequestActionDialogKind; requestId: number } | null>(null);
+  const [requestActionComment, setRequestActionComment] = useState("");
 
   const syncRequestUrl = useCallback((requestId: number | null) => {
     if (typeof window === "undefined") return;
@@ -342,11 +348,61 @@ export default function ProcurementPage() {
     return detailsCache[detailModalId] || requests.find((request) => request.id === detailModalId) || null;
   }, [detailModalId, detailsCache, requests]);
 
+  const selectedActionRequest = useMemo(() => {
+    if (!requestActionDialog) return null;
+    return detailsCache[requestActionDialog.requestId] || requests.find((request) => request.id === requestActionDialog.requestId) || null;
+  }, [detailsCache, requestActionDialog, requests]);
+
   const closeDetailModal = useCallback(() => {
     setDetailModalId(null);
     setDetailModalError(null);
     syncRequestUrl(null);
   }, [syncRequestUrl]);
+
+  const openRequestActionDialog = useCallback((kind: RequestActionDialogKind, requestId: number) => {
+    setRequestActionComment("");
+    setRequestActionDialog({ kind, requestId });
+  }, []);
+
+  const closeRequestActionDialog = useCallback(() => {
+    setRequestActionDialog(null);
+    setRequestActionComment("");
+  }, []);
+
+  const submitRequestActionDialog = useCallback(async () => {
+    if (!requestActionDialog) return;
+
+    const { kind, requestId } = requestActionDialog;
+    const payload = requestActionComment.trim();
+    let success = false;
+
+    if (kind === "approve") {
+      success = await handleApprove(requestId, payload);
+    } else if (kind === "reject") {
+      success = await handleReject(requestId, payload);
+    } else if (kind === "cancel") {
+      success = await handleCancel(requestId, payload);
+    } else if (kind === "delete") {
+      success = await handleDelete(requestId);
+    }
+
+    if (success) {
+      closeRequestActionDialog();
+      if (detailModalId === requestId && kind === "delete") {
+        closeDetailModal();
+      }
+    }
+  }, [
+    closeDetailModal,
+    closeRequestActionDialog,
+    detailModalId,
+    handleApprove,
+    handleCancel,
+    handleDelete,
+    handleReject,
+    requestActionComment,
+    requestActionDialog,
+  ]);
 
   const openDetailModal = useCallback(async (requestId: number) => {
     setDetailModalLoading(true);
@@ -567,16 +623,16 @@ export default function ProcurementPage() {
               const isAuthor = Boolean(resolveUserId(req.requestor) && user?.id && resolveUserId(req.requestor) === user.id);
               const isExecutor = Boolean(resolveUserId(req.executor) && user?.id && resolveUserId(req.executor) === user.id);
               const isDraft = st === "draft";
-              const isPending = st === "pending";
               const isApproved = st === "approved";
               const isInProgress = st === "in_progress";
+              const detail = detailsCache[req.id];
+              const resolvedDetail = detail || req;
+              const canApproveThis = Boolean((resolvedDetail.can_current_user_approve ?? req.can_current_user_approve));
               const canEditThis = Boolean(isDraft && isAuthor);
               const canDeleteThis = Boolean(isDraft && (isAuthor || canManage));
               const canCancelThis = Boolean(isAuthor && !isFinal(st) && st !== "draft");
               const hasSecondaryActions = canEditThis || canDeleteThis || canCancelThis;
               const expanded = expandedIds.has(req.id);
-              const detail = detailsCache[req.id];
-              const resolvedDetail = detail || req;
               const comments = commentsMap[req.id] || [];
               const commentsOpen = Boolean(expandedComments[req.id]);
               const commentsTotal = resolvedDetail.comments_count ?? req.comments_count ?? comments.length;
@@ -591,14 +647,27 @@ export default function ProcurementPage() {
                 <article key={req.id} className={`app-surface-muted rounded-xl transition hover:border-[var(--border-strong)] ${procurementMenuOpenId === req.id ? "relative z-20 overflow-visible" : "overflow-hidden"}`}>
                   <div className="px-4 py-3">
                     <div className="flex items-start gap-3">
-                      <button
-                        type="button"
-                        onClick={() => toggleExpand(req.id)}
-                        aria-label={expanded ? "Свернуть детали" : "Развернуть детали"}
-                        className="app-action-secondary mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                      >
-                        <ChevronDown size={15} className={`transition ${expanded ? "rotate-180" : ""}`} />
-                      </button>
+                      <div className="flex shrink-0 flex-col items-center gap-3 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpand(req.id)}
+                          aria-label={expanded ? "Свернуть детали" : "Развернуть детали"}
+                          className="app-action-secondary inline-flex h-8 w-8 items-center justify-center rounded-lg"
+                        >
+                          <ChevronDown size={15} className={`transition ${expanded ? "rotate-180" : ""}`} />
+                        </button>
+                        <button
+                          type="button"
+                          title={`Комментарии (${commentsTotal})`}
+                          onClick={() => void toggleComments(req.id)}
+                          className="app-action-secondary relative inline-flex h-8 w-8 items-center justify-center rounded-lg"
+                        >
+                          <MessageSquare size={15} />
+                          {commentsTotal > 0 && (
+                            <span className="app-counter absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center px-1 py-0.5 text-[10px] font-bold text-white">{commentsTotal}</span>
+                          )}
+                        </button>
+                      </div>
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-3">
@@ -651,7 +720,7 @@ export default function ProcurementPage() {
                                           disabled={busyKey === `cancel-${req.id}`}
                                           onClick={() => {
                                             setProcurementMenuOpenId(null);
-                                            void handleCancel(req.id);
+                                            openRequestActionDialog("cancel", req.id);
                                           }}
                                           className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)] disabled:opacity-50"
                                         >
@@ -678,7 +747,7 @@ export default function ProcurementPage() {
                                           disabled={busyKey === `delete-${req.id}`}
                                           onClick={() => {
                                             setProcurementMenuOpenId(null);
-                                            void handleDelete(req.id);
+                                            openRequestActionDialog("delete", req.id);
                                           }}
                                           className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--danger-foreground)] transition hover:bg-[var(--danger-soft)] disabled:opacity-50"
                                         >
@@ -728,14 +797,31 @@ export default function ProcurementPage() {
                           )}
                         </div>
 
-                        <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                          <button type="button" title={`Комментарии (${commentsTotal})`} onClick={() => void toggleComments(req.id)} className="app-action-secondary relative inline-flex h-8 w-8 items-center justify-center rounded-lg">
-                            <MessageSquare size={15} />
-                            {commentsTotal > 0 && (
-                              <span className="app-counter absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center px-1 py-0.5 text-[10px] font-bold text-white">{commentsTotal}</span>
-                            )}
-                          </button>
-                        </div>
+                        {canApproveThis ? (
+                          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                            <span className="ml-auto inline-flex items-center gap-2">
+                              <button
+                                type="button"
+                                title="Одобрить"
+                                onClick={() => openRequestActionDialog("approve", req.id)}
+                                disabled={busyKey === `approve-${req.id}`}
+                                className="app-feedback-success inline-flex items-center justify-center rounded-lg p-2 disabled:opacity-60"
+                              >
+                                <ThumbsUp size={18} />
+                              </button>
+                              <button
+                                type="button"
+                                title="Отклонить"
+                                onClick={() => openRequestActionDialog("reject", req.id)}
+                                disabled={busyKey === `reject-${req.id}`}
+                                className="app-action-danger inline-flex items-center justify-center rounded-lg p-2 disabled:opacity-60"
+                              >
+                                <ThumbsDown size={18} />
+                              </button>
+                            </span>
+                          </div>
+                        ) : null}
+
                       </div>
                     </div>
                   </div>
@@ -754,6 +840,7 @@ export default function ProcurementPage() {
                               isAuthor={isAuthor}
                               isExecutor={isExecutor}
                               isFinal={isFinal}
+                              showApprovalActions={false}
                               showSecondaryActions={false}
                               onSubmit={handleSubmit}
                               onEdit={openEdit}
@@ -894,12 +981,12 @@ export default function ProcurementPage() {
                   isFinal={isFinal}
                   onSubmit={handleSubmit}
                   onEdit={openEdit}
-                  onDelete={handleDelete}
-                  onApprove={handleApprove}
-                  onReject={handleReject}
+                  onDelete={(id) => openRequestActionDialog("delete", id)}
+                  onApprove={(id) => openRequestActionDialog("approve", id)}
+                  onReject={(id) => openRequestActionDialog("reject", id)}
                   onStart={handleStart}
                   onComplete={handleComplete}
-                  onCancel={handleCancel}
+                  onCancel={(id) => openRequestActionDialog("cancel", id)}
                 />
               )}
             />
@@ -942,6 +1029,95 @@ export default function ProcurementPage() {
             <p className="app-text-muted text-sm">Заявка не найдена.</p>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={requestActionDialog !== null}
+        onClose={closeRequestActionDialog}
+        title={
+          requestActionDialog?.kind === "approve" ? "Одобрить заявку"
+          : requestActionDialog?.kind === "reject" ? "Отклонить заявку"
+          : requestActionDialog?.kind === "cancel" ? "Отменить заявку"
+          : "Удалить заявку"
+        }
+        size="md"
+        closeOnClickOutside
+      >
+        <div className="space-y-4 pb-1">
+          {selectedActionRequest ? (
+            <div className="app-surface-muted rounded-xl px-4 py-3">
+              <p className="text-sm font-semibold text-[var(--foreground)]">{selectedActionRequest.title || "Без названия"}</p>
+              <p className="app-text-muted mt-1 text-xs">
+                {getDeptName(selectedActionRequest)}{getRequestAmount(selectedActionRequest) ? ` • ${money(getRequestAmount(selectedActionRequest))}` : ""}
+              </p>
+            </div>
+          ) : null}
+
+          {actionError ? (
+            <div className="app-feedback-danger rounded-xl px-4 py-3 text-sm">
+              {actionError}
+            </div>
+          ) : null}
+
+          {requestActionDialog?.kind === "delete" ? (
+            <p className="app-text-muted text-sm">
+              Удалить эту заявку? Действие доступно только для черновиков и будет необратимым.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              <label className="app-card-caption">
+                {requestActionDialog?.kind === "approve"
+                  ? "Комментарий к одобрению"
+                  : requestActionDialog?.kind === "reject"
+                    ? "Комментарий к отклонению"
+                    : "Причина отмены"}
+              </label>
+              <textarea
+                value={requestActionComment}
+                onChange={(event) => setRequestActionComment(event.target.value)}
+                rows={4}
+                placeholder={
+                  requestActionDialog?.kind === "approve"
+                    ? "Необязательно"
+                    : requestActionDialog?.kind === "reject"
+                      ? "Необязательно, но желательно"
+                      : "Необязательно"
+                }
+                className="app-input app-text-wrap min-h-28 w-full rounded-xl px-3 py-2.5 text-sm"
+              />
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={closeRequestActionDialog} className="app-action-secondary rounded-xl px-4 py-2.5 text-sm font-medium">
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={() => void submitRequestActionDialog()}
+              disabled={
+                requestActionDialog?.kind === "approve" ? busyKey === `approve-${requestActionDialog.requestId}`
+                : requestActionDialog?.kind === "reject" ? busyKey === `reject-${requestActionDialog.requestId}`
+                : requestActionDialog?.kind === "cancel" ? busyKey === `cancel-${requestActionDialog.requestId}`
+                : requestActionDialog?.kind === "delete" ? busyKey === `delete-${requestActionDialog.requestId}`
+                : false
+              }
+              className={`rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-60 ${
+                requestActionDialog?.kind === "delete" || requestActionDialog?.kind === "reject"
+                  ? "app-action-danger"
+                  : "app-action-primary"
+              }`}
+            >
+              {requestActionDialog?.kind === "approve"
+                ? "Одобрить"
+                : requestActionDialog?.kind === "reject"
+                  ? "Отклонить"
+                  : requestActionDialog?.kind === "cancel"
+                    ? "Отменить заявку"
+                    : "Удалить"}
+            </button>
+          </div>
+        </div>
       </Modal>
 
       {/* ══════════ Create / Edit modal ══════════ */}

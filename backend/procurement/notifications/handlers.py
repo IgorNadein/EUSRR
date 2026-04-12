@@ -13,6 +13,19 @@ from .config import NotificationVerbs, MessageTemplates, ActionURLs
 logger = logging.getLogger(__name__)
 
 
+def get_current_pending_approvals(request):
+    """Вернуть pending approvals только текущего этапа."""
+    from ..constants import ApprovalStatus
+
+    pending_approvals = request.approvals.filter(
+        status=ApprovalStatus.PENDING
+    ).order_by("priority", "created_at", "id")
+    first_pending = pending_approvals.first()
+    if first_pending is None:
+        return pending_approvals.none()
+    return pending_approvals.filter(priority=first_pending.priority)
+
+
 def notify_new_request(request):
     """
     Уведомить о новой заявке на закупку.
@@ -54,16 +67,12 @@ def notify_new_request(request):
 
 def notify_approvers(request):
     """
-    Уведомить всех согласующих о необходимости согласования заявки.
+    Уведомить согласующих только текущего этапа.
 
     Args:
         request: Объект ProcurementRequest
     """
-    from ..constants import ApprovalStatus
-
-    pending_approvals = request.approvals.filter(
-        status=ApprovalStatus.PENDING
-    )
+    pending_approvals = get_current_pending_approvals(request)
 
     if not pending_approvals.exists():
         logger.warning(
@@ -318,6 +327,7 @@ def notify_stage_approved(approval):
         notification_title,
         description
     )
+    notify_approvers(approval.request)
 
 
 def notify_stage_rejected(approval):

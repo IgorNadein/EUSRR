@@ -485,8 +485,10 @@ export function useProcurementPage(user: User | null) {
       await action();
       setActionSuccess(successMessage);
       await refreshOne(id);
+      return true;
     } catch (actionErrorValue) {
       setActionError(getReadableError(actionErrorValue, "Ошибка"));
+      return false;
     } finally {
       setBusyKey(null);
     }
@@ -625,15 +627,11 @@ export function useProcurementPage(user: User | null) {
     "Заявка отправлена на согласование.",
   ), [doAction]);
 
-  const handleApprove = useCallback((id: number) => {
-    const comment = window.prompt("Комментарий к одобрению (необязательно)", "");
-    if (comment === null) return;
+  const handleApprove = useCallback((id: number, comment = "") => {
     return doAction(`approve-${id}`, () => apiClient.approveProcurementRequest(id, comment), id, "Заявка одобрена.");
   }, [doAction]);
 
-  const handleReject = useCallback((id: number) => {
-    const comment = window.prompt("Комментарий к отклонению", "");
-    if (comment === null) return;
+  const handleReject = useCallback((id: number, comment = "") => {
     return doAction(`reject-${id}`, () => apiClient.rejectProcurementRequest(id, comment), id, "Заявка отклонена.");
   }, [doAction]);
 
@@ -651,17 +649,14 @@ export function useProcurementPage(user: User | null) {
     "Заявка завершена.",
   ), [doAction]);
 
-  const handleCancel = useCallback((id: number) => {
-    const reason = window.prompt("Причина отмены", "");
-    if (reason === null) return;
+  const handleCancel = useCallback((id: number, reason = "") => {
     return doAction(`cancel-${id}`, () => apiClient.cancelProcurementRequest(id, reason), id, "Заявка отменена.");
   }, [doAction]);
 
   const handleDelete = useCallback(async (id: number) => {
-    if (!window.confirm("Удалить эту заявку? Доступно только для черновиков.")) return;
-
     try {
       setBusyKey(`delete-${id}`);
+      setActionError(null);
       await apiClient.deleteProcurementRequest(id);
       setRequests((previous) => previous.filter((request) => request.id !== id));
       setDetailsCache((previous) => {
@@ -670,8 +665,11 @@ export function useProcurementPage(user: User | null) {
         detailsCacheRef.current = next;
         return next;
       });
+      setActionSuccess("Заявка удалена.");
+      return true;
     } catch (deleteError) {
       setActionError(getReadableError(deleteError, "Не удалось удалить"));
+      return false;
     } finally {
       setBusyKey(null);
     }
