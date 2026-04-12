@@ -15,7 +15,10 @@ import { AppShell } from "@/components/AppShell";
 import { useUser } from "@/contexts/UserContext";
 import { apiClient } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/url";
-import { getWorkDuration } from "@/lib/users/userDetailUtils";
+import {
+  getEmployeeActionTone,
+  getWorkDuration,
+} from "@/lib/users/userDetailUtils";
 import type { DirectoryLoginResult } from "@/types/api";
 
 function formatDate(value?: string): string {
@@ -83,32 +86,6 @@ function truncateText(value?: string, maxLength = 120) {
   if (!value) return "";
   if (value.length <= maxLength) return value;
   return `${value.slice(0, maxLength).trimEnd()}…`;
-}
-
-function getActionTone(action?: string) {
-  switch (action) {
-    case "on_leave":
-    case "on_maternity":
-      return {
-        badgeClass: "app-feedback-warning",
-        lineClass: "bg-amber-400/80",
-      };
-    case "dismissed":
-      return {
-        badgeClass: "app-feedback-danger",
-        lineClass: "bg-red-400/80",
-      };
-    case "transferred":
-      return {
-        badgeClass: "app-selected",
-        lineClass: "bg-sky-400/80",
-      };
-    default:
-      return {
-        badgeClass: "app-feedback-success",
-        lineClass: "bg-emerald-400/80",
-      };
-  }
 }
 
 function SectionTitle({
@@ -182,26 +159,6 @@ export default function ProfilePage() {
   const visibleActions = useMemo(
     () => (showAllActions ? sortedActions : sortedActions.slice(0, 3)),
     [showAllActions, sortedActions],
-  );
-
-  const normalizedSkillName = skillName.trim().toLowerCase();
-
-  const selectedSkillIds = useMemo(
-    () => new Set(profileSkills.map((skill) => skill.id)),
-    [profileSkills],
-  );
-
-  const suggestedSkills = useMemo(
-    () =>
-      availableSkills
-        .filter((skill) => !selectedSkillIds.has(skill.id))
-        .filter((skill) =>
-          normalizedSkillName
-            ? skill.name.toLowerCase().includes(normalizedSkillName)
-            : true,
-        )
-        .slice(0, 10),
-    [availableSkills, normalizedSkillName, selectedSkillIds],
   );
 
   useEffect(() => {
@@ -391,46 +348,46 @@ export default function ProfilePage() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-5xl space-y-5">
-        <section className="app-surface rounded-[28px] p-6">
-          <div className="mb-5 flex items-start justify-between gap-4">
+      <div className="mx-auto max-w-5xl space-y-4">
+        <section className="app-surface rounded-[28px] p-5">
+          <div className="mb-4 flex items-start justify-between gap-4">
             <p className="app-card-caption">Мой профиль</p>
             {currentAction ? (
               <span
-                className={`${getActionTone(currentAction.action).badgeClass} inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium`}
+                className={`app-status-pill ${getEmployeeActionTone(currentAction.action).badgeClass}`}
               >
                 {currentAction.action_display || currentAction.action}
               </span>
             ) : null}
           </div>
-          <div className="space-y-5">
+          <div className="space-y-4">
             <div className="flex items-start gap-4">
-              <div className="h-24 w-24 shrink-0 overflow-hidden rounded-full app-avatar-frame">
+              <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full app-avatar-frame">
                 {user.avatar ? (
                   <Image
                     src={resolveMediaUrl(user.avatar)}
                     alt={fullName}
-                    width={96}
-                    height={96}
+                    width={80}
+                    height={80}
                     className="h-full w-full object-cover"
                     unoptimized
                   />
                 ) : (
-                  <div className="app-avatar-fallback flex h-full w-full items-center justify-center text-3xl font-semibold">
+                  <div className="app-avatar-fallback flex h-full w-full items-center justify-center text-2xl font-semibold">
                     {initials(user.first_name, user.last_name)}
                   </div>
                 )}
               </div>
 
               <div className="min-w-0 flex-1">
-                <h1 className="text-3xl font-semibold leading-tight text-[var(--foreground)]">
+                <h1 className="text-[2rem] font-semibold leading-tight text-[var(--foreground)]">
                   {fullName}
                 </h1>
-                <p className="app-text-muted mt-2 text-base">
+                <p className="app-text-muted mt-1.5 text-sm">
                   {formatBirthdayWithYear(user.birth_date) || "Не указана"}
                 </p>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <span className="app-text-muted text-base">
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="app-text-muted text-sm">
                     {user.position?.name || "Должность не указана"}
                   </span>
                   {!!user.departments?.length && (
@@ -445,8 +402,6 @@ export default function ProfilePage() {
             </div>
 
             <div className="app-surface-muted rounded-2xl p-4">
-              <div className="mb-4">
-              </div>
               <div>
                 <div className="flex items-start gap-3 px-4 py-4">
                   <span className="app-badge mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
@@ -577,7 +532,6 @@ export default function ProfilePage() {
                                 ? "Загружаем..."
                                 : directoryLogin || "Не найден"}
                             </p>
-                           
                           </div>
                           <button
                             type="button"
@@ -599,15 +553,15 @@ export default function ProfilePage() {
 
         <section className="app-surface rounded-[24px] p-5">
           <SectionTitle title="Навыки" />
-          <div className="app-surface-muted rounded-2xl p-4">
-            <div className="flex flex-col gap-3 md:flex-row">
+          <div className="app-surface-muted rounded-2xl p-3.5">
+            <div className="flex flex-col gap-2.5 md:flex-row">
               <div className="min-w-0 flex-1">
                 <input
                   list="profile-skills-list"
                   value={skillName}
                   onChange={(event) => setSkillName(event.target.value)}
                   placeholder="Добавить навык"
-                  className="app-input w-full rounded-xl px-4 py-3 text-sm"
+                  className="app-input w-full rounded-xl px-4 py-2.5 text-sm"
                   disabled={skillsSaving}
                 />
                 <datalist id="profile-skills-list">
@@ -620,7 +574,7 @@ export default function ProfilePage() {
                 type="button"
                 onClick={() => void handleAddSkill()}
                 disabled={!skillName.trim() || skillsSaving}
-                className="app-action-primary inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium disabled:opacity-50"
+                className="app-action-primary inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
               >
                 <Plus size={16} />
                 Добавить
@@ -631,7 +585,7 @@ export default function ProfilePage() {
               <p className="mt-3 text-sm text-red-400">{skillsError}</p>
             ) : null}
 
-            <div className="mt-4">
+            <div className="mt-3">
               {profileSkills.length ? (
                 <div className="flex flex-wrap gap-2">
                   {profileSkills.map((skill) => (
@@ -653,29 +607,8 @@ export default function ProfilePage() {
               )}
             </div>
 
-            {suggestedSkills.length ? (
-              <div className="mt-4 border-t border-[var(--border-subtle)] pt-4">
-                <p className="mb-3 text-sm font-semibold text-[var(--foreground)]">
-                  Доступные навыки
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {suggestedSkills.map((skill) => (
-                        <button
-                          key={skill.id}
-                          type="button"
-                          onClick={() => void handleAddSkill(skill)}
-                          disabled={skillsSaving}
-                          className="app-action-secondary rounded-full px-2.5 py-1 text-xs font-medium disabled:opacity-50"
-                        >
-                          {skill.name}
-                        </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
             {skillsLoading ? (
-              <p className="app-text-muted mt-3 text-sm">Загружаем навыки...</p>
+              <p className="app-text-muted mt-2.5 text-sm">Загружаем навыки...</p>
             ) : null}
           </div>
         </section>
@@ -683,8 +616,8 @@ export default function ProfilePage() {
         <section className="app-surface rounded-[24px] p-5">
           <SectionTitle title="Информация" />
           <div className="app-surface-muted overflow-hidden rounded-2xl">
-            <div className="grid md:grid-cols-2 xl:grid-cols-3">
-              <div className="px-4 py-4">
+            <div className="grid md:grid-cols-2">
+              <div className="px-4 py-3.5">
                 <p className="text-sm font-semibold text-[var(--foreground)]">
                   В компании
                 </p>
@@ -692,7 +625,7 @@ export default function ProfilePage() {
                   {getWorkDuration(user.date_joined) || "—"}
                 </p>
               </div>
-              <div className="border-t border-[var(--border-subtle)] px-4 py-4 md:border-l md:border-t-0">
+              <div className="border-t border-[var(--border-subtle)] px-4 py-3.5 md:border-l md:border-t-0">
                 <p className="text-sm font-semibold text-[var(--foreground)]">
                   Дата найма
                 </p>
@@ -703,7 +636,7 @@ export default function ProfilePage() {
             </div>
             <div className="border-t border-[var(--border-subtle)]" />
             <div className="grid md:grid-cols-2">
-              <div className="px-4 py-4">
+              <div className="px-4 py-3.5">
                 <p className="text-sm font-semibold text-[var(--foreground)]">
                   Профиль создан
                 </p>
@@ -711,7 +644,7 @@ export default function ProfilePage() {
                   {formatDate(user.created_at)}
                 </p>
               </div>
-              <div className="border-t border-[var(--border-subtle)] px-4 py-4 md:border-l md:border-t-0">
+              <div className="border-t border-[var(--border-subtle)] px-4 py-3.5 md:border-l md:border-t-0">
                 <p className="text-sm font-semibold text-[var(--foreground)]">
                   Последний вход
                 </p>
@@ -741,30 +674,32 @@ export default function ProfilePage() {
             }
           />
           {sortedActions.length ? (
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {!showAllActions && sortedActions.length > 3 ? (
                 <p className="app-text-muted text-sm">
                   Последние {visibleActions.length} из {sortedActions.length}
                 </p>
               ) : null}
               {visibleActions.map((action) => {
-                const tone = getActionTone(action.action);
+                const tone = getEmployeeActionTone(action.action);
                 const isCurrentAction = action.id === currentActionId;
                 return (
                   <div key={action.id} className="relative pl-5">
                     <span
-                      className={`absolute bottom-0 left-1.5 top-0 w-px ${tone.lineClass}`}
+                      className="absolute bottom-0 left-1.5 top-0 w-px"
+                      style={{ backgroundColor: tone.lineColor }}
                     />
                     {isCurrentAction ? (
                       <span
-                        className={`absolute left-0 top-2 h-3.5 w-3.5 rounded-full border-4 border-[var(--surface-primary)] ${tone.lineClass}`}
+                        className="absolute left-0 top-2 h-3.5 w-3.5 rounded-full border-4 border-[var(--surface-primary)]"
+                        style={{ backgroundColor: tone.lineColor }}
                       />
                     ) : null}
-                    <div className="app-surface-muted rounded-2xl px-4 py-3">
+                    <div className="app-surface-muted rounded-2xl px-4 py-2.5">
                       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                         <div className="min-w-0">
                           <span
-                            className={`${tone.badgeClass} inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium`}
+                            className={`app-status-pill ${tone.badgeClass}`}
                           >
                             {action.action_display || action.action}
                           </span>

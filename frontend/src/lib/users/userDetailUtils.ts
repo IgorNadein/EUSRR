@@ -122,32 +122,43 @@ export function formatBirthday(birthDate?: string): string | null {
   return new Date(birthDate).toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
 }
 
-export function getEmployeeActionBadgeClass(actionType?: string): string {
+export function getEmployeeActionTone(actionType?: string): {
+  badgeClass: string;
+  lineColor: string;
+} {
   switch (actionType) {
     case "on_leave":
-      return "bg-yellow-100 text-yellow-700";
     case "on_maternity":
-      return "bg-purple-100 text-purple-700";
+      return {
+        badgeClass: "app-feedback-warning",
+        lineColor: "#f59e0b",
+      };
     case "transferred":
-      return "bg-blue-100 text-blue-700";
+      return {
+        badgeClass: "app-selected",
+        lineColor: "#38bdf8",
+      };
     case "dismissed":
-      return "bg-red-100 text-red-700";
+      return {
+        badgeClass: "app-feedback-danger",
+        lineColor: "#ef4444",
+      };
+    case "returned_from_leave":
+    case "returned_from_maternity":
+    case "rehired":
+    case "hired":
     default:
-      return "bg-green-100 text-green-700";
+      return {
+        badgeClass: "app-feedback-success",
+        lineColor: "#22c55e",
+      };
   }
 }
 
+export function getEmployeeActionBadgeClass(actionType?: string): string {
+  return getEmployeeActionTone(actionType).badgeClass;
+}
+
 export function getEmployeeActionBorderColor(actionType?: string): string {
-  switch (actionType) {
-    case "on_leave":
-      return "#eab308";
-    case "on_maternity":
-      return "#a855f7";
-    case "transferred":
-      return "#3b82f6";
-    case "dismissed":
-      return "#ef4444";
-    default:
-      return "#22c55e";
-  }
+  return getEmployeeActionTone(actionType).lineColor;
 }

@@ -2,8 +2,7 @@
 
 import { History, Pencil, Trash2 } from "lucide-react";
 import {
-  getEmployeeActionBadgeClass,
-  getEmployeeActionBorderColor,
+  getEmployeeActionTone,
 } from "@/lib/users/userDetailUtils";
 import type { EmployeeAction } from "@/types/api";
 
@@ -73,19 +72,18 @@ export default function EmployeeActionsTimeline({
         {sortedActions.map((action) => {
           const isCurrent = latestActionId === action.id;
           const deleteKey = `delete-${action.id}`;
-          const tone = getEmployeeActionBadgeClass(action.action);
-          const lineColor = getEmployeeActionBorderColor(action.action);
+          const tone = getEmployeeActionTone(action.action);
 
           return (
             <div key={action.id} className="relative pl-5">
               <span
                 className="absolute bottom-0 left-1.5 top-0 w-px"
-                style={{ backgroundColor: lineColor }}
+                style={{ backgroundColor: tone.lineColor }}
               />
               {isCurrent ? (
                 <span
                   className="absolute left-0 top-2 h-3.5 w-3.5 rounded-full border-4 border-[var(--surface-primary)]"
-                  style={{ backgroundColor: lineColor }}
+                  style={{ backgroundColor: tone.lineColor }}
                 />
               ) : null}
               <div className="app-surface-muted rounded-2xl px-4 py-3">
@@ -93,7 +91,7 @@ export default function EmployeeActionsTimeline({
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span
-                        className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${tone}`}
+                        className={`app-status-pill ${tone.badgeClass}`}
                       >
                         {action.action_display || action.action}
                       </span>

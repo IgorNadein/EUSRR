@@ -27,6 +27,7 @@ import { resolveMediaUrl } from "@/lib/url";
 import {
   formatBirthday,
   formatPhoneForLink,
+  getEmployeeActionTone,
   getWorkDuration,
 } from "@/lib/users/userDetailUtils";
 
@@ -67,20 +68,6 @@ function normalizeWhatsApp(value: string) {
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
   const digits = trimmed.replace(/[^\d]/g, "");
   return digits ? `https://wa.me/${digits}` : "";
-}
-
-function getActionTone(action?: string) {
-  switch (action) {
-    case "on_leave":
-    case "on_maternity":
-      return "app-feedback-warning";
-    case "dismissed":
-      return "app-feedback-danger";
-    case "transferred":
-      return "app-selected";
-    default:
-      return "app-feedback-success";
-  }
 }
 
 function SectionTitle({
@@ -197,24 +184,6 @@ export default function UserDetailPage() {
       mounted = false;
     };
   }, []);
-
-  const normalizedSkillName = skillName.trim().toLowerCase();
-  const selectedSkillIds = useMemo(
-    () => new Set(personSkills.map((skill) => skill.id)),
-    [personSkills],
-  );
-  const suggestedSkills = useMemo(
-    () =>
-      availableSkills
-        .filter((skill) => !selectedSkillIds.has(skill.id))
-        .filter((skill) =>
-          normalizedSkillName
-            ? skill.name.toLowerCase().includes(normalizedSkillName)
-            : true,
-        )
-        .slice(0, 10),
-    [availableSkills, normalizedSkillName, selectedSkillIds],
-  );
 
   const contactRows = useMemo(
     () =>
@@ -336,7 +305,7 @@ export default function UserDetailPage() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-5xl space-y-5">
+      <div className="mx-auto max-w-5xl space-y-4">
         <div className="flex items-center justify-between gap-4">
           <Link
             href="/employees"
@@ -357,33 +326,33 @@ export default function UserDetailPage() {
           </section>
         ) : person ? (
           <>
-            <section className="app-surface rounded-[28px] p-6">
-              <div className="mb-5 flex items-start justify-between gap-4">
+            <section className="app-surface rounded-[28px] p-5">
+              <div className="mb-4 flex items-start justify-between gap-4">
                 <p className="app-card-caption">Профиль сотрудника</p>
                 {latestAction ? (
                   <span
-                    className={`${getActionTone(latestAction.action)} inline-flex items-center rounded-full px-3 py-1 text-sm font-medium`}
+                    className={`app-status-pill ${getEmployeeActionTone(latestAction.action).badgeClass}`}
                   >
                     {latestAction.action_display || latestAction.action}
                   </span>
                 ) : null}
               </div>
 
-              <div className="space-y-5">
+              <div className="space-y-4">
                 <div className="flex items-start gap-4">
-                  <div className="h-24 w-24 shrink-0 overflow-hidden rounded-full app-avatar-frame">
+                  <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full app-avatar-frame">
                     {avatarUrl && !avatarFailed ? (
                       <Image
                         src={avatarUrl}
                         alt={fullName}
-                        width={96}
-                        height={96}
+                        width={80}
+                        height={80}
                         className="h-full w-full object-cover"
                         onError={() => setAvatarFailed(true)}
                         unoptimized
                       />
                     ) : (
-                      <div className="app-avatar-fallback flex h-full w-full items-center justify-center text-3xl font-semibold">
+                      <div className="app-avatar-fallback flex h-full w-full items-center justify-center text-2xl font-semibold">
                         {initials}
                       </div>
                     )}
@@ -392,17 +361,17 @@ export default function UserDetailPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start gap-3">
                       <div className="min-w-0 flex-1">
-                        <h1 className="text-3xl font-semibold leading-tight text-[var(--foreground)]">
+                        <h1 className="text-[2rem] font-semibold leading-tight text-[var(--foreground)]">
                           {fullName}
                         </h1>
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <span className="app-text-muted text-base">
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                          <span className="app-text-muted text-sm">
                             {person.position?.name || "Должность не указана"}
                           </span>
                           {primaryDepartment ? (
                             <Link
                               href={`/departments/${primaryDepartment.id}`}
-                              className="app-pill inline-flex items-center rounded-full px-3 py-1 text-sm font-medium transition hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
+                              className="app-pill inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
                             >
                               {primaryDepartment.name}
                             </Link>
@@ -411,16 +380,6 @@ export default function UserDetailPage() {
                       </div>
 
                       <div className="flex shrink-0 items-center gap-2">
-                        {canManageActions ? (
-                          <button
-                            type="button"
-                            onClick={handleOpenActionModal}
-                            className="app-action-primary inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium"
-                          >
-                            <Plus size={16} />
-                            Событие
-                          </button>
-                        ) : null}
                         {canEdit ? (
                           <button
                             type="button"
@@ -436,7 +395,7 @@ export default function UserDetailPage() {
                     </div>
 
                     {currentUser && currentUser.id !== person.id ? (
-                      <div className="mt-4 flex flex-wrap gap-2">
+                      <div className="mt-3 flex flex-wrap gap-2">
                         <button
                           onClick={handleStartChat}
                           disabled={creatingChat}
@@ -577,27 +536,6 @@ export default function UserDetailPage() {
                     <p className="app-text-muted text-sm">Навыки не указаны</p>
                   )}
                 </div>
-
-                {suggestedSkills.length ? (
-                  <div className="mt-4 border-t border-[var(--border-subtle)] pt-4">
-                    <p className="mb-3 text-sm font-semibold text-[var(--foreground)]">
-                      Доступные навыки
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {suggestedSkills.map((skill) => (
-                        <button
-                          key={skill.id}
-                          type="button"
-                          onClick={() => void handleAddSkill(skill)}
-                          disabled={skillsSaving}
-                          className="app-action-secondary rounded-full px-3 py-2 text-sm font-medium disabled:opacity-50"
-                        >
-                          {skill.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
 
                 {skillsLoading ? (
                   <p className="app-text-muted mt-3 text-sm">
