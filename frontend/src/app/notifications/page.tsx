@@ -7,6 +7,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale/ru';
 import { getVerbCategory, getVerbName } from '@/lib/verbTranslations';
+import { resolveNotificationActionUrl } from '@/lib/notifications/actionUrl';
 
 export default function NotificationsPage() {
   // Локальное состояние для ВСЕХ уведомлений (не только непрочитанных)
@@ -140,8 +141,9 @@ export default function NotificationsPage() {
     if (!notification.is_read) {
       await markAsRead(notification.id);
     }
-    if (notification.action_url) {
-      window.location.href = notification.action_url;
+    const actionUrl = resolveNotificationActionUrl(notification);
+    if (actionUrl) {
+      window.location.href = actionUrl;
     }
   };
 

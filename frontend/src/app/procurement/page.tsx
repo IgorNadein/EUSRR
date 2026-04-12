@@ -1,16 +1,18 @@
 "use client";
 
+import { useCallback, useEffect, useMemo, useState } from "react";
+
 import { AppShell } from "../../components/AppShell";
 import { useUser } from "@/contexts/UserContext";
 import Link from "next/link";
+import { ProcurementRequestDetailContent } from "@/components/procurement/ProcurementRequestDetailContent";
 import ProcurementStatsPanel from "@/components/procurement/ProcurementStatsPanel";
 import ProcurementSuppliersPanel from "@/components/procurement/ProcurementSuppliersPanel";
-import type { UrgencyLevel } from "@/types/api";
+import type { ProcurementRequest, UrgencyLevel } from "@/types/api";
 import {
   ArrowUpDown,
   Check,
   ChevronDown,
-  CircleDot,
   ClipboardCheck,
   Filter,
   Loader2,
@@ -83,6 +85,156 @@ const periodOptions = [
 const fmt = formatDate;
 const money = formatMoney;
 
+const getReadableError = (error: unknown, fallback: string): string => {
+  const raw = String((error as Error)?.message || fallback);
+  const jsonStart = raw.indexOf("{");
+  const payload = jsonStart >= 0 ? raw.slice(jsonStart) : raw;
+
+  try {
+    const parsed = JSON.parse(payload) as Record<string, unknown>;
+    if (typeof parsed.error === "string" && parsed.error.trim()) {
+      return parsed.error;
+    }
+    if (typeof parsed.detail === "string" && parsed.detail.trim()) {
+      return parsed.detail;
+    }
+  } catch {
+    return raw;
+  }
+
+  return raw;
+};
+
+function ProcurementRequestActionButtons({
+  request,
+  busyKey,
+  canManage,
+  isAuthor,
+  isExecutor,
+  isFinal,
+  onSubmit,
+  onEdit,
+  onDelete,
+  onApprove,
+  onReject,
+  onStart,
+  onComplete,
+  onCancel,
+}: {
+  request: ProcurementRequest;
+  busyKey: string | null;
+  canManage: boolean;
+  isAuthor: boolean;
+  isExecutor: boolean;
+  isFinal: (status?: string) => boolean;
+  onSubmit: (id: number) => void | Promise<void>;
+  onEdit: (request: ProcurementRequest) => void;
+  onDelete: (id: number) => void | Promise<void>;
+  onApprove: (id: number) => void | Promise<void>;
+  onReject: (id: number) => void | Promise<void>;
+  onStart: (id: number) => void | Promise<void>;
+  onComplete: (id: number) => void | Promise<void>;
+  onCancel: (id: number) => void | Promise<void>;
+}) {
+  const status = String(request.status || "").toLowerCase();
+  const isDraft = status === "draft";
+  const isPending = status === "pending";
+  const isApproved = status === "approved";
+  const isInProgress = status === "in_progress";
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+      {isDraft && isAuthor ? (
+        <button
+          type="button"
+          onClick={() => onSubmit(request.id)}
+          disabled={busyKey === `submit-${request.id}`}
+          title="На согласование"
+          className="app-action-primary inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60"
+        >
+          <Send size={14} />
+        </button>
+      ) : null}
+      {isDraft && isAuthor ? (
+        <button
+          type="button"
+          onClick={() => onEdit(request)}
+          title="Редактировать"
+          className="app-action-secondary inline-flex h-9 w-9 items-center justify-center rounded-lg"
+        >
+          <Pencil size={14} />
+        </button>
+      ) : null}
+      {isDraft && (isAuthor || canManage) ? (
+        <button
+          type="button"
+          onClick={() => onDelete(request.id)}
+          disabled={busyKey === `delete-${request.id}`}
+          title="Удалить"
+          className="app-action-danger inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60"
+        >
+          <Trash2 size={14} />
+        </button>
+      ) : null}
+      {isPending && !isAuthor ? (
+        <>
+          <button
+            type="button"
+            onClick={() => onApprove(request.id)}
+            disabled={busyKey === `approve-${request.id}`}
+            title="Одобрить"
+            className="app-feedback-success inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60"
+          >
+            <ThumbsUp size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => onReject(request.id)}
+            disabled={busyKey === `reject-${request.id}`}
+            title="Отклонить"
+            className="app-action-danger inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60"
+          >
+            <ThumbsDown size={14} />
+          </button>
+        </>
+      ) : null}
+      {isApproved && !request.executor ? (
+        <button
+          type="button"
+          onClick={() => onStart(request.id)}
+          disabled={busyKey === `start-${request.id}`}
+          title="Взять в работу"
+          className="app-action-primary inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60"
+        >
+          <Play size={14} />
+        </button>
+      ) : null}
+      {isInProgress && isExecutor ? (
+        <button
+          type="button"
+          onClick={() => onComplete(request.id)}
+          disabled={busyKey === `complete-${request.id}`}
+          title="Завершить"
+          className="app-action-primary inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60"
+        >
+          <ClipboardCheck size={14} />
+        </button>
+      ) : null}
+      {isAuthor && !isFinal(status) && status !== "draft" ? (
+        <button
+          type="button"
+          onClick={() => onCancel(request.id)}
+          disabled={busyKey === `cancel-${request.id}`}
+          title="Отменить"
+          className="app-action-secondary inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60"
+        >
+          <XCircle size={14} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 /* ══════════════════════════════════════════════════════
    Main page component
    ══════════════════════════════════════════════════════ */
@@ -103,6 +255,7 @@ export default function ProcurementPage() {
     departments,
     detailsCache,
     displayUserName,
+    ensureRequestDetail,
     error,
     expandedIds,
     filteredRequests,
@@ -132,6 +285,7 @@ export default function ProcurementPage() {
     periodFilter,
     removeItemRow,
     resolveUserId,
+    requests,
     searchQuery,
     setActiveSection,
     setDepartmentFilter,
@@ -151,6 +305,70 @@ export default function ProcurementPage() {
     scope,
     scopeCounts,
   } = useProcurementPage(user);
+
+  const [detailModalId, setDetailModalId] = useState<number | null>(null);
+  const [detailModalLoading, setDetailModalLoading] = useState(false);
+  const [detailModalError, setDetailModalError] = useState<string | null>(null);
+
+  const syncRequestUrl = useCallback((requestId: number | null) => {
+    if (typeof window === "undefined") return;
+
+    const url = new URL(window.location.href);
+    if (requestId) {
+      url.searchParams.set("request", String(requestId));
+    } else {
+      url.searchParams.delete("request");
+    }
+
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+
+  const selectedRequest = useMemo(() => {
+    if (!detailModalId) return null;
+    return detailsCache[detailModalId] || requests.find((request) => request.id === detailModalId) || null;
+  }, [detailModalId, detailsCache, requests]);
+
+  const closeDetailModal = useCallback(() => {
+    setDetailModalId(null);
+    setDetailModalError(null);
+    syncRequestUrl(null);
+  }, [syncRequestUrl]);
+
+  const openDetailModal = useCallback(async (requestId: number) => {
+    setDetailModalLoading(true);
+    setDetailModalError(null);
+
+    try {
+      await ensureRequestDetail(requestId);
+      setDetailModalId(requestId);
+      syncRequestUrl(requestId);
+    } catch (detailError) {
+      setDetailModalError(getReadableError(detailError, "Не удалось открыть заявку"));
+    } finally {
+      setDetailModalLoading(false);
+    }
+  }, [ensureRequestDetail, syncRequestUrl]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const requestParam = new URLSearchParams(window.location.search).get("request");
+    if (!requestParam) return;
+
+    const requestId = Number(requestParam);
+    if (!Number.isFinite(requestId) || requestId <= 0) {
+      syncRequestUrl(null);
+      return;
+    }
+
+    void openDetailModal(requestId);
+  }, [openDetailModal, syncRequestUrl]);
+
+  useEffect(() => {
+    if (!detailModalId) return;
+    if (selectedRequest) return;
+    closeDetailModal();
+  }, [closeDetailModal, detailModalId, selectedRequest]);
 
   /* ══════════════════════════════════════════════════════
      RENDER
@@ -337,7 +555,14 @@ export default function ProcurementPage() {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <span className={`h-2 w-2 shrink-0 rounded-full ${st === "completed" ? "bg-teal-500" : st === "approved" ? "bg-emerald-500" : st === "pending" ? "bg-amber-500" : st === "in_progress" ? "bg-sky-500" : st === "rejected" ? "bg-rose-500" : "bg-slate-400"}`} />
-                              <h3 className="truncate text-sm font-semibold text-[var(--foreground)]">{req.title || "Без названия"}</h3>
+                              <button
+                                type="button"
+                                onClick={() => void openDetailModal(req.id)}
+                                className="truncate text-left text-sm font-semibold text-[var(--foreground)] transition hover:text-[var(--accent-primary-strong)]"
+                                title="Открыть карточку заявки"
+                              >
+                                {req.title || "Без названия"}
+                              </button>
                             </div>
                             <div className="app-text-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                               <span className="font-medium text-[var(--foreground)]">{getDeptName(req)}</span>
@@ -390,132 +615,28 @@ export default function ProcurementPage() {
 
                   {expanded && (
                     <div className="mt-4 space-y-3 px-4 pb-4">
-                      <div className="app-surface rounded-xl p-4">
-                        <p className="text-sm font-semibold text-[var(--foreground)]">Описание</p>
-                        <p className="app-text-wrap mt-2 whitespace-pre-line text-sm leading-6 text-[var(--foreground)]">{resolvedDetail.description || "—"}</p>
-                        <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
-                          <div className="app-surface-muted rounded-lg px-3 py-2">
-                            <p className="app-text-muted text-[11px] uppercase tracking-wide">Отправлена</p>
-                            <p className="mt-1 font-medium text-[var(--foreground)]">{fmt(resolvedDetail.submitted_at) || "—"}</p>
-                          </div>
-                          <div className="app-surface-muted rounded-lg px-3 py-2">
-                            <p className="app-text-muted text-[11px] uppercase tracking-wide">Взята в работу</p>
-                            <p className="mt-1 font-medium text-[var(--foreground)]">{fmt(resolvedDetail.started_at) || "—"}</p>
-                          </div>
-                          <div className="app-surface-muted rounded-lg px-3 py-2">
-                            <p className="app-text-muted text-[11px] uppercase tracking-wide">Завершена</p>
-                            <p className="mt-1 font-medium text-[var(--foreground)]">{fmt(resolvedDetail.completed_at) || "—"}</p>
-                          </div>
-                        </div>
-                        {resolvedDetail.actual_cost ? (
-                          <div className="mt-3 inline-flex rounded-full app-badge-accent px-2.5 py-1 text-xs font-medium">
-                            Фактическая сумма: {money(resolvedDetail.actual_cost)}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {detail?.items && detail.items.length > 0 && (
-                        <div className="app-surface rounded-xl p-4">
-                          <p className="mb-3 text-sm font-semibold text-[var(--foreground)]">Позиции</p>
-                          <div className="space-y-2">
-                            {detail.items.map((it, idx) => (
-                              <div key={idx} className="app-surface-muted rounded-lg px-3 py-3 text-xs">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="min-w-0 flex-1">
-                                    <p className="app-text-wrap font-medium text-[var(--foreground)]">{it.name}</p>
-                                    {it.description && <p className="app-text-wrap mt-1 text-[var(--muted-foreground)]">{it.description}</p>}
-                                    {it.supplier_info && <p className="app-text-wrap mt-1 text-[var(--muted-foreground)]">Поставщик: {it.supplier_info}</p>}
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="font-medium text-[var(--foreground)]">{money(it.total_price)}</p>
-                                    <p className="app-text-muted mt-1">{it.quantity} {it.unit}</p>
-                                  </div>
-                                </div>
-                                <div className="app-text-muted mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                                  <span>Цена/ед.: {money(it.estimated_unit_price)}</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {detail?.approvals && detail.approvals.length > 0 && (
-                        <div className="app-surface rounded-xl p-4">
-                          <p className="mb-3 text-sm font-semibold text-[var(--foreground)]">Согласования</p>
-                          <div className="space-y-2">
-                            {detail.approvals.map((a) => {
-                              const aSt = String(a.status).toLowerCase();
-                              const icon = aSt === "approved" ? <Check size={13} className="text-emerald-500" /> : aSt === "rejected" ? <X size={13} className="text-rose-500" /> : <CircleDot size={13} className="text-amber-500" />;
-                              return (
-                                <div key={a.id} className="app-surface-muted flex items-center gap-2 rounded-lg px-3 py-2 text-xs">
-                                  {icon}
-                                  <span className="font-medium text-[var(--foreground)]">{displayUserName(a.approver, a.approver_name)}</span>
-                                  <span className="app-text-muted">({a.step_label || `Этап ${a.priority}`})</span>
-                                  {a.comment && <span className="app-text-wrap app-text-muted ml-auto max-w-full italic">«{a.comment}»</span>}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                        {isDraft && isAuthor && (
-                          <button type="button" onClick={() => handleSubmit(req.id)} disabled={busyKey === `submit-${req.id}`}
-                            title="На согласование"
-                            className="app-action-primary inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60">
-                            <Send size={14} />
-                          </button>
+                      <ProcurementRequestDetailContent
+                        request={resolvedDetail}
+                        displayUserName={displayUserName}
+                        footer={(
+                          <ProcurementRequestActionButtons
+                            request={req}
+                            busyKey={busyKey}
+                            canManage={canManage}
+                            isAuthor={isAuthor}
+                            isExecutor={isExecutor}
+                            isFinal={isFinal}
+                            onSubmit={handleSubmit}
+                            onEdit={openEdit}
+                            onDelete={handleDelete}
+                            onApprove={handleApprove}
+                            onReject={handleReject}
+                            onStart={handleStart}
+                            onComplete={handleComplete}
+                            onCancel={handleCancel}
+                          />
                         )}
-                        {isDraft && isAuthor && (
-                          <button type="button" onClick={() => openEdit(req)} title="Редактировать" className="app-action-secondary inline-flex h-9 w-9 items-center justify-center rounded-lg">
-                            <Pencil size={14} />
-                          </button>
-                        )}
-                        {isDraft && (isAuthor || canManage) && (
-                          <button type="button" onClick={() => handleDelete(req.id)} disabled={busyKey === `delete-${req.id}`}
-                            title="Удалить"
-                            className="app-action-danger inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60">
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                        {isPending && !isAuthor && (
-                          <>
-                            <button type="button" onClick={() => handleApprove(req.id)} disabled={busyKey === `approve-${req.id}`}
-                              title="Одобрить"
-                              className="app-feedback-success inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60">
-                              <ThumbsUp size={14} />
-                            </button>
-                            <button type="button" onClick={() => handleReject(req.id)} disabled={busyKey === `reject-${req.id}`}
-                              title="Отклонить"
-                              className="app-action-danger inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60">
-                              <ThumbsDown size={14} />
-                            </button>
-                          </>
-                        )}
-                        {isApproved && !req.executor && (
-                          <button type="button" onClick={() => handleStart(req.id)} disabled={busyKey === `start-${req.id}`}
-                            title="Взять в работу"
-                            className="app-action-primary inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60">
-                            <Play size={14} />
-                          </button>
-                        )}
-                        {isInProgress && isExecutor && (
-                          <button type="button" onClick={() => handleComplete(req.id)} disabled={busyKey === `complete-${req.id}`}
-                            title="Завершить"
-                            className="app-action-primary inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60">
-                            <ClipboardCheck size={14} />
-                          </button>
-                        )}
-                        {isAuthor && !isFinal(st) && st !== "draft" && (
-                          <button type="button" onClick={() => handleCancel(req.id)} disabled={busyKey === `cancel-${req.id}`}
-                            title="Отменить"
-                            className="app-action-secondary inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60">
-                            <XCircle size={14} />
-                          </button>
-                        )}
-                      </div>
+                      />
                     </div>
                   )}
                 </article>
@@ -535,6 +656,96 @@ export default function ProcurementPage() {
           )}
         </section>
       )}
+
+      <Modal
+        isOpen={detailModalId !== null}
+        onClose={closeDetailModal}
+        title={selectedRequest?.title || "Карточка заявки"}
+        size="lg"
+        closeOnClickOutside
+      >
+        {detailModalLoading ? (
+          <div className="py-12 text-center">
+            <Loader2 size={24} className="mx-auto mb-3 animate-spin text-sky-500" />
+            <p className="app-text-muted text-sm">Загружаем карточку заявки...</p>
+          </div>
+        ) : detailModalError ? (
+          <div className="app-feedback-danger rounded-xl px-4 py-3 text-sm">
+            {detailModalError}
+          </div>
+        ) : selectedRequest ? (
+          <div className="space-y-4 pb-1">
+            <div className="app-surface-muted rounded-xl px-4 py-4">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`app-status-pill ${statusMeta[String(selectedRequest.status || "").toLowerCase()]?.cls ?? defaultStatusMeta.cls}`}>
+                    {statusMeta[String(selectedRequest.status || "").toLowerCase()]?.label ?? defaultStatusMeta.label}
+                  </span>
+                  <span className={`text-[11px] font-medium ${urgencyMeta[selectedRequest.urgency]?.cls ?? urgencyMeta.medium.cls}`}>
+                    {(urgencyMeta[selectedRequest.urgency]?.label ?? urgencyMeta.medium.label)} срочность
+                  </span>
+                </div>
+                <div className="app-text-muted mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                  <span className="font-medium text-[var(--foreground)]">{getDeptName(selectedRequest)}</span>
+                  <span>{fmt(selectedRequest.created_at)}</span>
+                  {getRequestAmount(selectedRequest) ? (
+                    <span className="font-medium text-[var(--foreground)]">{money(getRequestAmount(selectedRequest))}</span>
+                  ) : null}
+                </div>
+                <div className="app-text-muted mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-xs sm:grid-cols-2">
+                  <div className="min-w-0">
+                    <span>Заявитель:</span>{" "}
+                    <span className="font-medium text-[var(--foreground)]">
+                      {displayUserName(selectedRequest.requestor, selectedRequest.requestor_name, selectedRequest.requestor_email)}
+                    </span>
+                  </div>
+                  <div className="min-w-0">
+                    <span>Исполнитель:</span>{" "}
+                    <span className="font-medium text-[var(--foreground)]">
+                      {selectedRequest.executor || selectedRequest.executor_name
+                        ? displayUserName(selectedRequest.executor, selectedRequest.executor_name || undefined)
+                        : "не назначен"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {actionError ? (
+              <div className="app-feedback-danger rounded-xl px-4 py-3 text-sm">
+                {actionError}
+              </div>
+            ) : null}
+
+            <ProcurementRequestDetailContent
+              request={selectedRequest}
+              displayUserName={displayUserName}
+              footer={(
+                <ProcurementRequestActionButtons
+                  request={selectedRequest}
+                  busyKey={busyKey}
+                  canManage={canManage}
+                  isAuthor={Boolean(resolveUserId(selectedRequest.requestor) && user?.id && resolveUserId(selectedRequest.requestor) === user.id)}
+                  isExecutor={Boolean(resolveUserId(selectedRequest.executor) && user?.id && resolveUserId(selectedRequest.executor) === user.id)}
+                  isFinal={isFinal}
+                  onSubmit={handleSubmit}
+                  onEdit={openEdit}
+                  onDelete={handleDelete}
+                  onApprove={handleApprove}
+                  onReject={handleReject}
+                  onStart={handleStart}
+                  onComplete={handleComplete}
+                  onCancel={handleCancel}
+                />
+              )}
+            />
+          </div>
+        ) : (
+          <div className="app-surface-muted rounded-xl px-4 py-6 text-center">
+            <p className="app-text-muted text-sm">Заявка не найдена.</p>
+          </div>
+        )}
+      </Modal>
 
       {/* ══════════ Create / Edit modal ══════════ */}
       <Modal isOpen={isModalOpen} onClose={closeModal} title={modalMode === "create" ? "Новая заявка на закупку" : "Редактировать заявку"} size="lg" footer={

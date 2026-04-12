@@ -141,8 +141,8 @@ export default function EmployeesPage() {
   if (error) {
     return (
       <AppShell>
-        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-6 text-center">
-          <p className="text-sm text-red-800">{error}</p>
+        <div className="app-feedback-danger rounded-2xl p-6 text-center">
+          <p className="text-sm">{error}</p>
         </div>
       </AppShell>
     );
@@ -185,11 +185,11 @@ export default function EmployeesPage() {
                 <button
                   onClick={(e) => handleStartChat(employee, e)}
                   disabled={creatingChatFor === employee.id}
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-100 text-sky-600 transition hover:bg-sky-200 disabled:opacity-50"
+                  className="app-icon-button flex h-10 w-10 items-center justify-center rounded-full disabled:opacity-50"
                   title="Написать сообщение"
                 >
                   {creatingChatFor === employee.id ? (
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-sky-600 border-t-transparent" />
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--accent-primary)] border-t-transparent" />
                   ) : (
                     <MessageCircle size={18} />
                   )}

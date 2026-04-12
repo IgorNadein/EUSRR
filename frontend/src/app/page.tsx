@@ -661,7 +661,11 @@ function HomePageContent() {
                       type="button"
                       disabled={likeBusyId === post.id}
                       onClick={() => handleLikeToggle(post)}
-                      className={`flex items-center gap-2 rounded-lg px-3 py-2 transition ${post.is_liked ? "app-selected app-accent-text" : "app-action-ghost"}`}
+                      className={`flex items-center gap-2 rounded-lg px-3 py-2 transition ${
+                        post.is_liked
+                          ? "app-action-ghost text-[var(--accent-primary)]"
+                          : "app-action-ghost"
+                      }`}
                     >
                       <Heart
                         size={16}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "@/lib/api";
 import { canManageRequests, canManageSupplier } from "@/lib/permissions";
 import { displayUserName, extractNextPage, loadAllPages } from "@/lib/shared";
@@ -156,6 +156,11 @@ export function useProcurementPage(user: User | null) {
 
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [detailsCache, setDetailsCache] = useState<Record<number, ProcurementRequest>>({});
+  const detailsCacheRef = useRef<Record<number, ProcurementRequest>>({});
+
+  useEffect(() => {
+    detailsCacheRef.current = detailsCache;
+  }, [detailsCache]);
 
   const resolveUserId = useCallback((person?: User | number | null) => {
     if (!person) return null;
@@ -381,6 +386,21 @@ export function useProcurementPage(user: User | null) {
     }
   }, [loadPage1]);
 
+  const ensureRequestDetail = useCallback(async (id: number) => {
+    const cached = detailsCacheRef.current[id];
+    if (cached) {
+      return cached;
+    }
+
+    const detail = await apiClient.getProcurementRequest(id);
+    detailsCacheRef.current = { ...detailsCacheRef.current, [id]: detail };
+    setDetailsCache((previous) => ({ ...previous, [id]: detail }));
+    setRequests((previous) => previous.map((request) => (
+      request.id === id ? { ...request, ...detail } : request
+    )));
+    return detail;
+  }, []);
+
   const handleSave = useCallback(async () => {
     try {
       setBusyKey("save");
@@ -501,15 +521,14 @@ export function useProcurementPage(user: User | null) {
       return next;
     });
 
-    if (!detailsCache[id]) {
+    if (!detailsCacheRef.current[id]) {
       try {
-        const detail = await apiClient.getProcurementRequest(id);
-        setDetailsCache((previous) => ({ ...previous, [id]: detail }));
+        await ensureRequestDetail(id);
       } catch {
         // ignore detail loading failures for collapsed rows
       }
     }
-  }, [detailsCache]);
+  }, [ensureRequestDetail]);
 
   const handleSubmit = useCallback((id: number) => doAction(
     `submit-${id}`,
@@ -557,6 +576,12 @@ export function useProcurementPage(user: User | null) {
       setBusyKey(`delete-${id}`);
       await apiClient.deleteProcurementRequest(id);
       setRequests((previous) => previous.filter((request) => request.id !== id));
+      setDetailsCache((previous) => {
+        const next = { ...previous };
+        delete next[id];
+        detailsCacheRef.current = next;
+        return next;
+      });
     } catch (deleteError) {
       setActionError(getReadableError(deleteError, "Не удалось удалить"));
     } finally {
@@ -646,5 +671,7 @@ export function useProcurementPage(user: User | null) {
     getDeptName,
     getRequestAmount,
     loadPage1,
+    refreshOne,
+    ensureRequestDetail,
   };
 }

@@ -56,6 +56,31 @@
 - Read-only экран:
   - минимум inline editing
   - одно явное действие лучше, чем несколько карандашей по карточкам
+- Общий контракт профильно-подобных страниц:
+  - `ProfileHeroCard`
+  - `ProfileContactsPanel`
+  - `ProfileInfoCard`
+  - `ProfileSkillsCard`
+  - `EmployeeActionsTimeline`
+- Hero:
+  - `app-card-caption` в шапке карточки
+  - status pill справа сверху
+  - аватар слева, имя и secondary meta справа
+  - внутри hero только один `app-surface-muted` блок контактов
+- `Контакты`:
+  - строки с иконкой, заголовком и значением
+  - опциональные действия справа живут в строке, а не отдельной карточкой
+- `Информация`:
+  - отдельный полноширинный `app-surface`
+  - внутри одна `app-surface-muted` сетка 2x2
+- `Навыки`:
+  - одинаковая add-row и chip-scale и на self, и на foreign profile
+- `/profile`:
+  - self-oriented hero
+  - без chat/call actions
+- `/users/[id]`:
+  - тот же hero-contract
+  - chat/call/edit/manage actions допустимы только как добавочные props, без отдельной layout-ветки
 
 ## Таймлайны
 

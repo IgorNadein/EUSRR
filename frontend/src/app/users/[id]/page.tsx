@@ -5,85 +5,39 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  Building2,
-  CalendarDays,
-  Check,
-  Copy,
   Mail,
   MessageCircle,
   Pencil,
   Phone,
-  Plus,
 } from "lucide-react";
 
 import { AppShell } from "../../../components/AppShell";
 import EditUserProfileModal from "@/components/users/EditUserProfileModal";
 import EmployeeActionModal from "@/components/users/EmployeeActionModal";
 import EmployeeActionsTimeline from "@/components/users/EmployeeActionsTimeline";
+import {
+  ProfileContactsPanel,
+  ProfileDepartmentBadge,
+  ProfileHeroCard,
+  ProfileInfoCard,
+  ProfileSkillsCard,
+  type ProfileContactRow,
+  type ProfileInfoItem,
+} from "@/components/users/ProfileSections";
 import { useUser } from "@/contexts/UserContext";
 import { useUserDetailPage } from "@/hooks/useUserDetailPage";
 import { apiClient } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/url";
 import {
-  formatBirthday,
+  formatBirthdayWithYear,
+  formatProfileDate,
+  formatProfileDateTime,
   formatPhoneForLink,
   getEmployeeActionTone,
   getWorkDuration,
+  normalizeTelegramLink,
+  normalizeWhatsAppLink,
 } from "@/lib/users/userDetailUtils";
-
-function formatDate(value?: string): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-}
-
-function formatDateTime(value?: string): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function normalizeTelegram(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `https://t.me/${trimmed.replace(/^@/, "")}`;
-}
-
-function normalizeWhatsApp(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  const digits = trimmed.replace(/[^\d]/g, "");
-  return digits ? `https://wa.me/${digits}` : "";
-}
-
-function SectionTitle({
-  title,
-  action,
-}: {
-  title: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="mb-4 flex items-start justify-between gap-4">
-      <h2 className="app-card-caption">{title}</h2>
-      {action}
-    </div>
-  );
-}
 
 export default function UserDetailPage() {
   const params = useParams<{ id: string }>();
@@ -185,65 +139,92 @@ export default function UserDetailPage() {
     };
   }, []);
 
-  const contactRows = useMemo(
-    () =>
-      person
-        ? [
-            person.email
-              ? {
-                  key: "email",
-                  label: "Почта",
-                  value: person.email,
-                  href: `mailto:${person.email}`,
-                  icon: <Mail size={18} />,
-                }
-              : null,
-            person.phone_number
-              ? {
-                  key: "phone",
-                  label: "Телефон",
-                  value: person.phone_number,
-                  href: `tel:${formatPhoneForLink(person.phone_number)}`,
-                  icon: <Phone size={18} />,
-                }
-              : null,
-            person.telegram
-              ? {
-                  key: "telegram",
-                  label: "Telegram",
-                  value: person.telegram,
-                  href: normalizeTelegram(person.telegram),
-                  icon: <MessageCircle size={18} />,
-                }
-              : null,
-            person.whatsapp
-              ? {
-                  key: "whatsapp",
-                  label: "WhatsApp",
-                  value: person.whatsapp,
-                  href: normalizeWhatsApp(person.whatsapp),
-                  icon: <MessageCircle size={18} />,
-                }
-              : null,
-            person.wechat
-              ? {
-                  key: "wechat",
-                  label: "WeChat",
-                  value: person.wechat,
-                  href: null,
-                  icon: <MessageCircle size={18} />,
-                }
-              : null,
-          ].filter(Boolean) as Array<{
-            key: string;
-            label: string;
-            value: string;
-            href: string | null;
-            icon: React.ReactNode;
-          }>
-        : [],
-    [person],
-  );
+  const contactRows = useMemo<ProfileContactRow[]>(() => {
+    if (!person) return [];
+
+    const rows: ProfileContactRow[] = [];
+
+    const email = person.email;
+    if (email) {
+      rows.push({
+        key: "email",
+        label: "Почта",
+        value: email,
+        icon: <Mail size={18} />,
+        onClick: () => void handleCopyToClipboard(email, "email"),
+        copied: copySuccess === "email",
+      });
+    }
+
+    const phone = person.phone_number;
+    if (phone) {
+      rows.push({
+        key: "phone",
+        label: "Телефон",
+        value: phone,
+        icon: <Phone size={18} />,
+        onClick: () => void handleCopyToClipboard(phone, "phone"),
+        copied: copySuccess === "phone",
+      });
+    }
+
+    const telegram = person.telegram;
+    if (telegram) {
+      rows.push({
+        key: "telegram",
+        label: "Telegram",
+        value: telegram,
+        icon: <MessageCircle size={18} />,
+        onClick: () => void handleCopyToClipboard(normalizeTelegramLink(telegram), "telegram"),
+        copied: copySuccess === "telegram",
+      });
+    }
+
+    const whatsapp = person.whatsapp;
+    if (whatsapp) {
+      rows.push({
+        key: "whatsapp",
+        label: "WhatsApp",
+        value: whatsapp,
+        icon: <MessageCircle size={18} />,
+        onClick: () => void handleCopyToClipboard(normalizeWhatsAppLink(whatsapp), "whatsapp"),
+        copied: copySuccess === "whatsapp",
+      });
+    }
+
+    const wechat = person.wechat;
+    if (wechat) {
+      rows.push({
+        key: "wechat",
+        label: "WeChat",
+        value: wechat,
+        icon: <MessageCircle size={18} />,
+        onClick: () => void handleCopyToClipboard(wechat, "wechat"),
+        copied: copySuccess === "wechat",
+      });
+    }
+
+    return rows;
+  }, [copySuccess, handleCopyToClipboard, person]);
+
+  const infoItems = useMemo<ProfileInfoItem[]>(() => ([
+    {
+      label: "В компании",
+      value: getWorkDuration(person?.date_joined) || "—",
+    },
+    {
+      label: "Дата найма",
+      value: formatProfileDate(person?.date_joined),
+    },
+    {
+      label: "Профиль создан",
+      value: formatProfileDate(person?.created_at),
+    },
+    {
+      label: "Последний вход",
+      value: formatProfileDateTime(person?.last_login),
+    },
+  ]), [person?.created_at, person?.date_joined, person?.last_login]);
 
   const handleAddSkill = async (forcedSkill?: { id: number; name: string }) => {
     if (!person || skillsSaving) return;
@@ -326,271 +307,111 @@ export default function UserDetailPage() {
           </section>
         ) : person ? (
           <>
-            <section className="app-surface rounded-[28px] p-5">
-              <div className="mb-4 flex items-start justify-between gap-4">
-                <p className="app-card-caption">Профиль сотрудника</p>
-                {latestAction ? (
+            <ProfileHeroCard
+              caption="Профиль сотрудника"
+              statusBadge={
+                latestAction ? (
                   <span
                     className={`app-status-pill ${getEmployeeActionTone(latestAction.action).badgeClass}`}
                   >
                     {latestAction.action_display || latestAction.action}
                   </span>
-                ) : null}
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex items-start gap-4">
-                  <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full app-avatar-frame">
-                    {avatarUrl && !avatarFailed ? (
-                      <Image
-                        src={avatarUrl}
-                        alt={fullName}
-                        width={80}
-                        height={80}
-                        className="h-full w-full object-cover"
-                        onError={() => setAvatarFailed(true)}
-                        unoptimized
-                      />
-                    ) : (
-                      <div className="app-avatar-fallback flex h-full w-full items-center justify-center text-2xl font-semibold">
-                        {initials}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start gap-3">
-                      <div className="min-w-0 flex-1">
-                        <h1 className="app-text-wrap text-[2rem] font-semibold leading-tight text-[var(--foreground)]">
-                          {fullName}
-                        </h1>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                          <span className="app-text-muted text-sm">
-                            {person.position?.name || "Должность не указана"}
-                          </span>
-                          {primaryDepartment ? (
-                            <Link
-                              href={`/departments/${primaryDepartment.id}`}
-                              className="app-pill inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
-                            >
-                              {primaryDepartment.name}
-                            </Link>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="flex shrink-0 items-center gap-2">
-                        {canEdit ? (
-                          <button
-                            type="button"
-                            onClick={handleOpenEditModal}
-                            className="app-action-secondary inline-flex h-10 w-10 items-center justify-center rounded-xl"
-                            aria-label="Редактировать профиль"
-                            title="Редактировать профиль"
-                          >
-                            <Pencil size={16} />
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {currentUser && currentUser.id !== person.id ? (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                          onClick={handleStartChat}
-                          disabled={creatingChat}
-                          className="app-action-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
-                        >
-                          <MessageCircle size={16} />
-                          {creatingChat ? "Загрузка..." : "Написать"}
-                        </button>
-                        {person.phone_number ? (
-                          <a
-                            href={`tel:${formatPhoneForLink(person.phone_number)}`}
-                            className="app-action-secondary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium"
-                          >
-                            <Phone size={16} />
-                            Позвонить
-                          </a>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="app-surface-muted rounded-2xl p-4">
-                  <div>
-                    {contactRows.length ? (
-                      contactRows.map((contact, index) => (
-                        <div key={contact.key}>
-                          {index > 0 ? (
-                            <div className="mx-4 border-t border-[var(--border-subtle)]" />
-                          ) : null}
-                          <div className="flex items-start gap-3 px-4 py-4">
-                            <span className="app-badge mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
-                              {contact.icon}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-semibold text-[var(--foreground)]">
-                                {contact.label}
-                              </p>
-                              {contact.href ? (
-                                <a
-                                  href={contact.href}
-                                  target={
-                                    contact.key === "telegram" ||
-                                    contact.key === "whatsapp"
-                                      ? "_blank"
-                                      : undefined
-                                  }
-                                  rel={
-                                    contact.key === "telegram" ||
-                                    contact.key === "whatsapp"
-                                      ? "noreferrer"
-                                      : undefined
-                                  }
-                                  className="app-text-wrap app-text-muted mt-1 block text-sm hover:text-[var(--accent-primary)]"
-                                >
-                                  {contact.value}
-                                </a>
-                              ) : (
-                                <p className="app-text-wrap app-text-muted mt-1 text-sm">
-                                  {contact.value}
-                                </p>
-                              )}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleCopyToClipboard(contact.value, contact.key)
-                              }
-                              className="app-action-secondary inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-                              title="Скопировать"
-                            >
-                              {copySuccess === contact.key ? (
-                                <Check size={14} />
-                              ) : (
-                                <Copy size={14} />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="app-text-muted px-4 py-2 text-sm">
-                        Контакты не указаны
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className="app-surface rounded-[24px] p-5">
-              <SectionTitle title="Навыки" />
-              <div className="app-surface-muted rounded-2xl p-4">
-                <div className="flex flex-col gap-3 md:flex-row">
-                  <div className="min-w-0 flex-1">
-                    <input
-                      list="employee-skills-list"
-                      value={skillName}
-                      onChange={(event) => setSkillName(event.target.value)}
-                      placeholder="Добавить навык"
-                      className="app-input w-full rounded-xl px-4 py-3 text-sm"
-                      disabled={skillsSaving}
+                ) : null
+              }
+              avatar={
+                <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full app-avatar-frame">
+                  {avatarUrl && !avatarFailed ? (
+                    <Image
+                      src={avatarUrl}
+                      alt={fullName}
+                      width={80}
+                      height={80}
+                      className="h-full w-full object-cover"
+                      onError={() => setAvatarFailed(true)}
+                      unoptimized
                     />
-                    <datalist id="employee-skills-list">
-                      {availableSkills.map((skill) => (
-                        <option key={skill.id} value={skill.name} />
-                      ))}
-                    </datalist>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleAddSkill()}
-                    disabled={!skillName.trim() || skillsSaving}
-                    className="app-action-primary inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium disabled:opacity-50"
-                  >
-                    <Plus size={16} />
-                    Добавить
-                  </button>
-                </div>
-
-                {skillsError ? (
-                  <p className="mt-3 text-sm text-red-400">{skillsError}</p>
-                ) : null}
-
-                <div className="mt-4">
-                  {personSkills.length ? (
-                    <div className="flex flex-wrap gap-2">
-                      {personSkills.map((skill) => (
-                        <span
-                          key={skill.id}
-                          className="app-pill inline-flex items-center rounded-full px-3 py-2 text-sm font-medium"
-                        >
-                          {skill.name}
-                        </span>
-                      ))}
-                    </div>
                   ) : (
-                    <p className="app-text-muted text-sm">Навыки не указаны</p>
+                    <div className="app-avatar-fallback flex h-full w-full items-center justify-center text-2xl font-semibold">
+                      {initials}
+                    </div>
                   )}
                 </div>
+              }
+              fullName={fullName}
+              secondaryLine={formatBirthdayWithYear(person.birth_date) || "Не указана"}
+              roleText={person.position?.name || "Должность не указана"}
+              departmentBadge={
+                primaryDepartment ? (
+                  <ProfileDepartmentBadge
+                    label={primaryDepartment.name}
+                    href={`/departments/${primaryDepartment.id}`}
+                  />
+                ) : undefined
+              }
+              headerActions={
+                canEdit ? (
+                  <button
+                    type="button"
+                    onClick={handleOpenEditModal}
+                    className="app-action-secondary inline-flex h-10 w-10 items-center justify-center rounded-xl"
+                    aria-label="Редактировать профиль"
+                    title="Редактировать профиль"
+                  >
+                    <Pencil size={16} />
+                  </button>
+                ) : undefined
+              }
+              actionRow={
+                currentUser && currentUser.id !== person.id ? (
+                  <>
+                    <button
+                      onClick={handleStartChat}
+                      disabled={creatingChat}
+                      className="app-action-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+                    >
+                      <MessageCircle size={16} />
+                      {creatingChat ? "Загрузка..." : "Написать"}
+                    </button>
+                    {person.phone_number ? (
+                      <a
+                        href={`tel:${formatPhoneForLink(person.phone_number)}`}
+                        className="app-action-secondary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium"
+                      >
+                        <Phone size={16} />
+                        Позвонить
+                      </a>
+                    ) : null}
+                  </>
+                ) : undefined
+              }
+              bottomPanel={
+                <ProfileContactsPanel
+                  rows={contactRows}
+                  emptyText="Контакты не указаны"
+                />
+              }
+            />
 
-                {skillsLoading ? (
-                  <p className="app-text-muted mt-3 text-sm">
-                    Загружаем навыки...
-                  </p>
-                ) : null}
-              </div>
-            </section>
+            <ProfileSkillsCard
+              inputValue={skillName}
+              onInputChange={setSkillName}
+              onSubmit={() => void handleAddSkill()}
+              submitDisabled={!skillName.trim() || skillsSaving}
+              inputDisabled={skillsSaving}
+              availableSkills={availableSkills}
+              skills={personSkills}
+              error={skillsError}
+              loading={skillsLoading}
+              emptyText="Навыки не указаны"
+            />
 
-            <section className="app-surface rounded-[24px] p-5">
-              <SectionTitle title="Информация" />
-              <div className="app-surface-muted overflow-hidden rounded-2xl">
-                <div className="grid md:grid-cols-2">
-                  <div className="px-4 py-4">
-                    <p className="text-sm font-semibold text-[var(--foreground)]">
-                      В компании
-                    </p>
-                    <p className="app-text-muted mt-1 text-sm">
-                      {getWorkDuration(person.date_joined) || "—"}
-                    </p>
-                  </div>
-                  <div className="border-t border-[var(--border-subtle)] px-4 py-4 md:border-l md:border-t-0">
-                    <p className="text-sm font-semibold text-[var(--foreground)]">
-                      Дата найма
-                    </p>
-                    <p className="app-text-muted mt-1 text-sm">
-                      {formatDate(person.date_joined)}
-                    </p>
-                  </div>
-                </div>
-                <div className="border-t border-[var(--border-subtle)]" />
-                <div className="grid md:grid-cols-2">
-                  <div className="px-4 py-4">
-                    <p className="text-sm font-semibold text-[var(--foreground)]">
-                      День рождения
-                    </p>
-                    <p className="app-text-muted mt-1 text-sm">
-                      {formatBirthday(person.birth_date) || "—"}
-                    </p>
-                  </div>
-                  <div className="border-t border-[var(--border-subtle)] px-4 py-4 md:border-l md:border-t-0">
-                    <p className="text-sm font-semibold text-[var(--foreground)]">
-                      Последний вход
-                    </p>
-                    <p className="app-text-muted mt-1 text-sm">
-                      {formatDateTime(person.last_login)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </section>
+            <ProfileInfoCard items={infoItems} />
 
             {person.departments?.length ? (
               <section className="app-surface rounded-[24px] p-5">
-                <SectionTitle title="Отделы" />
+                <div className="mb-4">
+                  <h2 className="app-card-caption">Отделы</h2>
+                </div>
                 <div className="app-surface-muted rounded-2xl p-4">
                   <div className="space-y-3">
                     {person.departments.map((department) => (
@@ -632,6 +453,8 @@ export default function UserDetailPage() {
               onDeleteAction={handleDeleteAction}
               onEditAction={handleEditAction}
               sortedActions={sortedActions}
+              truncateCommentLength={120}
+              expandedCommentLength={240}
             />
           </>
         ) : null}

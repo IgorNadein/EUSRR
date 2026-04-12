@@ -6,6 +6,7 @@ import { useNotifications } from '@/hooks/useApi';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale/ru';
 import { getVerbName } from '@/lib/verbTranslations';
+import { resolveNotificationActionUrl } from '@/lib/notifications/actionUrl';
 import Link from 'next/link';
 import type { NotificationItem } from '@/contexts/NotificationsContext';
 
@@ -75,8 +76,9 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
         }
         
         // Навигация если есть action_url
-        if (notification.action_url) {
-            window.location.assign(notification.action_url);
+        const actionUrl = resolveNotificationActionUrl(notification);
+        if (actionUrl) {
+            window.location.assign(actionUrl);
         }
     };
 
@@ -232,8 +234,9 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
         if (!notification.is_read) {
             await markAsRead(notification.id);
         }
-        if (notification.action_url) {
-            window.location.assign(notification.action_url);
+        const actionUrl = resolveNotificationActionUrl(notification);
+        if (actionUrl) {
+            window.location.assign(actionUrl);
         }
     };
 

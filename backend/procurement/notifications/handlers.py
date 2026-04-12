@@ -38,7 +38,7 @@ def notify_new_request(request):
         verb=NotificationVerbs.NEW_REQUEST,
         action_object=request,
         description=description,
-        action_url=ActionURLs.PROCUREMENT_LIST,
+        action_url=ActionURLs.request_detail(request.id),
         data={
             'title': notification_title,
             'request_id': request.id,
@@ -93,7 +93,7 @@ def notify_approver(approval):
         verb=NotificationVerbs.PENDING_APPROVAL,
         action_object=approval.request,
         description=description,
-        action_url=ActionURLs.PROCUREMENT_LIST,
+        action_url=ActionURLs.request_detail(approval.request.id),
         data={
             'title': notification_title,
             'request_id': approval.request.id,
@@ -124,7 +124,7 @@ def notify_requestor(request, verb, title, message):
         verb=verb,
         action_object=request,
         description=message,
-        action_url=ActionURLs.PROCUREMENT_LIST,
+        action_url=ActionURLs.request_detail(request.id),
         data={
             'title': title,
             'request_id': request.id,
@@ -203,7 +203,7 @@ def notify_request_completed(request):
             verb=NotificationVerbs.COMPLETED,
             action_object=request,
             description=description,
-            action_url=ActionURLs.PROCUREMENT_LIST,
+            action_url=ActionURLs.request_detail(request.id),
             data={
                 'title': notification_title,
                 'request_id': request.id,
@@ -241,7 +241,7 @@ def notify_request_in_progress(request, executor):
             verb=NotificationVerbs.IN_PROGRESS,
             action_object=request,
             description=description,
-            action_url=ActionURLs.PROCUREMENT_LIST,
+            action_url=ActionURLs.request_detail(request.id),
             data={
                 'title': notification_title,
                 'request_id': request.id,
@@ -261,7 +261,7 @@ def notify_request_in_progress(request, executor):
             verb=NotificationVerbs.IN_PROGRESS,
             action_object=request,
             description=description,
-            action_url=ActionURLs.PROCUREMENT_LIST,
+            action_url=ActionURLs.request_detail(request.id),
             data={
                 'title': notification_title,
                 'request_id': request.id,
@@ -291,7 +291,7 @@ def notify_request_cancelled(request):
             verb=NotificationVerbs.CANCELLED,
             action_object=request,
             description=description,
-            action_url=ActionURLs.PROCUREMENT_LIST,
+            action_url=ActionURLs.request_detail(request.id),
             data={
                 'title': notification_title,
                 'request_id': request.id,

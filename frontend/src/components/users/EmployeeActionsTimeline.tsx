@@ -1,8 +1,10 @@
 "use client";
 
-import { History, Pencil, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import {
   getEmployeeActionTone,
+  truncateText,
 } from "@/lib/users/userDetailUtils";
 import type { EmployeeAction } from "@/types/api";
 
@@ -11,10 +13,14 @@ type EmployeeActionsTimelineProps = {
   canManageActions: boolean;
   canViewActions: boolean;
   latestActionId: number | null;
-  onAddAction: () => void;
-  onDeleteAction: (actionId: number) => void;
-  onEditAction: (action: EmployeeAction) => void;
+  onAddAction?: () => void;
+  onDeleteAction?: (actionId: number) => void;
+  onEditAction?: (action: EmployeeAction) => void;
   sortedActions: EmployeeAction[];
+  initialVisibleCount?: number;
+  showCountLabel?: boolean;
+  truncateCommentLength?: number;
+  expandedCommentLength?: number;
 };
 
 function formatActionDate(value: string) {
@@ -36,43 +42,73 @@ export default function EmployeeActionsTimeline({
   onDeleteAction,
   onEditAction,
   sortedActions,
+  initialVisibleCount,
+  showCountLabel = true,
+  truncateCommentLength,
+  expandedCommentLength = truncateCommentLength,
 }: EmployeeActionsTimelineProps) {
+  const [showAll, setShowAll] = useState(false);
+
   if (!canViewActions || sortedActions.length === 0) {
     return null;
   }
 
+  const canCollapse = Boolean(initialVisibleCount && sortedActions.length > initialVisibleCount);
+  const visibleActions = useMemo(
+    () => (canCollapse && !showAll ? sortedActions.slice(0, initialVisibleCount) : sortedActions),
+    [canCollapse, initialVisibleCount, showAll, sortedActions],
+  );
+
   return (
     <section className="app-surface rounded-[24px] p-5">
       <div className="mb-4 flex items-start justify-between gap-4">
+        <h2 className="app-card-caption">Кадровые события</h2>
         <div className="flex items-center gap-2">
-          <History size={18} className="app-text-muted" />
-          <h2 className="app-card-caption">Кадровые события</h2>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="app-text-muted text-sm">
-            {sortedActions.length}{" "}
-            {sortedActions.length === 1
-              ? "событие"
-              : sortedActions.length < 5
-                ? "события"
-                : "событий"}
-          </span>
-          {canManageActions ? (
+          {showCountLabel ? (
+            <span className="app-text-muted text-sm">
+              {sortedActions.length}{" "}
+              {sortedActions.length === 1
+                ? "событие"
+                : sortedActions.length < 5
+                  ? "события"
+                  : "событий"}
+            </span>
+          ) : null}
+          {canCollapse ? (
             <button
-              onClick={onAddAction}
+              type="button"
+              onClick={() => setShowAll((current) => !current)}
               className="app-action-secondary rounded-xl px-3 py-2 text-sm font-medium"
             >
-              + Добавить
+              {showAll ? "Свернуть" : `Показать все (${sortedActions.length})`}
+            </button>
+          ) : null}
+          {canManageActions && onAddAction ? (
+            <button
+              onClick={onAddAction}
+              className="app-action-secondary inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium"
+            >
+              <Plus size={14} />
+              Добавить
             </button>
           ) : null}
         </div>
       </div>
 
+      {!showAll && canCollapse ? (
+        <p className="app-text-muted mb-3 text-sm">
+          Последние {visibleActions.length} из {sortedActions.length}
+        </p>
+      ) : null}
+
       <div className="space-y-3">
-        {sortedActions.map((action) => {
+        {visibleActions.map((action) => {
           const isCurrent = latestActionId === action.id;
           const deleteKey = `delete-${action.id}`;
           const tone = getEmployeeActionTone(action.action);
+          const commentText = truncateCommentLength
+            ? truncateText(action.comment, showAll ? expandedCommentLength : truncateCommentLength)
+            : action.comment;
 
           return (
             <div key={action.id} className="relative pl-5">
@@ -101,9 +137,9 @@ export default function EmployeeActionsTimeline({
                         </span>
                       ) : null}
                     </div>
-                    {action.comment ? (
+                    {commentText ? (
                       <p className="app-text-wrap app-text-muted mt-2 text-sm leading-6">
-                        {action.comment}
+                        {commentText}
                       </p>
                     ) : null}
                   </div>
@@ -111,7 +147,7 @@ export default function EmployeeActionsTimeline({
                     <time className="app-text-muted pt-1 text-sm">
                       {formatActionDate(action.date)}
                     </time>
-                    {canManageActions ? (
+                    {canManageActions && onEditAction && onDeleteAction ? (
                       <div className="flex gap-1">
                         <button
                           onClick={() => onEditAction(action)}
