@@ -102,7 +102,7 @@ export default function EmployeeActionsTimeline({
                       ) : null}
                     </div>
                     {action.comment ? (
-                      <p className="app-text-muted mt-2 text-sm leading-6">
+                      <p className="app-text-wrap app-text-muted mt-2 text-sm leading-6">
                         {action.comment}
                       </p>
                     ) : null}

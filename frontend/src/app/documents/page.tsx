@@ -681,7 +681,7 @@ function DocumentsPageContent() {
                               className={`overflow-hidden rounded-xl transition ${
                                 isSelected
                                   ? "app-selected shadow-[var(--shadow-card)]"
-                                  : "app-surface hover:border-[var(--border-strong)]"
+                                  : "app-surface-muted hover:border-[var(--border-strong)]"
                               }`}
                             >
                               <div className="p-4">
@@ -806,7 +806,7 @@ function DocumentsPageContent() {
                                     )}
 
                                     {doc.description && (
-                                      <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-[var(--foreground)]">
+                                      <p className="app-text-wrap mt-3 line-clamp-3 text-sm leading-relaxed text-[var(--foreground)]">
                                         {doc.description}
                                       </p>
                                     )}

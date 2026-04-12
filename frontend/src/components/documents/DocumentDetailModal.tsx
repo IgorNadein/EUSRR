@@ -280,7 +280,7 @@ export function DocumentDetailModal({
                           <h3 className="app-text-muted mb-3 text-xs font-semibold uppercase tracking-wide">
                             Описание
                           </h3>
-                          <p className="app-text-muted text-sm leading-relaxed">
+                          <p className="app-text-wrap app-text-muted text-sm leading-relaxed">
                             {document.description || "Описание отсутствует"}
                           </p>
                         </div>
@@ -543,7 +543,7 @@ export function DocumentDetailModal({
                     <h3 className="app-text-muted mb-3 text-xs font-semibold uppercase tracking-wide">
                       Описание
                     </h3>
-                    <p className="app-text-muted text-sm leading-relaxed">
+                    <p className="app-text-wrap app-text-muted text-sm leading-relaxed">
                       {document.description || "Описание отсутствует"}
                     </p>
                   </div>

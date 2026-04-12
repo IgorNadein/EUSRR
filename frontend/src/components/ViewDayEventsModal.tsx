@@ -118,7 +118,7 @@ export function ViewDayEventsModal({
 
                       {/* Description preview */}
                       {event.description && (
-                        <p className="app-text-muted mt-1.5 line-clamp-2 text-xs">
+                        <p className="app-text-wrap app-text-muted mt-1.5 line-clamp-2 text-xs">
                           {event.description}
                         </p>
                       )}

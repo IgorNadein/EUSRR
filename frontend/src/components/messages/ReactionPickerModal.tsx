@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { EmojiStyle, SuggestionMode, Theme } from "emoji-picker-react";
 
 import { Modal } from "@/components/ui";
+import { useTheme } from "@/contexts/ThemeContext";
 import emojiDataRu from "emoji-picker-react/dist/data/emojis-ru.js";
 
 const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
@@ -14,17 +15,20 @@ type ReactionPickerModalProps = {
 };
 
 export default function ReactionPickerModal({ onClose, onSelect }: ReactionPickerModalProps) {
+  const { resolvedTheme } = useTheme();
+
   return (
     <Modal isOpen onClose={onClose} title="Выберите реакцию" size="sm" className="reaction-picker-modal">
       <div className="space-y-4" data-reaction-picker="true">
-        <p className="text-sm text-gray-500">Быстрый способ отреагировать на сообщение без текста.</p>
+        <p className="app-text-muted text-sm">Быстрый способ отреагировать на сообщение без текста.</p>
 
-        <div className="overflow-hidden rounded-xl border border-gray-100 bg-white">
+        <div className="reaction-picker-surface app-surface-muted overflow-hidden rounded-xl">
           <EmojiPicker
+            className="reaction-emoji-picker"
             emojiData={emojiDataRu}
             onEmojiClick={(emoji) => onSelect(emoji.emoji)}
             searchPlaceholder="Поиск смайликов"
-            theme={Theme.LIGHT}
+            theme={resolvedTheme === "dark" ? Theme.DARK : Theme.LIGHT}
             emojiStyle={EmojiStyle.NATIVE}
             suggestedEmojisMode={SuggestionMode.FREQUENT}
             lazyLoadEmojis

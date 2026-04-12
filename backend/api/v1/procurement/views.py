@@ -27,7 +27,7 @@ from procurement.models import (
 )
 from communications import comments_helpers
 from communications.models import Message
-from procurement.services import ProcurementApprovalResolver, QRCodeGenerator
+from procurement.services import ProcurementApprovalResolver
 from .permissions import (
     CanApproveProcurementRequest,
     CanManageEquipment,
@@ -198,16 +198,43 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        resolved_approvals, missing_priorities = (
-            ProcurementApprovalResolver.resolve_required_approvers(
+        resolved_approvals, missing_routes = (
+            ProcurementApprovalResolver.resolve_required_approvers_detailed(
                 procurement_request
             )
         )
-        if missing_priorities:
+        if missing_routes:
+            missing_priorities = [
+                route["priority"] for route in missing_routes
+            ]
+            missing_department_head = next(
+                (
+                    route
+                    for route in missing_routes
+                    if route["reason"] == "department_head_missing"
+                ),
+                None,
+            )
+            if missing_department_head:
+                return Response(
+                    {
+                        "error": (
+                            "У выбранного отдела не назначен руководитель. "
+                            "Заявку нельзя отправить на согласование, "
+                            "пока не будет назначен начальник отдела."
+                        ),
+                        "code": "department_head_missing",
+                        "missing_priorities": missing_priorities,
+                        "missing_routes": missing_routes,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             return Response(
                 {
                     "error": "Не настроены согласующие для обязательных этапов",
+                    "code": "approval_routes_incomplete",
                     "missing_priorities": missing_priorities,
+                    "missing_routes": missing_routes,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -1185,21 +1212,6 @@ class EquipmentViewSet(viewsets.ModelViewSet):
             },
             status=status.HTTP_201_CREATED,
         )
-
-    @action(detail=True, methods=["get"])
-    def qr_code(self, request, pk=None):
-        """Получить QR-код для оборудования."""
-        equipment = self.get_object()
-
-        qr_file = QRCodeGenerator.generate_for_equipment(equipment)
-
-        from django.http import HttpResponse
-
-        response = HttpResponse(qr_file.read(), content_type="image/png")
-        response["Content-Disposition"] = (
-            f'inline; filename="equipment_{equipment.id}_qr.png"'
-        )
-        return response
 
     @action(detail=True, methods=["get"])
     def transfer_history(self, request, pk=None):

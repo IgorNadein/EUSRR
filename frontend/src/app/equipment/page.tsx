@@ -1,13 +1,17 @@
 "use client";
 
+import QRCode from "qrcode";
 import { AppShell } from "../../components/AppShell";
 import { useUser } from "@/contexts/UserContext";
 import Link from "next/link";
-import { Archive, ArrowRightLeft, ArrowUpDown, ChevronDown, Filter, MessageSquare, Monitor, Pencil, Plus, QrCode, Search, Shield, Trash2, Wrench, X } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Archive, ArrowRightLeft, ArrowUpDown, Check, ChevronDown, Copy, Download, ExternalLink, Filter, MessageSquare, Monitor, Pencil, Plus, QrCode, Search, Shield, Trash2, Wrench, X } from "lucide-react";
 import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
 import { formatDate, formatMoney } from "@/lib/shared";
 import { useEquipmentPage } from "@/hooks/useEquipmentPage";
 import { Modal } from "@/components/ui";
+import type { Equipment, EquipmentTransferHistoryEntry, MaintenanceRecord } from "@/types/api";
 
 const listModeMeta = [
   { value: "all", label: "Весь реестр" },
@@ -27,31 +31,31 @@ const orderingOptions = [
 const statusMeta: Record<string, { label: string; className: string; accentClass: string; surfaceClass: string }> = {
   available: {
     label: "Доступно",
-    className: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+    className: "app-feedback-success",
     accentClass: "bg-emerald-500",
     surfaceClass: "border-emerald-100",
   },
   in_use: {
     label: "В использовании",
-    className: "bg-sky-50 text-sky-700 ring-sky-100",
+    className: "app-selected",
     accentClass: "bg-sky-500",
     surfaceClass: "border-sky-100",
   },
   maintenance: {
     label: "На обслуживании",
-    className: "bg-amber-50 text-amber-700 ring-amber-100",
+    className: "app-feedback-warning",
     accentClass: "bg-amber-500",
     surfaceClass: "border-amber-100",
   },
   retired: {
     label: "Списано",
-    className: "bg-gray-100 text-gray-700 ring-gray-200",
+    className: "app-badge",
     accentClass: "bg-gray-400",
     surfaceClass: "border-gray-200",
   },
   broken: {
     label: "Сломано",
-    className: "bg-rose-50 text-rose-700 ring-rose-100",
+    className: "app-feedback-danger",
     accentClass: "bg-rose-500",
     surfaceClass: "border-rose-100",
   },
@@ -59,14 +63,132 @@ const statusMeta: Record<string, { label: string; className: string; accentClass
 
 const defaultStatusMeta = {
   label: "—",
-  className: "bg-gray-50 text-gray-700 ring-gray-200",
+  className: "app-badge",
   accentClass: "bg-gray-300",
   surfaceClass: "border-gray-200",
 };
 
-/* ──── main page ──── */
+type EquipmentMetaItem = {
+  label: string;
+  value: string;
+};
+
+function EquipmentDetailContent({
+  detailItem,
+  metaItems,
+  transferHistory,
+  maintenanceRecords,
+  canManage,
+  onTransfer,
+  onMaintenance,
+  onWriteOff,
+}: {
+  detailItem: Equipment;
+  metaItems: EquipmentMetaItem[];
+  transferHistory: EquipmentTransferHistoryEntry[];
+  maintenanceRecords: MaintenanceRecord[];
+  canManage: boolean;
+  onTransfer: () => void;
+  onMaintenance: () => void;
+  onWriteOff: () => void;
+}) {
+  return (
+    <div className="space-y-3">
+      {canManage && (
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={onTransfer} className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium">
+            <ArrowRightLeft size={15} /> Перевести
+          </button>
+          <button type="button" onClick={onMaintenance} className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium">
+            <Wrench size={15} /> Обслуживание
+          </button>
+          {detailItem.status !== "retired" && (
+            <button type="button" onClick={onWriteOff} className="app-action-danger inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium">
+              <Archive size={15} /> Списать
+            </button>
+          )}
+        </div>
+      )}
+
+      {detailItem.notes && (
+        <div className="app-surface-muted rounded-xl p-4">
+          <p className="app-text-muted text-xs font-medium uppercase tracking-wide">Заметки</p>
+          <p className="app-text-wrap mt-2 text-sm leading-6 text-[var(--foreground)]">{detailItem.notes}</p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {metaItems.map((meta) => (
+          <div key={meta.label} className="app-surface-muted rounded-xl px-3 py-3">
+            <p className="app-text-muted text-[11px] font-medium uppercase tracking-wide">{meta.label}</p>
+            <p className="app-text-wrap mt-1 text-sm font-medium text-[var(--foreground)]">{meta.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        <div className="app-surface-muted rounded-xl p-4">
+          <p className="app-text-muted mb-3 text-xs font-medium uppercase tracking-wide">История переводов</p>
+          {transferHistory.length === 0 ? (
+            <p className="app-text-muted text-sm">Переводы пока не выполнялись</p>
+          ) : (
+            <div className="space-y-2">
+              {transferHistory.map((entry) => (
+                <div key={entry.id} className="app-surface rounded-lg px-3 py-2 text-sm text-[var(--foreground)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium">{formatDate(entry.date)}</span>
+                    <span className="app-text-muted text-xs">{entry.created_by || "—"}</span>
+                  </div>
+                  <p className="app-text-wrap app-text-muted mt-1 text-xs">{entry.from_department || "—"} → {entry.to_department || "—"}</p>
+                  {(entry.from_person || entry.to_person) && <p className="app-text-wrap app-text-muted mt-1 text-xs">{entry.from_person || "—"} → {entry.to_person || "—"}</p>}
+                  {entry.reason && <p className="app-text-wrap app-text-muted mt-1 text-xs">Причина: {entry.reason}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="app-surface-muted rounded-xl p-4">
+          <p className="app-text-muted mb-3 text-xs font-medium uppercase tracking-wide">История обслуживания</p>
+          {maintenanceRecords.length === 0 ? (
+            <p className="app-text-muted text-sm">Записей обслуживания пока нет</p>
+          ) : (
+            <div className="space-y-2">
+              {maintenanceRecords.map((record) => (
+                <div key={record.id} className="app-surface rounded-lg px-3 py-2 text-sm text-[var(--foreground)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium">{record.type_display || record.type}</span>
+                    <span className="app-text-muted text-xs">{formatDate(record.date)}</span>
+                  </div>
+                  {record.description && <p className="app-text-wrap app-text-muted mt-1 text-xs">{record.description}</p>}
+                  <div className="app-text-muted mt-1 flex items-center justify-between gap-3 text-xs">
+                    <span>{record.performed_by_name || "—"}</span>
+                    <span>{formatMoney(record.cost)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EquipmentPage() {
+  return (
+    <Suspense fallback={<AppShell><div className="app-surface rounded-2xl p-8 text-center"><p className="app-text-muted text-sm">Загрузка оборудования...</p></div></AppShell>}>
+      <EquipmentPageContent />
+    </Suspense>
+  );
+}
+
+/* ──── main page ──── */
+function EquipmentPageContent() {
   const { user } = useUser();
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const {
     auth,
     actionError,
@@ -104,7 +226,6 @@ export default function EquipmentPage() {
     handleDeleteComment,
     handleLoadMore,
     handleMaintenance,
-    handleOpenQr,
     handleSave,
     handleTransfer,
     handleWriteOff,
@@ -120,6 +241,7 @@ export default function EquipmentPage() {
     nextPage,
     openCreateModal,
     openEdit,
+    openEquipmentById,
     openOperationModal,
     operationModal,
     ordering,
@@ -149,6 +271,141 @@ export default function EquipmentPage() {
     toggleRow,
     writeOffReason,
   } = useEquipmentPage(user);
+
+  const [qrEquipment, setQrEquipment] = useState<typeof filteredItems[number] | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrError, setQrError] = useState<string | null>(null);
+  const [qrCopySuccess, setQrCopySuccess] = useState(false);
+  const handledLinkedEquipmentRef = useRef<number | null>(null);
+
+  const linkedEquipmentParam = searchParams.get("item");
+  const linkedEquipmentId = Number(linkedEquipmentParam || "");
+  const linkedEquipment = useMemo(
+    () => (linkedEquipmentId > 0 ? detailsMap[linkedEquipmentId] || filteredItems.find((item) => item.id === linkedEquipmentId) || null : null),
+    [detailsMap, filteredItems, linkedEquipmentId],
+  );
+  const linkedEquipmentMeta = useMemo(
+    () => (linkedEquipment ? getEquipmentMeta(linkedEquipment) : []),
+    [getEquipmentMeta, linkedEquipment],
+  );
+  const linkedTransferHistory = linkedEquipmentId > 0 ? transferHistoryMap[linkedEquipmentId] || [] : [];
+  const linkedMaintenanceRecords = linkedEquipmentId > 0 ? maintenanceMap[linkedEquipmentId] || [] : [];
+
+  const buildEquipmentLink = useCallback((equipmentId: number) => {
+    if (typeof window === "undefined") return `/equipment?item=${equipmentId}`;
+    return `${window.location.origin}/equipment?item=${equipmentId}`;
+  }, []);
+
+  useEffect(() => {
+    if (!linkedEquipmentParam || !Number.isFinite(linkedEquipmentId) || linkedEquipmentId <= 0) {
+      handledLinkedEquipmentRef.current = null;
+      return;
+    }
+
+    if (handledLinkedEquipmentRef.current === linkedEquipmentId) {
+      return;
+    }
+
+    handledLinkedEquipmentRef.current = linkedEquipmentId;
+
+    let cancelled = false;
+
+    void (async () => {
+      await openEquipmentById(linkedEquipmentId, { expand: false });
+      if (cancelled) return;
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [linkedEquipmentId, linkedEquipmentParam, openEquipmentById]);
+
+  useEffect(() => {
+    if (!qrEquipment) {
+      setQrDataUrl(null);
+      setQrError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        setQrError(null);
+        const nextDataUrl = await QRCode.toDataURL(buildEquipmentLink(qrEquipment.id), {
+          width: 320,
+          margin: 1,
+          errorCorrectionLevel: "M",
+          color: {
+            dark: "#0f172a",
+            light: "#ffffffff",
+          },
+        });
+        if (!cancelled) {
+          setQrDataUrl(nextDataUrl);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setQrError(String((error as Error)?.message || "Не удалось сформировать QR-код"));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [buildEquipmentLink, qrEquipment]);
+
+  const handleOpenQrModal = useCallback((equipment: typeof filteredItems[number]) => {
+    setQrCopySuccess(false);
+    setQrEquipment(equipment);
+  }, []);
+
+  const handleCloseQrModal = useCallback(() => {
+    setQrEquipment(null);
+    setQrDataUrl(null);
+    setQrError(null);
+    setQrCopySuccess(false);
+  }, []);
+
+  const handleCopyQrLink = useCallback(async () => {
+    if (!qrEquipment) return;
+    try {
+      await navigator.clipboard.writeText(buildEquipmentLink(qrEquipment.id));
+      setQrCopySuccess(true);
+      window.setTimeout(() => setQrCopySuccess(false), 1600);
+    } catch {
+      setQrError("Не удалось скопировать ссылку");
+    }
+  }, [buildEquipmentLink, qrEquipment]);
+
+  const handleDownloadQr = useCallback(() => {
+    if (!qrEquipment || !qrDataUrl) return;
+    const link = document.createElement("a");
+    link.href = qrDataUrl;
+    link.download = `${qrEquipment.inventory_number || `equipment-${qrEquipment.id}`}.png`;
+    link.click();
+  }, [qrDataUrl, qrEquipment]);
+
+  const handleOpenEquipmentLink = useCallback(() => {
+    if (!qrEquipment) return;
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.set("item", String(qrEquipment.id));
+    router.replace(`${pathname}?${nextParams.toString()}`, { scroll: false });
+    handleCloseQrModal();
+  }, [handleCloseQrModal, pathname, qrEquipment, router, searchParams]);
+
+  const handleCloseLinkedEquipmentModal = useCallback(() => {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("item");
+    const nextQuery = nextParams.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  const qrLink = useMemo(
+    () => (qrEquipment ? buildEquipmentLink(qrEquipment.id) : ""),
+    [buildEquipmentLink, qrEquipment],
+  );
   /* ──── render ──── */
   return (
     <AppShell>
@@ -176,7 +433,7 @@ export default function EquipmentPage() {
           </div>
 
           {actionError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
-          {actionSuccess && <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{actionSuccess}</p>}
+          {actionSuccess && <p className="app-feedback-success mb-3 rounded-lg px-3 py-2 text-sm">{actionSuccess}</p>}
 
           {/* Search + filter toggle */}
           <div className="mb-4 flex items-center gap-2">
@@ -281,9 +538,9 @@ export default function EquipmentPage() {
           {/* Items list */}
           <div className="space-y-2">
             {filteredItems.length === 0 ? (
-              <div className="rounded-xl bg-gray-50 p-8 text-center">
-                <Monitor size={22} className="mx-auto mb-2 text-gray-400" />
-                <p className="text-sm text-gray-500">Записи об оборудовании не найдены</p>
+              <div className="app-surface-muted rounded-xl p-8 text-center">
+                <Monitor size={22} className="app-text-muted mx-auto mb-2" />
+                <p className="app-text-muted text-sm">Записи об оборудовании не найдены</p>
               </div>
             ) : (
               <>
@@ -306,14 +563,14 @@ export default function EquipmentPage() {
                 const rowLoading = Boolean(loadingRowDetails[item.id]);
 
                 return (
-                  <article key={item.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white transition hover:border-gray-300">
+                  <article id={`equipment-${item.id}`} key={item.id} className="app-surface-muted overflow-hidden rounded-xl transition hover:border-[var(--border-strong)]">
                     <div className="px-4 py-3">
                       <div className="flex items-start gap-3">
                         <button
                           type="button"
                           onClick={() => toggleRow(item.id)}
                           aria-label={rowOpen ? "Свернуть детали" : "Развернуть детали"}
-                          className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-500 transition hover:bg-gray-100"
+                          className="app-action-secondary mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
                         >
                           <ChevronDown size={15} className={`transition ${rowOpen ? "rotate-180" : ""}`} />
                         </button>
@@ -323,28 +580,28 @@ export default function EquipmentPage() {
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
                                 <span className={`h-2 w-2 shrink-0 rounded-full ${st.accentClass}`} />
-                                <h3 className="truncate text-sm font-semibold text-gray-900">{item.name || "Без названия"}</h3>
+                                <h3 className="truncate text-sm font-semibold text-[var(--foreground)]">{item.name || "Без названия"}</h3>
                               </div>
-                              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                                <span className="font-medium text-gray-700">{item.inventory_number || "Без инв. номера"}</span>
+                              <div className="app-text-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                                <span className="font-medium text-[var(--foreground)]">{item.inventory_number || "Без инв. номера"}</span>
                                 {item.serial_number && <span>SN: {item.serial_number}</span>}
                               </div>
                             </div>
 
                             <div className="flex shrink-0 items-center gap-1.5">
-                              <button type="button" title={`Комментарии (${commentsTotal})`} onClick={() => toggleComments(item.id)} className="relative inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700">
+                              <button type="button" title={`Комментарии (${commentsTotal})`} onClick={() => toggleComments(item.id)} className="app-action-secondary relative inline-flex h-8 w-8 items-center justify-center rounded-lg">
                                 <MessageSquare size={15} />
                                 {commentsTotal > 0 && (
-                                  <span className="absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 py-0.5 text-[10px] font-bold text-white">{commentsTotal}</span>
+                                  <span className="app-counter absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center px-1 py-0.5 text-[10px] font-bold text-white">{commentsTotal}</span>
                                 )}
                               </button>
                               {canEditThis && (
-                                <button type="button" title="Редактировать" onClick={() => openEdit(item)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50">
+                                <button type="button" title="Редактировать" onClick={() => openEdit(item)} className="app-action-secondary inline-flex h-8 w-8 items-center justify-center rounded-lg">
                                   <Pencil size={15} />
                                 </button>
                               )}
                               {canDeleteThis && (
-                                <button type="button" title="Удалить" onClick={() => handleDelete(item.id)} disabled={busyKey === `delete-${item.id}`} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-600 transition hover:bg-rose-100 disabled:opacity-60">
+                                <button type="button" title="Удалить" onClick={() => handleDelete(item.id)} disabled={busyKey === `delete-${item.id}`} className="app-action-danger inline-flex h-8 w-8 items-center justify-center rounded-lg disabled:opacity-60">
                                   <Trash2 size={15} />
                                 </button>
                               )}
@@ -352,32 +609,32 @@ export default function EquipmentPage() {
                           </div>
 
                           <div className="mt-2 flex flex-wrap items-center gap-2">
-                            {statusKey && <span className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${st.className}`}>{st.label}</span>}
+                            {statusKey && <span className={`app-status-pill shrink-0 ${st.className}`}>{st.label}</span>}
                             {item.is_under_warranty && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-[11px] font-medium text-gray-700 ring-1 ring-gray-200" title="На гарантии">
+                              <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium" title="На гарантии">
                                 <Shield size={11} /> Гарантия
                               </span>
                             )}
                           </div>
 
-                          <div className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-xs text-gray-500 sm:grid-cols-2">
+                          <div className="app-text-muted mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-xs sm:grid-cols-2">
                             <div>
-                              <span className="text-gray-400">Стоимость:</span>{" "}
-                              <span className="font-medium text-gray-700">{formatMoney(item.purchase_cost)}</span>
+                              <span>Стоимость:</span>{" "}
+                              <span className="font-medium text-[var(--foreground)]">{formatMoney(item.purchase_cost)}</span>
                             </div>
                             <div>
-                              <span className="text-gray-400">Покупка:</span>{" "}
-                              <span className="font-medium text-gray-700">{formatDate(item.purchase_date) || "—"}</span>
+                              <span>Покупка:</span>{" "}
+                              <span className="font-medium text-[var(--foreground)]">{formatDate(item.purchase_date) || "—"}</span>
                             </div>
                             {responsibleId ? (
                               <div className="col-span-2 min-w-0">
-                                <span className="text-gray-400">Ответственный:</span>{" "}
-                                <Link href={responsibleLink} className="font-medium text-sky-700 hover:text-sky-800">
+                                <span>Ответственный:</span>{" "}
+                                <Link href={responsibleLink} className="font-medium text-[var(--accent-primary-strong)] hover:text-[var(--accent-primary)]">
                                   {responsibleName}
                                 </Link>
                               </div>
                             ) : (
-                              <div className="col-span-2 text-gray-400">Ответственный не назначен</div>
+                              <div className="col-span-2">Ответственный не назначен</div>
                             )}
                           </div>
                         </div>
@@ -385,7 +642,7 @@ export default function EquipmentPage() {
                     </div>
 
                     {(rowOpen || commentsOpen) && (
-                      <div className="app-surface-muted mt-4 rounded-xl p-4">
+                      <div className="mt-4 space-y-3 px-4 pb-4">
                         {commentsOpen && (
                           <div className="app-surface rounded-xl p-3">
                             <div className="space-y-2">
@@ -403,7 +660,7 @@ export default function EquipmentPage() {
                                           {canDel && <button type="button" onClick={() => handleDeleteComment(item.id, c.id)} className="app-action-danger rounded-md px-1.5 py-0.5">удалить</button>}
                                         </div>
                                       </div>
-                                      <p>{c.text}</p>
+                                      <p className="app-text-wrap">{c.text}</p>
                                     </div>
                                   );
                                 })
@@ -419,19 +676,19 @@ export default function EquipmentPage() {
                         {rowOpen && (
                           <>
                             {rowLoading && (
-                              <div className={`${commentsOpen ? "mt-3 " : ""}app-selected mb-3 rounded-xl px-3 py-2 text-sm`}>
+                              <div className="app-selected rounded-xl px-3 py-2 text-sm">
                                 Загружаем детали оборудования...
                               </div>
                             )}
 
-                            <div className={`${commentsOpen ? "mt-3 " : ""}mb-3 flex flex-wrap gap-2`}>
+                            <div className="flex flex-wrap gap-2">
                               <button type="button" onClick={() => openOperationModal("transfer", detailItem)} className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium">
                                 <ArrowRightLeft size={15} /> Перевести
                               </button>
                               <button type="button" onClick={() => openOperationModal("maintenance", detailItem)} className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium">
                                 <Wrench size={15} /> Обслуживание
                               </button>
-                              <button type="button" onClick={() => handleOpenQr(item.id)} className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium">
+                              <button type="button" onClick={() => handleOpenQrModal(detailItem)} className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium">
                                 <QrCode size={15} /> QR-код
                               </button>
                               {item.status !== "retired" && (
@@ -444,7 +701,7 @@ export default function EquipmentPage() {
                             {detailItem.notes && (
                               <div className="app-surface mb-3 rounded-xl p-4">
                                 <p className="app-text-muted text-xs font-medium uppercase tracking-wide">Заметки</p>
-                                <p className="mt-2 text-sm leading-6 text-[var(--foreground)]">{detailItem.notes}</p>
+                                <p className="app-text-wrap mt-2 text-sm leading-6 text-[var(--foreground)]">{detailItem.notes}</p>
                               </div>
                             )}
 
@@ -452,7 +709,7 @@ export default function EquipmentPage() {
                               {metaItems.map((meta) => (
                                 <div key={meta.label} className="app-surface rounded-xl px-3 py-3">
                                   <p className="app-text-muted text-[11px] font-medium uppercase tracking-wide">{meta.label}</p>
-                                  <p className="mt-1 text-sm font-medium text-[var(--foreground)]">{meta.value}</p>
+                                  <p className="app-text-wrap mt-1 text-sm font-medium text-[var(--foreground)]">{meta.value}</p>
                                 </div>
                               ))}
                             </div>
@@ -470,9 +727,9 @@ export default function EquipmentPage() {
                                           <span className="font-medium">{formatDate(entry.date)}</span>
                                           <span className="app-text-muted text-xs">{entry.created_by || "—"}</span>
                                         </div>
-                                        <p className="app-text-muted mt-1 text-xs">{entry.from_department || "—"} → {entry.to_department || "—"}</p>
-                                        {(entry.from_person || entry.to_person) && <p className="app-text-muted mt-1 text-xs">{entry.from_person || "—"} → {entry.to_person || "—"}</p>}
-                                        {entry.reason && <p className="app-text-muted mt-1 text-xs">Причина: {entry.reason}</p>}
+                                        <p className="app-text-wrap app-text-muted mt-1 text-xs">{entry.from_department || "—"} → {entry.to_department || "—"}</p>
+                                        {(entry.from_person || entry.to_person) && <p className="app-text-wrap app-text-muted mt-1 text-xs">{entry.from_person || "—"} → {entry.to_person || "—"}</p>}
+                                        {entry.reason && <p className="app-text-wrap app-text-muted mt-1 text-xs">Причина: {entry.reason}</p>}
                                       </div>
                                     ))}
                                   </div>
@@ -491,7 +748,7 @@ export default function EquipmentPage() {
                                           <span className="font-medium">{record.type_display || record.type}</span>
                                           <span className="app-text-muted text-xs">{formatDate(record.date)}</span>
                                         </div>
-                                        {record.description && <p className="app-text-muted mt-1 text-xs">{record.description}</p>}
+                                        {record.description && <p className="app-text-wrap app-text-muted mt-1 text-xs">{record.description}</p>}
                                         <div className="app-text-muted mt-1 flex items-center justify-between gap-3 text-xs">
                                           <span>{record.performed_by_name || "—"}</span>
                                           <span>{formatMoney(record.cost)}</span>
@@ -504,7 +761,6 @@ export default function EquipmentPage() {
                             </div>
                           </>
                         )}
-
                       </div>
                     )}
                   </article>
@@ -517,7 +773,7 @@ export default function EquipmentPage() {
           {/* Load more */}
           {nextPage && (
             <div className="mt-4 flex justify-center">
-              <button type="button" onClick={handleLoadMore} disabled={loadingMore} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60">
+              <button type="button" onClick={handleLoadMore} disabled={loadingMore} className="app-action-secondary rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-60">
                 {loadingMore ? "Загружаем..." : "Загрузить ещё"}
               </button>
             </div>
@@ -726,6 +982,117 @@ export default function EquipmentPage() {
                 </div>
               </div>
             )}
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(linkedEquipmentParam && linkedEquipmentId > 0)}
+        onClose={handleCloseLinkedEquipmentModal}
+        title="Карточка оборудования"
+        size="lg"
+      >
+        {linkedEquipment ? (
+          <div className="space-y-4">
+            <div className="app-surface-muted rounded-xl p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${(statusMeta[String(linkedEquipment.status || "").toLowerCase()] ?? defaultStatusMeta).accentClass}`} />
+                    <h3 className="text-base font-semibold text-[var(--foreground)]">
+                      {linkedEquipment.name || "Без названия"}
+                    </h3>
+                  </div>
+                  <p className="app-text-muted mt-1 text-sm">
+                    {linkedEquipment.inventory_number || `ID ${linkedEquipment.id}`}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {String(linkedEquipment.status || "").toLowerCase() && (
+                    <span className={`app-status-pill ${(statusMeta[String(linkedEquipment.status || "").toLowerCase()] ?? defaultStatusMeta).className}`}>
+                      {(statusMeta[String(linkedEquipment.status || "").toLowerCase()] ?? defaultStatusMeta).label}
+                    </span>
+                  )}
+                  {linkedEquipment.is_under_warranty && (
+                    <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                      <Shield size={11} /> Гарантия
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <EquipmentDetailContent
+              detailItem={linkedEquipment}
+              metaItems={linkedEquipmentMeta}
+              transferHistory={linkedTransferHistory}
+              maintenanceRecords={linkedMaintenanceRecords}
+              canManage={canManage}
+              onTransfer={() => openOperationModal("transfer", linkedEquipment)}
+              onMaintenance={() => openOperationModal("maintenance", linkedEquipment)}
+              onWriteOff={() => openOperationModal("writeoff", linkedEquipment)}
+            />
+          </div>
+        ) : (
+          <div className="app-surface-muted rounded-xl p-6 text-center">
+            <p className="app-text-muted text-sm">Загружаем карточку оборудования...</p>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={!!qrEquipment}
+        onClose={handleCloseQrModal}
+        title="QR-код оборудования"
+        size="md"
+        footer={
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button type="button" onClick={handleCopyQrLink} className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium">
+              {qrCopySuccess ? <Check size={15} /> : <Copy size={15} />}
+              {qrCopySuccess ? "Скопировано" : "Скопировать ссылку"}
+            </button>
+            <button type="button" onClick={handleDownloadQr} disabled={!qrDataUrl} className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-60">
+              <Download size={15} />
+              Скачать PNG
+            </button>
+            <button type="button" onClick={handleOpenEquipmentLink} className="app-action-primary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium">
+              <ExternalLink size={15} />
+              Открыть запись
+            </button>
+          </div>
+        }
+      >
+        {qrEquipment ? (
+          <div className="space-y-4">
+            <div className="app-surface-muted rounded-xl p-4">
+              <p className="text-sm font-semibold text-[var(--foreground)]">
+                {qrEquipment.name || "Без названия"}
+              </p>
+              <p className="app-text-muted mt-1 text-sm">
+                {qrEquipment.inventory_number || `ID ${qrEquipment.id}`}
+              </p>
+            </div>
+
+            <div className="app-surface-muted flex items-center justify-center rounded-2xl p-5">
+              {qrError ? (
+                <p className="app-feedback-danger rounded-lg px-3 py-2 text-sm">{qrError}</p>
+              ) : qrDataUrl ? (
+                <img
+                  src={qrDataUrl}
+                  alt={`QR-код для ${qrEquipment.inventory_number || qrEquipment.name || "оборудования"}`}
+                  className="h-72 w-72 rounded-xl bg-white p-3"
+                />
+              ) : (
+                <div className="app-text-muted flex h-72 w-72 items-center justify-center rounded-xl bg-white text-sm">
+                  Формируем QR-код...
+                </div>
+              )}
+            </div>
+
+            <div className="app-surface-muted rounded-xl p-4">
+              <p className="text-sm font-semibold text-[var(--foreground)]">Содержимое</p>
+              <p className="app-text-wrap app-text-muted mt-2 text-sm">{qrLink}</p>
+            </div>
+          </div>
+        ) : null}
       </Modal>
 
       {/* ===== Attachment preview removed (no attachment fields in model) ===== */}

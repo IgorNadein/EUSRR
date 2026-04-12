@@ -709,10 +709,10 @@ export default function ProfilePage() {
                             </span>
                           ) : null}
                           {action.comment ? (
-                            <p className="app-text-muted mt-2 text-sm leading-6">
-                              {truncateText(
-                                action.comment,
-                                showAllActions ? 240 : 120,
+                              <p className="app-text-wrap app-text-muted mt-2 text-sm leading-6">
+                                {truncateText(
+                                  action.comment,
+                                  showAllActions ? 240 : 120,
                               )}
                             </p>
                           ) : null}

@@ -37,15 +37,15 @@ import { Modal } from "@/components/ui";
    ══════════════════════════════════════════════════════ */
 
 const statusMeta: Record<string, { label: string; cls: string }> = {
-  draft:       { label: "Черновик",        cls: "bg-slate-100 text-slate-700 ring-slate-200" },
-  pending:     { label: "На согласовании", cls: "bg-amber-50 text-amber-700 ring-amber-100" },
-  approved:    { label: "Одобрено",        cls: "bg-emerald-50 text-emerald-700 ring-emerald-100" },
-  in_progress: { label: "В работе",        cls: "bg-sky-50 text-sky-700 ring-sky-100" },
-  completed:   { label: "Завершено",       cls: "bg-teal-50 text-teal-700 ring-teal-100" },
-  rejected:    { label: "Отклонено",       cls: "bg-rose-50 text-rose-700 ring-rose-100" },
-  cancelled:   { label: "Отменено",        cls: "bg-gray-100 text-gray-600 ring-gray-200" },
+  draft:       { label: "Черновик",        cls: "app-badge" },
+  pending:     { label: "На согласовании", cls: "app-feedback-warning" },
+  approved:    { label: "Одобрено",        cls: "app-feedback-success" },
+  in_progress: { label: "В работе",        cls: "app-selected" },
+  completed:   { label: "Завершено",       cls: "app-selected" },
+  rejected:    { label: "Отклонено",       cls: "app-feedback-danger" },
+  cancelled:   { label: "Отменено",        cls: "app-badge" },
 };
-const defaultStatusMeta = { label: "—", cls: "bg-gray-50 text-gray-700 ring-gray-200" };
+const defaultStatusMeta = { label: "—", cls: "app-badge" };
 
 const urgencyMeta: Record<string, { label: string; cls: string }> = {
   low:      { label: "Низкая",      cls: "text-gray-500" },
@@ -194,7 +194,7 @@ export default function ProcurementPage() {
 
           {/* ── alerts ── */}
           {actionError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
-          {actionSuccess && <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{actionSuccess}</p>}
+          {actionSuccess && <p className="app-feedback-success mb-3 rounded-lg px-3 py-2 text-sm">{actionSuccess}</p>}
 
           {activeSection === "stats" && <ProcurementStatsPanel />}
 
@@ -295,9 +295,9 @@ export default function ProcurementPage() {
           {/* ══════════ Request cards ══════════ */}
           <div className="space-y-3">
             {filteredRequests.length === 0 ? (
-              <div className="rounded-xl bg-gray-50 p-8 text-center">
-                <ShoppingCart size={22} className="mx-auto mb-2 text-gray-400" />
-                <p className="text-sm text-gray-500">Заявок на закупку не найдено</p>
+              <div className="app-surface-muted rounded-xl p-8 text-center">
+                <ShoppingCart size={22} className="app-text-muted mx-auto mb-2" />
+                <p className="app-text-muted text-sm">Заявок на закупку не найдено</p>
               </div>
             ) : filteredRequests.map((req) => {
               const st = String(req.status || "").toLowerCase();
@@ -320,14 +320,14 @@ export default function ProcurementPage() {
               const approvalsCount = resolvedDetail.approvals?.length ?? 0;
 
               return (
-                <article key={req.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white transition hover:border-gray-300">
+                <article key={req.id} className="app-surface-muted overflow-hidden rounded-xl transition hover:border-[var(--border-strong)]">
                   <div className="px-4 py-3">
                     <div className="flex items-start gap-3">
                       <button
                         type="button"
                         onClick={() => toggleExpand(req.id)}
                         aria-label={expanded ? "Свернуть детали" : "Развернуть детали"}
-                        className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-500 transition hover:bg-gray-100"
+                        className="app-action-secondary mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
                       >
                         <ChevronDown size={15} className={`transition ${expanded ? "rotate-180" : ""}`} />
                       </button>
@@ -337,47 +337,47 @@ export default function ProcurementPage() {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <span className={`h-2 w-2 shrink-0 rounded-full ${st === "completed" ? "bg-teal-500" : st === "approved" ? "bg-emerald-500" : st === "pending" ? "bg-amber-500" : st === "in_progress" ? "bg-sky-500" : st === "rejected" ? "bg-rose-500" : "bg-slate-400"}`} />
-                              <h3 className="truncate text-sm font-semibold text-gray-900">{req.title || "Без названия"}</h3>
+                              <h3 className="truncate text-sm font-semibold text-[var(--foreground)]">{req.title || "Без названия"}</h3>
                             </div>
-                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                              <span className="font-medium text-gray-700">{getDeptName(req)}</span>
+                            <div className="app-text-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                              <span className="font-medium text-[var(--foreground)]">{getDeptName(req)}</span>
                               <span>{fmt(req.created_at)}</span>
-                              {getRequestAmount(req) && <span className="font-medium text-gray-700">{money(getRequestAmount(req))}</span>}
+                              {getRequestAmount(req) && <span className="font-medium text-[var(--foreground)]">{money(getRequestAmount(req))}</span>}
                             </div>
                           </div>
 
                           <div className="flex shrink-0 flex-col items-end gap-2">
-                            <span className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ${sMeta.cls}`}>{sMeta.label}</span>
+                            <span className={`app-status-pill shrink-0 ${sMeta.cls}`}>{sMeta.label}</span>
                             <span className={`text-[11px] font-medium ${urg.cls}`}>{urg.label} срочность</span>
                           </div>
                         </div>
 
-                        <div className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-xs text-gray-500 sm:grid-cols-2">
+                        <div className="app-text-muted mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-xs sm:grid-cols-2">
                           <div className="min-w-0">
-                            <span className="text-gray-400">Заявитель:</span>{" "}
+                            <span>Заявитель:</span>{" "}
                             {requestorLink
-                              ? <Link href={requestorLink} className="font-medium text-sky-700 hover:text-sky-800">{requestorName}</Link>
-                              : <span className="font-medium text-gray-700">{requestorName}</span>}
+                              ? <Link href={requestorLink} className="font-medium text-[var(--accent-primary-strong)] hover:text-[var(--accent-primary)]">{requestorName}</Link>
+                              : <span className="font-medium text-[var(--foreground)]">{requestorName}</span>}
                           </div>
                           <div className="min-w-0">
-                            <span className="text-gray-400">Исполнитель:</span>{" "}
+                            <span>Исполнитель:</span>{" "}
                             {req.executor ? (
                               executorLink
-                                ? <Link href={executorLink} className="font-medium text-sky-700 hover:text-sky-800">{executorName}</Link>
-                                : <span className="font-medium text-gray-700">{executorName}</span>
+                                ? <Link href={executorLink} className="font-medium text-[var(--accent-primary-strong)] hover:text-[var(--accent-primary)]">{executorName}</Link>
+                                : <span className="font-medium text-[var(--foreground)]">{executorName}</span>
                             ) : (
-                              <span className="text-gray-400">не назначен</span>
+                              <span>не назначен</span>
                             )}
                           </div>
                           {(itemsCount > 0 || approvalsCount > 0) && (
                             <div className="col-span-2 flex flex-wrap items-center gap-2 pt-0.5">
                               {itemsCount > 0 && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-[11px] font-medium text-gray-700 ring-1 ring-gray-200">
+                                <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
                                   <Package size={11} /> {itemsCount} поз.
                                 </span>
                               )}
                               {approvalsCount > 0 && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-[11px] font-medium text-gray-700 ring-1 ring-gray-200">
+                                <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
                                   <Check size={11} /> {approvalsCount} соглас.
                                 </span>
                               )}
@@ -389,10 +389,10 @@ export default function ProcurementPage() {
                   </div>
 
                   {expanded && (
-                    <div className="app-surface-muted mt-4 rounded-xl p-4">
-                      <div className="app-surface mb-3 rounded-xl p-4">
-                        <p className="app-text-muted text-xs font-medium uppercase tracking-wide">Описание</p>
-                        <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[var(--foreground)]">{resolvedDetail.description || "—"}</p>
+                    <div className="mt-4 space-y-3 px-4 pb-4">
+                      <div className="app-surface rounded-xl p-4">
+                        <p className="text-sm font-semibold text-[var(--foreground)]">Описание</p>
+                        <p className="app-text-wrap mt-2 whitespace-pre-line text-sm leading-6 text-[var(--foreground)]">{resolvedDetail.description || "—"}</p>
                         <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
                           <div className="app-surface-muted rounded-lg px-3 py-2">
                             <p className="app-text-muted text-[11px] uppercase tracking-wide">Отправлена</p>
@@ -415,16 +415,16 @@ export default function ProcurementPage() {
                       </div>
 
                       {detail?.items && detail.items.length > 0 && (
-                        <div className="app-surface mb-3 rounded-xl p-4">
-                          <p className="app-text-muted mb-3 text-xs font-medium uppercase tracking-wide">Позиции</p>
+                        <div className="app-surface rounded-xl p-4">
+                          <p className="mb-3 text-sm font-semibold text-[var(--foreground)]">Позиции</p>
                           <div className="space-y-2">
                             {detail.items.map((it, idx) => (
                               <div key={idx} className="app-surface-muted rounded-lg px-3 py-3 text-xs">
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="min-w-0 flex-1">
-                                    <p className="font-medium text-[var(--foreground)]">{it.name}</p>
-                                    {it.description && <p className="mt-1 text-[var(--muted-foreground)]">{it.description}</p>}
-                                    {it.supplier_info && <p className="mt-1 text-[var(--muted-foreground)]">Поставщик: {it.supplier_info}</p>}
+                                    <p className="app-text-wrap font-medium text-[var(--foreground)]">{it.name}</p>
+                                    {it.description && <p className="app-text-wrap mt-1 text-[var(--muted-foreground)]">{it.description}</p>}
+                                    {it.supplier_info && <p className="app-text-wrap mt-1 text-[var(--muted-foreground)]">Поставщик: {it.supplier_info}</p>}
                                   </div>
                                   <div className="text-right">
                                     <p className="font-medium text-[var(--foreground)]">{money(it.total_price)}</p>
@@ -441,8 +441,8 @@ export default function ProcurementPage() {
                       )}
 
                       {detail?.approvals && detail.approvals.length > 0 && (
-                        <div className="app-surface mb-3 rounded-xl p-4">
-                          <p className="app-text-muted mb-3 text-xs font-medium uppercase tracking-wide">Согласования</p>
+                        <div className="app-surface rounded-xl p-4">
+                          <p className="mb-3 text-sm font-semibold text-[var(--foreground)]">Согласования</p>
                           <div className="space-y-2">
                             {detail.approvals.map((a) => {
                               const aSt = String(a.status).toLowerCase();
@@ -452,7 +452,7 @@ export default function ProcurementPage() {
                                   {icon}
                                   <span className="font-medium text-[var(--foreground)]">{displayUserName(a.approver, a.approver_name)}</span>
                                   <span className="app-text-muted">({a.step_label || `Этап ${a.priority}`})</span>
-                                  {a.comment && <span className="app-text-muted ml-auto italic">«{a.comment}»</span>}
+                                  {a.comment && <span className="app-text-wrap app-text-muted ml-auto max-w-full italic">«{a.comment}»</span>}
                                 </div>
                               );
                             })}
@@ -460,52 +460,59 @@ export default function ProcurementPage() {
                         </div>
                       )}
 
-                      <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
                         {isDraft && isAuthor && (
                           <button type="button" onClick={() => handleSubmit(req.id)} disabled={busyKey === `submit-${req.id}`}
-                            className="app-action-primary inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-60">
-                            <Send size={13} /> На согласование
+                            title="На согласование"
+                            className="app-action-primary inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60">
+                            <Send size={14} />
                           </button>
                         )}
                         {isDraft && isAuthor && (
-                          <button type="button" onClick={() => openEdit(req)} className="app-action-secondary inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium">
-                            <Pencil size={13} /> Редактировать
+                          <button type="button" onClick={() => openEdit(req)} title="Редактировать" className="app-action-secondary inline-flex h-9 w-9 items-center justify-center rounded-lg">
+                            <Pencil size={14} />
                           </button>
                         )}
                         {isDraft && (isAuthor || canManage) && (
                           <button type="button" onClick={() => handleDelete(req.id)} disabled={busyKey === `delete-${req.id}`}
-                            className="app-action-danger inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-60">
-                            <Trash2 size={13} /> Удалить
+                            title="Удалить"
+                            className="app-action-danger inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60">
+                            <Trash2 size={14} />
                           </button>
                         )}
                         {isPending && !isAuthor && (
                           <>
                             <button type="button" onClick={() => handleApprove(req.id)} disabled={busyKey === `approve-${req.id}`}
-                              className="app-feedback-success inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-60">
-                              <ThumbsUp size={13} /> Одобрить
+                              title="Одобрить"
+                              className="app-feedback-success inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60">
+                              <ThumbsUp size={14} />
                             </button>
                             <button type="button" onClick={() => handleReject(req.id)} disabled={busyKey === `reject-${req.id}`}
-                              className="app-action-danger inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-60">
-                              <ThumbsDown size={13} /> Отклонить
+                              title="Отклонить"
+                              className="app-action-danger inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60">
+                              <ThumbsDown size={14} />
                             </button>
                           </>
                         )}
                         {isApproved && !req.executor && (
                           <button type="button" onClick={() => handleStart(req.id)} disabled={busyKey === `start-${req.id}`}
-                            className="app-action-primary inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-60">
-                            <Play size={13} /> Взять в работу
+                            title="Взять в работу"
+                            className="app-action-primary inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60">
+                            <Play size={14} />
                           </button>
                         )}
                         {isInProgress && isExecutor && (
                           <button type="button" onClick={() => handleComplete(req.id)} disabled={busyKey === `complete-${req.id}`}
-                            className="app-action-primary inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-60">
-                            <ClipboardCheck size={13} /> Завершить
+                            title="Завершить"
+                            className="app-action-primary inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60">
+                            <ClipboardCheck size={14} />
                           </button>
                         )}
                         {isAuthor && !isFinal(st) && st !== "draft" && (
                           <button type="button" onClick={() => handleCancel(req.id)} disabled={busyKey === `cancel-${req.id}`}
-                            className="app-action-secondary inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-60">
-                            <XCircle size={13} /> Отменить
+                            title="Отменить"
+                            className="app-action-secondary inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60">
+                            <XCircle size={14} />
                           </button>
                         )}
                       </div>
@@ -519,7 +526,7 @@ export default function ProcurementPage() {
           {/* ── load more ── */}
           {nextPage && (
             <div className="mt-4 flex justify-center">
-              <button type="button" onClick={handleLoadMore} disabled={loadingMore} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60">
+              <button type="button" onClick={handleLoadMore} disabled={loadingMore} className="app-action-secondary rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-60">
                 {loadingMore ? "Загружаем..." : "Загрузить ещё"}
               </button>
             </div>

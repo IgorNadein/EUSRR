@@ -2,13 +2,8 @@
 Сервисы для модуля закупок и инвентаря.
 """
 
-import io
-import os
 from typing import Optional
 
-import qrcode
-from django.conf import settings
-from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 
@@ -90,68 +85,6 @@ class InventoryNumberGenerator:
         return True
 
 
-class QRCodeGenerator:
-    """Генератор QR-кодов для оборудования."""
-
-    QR_CODE_DIR = "qr_codes"
-
-    @classmethod
-    def generate_for_equipment(cls, equipment) -> ContentFile:
-        """
-        Генерирует QR-код для оборудования.
-
-        QR содержит URL на страницу оборудования и основные данные.
-
-        Returns:
-            ContentFile с PNG изображением QR-кода
-        """
-        # Данные для QR-кода
-        data = cls._build_qr_data(equipment)
-
-        # Генерируем QR-код
-        qr = qrcode.QRCode(
-            version=1,
-            error_correction=qrcode.constants.ERROR_CORRECT_M,
-            box_size=10,
-            border=4,
-        )
-        qr.add_data(data)
-        qr.make(fit=True)
-
-        # Создаём изображение
-        img = qr.make_image(fill_color="black", back_color="white")
-
-        # Сохраняем в буфер
-        buffer = io.BytesIO()
-        img.save(buffer, format="PNG")
-        buffer.seek(0)
-
-        filename = f"{equipment.inventory_number}.png"
-        return ContentFile(buffer.read(), name=filename)
-
-    @classmethod
-    def _build_qr_data(cls, equipment) -> str:
-        """
-        Формирует данные для QR-кода.
-
-        Формат: URL с параметрами для быстрого доступа.
-        """
-        # Формируем URL на страницу оборудования
-        base_url = getattr(settings, "SITE_URL", "http://corp.robotail.pro")
-        equipment_url = f"{base_url}/procurement/equipment/{equipment.id}/"
-
-        # Можно также добавить vCard или JSON формат
-        # Но URL проще для сканирования
-        return equipment_url
-
-    @classmethod
-    def get_qr_code_path(cls, inventory_number: str) -> str:
-        """
-        Возвращает путь к файлу QR-кода.
-        """
-        return os.path.join(cls.QR_CODE_DIR, f"{inventory_number}.png")
-
-
 class ProcurementApprovalResolver:
     """Определяет согласующих для заявки на закупку.
 
@@ -209,6 +142,42 @@ class ProcurementApprovalResolver:
                 resolved.append(step)
             else:
                 missing.append(route.priority)
+        resolved.sort(key=lambda item: item[0])
+        return resolved, missing
+
+    @classmethod
+    def resolve_required_approvers_detailed(cls, procurement_request):
+        """Возвращает согласующих и подробности по пропущенным этапам."""
+        from .models import ApprovalRoute
+
+        resolved = []
+        missing = []
+
+        for route in procurement_request.get_required_approval_routes():
+            step = cls.resolve_approval_step(procurement_request, route)
+            if step:
+                resolved.append(step)
+                continue
+
+            step_label = route.name or get_default_approval_step_name(
+                route.priority,
+                resolver_type=route.resolver_type,
+            )
+            reason = "unknown"
+            if route.resolver_type == ApprovalRoute.ResolverType.DEPARTMENT_HEAD:
+                reason = "department_head_missing"
+            elif route.resolver_type == ApprovalRoute.ResolverType.FIXED_EMPLOYEE:
+                reason = "approver_missing_or_inactive"
+
+            missing.append(
+                {
+                    "priority": route.priority,
+                    "step_name": step_label,
+                    "resolver_type": route.resolver_type,
+                    "reason": reason,
+                }
+            )
+
         resolved.sort(key=lambda item: item[0])
         return resolved, missing
 

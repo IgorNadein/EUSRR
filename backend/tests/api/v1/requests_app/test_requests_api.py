@@ -403,6 +403,11 @@ def test_comment_author_can_delete_own_comment(
     assert post_resp.status_code == 201
     comment_id = post_resp.json()["id"]
 
+    list_before = client.get(API_BASE)
+    assert list_before.status_code == 200
+    item_before = next(item for item in _results(list_before.json()) if item["id"] == req.id)
+    assert item_before["comments_count"] == 1
+
     delete_resp = client.delete(f"{API_BASE}{req.id}/comments/{comment_id}/")
     assert delete_resp.status_code == 204
 
@@ -410,6 +415,11 @@ def test_comment_author_can_delete_own_comment(
     assert list_resp.status_code == 200
     ids = {item["id"] for item in _results(list_resp.json())}
     assert comment_id not in ids
+
+    list_after = client.get(API_BASE)
+    assert list_after.status_code == 200
+    item_after = next(item for item in _results(list_after.json()) if item["id"] == req.id)
+    assert item_after["comments_count"] == 0
 
 
 # ------------------------------------------------------------------------------

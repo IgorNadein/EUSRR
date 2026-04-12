@@ -227,7 +227,7 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
             </div>
           ) : (
             <>
-              <p className="whitespace-pre-wrap text-sm text-[var(--foreground)]">{comment.text}</p>
+              <p className="app-text-wrap whitespace-pre-wrap text-sm text-[var(--foreground)]">{comment.text}</p>
               {depth < 3 && (
                 <button
                   onClick={() => setReplyTo(comment.id)}

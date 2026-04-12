@@ -90,9 +90,18 @@ const getPaginatedCount = (response: unknown): number => {
 
 const getReadableError = (error: unknown, fallback: string): string => {
   const raw = String((error as Error)?.message || fallback);
+  const jsonStart = raw.indexOf("{");
+  const payload = jsonStart >= 0 ? raw.slice(jsonStart) : raw;
+
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const parsed = JSON.parse(payload) as Record<string, unknown>;
     if (typeof parsed === "object" && parsed !== null) {
+      if (typeof parsed.error === "string" && parsed.error.trim()) {
+        return parsed.error;
+      }
+      if (typeof parsed.detail === "string" && parsed.detail.trim()) {
+        return parsed.detail;
+      }
       return Object.entries(parsed)
         .map(([key, value]) => {
           if (Array.isArray(value)) {

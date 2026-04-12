@@ -193,7 +193,7 @@ export function ViewEventDetailsModal({
               <FileText size={18} className="app-text-muted mt-0.5 flex-shrink-0" />
               <div className="flex-1">
                 <p className="mb-1 text-sm font-medium text-[var(--foreground)]">Описание</p>
-                <p className="app-text-muted whitespace-pre-wrap text-xs">
+                <p className="app-text-wrap app-text-muted whitespace-pre-wrap text-xs">
                   {event.description}
                 </p>
               </div>

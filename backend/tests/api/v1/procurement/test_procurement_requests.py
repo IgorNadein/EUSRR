@@ -458,6 +458,85 @@ class TestProcurementRequestWorkflow:
             'Финальное одобрение',
         ]
 
+    @pytest.mark.parametrize(
+        ("unit_price", "expected_priorities"),
+        [
+            (Decimal("12.00"), [HEAD_PRIORITY]),
+            (Decimal("12000.00"), [HEAD_PRIORITY, FINANCE_PRIORITY]),
+            (Decimal("120000.00"), [HEAD_PRIORITY, FINANCE_PRIORITY, DIRECTOR_PRIORITY]),
+        ],
+    )
+    def test_submit_request_applies_amount_thresholds(
+        self, api_client, user, department, unit_price, expected_priorities
+    ):
+        """Маршруты согласования включаются по порогам суммы заявки."""
+        procurement_request = ProcurementRequest.objects.create(
+            title="Пороговая заявка",
+            description="Проверка маршрутов",
+            department=department,
+            requestor=user,
+            status=ProcurementStatus.DRAFT,
+            urgency=UrgencyLevel.MEDIUM,
+        )
+        ProcurementItem.objects.create(
+            request=procurement_request,
+            name="Тестовая позиция",
+            quantity=1,
+            unit="шт",
+            estimated_unit_price=unit_price,
+        )
+
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': procurement_request.id}
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        procurement_request.refresh_from_db()
+        assert list(
+            procurement_request.approvals.order_by('priority').values_list('priority', flat=True)
+        ) == expected_priorities
+
+    def test_submit_request_without_department_head_returns_explicit_error(
+        self, api_client, user, department
+    ):
+        """Если обязательный этап = руководитель отдела, ошибка должна быть явной."""
+        department.head = None
+        department.save(update_fields=["head"])
+
+        procurement_request = ProcurementRequest.objects.create(
+            title="Заявка без начальника отдела",
+            description="Проверка понятной ошибки",
+            department=department,
+            requestor=user,
+            status=ProcurementStatus.DRAFT,
+            urgency=UrgencyLevel.MEDIUM,
+        )
+        ProcurementItem.objects.create(
+            request=procurement_request,
+            name="Тестовая позиция",
+            quantity=1,
+            unit="шт",
+            estimated_unit_price=Decimal("12.00"),
+        )
+
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': procurement_request.id}
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data["code"] == "department_head_missing"
+        assert "не назначен руководитель" in response.data["error"].lower()
+        assert response.data["missing_priorities"] == [HEAD_PRIORITY]
+        assert response.data["missing_routes"][0]["reason"] == "department_head_missing"
+
     def test_submit_returns_manual_step_name(
         self, api_client, user, procurement_request, procurement_item, budget
     ):

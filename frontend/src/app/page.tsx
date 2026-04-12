@@ -629,10 +629,10 @@ function HomePageContent() {
                   ) : null}
                 </header>
                 {post.title ? (
-                  <h3 className="mb-1 text-base font-semibold text-[var(--foreground)]">{post.title}</h3>
+                  <h3 className="app-text-wrap mb-1 text-base font-semibold text-[var(--foreground)]">{post.title}</h3>
                 ) : null}
                 {postText ? (
-                  <p className="text-sm leading-6 text-[var(--foreground)] whitespace-pre-line">{postText}</p>
+                  <p className="app-text-wrap whitespace-pre-line text-sm leading-6 text-[var(--foreground)]">{postText}</p>
                 ) : null}
                 {post.image && (
                   <div className="mt-3 overflow-hidden rounded-lg">
@@ -990,7 +990,7 @@ function HomePageContent() {
                               </div>
                             ) : (
                               <>
-                                {commentText && <p className="mt-1 text-sm leading-6 text-[var(--foreground)]">{commentText}</p>}
+                                {commentText && <p className="app-text-wrap mt-1 text-sm leading-6 text-[var(--foreground)]">{commentText}</p>}
                                 {comment.image && (
                                   <div className="mt-2 overflow-hidden rounded-lg">
                                     <img src={resolveMediaUrl(comment.image)} alt="" className="max-h-60 rounded-lg" />

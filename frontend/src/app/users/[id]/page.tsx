@@ -361,7 +361,7 @@ export default function UserDetailPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start gap-3">
                       <div className="min-w-0 flex-1">
-                        <h1 className="text-[2rem] font-semibold leading-tight text-[var(--foreground)]">
+                        <h1 className="app-text-wrap text-[2rem] font-semibold leading-tight text-[var(--foreground)]">
                           {fullName}
                         </h1>
                         <div className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -449,12 +449,12 @@ export default function UserDetailPage() {
                                       ? "noreferrer"
                                       : undefined
                                   }
-                                  className="app-text-muted mt-1 block truncate text-sm hover:text-[var(--accent-primary)]"
+                                  className="app-text-wrap app-text-muted mt-1 block text-sm hover:text-[var(--accent-primary)]"
                                 >
                                   {contact.value}
                                 </a>
                               ) : (
-                                <p className="app-text-muted mt-1 truncate text-sm">
+                                <p className="app-text-wrap app-text-muted mt-1 text-sm">
                                   {contact.value}
                                 </p>
                               )}
