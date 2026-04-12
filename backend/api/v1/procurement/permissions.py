@@ -230,6 +230,14 @@ class CanManageProcurementRequest(permissions.BasePermission):
         if action == "cancel":
             return obj.requestor == user
 
+        # Комментарии доступны тем, кто видит заявку
+        if action == "comments":
+            return True
+
+        # Удаление комментария дополнительно валидируется во view по автору/админу
+        if action == "delete_comment":
+            return True
+
         # Start_work (взять в работу) - любой авторизованный
         if action == "start_work":
             return True

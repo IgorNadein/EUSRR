@@ -145,6 +145,7 @@ export interface Post {
   tags?: string[];
   created_at: string;
   updated_at: string;
+  pinned?: boolean;
   likes_count: number;
   comments_count: number;
   is_liked?: boolean;
@@ -453,11 +454,20 @@ export interface ProcurementRequest {
   is_editable?: boolean;
   total_cost?: string | number;
   total_estimated_cost?: string | number;
+  comments_count?: number;
   created_at: string;
   updated_at: string;
   submitted_at?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
+}
+
+export interface ProcurementComment {
+  id: number;
+  request: number;
+  author: User;
+  text: string;
+  created_at: string;
 }
 
 export interface ProcurementSupplier {

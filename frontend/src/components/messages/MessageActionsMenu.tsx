@@ -120,9 +120,9 @@ export default function MessageActionsMenu({
           <button
             type="button"
             onClick={onDelete}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 transition hover:bg-[var(--danger-soft)]"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--danger-foreground)] transition hover:bg-[var(--danger-soft)]"
           >
-            <Trash2 size={13} className="text-red-400" />
+            <Trash2 size={13} className="text-[var(--danger-foreground)]" />
             Удалить
           </button>
         ) : null}

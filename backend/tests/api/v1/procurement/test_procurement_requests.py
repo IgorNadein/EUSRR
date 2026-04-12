@@ -341,6 +341,74 @@ class TestProcurementRequestDetail:
         
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
+    def test_retrieve_includes_comments_count(
+        self, api_client, user, procurement_request, procurement_item
+    ):
+        """В detail отдается comments_count."""
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-detail',
+            kwargs={'pk': procurement_request.id}
+        )
+
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['comments_count'] == 0
+
+
+class TestProcurementRequestComments:
+    """Комментарии к заявке на закупку."""
+
+    def test_comment_lifecycle_updates_comments_count(
+        self, api_client, user, procurement_request
+    ):
+        api_client.force_authenticate(user=user)
+
+        list_url = reverse('api:v1:procurement:procurementrequest-list')
+        comments_url = reverse(
+            'api:v1:procurement:procurementrequest-comments',
+            kwargs={'pk': procurement_request.id}
+        )
+
+        before = api_client.get(list_url)
+        assert before.status_code == status.HTTP_200_OK
+        before_item = next(item for item in before.data['results'] if item['id'] == procurement_request.id)
+        assert before_item['comments_count'] == 0
+
+        create_response = api_client.post(
+            comments_url,
+            {'text': 'Проверочный комментарий'},
+            format='json',
+        )
+        assert create_response.status_code == status.HTTP_201_CREATED
+        assert create_response.data['request'] == procurement_request.id
+        comment_id = create_response.data['id']
+
+        comments_response = api_client.get(comments_url)
+        assert comments_response.status_code == status.HTTP_200_OK
+        assert len(comments_response.data) == 1
+        assert comments_response.data[0]['text'] == 'Проверочный комментарий'
+
+        middle = api_client.get(list_url)
+        middle_item = next(item for item in middle.data['results'] if item['id'] == procurement_request.id)
+        assert middle_item['comments_count'] == 1
+
+        delete_url = reverse(
+            'api:v1:procurement:procurementrequest-delete-comment',
+            kwargs={'pk': procurement_request.id, 'comment_id': comment_id}
+        )
+        delete_response = api_client.delete(delete_url)
+        assert delete_response.status_code == status.HTTP_204_NO_CONTENT
+
+        after_comments = api_client.get(comments_url)
+        assert after_comments.status_code == status.HTTP_200_OK
+        assert after_comments.data == []
+
+        after = api_client.get(list_url)
+        after_item = next(item for item in after.data['results'] if item['id'] == procurement_request.id)
+        assert after_item['comments_count'] == 0
+
 
 # ==============================================================================
 # ТЕСТЫ ОБНОВЛЕНИЯ ЗАЯВОК

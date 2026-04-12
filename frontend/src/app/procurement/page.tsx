@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "../../components/AppShell";
 import { useUser } from "@/contexts/UserContext";
@@ -13,9 +13,11 @@ import {
   ArrowUpDown,
   Check,
   ChevronDown,
+  ChevronRight,
   ClipboardCheck,
   Filter,
   Loader2,
+  MessageSquare,
   Package,
   Pencil,
   Play,
@@ -112,6 +114,7 @@ function ProcurementRequestActionButtons({
   isAuthor,
   isExecutor,
   isFinal,
+  showSecondaryActions = true,
   onSubmit,
   onEdit,
   onDelete,
@@ -127,6 +130,7 @@ function ProcurementRequestActionButtons({
   isAuthor: boolean;
   isExecutor: boolean;
   isFinal: (status?: string) => boolean;
+  showSecondaryActions?: boolean;
   onSubmit: (id: number) => void | Promise<void>;
   onEdit: (request: ProcurementRequest) => void;
   onDelete: (id: number) => void | Promise<void>;
@@ -155,7 +159,7 @@ function ProcurementRequestActionButtons({
           <Send size={14} />
         </button>
       ) : null}
-      {isDraft && isAuthor ? (
+      {showSecondaryActions && isDraft && isAuthor ? (
         <button
           type="button"
           onClick={() => onEdit(request)}
@@ -165,7 +169,7 @@ function ProcurementRequestActionButtons({
           <Pencil size={14} />
         </button>
       ) : null}
-      {isDraft && (isAuthor || canManage) ? (
+      {showSecondaryActions && isDraft && (isAuthor || canManage) ? (
         <button
           type="button"
           onClick={() => onDelete(request.id)}
@@ -220,7 +224,7 @@ function ProcurementRequestActionButtons({
           <ClipboardCheck size={14} />
         </button>
       ) : null}
-      {isAuthor && !isFinal(status) && status !== "draft" ? (
+      {showSecondaryActions && isAuthor && !isFinal(status) && status !== "draft" ? (
         <button
           type="button"
           onClick={() => onCancel(request.id)}
@@ -256,8 +260,13 @@ export default function ProcurementPage() {
     detailsCache,
     displayUserName,
     ensureRequestDetail,
+    ensureCommentsLoaded,
     error,
+    commentsMap,
+    commentDrafts,
+    setCommentDrafts,
     expandedIds,
+    expandedComments,
     filteredRequests,
     filtersOpen,
     form,
@@ -299,16 +308,21 @@ export default function ProcurementPage() {
     setUrgencyFilter,
     statusFilter,
     toggleExpand,
+    toggleComments,
     updateItemRow,
     urgencyFilter,
     userLink,
     scope,
     scopeCounts,
+    handleAddComment,
+    handleDeleteComment,
   } = useProcurementPage(user);
 
   const [detailModalId, setDetailModalId] = useState<number | null>(null);
   const [detailModalLoading, setDetailModalLoading] = useState(false);
   const [detailModalError, setDetailModalError] = useState<string | null>(null);
+  const procurementMenuRef = useRef<HTMLDivElement | null>(null);
+  const [procurementMenuOpenId, setProcurementMenuOpenId] = useState<number | null>(null);
 
   const syncRequestUrl = useCallback((requestId: number | null) => {
     if (typeof window === "undefined") return;
@@ -369,6 +383,35 @@ export default function ProcurementPage() {
     if (selectedRequest) return;
     closeDetailModal();
   }, [closeDetailModal, detailModalId, selectedRequest]);
+
+  useEffect(() => {
+    if (!detailModalId) return;
+    void ensureCommentsLoaded(detailModalId).catch(() => {});
+  }, [detailModalId, ensureCommentsLoaded]);
+
+  useEffect(() => {
+    if (procurementMenuOpenId === null) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (procurementMenuRef.current && !procurementMenuRef.current.contains(event.target as Node)) {
+        setProcurementMenuOpenId(null);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setProcurementMenuOpenId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [procurementMenuOpenId]);
 
   /* ══════════════════════════════════════════════════════
      RENDER
@@ -527,9 +570,16 @@ export default function ProcurementPage() {
               const isPending = st === "pending";
               const isApproved = st === "approved";
               const isInProgress = st === "in_progress";
+              const canEditThis = Boolean(isDraft && isAuthor);
+              const canDeleteThis = Boolean(isDraft && (isAuthor || canManage));
+              const canCancelThis = Boolean(isAuthor && !isFinal(st) && st !== "draft");
+              const hasSecondaryActions = canEditThis || canDeleteThis || canCancelThis;
               const expanded = expandedIds.has(req.id);
               const detail = detailsCache[req.id];
               const resolvedDetail = detail || req;
+              const comments = commentsMap[req.id] || [];
+              const commentsOpen = Boolean(expandedComments[req.id]);
+              const commentsTotal = resolvedDetail.comments_count ?? req.comments_count ?? comments.length;
               const requestorName = displayUserName(req.requestor, req.requestor_name, req.requestor_email);
               const executorName = req.executor || req.executor_name ? displayUserName(req.executor, req.executor_name || undefined) : "";
               const requestorLink = userLink(req.requestor);
@@ -538,7 +588,7 @@ export default function ProcurementPage() {
               const approvalsCount = resolvedDetail.approvals?.length ?? 0;
 
               return (
-                <article key={req.id} className="app-surface-muted overflow-hidden rounded-xl transition hover:border-[var(--border-strong)]">
+                <article key={req.id} className={`app-surface-muted rounded-xl transition hover:border-[var(--border-strong)] ${procurementMenuOpenId === req.id ? "relative z-20 overflow-visible" : "overflow-hidden"}`}>
                   <div className="px-4 py-3">
                     <div className="flex items-start gap-3">
                       <button
@@ -571,8 +621,76 @@ export default function ProcurementPage() {
                             </div>
                           </div>
 
-                          <div className="flex shrink-0 flex-col items-end gap-2">
-                            <span className={`app-status-pill shrink-0 ${sMeta.cls}`}>{sMeta.label}</span>
+                          <div
+                            ref={procurementMenuOpenId === req.id ? procurementMenuRef : null}
+                            className="flex shrink-0 flex-col items-end gap-2"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className={`app-status-pill shrink-0 ${sMeta.cls}`}>{sMeta.label}</span>
+                              {hasSecondaryActions ? (
+                                <div className="relative">
+                                  <button
+                                    type="button"
+                                    onClick={() => setProcurementMenuOpenId((prev) => (prev === req.id ? null : req.id))}
+                                    className="app-action-ghost flex h-8 w-8 items-center justify-center rounded-md"
+                                    title="Действия с заявкой"
+                                    aria-label="Действия с заявкой"
+                                    aria-expanded={procurementMenuOpenId === req.id}
+                                    aria-haspopup="menu"
+                                  >
+                                    <ChevronRight
+                                      size={15}
+                                      className={`transition-transform duration-200 ${procurementMenuOpenId === req.id ? "rotate-90" : ""}`}
+                                    />
+                                  </button>
+                                  {procurementMenuOpenId === req.id ? (
+                                    <div className="app-menu absolute right-0 top-full z-20 mt-2 w-44 rounded-xl py-1.5">
+                                      {canCancelThis ? (
+                                        <button
+                                          type="button"
+                                          disabled={busyKey === `cancel-${req.id}`}
+                                          onClick={() => {
+                                            setProcurementMenuOpenId(null);
+                                            void handleCancel(req.id);
+                                          }}
+                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)] disabled:opacity-50"
+                                        >
+                                          <XCircle size={14} className="app-text-muted" />
+                                          Отменить
+                                        </button>
+                                      ) : null}
+                                      {canEditThis ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setProcurementMenuOpenId(null);
+                                            openEdit(req);
+                                          }}
+                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                                        >
+                                          <Pencil size={14} className="app-text-muted" />
+                                          Редактировать
+                                        </button>
+                                      ) : null}
+                                      {canDeleteThis ? (
+                                        <button
+                                          type="button"
+                                          disabled={busyKey === `delete-${req.id}`}
+                                          onClick={() => {
+                                            setProcurementMenuOpenId(null);
+                                            void handleDelete(req.id);
+                                          }}
+                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--danger-foreground)] transition hover:bg-[var(--danger-soft)] disabled:opacity-50"
+                                        >
+                                          <Trash2 size={13} className="text-[var(--danger-foreground)]" />
+                                          Удалить
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
                             <span className={`text-[11px] font-medium ${urg.cls}`}>{urg.label} срочность</span>
                           </div>
                         </div>
@@ -609,34 +727,80 @@ export default function ProcurementPage() {
                             </div>
                           )}
                         </div>
+
+                        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                          <button type="button" title={`Комментарии (${commentsTotal})`} onClick={() => void toggleComments(req.id)} className="app-action-secondary relative inline-flex h-8 w-8 items-center justify-center rounded-lg">
+                            <MessageSquare size={15} />
+                            {commentsTotal > 0 && (
+                              <span className="app-counter absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center px-1 py-0.5 text-[10px] font-bold text-white">{commentsTotal}</span>
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {expanded && (
+                  {(expanded || commentsOpen) && (
                     <div className="mt-4 space-y-3 px-4 pb-4">
-                      <ProcurementRequestDetailContent
-                        request={resolvedDetail}
-                        displayUserName={displayUserName}
-                        footer={(
-                          <ProcurementRequestActionButtons
-                            request={req}
-                            busyKey={busyKey}
-                            canManage={canManage}
-                            isAuthor={isAuthor}
-                            isExecutor={isExecutor}
-                            isFinal={isFinal}
-                            onSubmit={handleSubmit}
-                            onEdit={openEdit}
-                            onDelete={handleDelete}
-                            onApprove={handleApprove}
-                            onReject={handleReject}
-                            onStart={handleStart}
-                            onComplete={handleComplete}
-                            onCancel={handleCancel}
-                          />
-                        )}
-                      />
+                      {expanded ? (
+                        <ProcurementRequestDetailContent
+                          request={resolvedDetail}
+                          displayUserName={displayUserName}
+                          footer={(
+                            <ProcurementRequestActionButtons
+                              request={req}
+                              busyKey={busyKey}
+                              canManage={canManage}
+                              isAuthor={isAuthor}
+                              isExecutor={isExecutor}
+                              isFinal={isFinal}
+                              showSecondaryActions={false}
+                              onSubmit={handleSubmit}
+                              onEdit={openEdit}
+                              onDelete={handleDelete}
+                              onApprove={handleApprove}
+                              onReject={handleReject}
+                              onStart={handleStart}
+                              onComplete={handleComplete}
+                              onCancel={handleCancel}
+                            />
+                          )}
+                        />
+                      ) : null}
+
+                      {commentsOpen ? (
+                        <div className={expanded ? "app-surface rounded-xl p-3" : "app-surface-elevated rounded-xl p-3"}>
+                          <div className="space-y-2">
+                            {comments.length === 0 ? (
+                              <p className="app-text-muted text-xs">Комментариев пока нет</p>
+                            ) : (
+                              comments.map((comment) => {
+                                const canDeleteCommentThis = Boolean(comment.author?.id && (user?.id === comment.author.id || user?.auth?.is_staff || user?.auth?.is_superuser));
+                                return (
+                                  <div key={comment.id} className="app-surface-muted rounded-lg px-3 py-2 text-xs text-[var(--foreground)]">
+                                    <div className="mb-1 flex items-center justify-between gap-2">
+                                      <span className="font-medium">{displayUserName(comment.author)}</span>
+                                      <div className="flex items-center gap-2">
+                                        <span className="app-text-muted">{fmt(comment.created_at)}</span>
+                                        {canDeleteCommentThis ? (
+                                          <button type="button" onClick={() => void handleDeleteComment(req.id, comment.id)} className="app-action-danger rounded-md px-1.5 py-0.5">
+                                            удалить
+                                          </button>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                    <p className="app-text-wrap text-[var(--foreground)]">{comment.text}</p>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                          <div className="mt-2 flex items-center gap-2">
+                            <input value={commentDrafts[req.id] || ""} onChange={(e) => setCommentDrafts((previous) => ({ ...previous, [req.id]: e.target.value }))} placeholder="Добавить комментарий" className="app-input flex-1 rounded-lg px-3 py-2 text-xs" />
+                            <button type="button" onClick={() => void handleAddComment(req.id)} disabled={busyKey === `comment-${req.id}`} className="app-action-primary rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-60">Отправить</button>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   )}
                 </article>
@@ -739,6 +903,39 @@ export default function ProcurementPage() {
                 />
               )}
             />
+
+            <div className="app-surface rounded-xl p-4">
+              <p className="app-card-caption">Комментарии</p>
+              <div className="mt-3 space-y-2">
+                {(commentsMap[selectedRequest.id] || []).length === 0 ? (
+                  <p className="app-text-muted text-xs">Комментариев пока нет</p>
+                ) : (
+                  (commentsMap[selectedRequest.id] || []).map((comment) => {
+                    const canDeleteCommentThis = Boolean(comment.author?.id && (user?.id === comment.author.id || user?.auth?.is_staff || user?.auth?.is_superuser));
+                    return (
+                      <div key={comment.id} className="app-surface-muted rounded-lg px-3 py-2 text-xs text-[var(--foreground)]">
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <span className="font-medium">{displayUserName(comment.author)}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="app-text-muted">{fmt(comment.created_at)}</span>
+                            {canDeleteCommentThis ? (
+                              <button type="button" onClick={() => void handleDeleteComment(selectedRequest.id, comment.id)} className="app-action-danger rounded-md px-1.5 py-0.5">
+                                удалить
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                        <p className="app-text-wrap text-[var(--foreground)]">{comment.text}</p>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <input value={commentDrafts[selectedRequest.id] || ""} onChange={(e) => setCommentDrafts((previous) => ({ ...previous, [selectedRequest.id]: e.target.value }))} placeholder="Добавить комментарий" className="app-input flex-1 rounded-lg px-3 py-2 text-xs" />
+                <button type="button" onClick={() => void handleAddComment(selectedRequest.id)} disabled={busyKey === `comment-${selectedRequest.id}`} className="app-action-primary rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-60">Отправить</button>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="app-surface-muted rounded-xl px-4 py-6 text-center">

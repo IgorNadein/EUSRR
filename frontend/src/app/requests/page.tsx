@@ -6,11 +6,11 @@ import { Modal } from "@/components/ui";
 import { apiClient } from "@/lib/api";
 import { useUser } from "@/contexts/UserContext";
 import { canManageRequests, canProcessRequests } from "@/lib/permissions";
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { User } from "@/types/api";
-import { ArrowUpDown, Ban, ChevronDown, FileSignature, Filter, MessageSquare, Paperclip, Pencil, Plus, Search, ThumbsDown, ThumbsUp, Trash2, X, Zap } from "lucide-react";
+import { ArrowUpDown, Ban, ChevronDown, ChevronRight, FileSignature, Filter, MessageSquare, Paperclip, Pencil, Plus, Search, ThumbsDown, ThumbsUp, Trash2, X, Zap } from "lucide-react";
 import dynamic from "next/dynamic";
 import { SearchableSelectMulti } from "@/components/shared/SearchableSelect";
 import { formatDate, displayUserName, userProfileLink } from "@/lib/shared";
@@ -53,8 +53,10 @@ function RequestsPageContent() {
   const auth = user?.auth;
   const h = useRequestsPage(user?.id);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const requestMenuRef = useRef<HTMLDivElement | null>(null);
   const openedLinkedRequestIdRef = useRef<number | null>(null);
   const loadingLinkedRequestIdRef = useRef<number | null>(null);
+  const [requestMenuOpenId, setRequestMenuOpenId] = useState<number | null>(null);
   const linkedRequestId = Number(searchParams.get("request") || "");
 
   const clearRequestParam = () => {
@@ -141,6 +143,30 @@ function RequestsPageContent() {
     };
   }, [h.detailsRequest?.id, h.requests, h.setDetailsRequest, linkedRequestId]);
 
+  useEffect(() => {
+    if (requestMenuOpenId === null) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (requestMenuRef.current && !requestMenuRef.current.contains(event.target as Node)) {
+        setRequestMenuOpenId(null);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setRequestMenuOpenId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [requestMenuOpenId]);
+
   return (
     <AppShell>
       {h.loading ? (
@@ -226,6 +252,10 @@ function RequestsPageContent() {
               const tt = item.display_title || item.title || "Без заголовка";
               const canPr = Boolean(sk === "pending" && requestAuthor?.id && user?.id && requestAuthor.id !== user.id && (canManage || (canProcess && item.is_recipient)));
               const isAuth = Boolean(requestAuthor?.id && user?.id && requestAuthor.id === user.id);
+              const canCancel = Boolean(isAuth && !h.isFinal(sk));
+              const canEdit = Boolean(isAuth && !h.isFinal(sk));
+              const canDelete = Boolean((isAuth && !h.isFinal(sk)) || canManage);
+              const hasSecondaryActions = canCancel || canEdit || canDelete;
               const rowOpen = Boolean(h.expandedRows[item.id]);
               const comments = h.commentsMap[item.id] || [];
               const commentsOpen = Boolean(h.expandedComments[item.id]);
@@ -235,7 +265,7 @@ function RequestsPageContent() {
               const summary = item.comment || item.description;
 
               return (
-                <article key={item.id} className="app-surface-muted overflow-hidden rounded-xl transition hover:border-[var(--border-strong)]">
+                <article key={item.id} className={`app-surface-muted rounded-xl transition hover:border-[var(--border-strong)] ${requestMenuOpenId === item.id ? "relative z-20 overflow-visible" : "overflow-hidden"}`}>
                   <div className="p-4">
                     <div className="flex items-start gap-3">
                       <button type="button" onClick={() => h.toggleRow(item.id)} className="app-action-secondary mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition"><ChevronDown size={15} className={`transition ${rowOpen ? "rotate-180" : ""}`} /></button>
@@ -257,14 +287,81 @@ function RequestsPageContent() {
                             </button>
                             <div className="app-text-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"><span>Период: {item.date_from ? formatDate(item.date_from) : "—"}{item.date_to ? ` — ${formatDate(item.date_to)}` : ""}</span></div>
                           </div>
-                          <div className="shrink-0 text-right"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs ring-1 ${st.className}`}>{st.label}</span></div>
+                          <div className="shrink-0">
+                            <div
+                              ref={requestMenuOpenId === item.id ? requestMenuRef : null}
+                              className="flex items-center justify-end gap-2"
+                            >
+                              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs ring-1 ${st.className}`}>{st.label}</span>
+                              {hasSecondaryActions ? (
+                                <div className="relative">
+                                  <button
+                                    type="button"
+                                    onClick={() => setRequestMenuOpenId((prev) => (prev === item.id ? null : item.id))}
+                                    className="app-action-ghost flex h-8 w-8 items-center justify-center rounded-md"
+                                    title="Действия с заявлением"
+                                    aria-label="Действия с заявлением"
+                                    aria-expanded={requestMenuOpenId === item.id}
+                                    aria-haspopup="menu"
+                                  >
+                                    <ChevronRight
+                                      size={15}
+                                      className={`transition-transform duration-200 ${requestMenuOpenId === item.id ? "rotate-90" : ""}`}
+                                    />
+                                  </button>
+                                  {requestMenuOpenId === item.id ? (
+                                    <div className="app-menu absolute right-0 top-full z-20 mt-2 w-44 rounded-xl py-1.5">
+                                      {canCancel ? (
+                                        <button
+                                          type="button"
+                                          disabled={h.busyKey === `cancel-${item.id}`}
+                                          onClick={() => {
+                                            setRequestMenuOpenId(null);
+                                            void h.handleCancel(item.id);
+                                          }}
+                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)] disabled:opacity-50"
+                                        >
+                                          <Ban size={14} />
+                                          Отменить
+                                        </button>
+                                      ) : null}
+                                      {canEdit ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setRequestMenuOpenId(null);
+                                            h.openEdit(item);
+                                          }}
+                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                                        >
+                                          <Pencil size={14} />
+                                          Редактировать
+                                        </button>
+                                      ) : null}
+                                      {canDelete ? (
+                                        <button
+                                          type="button"
+                                          disabled={h.busyKey === `delete-${item.id}`}
+                                          onClick={() => {
+                                            setRequestMenuOpenId(null);
+                                            void h.handleDelete(item.id);
+                                          }}
+                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--danger-foreground)] transition hover:bg-[var(--danger-soft)] disabled:opacity-50"
+                                        >
+                                          <Trash2 size={14} />
+                                          Удалить
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
                         </div>
                         {summary && <p className={`${rowOpen ? "app-text-wrap line-clamp-10" : "app-text-wrap line-clamp-3"} mt-3 text-sm text-[var(--foreground)]`}>{summary}</p>}
                         <div className={`${summary ? "mt-3" : "mt-2"} flex flex-wrap items-center gap-1.5`}>
-                          {isAuth && !h.isFinal(sk) && <button type="button" title="Отменить" onClick={() => h.handleCancel(item.id)} disabled={h.busyKey === `cancel-${item.id}`} className="app-action-secondary inline-flex items-center justify-center rounded-lg p-1.5 disabled:opacity-60"><Ban size={15} /></button>}
                           <button type="button" title={`Комментарии (${item.comments_count ?? comments.length})`} onClick={() => h.toggleComments(item.id)} className="app-action-secondary relative inline-flex items-center justify-center rounded-lg p-1.5"><MessageSquare size={15} />{(item.comments_count ?? comments.length) > 0 && <span className="app-counter absolute -right-1.5 -top-1.5 flex h-4 min-w-4 px-1 text-[10px] font-bold">{item.comments_count ?? comments.length}</span>}</button>
-                          {isAuth && !h.isFinal(sk) && <button type="button" title="Редактировать" onClick={() => h.openEdit(item)} className="app-action-secondary inline-flex items-center justify-center rounded-lg p-1.5"><Pencil size={15} /></button>}
-                          {((isAuth && !h.isFinal(sk)) || canManage) && <button type="button" title="Удалить" onClick={() => h.handleDelete(item.id)} disabled={h.busyKey === `delete-${item.id}`} className="app-action-danger inline-flex items-center justify-center rounded-lg p-1.5 disabled:opacity-60"><Trash2 size={15} /></button>}
                           {canPr && <span className="ml-auto inline-flex items-center gap-2"><button type="button" title="Одобрить" onClick={() => h.handleApprove(item.id)} disabled={h.busyKey === `approve-${item.id}`} className="app-feedback-success inline-flex items-center justify-center rounded-lg p-2 disabled:opacity-60"><ThumbsUp size={18} /></button><button type="button" title="Отклонить" onClick={() => h.handleReject(item.id)} disabled={h.busyKey === `reject-${item.id}`} className="app-action-danger inline-flex items-center justify-center rounded-lg p-2 disabled:opacity-60"><ThumbsDown size={18} /></button></span>}
                         </div>
                       </div>

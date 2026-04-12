@@ -95,9 +95,34 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Фильтровать заявки в зависимости от роли пользователя и scope."""
         from datetime import timedelta
+        from django.contrib.contenttypes.models import ContentType
+        from django.db.models import Count, IntegerField, OuterRef, Subquery, Value
+        from django.db.models.functions import Coalesce
         from django.utils import timezone
+        from communications.models import Chat
 
-        queryset = super().get_queryset()
+        ct = ContentType.objects.get_for_model(ProcurementRequest)
+        comments_sub = (
+            Chat.objects.filter(
+                type="comments",
+                context_content_type=ct,
+                context_object_id=OuterRef("pk"),
+            )
+            .annotate(
+                msg_count=Count(
+                    "messages", filter=Q(messages__is_deleted=False)
+                )
+            )
+            .values("msg_count")[:1]
+        )
+
+        queryset = super().get_queryset().annotate(
+            comments_count=Coalesce(
+                Subquery(comments_sub, output_field=IntegerField()),
+                Value(0),
+                output_field=IntegerField(),
+            )
+        )
         user = self.request.user
         scope = self.request.query_params.get("scope", None)
         period = self.request.query_params.get("period", None)
@@ -157,6 +182,98 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(created_at__gte=start_date)
 
         return queryset.distinct()
+
+    @action(detail=True, methods=["get", "post"])
+    def comments(self, request, pk=None):
+        """Список/создание комментариев для заявки на закупку."""
+        from api.v1.employees.serializers.employee import (
+            EmployeeBriefSerializer,
+        )
+
+        procurement_request = self.get_object()
+
+        if request.method in ("GET", "HEAD"):
+            messages = comments_helpers.get_comments(procurement_request)
+            comments_data = []
+            for msg in messages:
+                author_ser = EmployeeBriefSerializer(msg.author)
+                comments_data.append(
+                    {
+                        "id": msg.id,
+                        "request": procurement_request.id,
+                        "author": author_ser.data,
+                        "text": msg.content,
+                        "created_at": msg.created_at,
+                    }
+                )
+            return Response(comments_data)
+
+        text = request.data.get("text", "").strip()
+        if not text:
+            return Response(
+                {"text": ["Это поле не может быть пустым."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        message = comments_helpers.create_comment(
+            obj=procurement_request,
+            author=request.user,
+            content=text,
+        )
+        author_ser = EmployeeBriefSerializer(message.author)
+        return Response(
+            {
+                "id": message.id,
+                "request": procurement_request.id,
+                "author": author_ser.data,
+                "text": message.content,
+                "created_at": message.created_at,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="comment_id",
+                type=int,
+                location=OpenApiParameter.PATH,
+                description="ID комментария в чате комментариев заявки.",
+            )
+        ]
+    )
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path="comments/(?P<comment_id>[^/.]+)",
+    )
+    def delete_comment(self, request, pk=None, comment_id=None):
+        """Удаление комментария к заявке на закупку."""
+        procurement_request = self.get_object()
+        chat = comments_helpers.get_or_create_comments_chat(procurement_request)
+        if isinstance(chat, tuple):
+            chat = chat[0]
+
+        try:
+            message = Message.objects.get(id=comment_id, chat=chat)
+        except Message.DoesNotExist:
+            return Response(
+                {"detail": "Комментарий не найден"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not (request.user.is_staff or message.author == request.user):
+            return Response(
+                {"detail": "Нет прав на удаление"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        comments_helpers.delete_comment(
+            message=message,
+            deleted_by=request.user,
+            soft_delete=True,
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"])
     def submit(self, request, pk=None):

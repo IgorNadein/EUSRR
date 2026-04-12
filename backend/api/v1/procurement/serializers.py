@@ -122,6 +122,7 @@ class ProcurementRequestListSerializer(serializers.ModelSerializer):
     executor_name = serializers.CharField(
         source="executor.get_full_name", read_only=True, allow_null=True
     )
+    comments_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = ProcurementRequest
@@ -140,6 +141,7 @@ class ProcurementRequestListSerializer(serializers.ModelSerializer):
             "urgency_display",
             "total_cost",
             "items_count",
+            "comments_count",
             "created_at",
             "submitted_at",
             "started_at",
@@ -156,6 +158,7 @@ class ProcurementRequestListSerializer(serializers.ModelSerializer):
             "urgency_display",
             "items_count",
             "total_cost",
+            "comments_count",
         ]
 
     def update(self, instance, validated_data):
@@ -200,6 +203,7 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
         source="get_required_approval_priorities", read_only=True
     )
     is_editable = serializers.BooleanField(read_only=True)
+    comments_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = ProcurementRequest
@@ -224,6 +228,7 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
             "approvals",
             "required_approval_priorities",
             "is_editable",
+            "comments_count",
             "created_at",
             "updated_at",
             "submitted_at",
@@ -240,6 +245,7 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
             "is_editable",
             "total_cost",
             "executor_name",
+            "comments_count",
         ]
 
 

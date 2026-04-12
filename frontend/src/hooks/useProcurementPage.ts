@@ -6,6 +6,7 @@ import { canManageRequests, canManageSupplier } from "@/lib/permissions";
 import { displayUserName, extractNextPage, loadAllPages } from "@/lib/shared";
 import type {
   Department,
+  ProcurementComment,
   ProcurementRequest,
   UrgencyLevel,
   User,
@@ -155,6 +156,9 @@ export function useProcurementPage(user: User | null) {
   const [form, setForm] = useState<FormState>(emptyForm);
 
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const [expandedComments, setExpandedComments] = useState<Record<number, boolean>>({});
+  const [commentsMap, setCommentsMap] = useState<Record<number, ProcurementComment[]>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
   const [detailsCache, setDetailsCache] = useState<Record<number, ProcurementRequest>>({});
   const detailsCacheRef = useRef<Record<number, ProcurementRequest>>({});
 
@@ -530,6 +534,90 @@ export function useProcurementPage(user: User | null) {
     }
   }, [ensureRequestDetail]);
 
+  const ensureCommentsLoaded = useCallback(async (id: number) => {
+    if (commentsMap[id]) {
+      return commentsMap[id];
+    }
+
+    const comments = await apiClient.getProcurementComments(id);
+    const normalized = Array.isArray(comments) ? comments : [];
+    setCommentsMap((previous) => ({ ...previous, [id]: normalized }));
+    return normalized;
+  }, [commentsMap]);
+
+  const toggleComments = useCallback(async (id: number) => {
+    const isOpen = Boolean(expandedComments[id]);
+    setExpandedComments((previous) => ({ ...previous, [id]: !isOpen }));
+
+    if (!isOpen && !commentsMap[id]) {
+      try {
+        await ensureCommentsLoaded(id);
+      } catch {
+        setActionError("Не удалось загрузить комментарии");
+      }
+    }
+  }, [commentsMap, ensureCommentsLoaded, expandedComments]);
+
+  const handleAddComment = useCallback(async (id: number) => {
+    const text = (commentDrafts[id] || "").trim();
+    if (!text) return;
+
+    try {
+      setBusyKey(`comment-${id}`);
+      const created = await apiClient.addProcurementComment(id, text);
+      setCommentsMap((previous) => ({
+        ...previous,
+        [id]: [...(previous[id] || []), created],
+      }));
+      setCommentDrafts((previous) => ({ ...previous, [id]: "" }));
+      setRequests((previous) => previous.map((request) => (
+        request.id === id
+          ? { ...request, comments_count: (request.comments_count || 0) + 1 }
+          : request
+      )));
+      setDetailsCache((previous) => {
+        const detail = previous[id];
+        if (!detail) return previous;
+        return {
+          ...previous,
+          [id]: { ...detail, comments_count: (detail.comments_count || 0) + 1 },
+        };
+      });
+    } catch {
+      setActionError("Не удалось добавить комментарий");
+    } finally {
+      setBusyKey(null);
+    }
+  }, [commentDrafts]);
+
+  const handleDeleteComment = useCallback(async (requestId: number, commentId: number) => {
+    try {
+      setBusyKey(`comment-delete-${commentId}`);
+      await apiClient.deleteProcurementComment(requestId, commentId);
+      setCommentsMap((previous) => ({
+        ...previous,
+        [requestId]: (previous[requestId] || []).filter((comment) => comment.id !== commentId),
+      }));
+      setRequests((previous) => previous.map((request) => (
+        request.id === requestId
+          ? { ...request, comments_count: Math.max(0, (request.comments_count || 0) - 1) }
+          : request
+      )));
+      setDetailsCache((previous) => {
+        const detail = previous[requestId];
+        if (!detail) return previous;
+        return {
+          ...previous,
+          [requestId]: { ...detail, comments_count: Math.max(0, (detail.comments_count || 0) - 1) },
+        };
+      });
+    } catch {
+      setActionError("Не удалось удалить комментарий");
+    } finally {
+      setBusyKey(null);
+    }
+  }, []);
+
   const handleSubmit = useCallback((id: number) => doAction(
     `submit-${id}`,
     () => apiClient.submitProcurementRequest(id),
@@ -643,6 +731,10 @@ export function useProcurementPage(user: User | null) {
     form,
     setForm,
     expandedIds,
+    expandedComments,
+    commentsMap,
+    commentDrafts,
+    setCommentDrafts,
     detailsCache,
     filteredRequests,
     openCreate,
@@ -653,6 +745,8 @@ export function useProcurementPage(user: User | null) {
     handleSave,
     handleLoadMore,
     toggleExpand,
+    toggleComments,
+    ensureCommentsLoaded,
     handleSubmit,
     handleApprove,
     handleReject,
@@ -660,6 +754,8 @@ export function useProcurementPage(user: User | null) {
     handleComplete,
     handleCancel,
     handleDelete,
+    handleAddComment,
+    handleDeleteComment,
     addItemRow,
     removeItemRow,
     updateItemRow,

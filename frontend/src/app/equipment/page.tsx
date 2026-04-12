@@ -6,7 +6,7 @@ import { useUser } from "@/contexts/UserContext";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, ArrowRightLeft, ArrowUpDown, Check, ChevronDown, Copy, Download, ExternalLink, Filter, MessageSquare, Monitor, Pencil, Plus, QrCode, Search, Shield, Trash2, Wrench, X } from "lucide-react";
+import { Archive, ArrowRightLeft, ArrowUpDown, Check, ChevronDown, ChevronRight, Copy, Download, ExternalLink, Filter, MessageSquare, Monitor, Pencil, Plus, QrCode, Search, Shield, Trash2, Wrench, X } from "lucide-react";
 import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
 import { formatDate, formatMoney } from "@/lib/shared";
 import { useEquipmentPage } from "@/hooks/useEquipmentPage";
@@ -277,6 +277,8 @@ function EquipmentPageContent() {
   const [qrError, setQrError] = useState<string | null>(null);
   const [qrCopySuccess, setQrCopySuccess] = useState(false);
   const handledLinkedEquipmentRef = useRef<number | null>(null);
+  const equipmentMenuRef = useRef<HTMLDivElement | null>(null);
+  const [equipmentMenuOpenId, setEquipmentMenuOpenId] = useState<number | null>(null);
 
   const linkedEquipmentParam = searchParams.get("item");
   const linkedEquipmentId = Number(linkedEquipmentParam || "");
@@ -355,6 +357,30 @@ function EquipmentPageContent() {
       cancelled = true;
     };
   }, [buildEquipmentLink, qrEquipment]);
+
+  useEffect(() => {
+    if (equipmentMenuOpenId === null) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (equipmentMenuRef.current && !equipmentMenuRef.current.contains(event.target as Node)) {
+        setEquipmentMenuOpenId(null);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setEquipmentMenuOpenId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [equipmentMenuOpenId]);
 
   const handleOpenQrModal = useCallback((equipment: typeof filteredItems[number]) => {
     setQrCopySuccess(false);
@@ -552,6 +578,7 @@ function EquipmentPageContent() {
                 const st = statusMeta[statusKey] ?? defaultStatusMeta;
                 const canEditThis = canManage;
                 const canDeleteThis = canManage;
+                const hasSecondaryActions = canEditThis || canDeleteThis;
                 const comments = commentsMap[item.id] || [];
                 const rowOpen = Boolean(expandedRows[item.id]);
                 const commentsOpen = Boolean(expandedComments[item.id]);
@@ -563,7 +590,7 @@ function EquipmentPageContent() {
                 const rowLoading = Boolean(loadingRowDetails[item.id]);
 
                 return (
-                  <article id={`equipment-${item.id}`} key={item.id} className="app-surface-muted overflow-hidden rounded-xl transition hover:border-[var(--border-strong)]">
+                  <article id={`equipment-${item.id}`} key={item.id} className={`app-surface-muted rounded-xl transition hover:border-[var(--border-strong)] ${equipmentMenuOpenId === item.id ? "relative z-20 overflow-visible" : "overflow-hidden"}`}>
                     <div className="px-4 py-3">
                       <div className="flex items-start gap-3">
                         <button
@@ -588,28 +615,65 @@ function EquipmentPageContent() {
                               </div>
                             </div>
 
-                            <div className="flex shrink-0 items-center gap-1.5">
-                              <button type="button" title={`Комментарии (${commentsTotal})`} onClick={() => toggleComments(item.id)} className="app-action-secondary relative inline-flex h-8 w-8 items-center justify-center rounded-lg">
-                                <MessageSquare size={15} />
-                                {commentsTotal > 0 && (
-                                  <span className="app-counter absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center px-1 py-0.5 text-[10px] font-bold text-white">{commentsTotal}</span>
-                                )}
-                              </button>
-                              {canEditThis && (
-                                <button type="button" title="Редактировать" onClick={() => openEdit(item)} className="app-action-secondary inline-flex h-8 w-8 items-center justify-center rounded-lg">
-                                  <Pencil size={15} />
-                                </button>
-                              )}
-                              {canDeleteThis && (
-                                <button type="button" title="Удалить" onClick={() => handleDelete(item.id)} disabled={busyKey === `delete-${item.id}`} className="app-action-danger inline-flex h-8 w-8 items-center justify-center rounded-lg disabled:opacity-60">
-                                  <Trash2 size={15} />
-                                </button>
-                              )}
+                            <div
+                              ref={equipmentMenuOpenId === item.id ? equipmentMenuRef : null}
+                              className="flex shrink-0 items-center gap-2"
+                            >
+                              {statusKey && <span className={`app-status-pill shrink-0 ${st.className}`}>{st.label}</span>}
+                              {hasSecondaryActions ? (
+                                <div className="relative">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEquipmentMenuOpenId((prev) => (prev === item.id ? null : item.id))}
+                                    className="app-action-ghost flex h-8 w-8 items-center justify-center rounded-md"
+                                    title="Действия с оборудованием"
+                                    aria-label="Действия с оборудованием"
+                                    aria-expanded={equipmentMenuOpenId === item.id}
+                                    aria-haspopup="menu"
+                                  >
+                                    <ChevronRight
+                                      size={15}
+                                      className={`transition-transform duration-200 ${equipmentMenuOpenId === item.id ? "rotate-90" : ""}`}
+                                    />
+                                  </button>
+                                  {equipmentMenuOpenId === item.id ? (
+                                    <div className="app-menu absolute right-0 top-full z-20 mt-2 w-44 rounded-xl py-1.5">
+                                      {canEditThis ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setEquipmentMenuOpenId(null);
+                                            openEdit(item);
+                                          }}
+                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                                        >
+                                          <Pencil size={14} className="app-text-muted" />
+                                          Редактировать
+                                        </button>
+                                      ) : null}
+                                      {canDeleteThis ? (
+                                        <button
+                                          type="button"
+                                          title="Удалить"
+                                          onClick={() => {
+                                            setEquipmentMenuOpenId(null);
+                                            void handleDelete(item.id);
+                                          }}
+                                          disabled={busyKey === `delete-${item.id}`}
+                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--danger-foreground)] transition hover:bg-[var(--danger-soft)] disabled:opacity-50"
+                                        >
+                                          <Trash2 size={13} className="text-[var(--danger-foreground)]" />
+                                          Удалить
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
                             </div>
                           </div>
 
                           <div className="mt-2 flex flex-wrap items-center gap-2">
-                            {statusKey && <span className={`app-status-pill shrink-0 ${st.className}`}>{st.label}</span>}
                             {item.is_under_warranty && (
                               <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium" title="На гарантии">
                                 <Shield size={11} /> Гарантия
@@ -636,6 +700,15 @@ function EquipmentPageContent() {
                             ) : (
                               <div className="col-span-2">Ответственный не назначен</div>
                             )}
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                            <button type="button" title={`Комментарии (${commentsTotal})`} onClick={() => toggleComments(item.id)} className="app-action-secondary relative inline-flex h-8 w-8 items-center justify-center rounded-lg">
+                              <MessageSquare size={15} />
+                              {commentsTotal > 0 && (
+                                <span className="app-counter absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center px-1 py-0.5 text-[10px] font-bold text-white">{commentsTotal}</span>
+                              )}
+                            </button>
                           </div>
                         </div>
                       </div>

@@ -167,7 +167,7 @@ export function Modal({
 
         {/* Footer */}
         {footer && (
-          <div className="app-divider shrink-0 border-t px-4 py-3 sm:px-6 sm:py-4">{footer}</div>
+          <div className="shrink-0 px-4 pt-3 sm:px-6 sm:pt-4">{footer}</div>
         )}
 
         {/* Bottom padding */}

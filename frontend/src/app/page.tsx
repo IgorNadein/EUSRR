@@ -1,6 +1,6 @@
 "use client";
 
-import { Heart, ImageIcon, MessageSquare, Paperclip, Pencil, Plus, Send, Trash2, X } from "lucide-react";
+import { ChevronRight, Heart, ImageIcon, MessageSquare, Paperclip, Pencil, Pin, Plus, Send, Trash2, X } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { Modal } from "@/components/ui";
 import { apiClient } from "@/lib/api";
@@ -78,6 +78,8 @@ function HomePageContent() {
   const [likesUsersMap, setLikesUsersMap] = useState<Record<number, LikeUser[]>>({});
   const [likesUsersEndpointUnavailable, setLikesUsersEndpointUnavailable] = useState(false);
   const [imageCacheBuster, setImageCacheBuster] = useState<Record<number, number>>({});
+  const [postMenuOpenId, setPostMenuOpenId] = useState<number | null>(null);
+  const postMenuRef = useRef<HTMLDivElement | null>(null);
 
   const formatUserName = (u: LikeUser) => {
     const composed = `${u.last_name || ""} ${u.first_name || ""}`.trim();
@@ -155,6 +157,19 @@ function HomePageContent() {
     hasPermission("delete_post") ||
     hasPermission("employees.manage_feed")
   );
+  const canPinPost = Boolean(
+    auth?.is_staff ||
+    auth?.is_superuser ||
+    hasPermission("feed.pin_post") ||
+    hasPermission("pin_post")
+  );
+
+  const sortPostsPinnedFirst = (items: Post[]) => [...items].sort((left, right) => {
+    const leftPinned = left.pinned ? 1 : 0;
+    const rightPinned = right.pinned ? 1 : 0;
+    if (leftPinned !== rightPinned) return rightPinned - leftPinned;
+    return new Date(right.created_at).getTime() - new Date(left.created_at).getTime();
+  });
 
   const canEditPost = (post: Post) => {
     if (canManageAnyPost) return true;
@@ -186,7 +201,7 @@ function HomePageContent() {
 
   const refreshPosts = async () => {
     const response = await apiClient.getPosts();
-    setPosts(response.results);
+    setPosts(sortPostsPinnedFirst(response.results));
   };
 
   useEffect(() => {
@@ -220,6 +235,30 @@ function HomePageContent() {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [commentsOpen, createPostOpen]);
+
+  useEffect(() => {
+    if (postMenuOpenId === null) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (postMenuRef.current && !postMenuRef.current.contains(event.target as Node)) {
+        setPostMenuOpenId(null);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPostMenuOpenId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [postMenuOpenId]);
 
   useEffect(() => {
     if (createType !== "department") return;
@@ -272,6 +311,35 @@ function HomePageContent() {
       );
     } finally {
       setLikeBusyId(null);
+    }
+  };
+
+  const handlePinToggle = async (post: Post) => {
+    if (postActionId === post.id) return;
+
+    const currentlyPinned = Boolean(post.pinned);
+    setPostActionId(post.id);
+    setPostMenuOpenId(null);
+
+    setPosts((prev) => sortPostsPinnedFirst(
+      prev.map((item) => item.id === post.id ? { ...item, pinned: !currentlyPinned } : item)
+    ));
+
+    try {
+      const response = currentlyPinned
+        ? await apiClient.unpinPost(post.id)
+        : await apiClient.pinPost(post.id);
+
+      setPosts((prev) => sortPostsPinnedFirst(
+        prev.map((item) => item.id === post.id ? { ...item, pinned: Boolean(response?.pinned) } : item)
+      ));
+    } catch (err) {
+      console.error("Ошибка закрепления публикации:", err);
+      setPosts((prev) => sortPostsPinnedFirst(
+        prev.map((item) => item.id === post.id ? { ...item, pinned: currentlyPinned } : item)
+      ));
+    } finally {
+      setPostActionId(null);
     }
   };
 
@@ -597,33 +665,83 @@ function HomePageContent() {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-[var(--foreground)]">{authorName}</p>
-                      <p className="app-text-muted text-xs">{timeAgo}</p>
+                      <div className="app-text-muted flex items-center gap-1.5 text-xs">
+                        <span>{timeAgo}</span>
+                        {post.pinned ? (
+                          <span
+                            className="app-accent-text inline-flex items-center justify-center"
+                            title="Закрепленная публикация"
+                            aria-label="Закрепленная публикация"
+                          >
+                            <Pin size={12} className="shrink-0 fill-current" />
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
 
                   {(canEditPost(post) || canDeletePost(post)) ? (
-                    <div className="flex items-center gap-1">
-                      {canEditPost(post) ? (
-                        <button
-                          type="button"
-                          onClick={() => openEditPostModal(post)}
-                          className="app-action-ghost flex h-8 w-8 items-center justify-center rounded-md"
-                          title="Редактировать публикацию"
-                        >
-                          <Pencil size={15} />
-                        </button>
-                      ) : null}
+                    <div
+                      ref={postMenuOpenId === post.id ? postMenuRef : null}
+                      className="relative shrink-0"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setPostMenuOpenId((prev) => (prev === post.id ? null : post.id))}
+                        className="app-action-ghost flex h-8 w-8 items-center justify-center rounded-md"
+                        title="Действия с публикацией"
+                        aria-label="Действия с публикацией"
+                        aria-expanded={postMenuOpenId === post.id}
+                        aria-haspopup="menu"
+                      >
+                        <ChevronRight
+                          size={15}
+                          className={`transition-transform duration-200 ${postMenuOpenId === post.id ? "rotate-90" : ""}`}
+                        />
+                      </button>
 
-                      {canDeletePost(post) ? (
-                        <button
-                          type="button"
-                          disabled={postActionId === post.id}
-                          onClick={() => removePost(post)}
-                          className="app-action-danger flex h-8 w-8 items-center justify-center rounded-md disabled:opacity-50"
-                          title="Удалить публикацию"
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                      {postMenuOpenId === post.id ? (
+                        <div className="app-menu absolute right-0 top-full z-20 mt-2 w-48 rounded-xl py-1.5">
+                          {canPinPost ? (
+                            <button
+                              type="button"
+                              disabled={postActionId === post.id}
+                              onClick={() => void handlePinToggle(post)}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)] disabled:opacity-50"
+                            >
+                              <Pin size={14} className={post.pinned ? "fill-current app-accent-text" : ""} />
+                              {post.pinned ? "Открепить" : "Закрепить"}
+                            </button>
+                          ) : null}
+                          {canEditPost(post) ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPostMenuOpenId(null);
+                                openEditPostModal(post);
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                            >
+                              <Pencil size={14} />
+                              Редактировать
+                            </button>
+                          ) : null}
+
+                          {canDeletePost(post) ? (
+                            <button
+                              type="button"
+                              disabled={postActionId === post.id}
+                              onClick={() => {
+                                setPostMenuOpenId(null);
+                                void removePost(post);
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--danger-foreground)] transition hover:bg-[var(--danger-soft)] disabled:opacity-50"
+                            >
+                              <Trash2 size={14} />
+                              Удалить
+                            </button>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                   ) : null}
