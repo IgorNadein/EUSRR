@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any, Dict, List, Optional, Tuple
 
 from django.conf import settings
@@ -124,9 +125,15 @@ class DepartmentService(BaseService):
         if current_parent.lower() == target_base_dn.lower():
             return str(ldap_user.dn)
 
-        ldap_user.base_dn = target_base_dn
-        ldap_user.save()
-        return str(ldap_user.dn)
+        ldap_user.move_to(target_base_dn)
+        new_dn = str(ldap_user.dn)
+        self._touch_state(
+            model="employee",
+            object_pk=employee.pk,
+            ldap_dn=new_dn,
+            sync_dir=SyncDirection.AUTO,
+        )
+        return new_dn
 
     def _load_ou_group(self, group_dn: str) -> LdapOrganizationalUnitGroup:
         """Возвращает high-level LDAP модель группы внутри OU отдела."""
@@ -138,20 +145,12 @@ class DepartmentService(BaseService):
     def _add_ou_group_member(self, group_dn: str, member_dn: str) -> None:
         """Добавляет DN в группу отдела/роли через ORM модель."""
         group = self._load_ou_group(group_dn)
-        members = list(group.member or [])
-        if member_dn not in members:
-            members.append(member_dn)
-            group.member = members
-            group.save()
+        group.add_member(member_dn)
 
     def _remove_ou_group_member(self, group_dn: str, member_dn: str) -> None:
         """Удаляет DN из группы отдела/роли через ORM модель."""
         group = self._load_ou_group(group_dn)
-        members = list(group.member or [])
-        if member_dn in members:
-            members.remove(member_dn)
-            group.member = members
-            group.save()
+        group.remove_member(member_dn)
 
     # ==================== Public API ==================== #
 
@@ -756,17 +755,19 @@ class DepartmentService(BaseService):
         role_name = self._sanitize_name(name)
         cn = f"ROLE_{role_name}"
         group_dn = f"CN={esc_rdn(cn)},{dept_dn}"
+        sam_account_name = self._build_role_sam_account_name(
+            department, name
+        )
 
         try:
             if not LdapOrganizationalUnitGroup.objects.filter(dn=group_dn).exists():
-                role_group = LdapOrganizationalUnitGroup(
+                LdapOrganizationalUnitGroup.objects.create(
                     dn=group_dn,
                     cn=cn,
-                    sam_account_name=cn[:20],
+                    sam_account_name=sam_account_name,
                     description=description
                     or f"Role: {name} in {department.name}",
                 )
-                role_group.save()
         except Exception as e:
             raise DirectoryLdapError(
                 f"LDAP create role group failed: {e}"
@@ -820,10 +821,14 @@ class DepartmentService(BaseService):
                 try:
                     new_role_name = self._sanitize_name(new_name)
                     new_cn = f"ROLE_{new_role_name}"
+                    new_sam = self._build_role_sam_account_name(
+                        role.department, new_name
+                    )
                     role_group = LdapOrganizationalUnitGroup.objects.get(
                         dn=role.ldap_group_dn
                     )
                     role_group.cn = new_cn
+                    role_group.sam_account_name = new_sam
                     role_group.save()
                     new_dn = str(role_group.dn)
                     role.ldap_group_dn = new_dn
@@ -1137,6 +1142,7 @@ class DepartmentService(BaseService):
         role_name = self._sanitize_name(role.name)
         expected_cn = f"ROLE_{role_name}"
         expected_dn = f"CN={esc_rdn(expected_cn)},{dept_dn}"
+        expected_sam = self._build_role_sam_account_name(dept, role.name)
 
         saved_dn = (role.ldap_group_dn or "").strip()
         role_group: Optional[LdapOrganizationalUnitGroup] = None
@@ -1153,13 +1159,12 @@ class DepartmentService(BaseService):
                 continue
 
         if role_group is None:
-            role_group = LdapOrganizationalUnitGroup(
+            role_group = LdapOrganizationalUnitGroup.objects.create(
                 dn=expected_dn,
                 cn=expected_cn,
-                sam_account_name=expected_cn[:20],
+                sam_account_name=expected_sam,
                 description=f"Role: {role.name} in {dept.name}",
             )
-            role_group.save()
         else:
             group_changed = False
             _, current_parent = self._split_rdn_parent(str(role_group.dn))
@@ -1168,6 +1173,9 @@ class DepartmentService(BaseService):
                 group_changed = True
             if role_group.cn != expected_cn:
                 role_group.cn = expected_cn
+                group_changed = True
+            if role_group.sam_account_name != expected_sam:
+                role_group.sam_account_name = expected_sam
                 group_changed = True
             expected_description = f"Role: {role.name} in {dept.name}"
             if (role_group.description or "") != expected_description:
@@ -1200,9 +1208,11 @@ class DepartmentService(BaseService):
 
         new_role_name = self._sanitize_name(new_name)
         new_cn = f"ROLE_{new_role_name}"
+        new_sam = self._build_role_sam_account_name(role.department, new_name)
 
         role_group = LdapOrganizationalUnitGroup.objects.get(dn=role.ldap_group_dn)
         role_group.cn = new_cn
+        role_group.sam_account_name = new_sam
         role_group.save()
         new_dn = str(role_group.dn)
 
@@ -1247,6 +1257,21 @@ class DepartmentService(BaseService):
         clean = re.sub(r'[,=+<>#;\\"\']', "", name)
         clean = re.sub(r"\s+", "_", clean)
         return clean[:50]  # Ограничение длины
+
+    def _build_role_sam_account_name(
+        self, department: Department, role_name: str
+    ) -> str:
+        """Строит детерминированный и глобально-уникальный sAMAccountName.
+
+        CN роли остаётся человекочитаемым (`ROLE_<Name>`), а sAMAccountName
+        должен быть уникален во всём домене и помещаться в legacy-лимит 20.
+        """
+        sanitized = self._sanitize_name(role_name).upper() or "ROLE"
+        prefix = sanitized[:6]
+        digest = hashlib.sha1(
+            f"{department.pk}:{sanitized}".encode("utf-8")
+        ).hexdigest()[:10].upper()
+        return f"R{prefix}{digest}"[:20]
 
     # ==================== DN/Lookup Methods ==================== #
 
@@ -1315,13 +1340,12 @@ class DepartmentService(BaseService):
         try:
             ou = LdapOrganizationalUnit.objects.get(dn=dn)
         except LdapOrganizationalUnit.DoesNotExist:
-            ou = LdapOrganizationalUnit(
+            ou = LdapOrganizationalUnit.objects.create(
                 dn=dn,
                 ou=name,
                 description="",
                 managed_by="",
             )
-            ou.save()
         return str(ou.dn)
 
     def _rename_department_ou(self, dept_dn: str, new_name: str) -> str:
@@ -1446,13 +1470,12 @@ class DepartmentService(BaseService):
                 continue
 
         if group is None:
-            group = LdapOrganizationalUnitGroup(
+            group = LdapOrganizationalUnitGroup.objects.create(
                 dn=expected_dn,
                 cn=expected_cn,
                 sam_account_name=expected_cn[:20],
                 description=expected_description,
             )
-            group.save()
         else:
             group_changed = False
             _, current_parent = self._split_rdn_parent(str(group.dn))

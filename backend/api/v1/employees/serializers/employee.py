@@ -42,6 +42,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
     avatar = Base64ImageField(required=False, allow_null=True)
     actions = EmployeeActionSerializer(many=True, read_only=True)
+    username = serializers.CharField(read_only=True, allow_blank=True)
 
     skills = SkillSerializer(many=True, read_only=True)
     skills_ids = serializers.PrimaryKeyRelatedField(
@@ -66,6 +67,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "avatar",
             "actions",
             "id",
+            "username",
             "email",
             "last_name",
             "first_name",
@@ -200,6 +202,8 @@ class EmployeeSerializer(serializers.ModelSerializer):
         action = getattr(view, "action", None) if view else None
         if not include_auth and action != "me":
             fields.pop("auth", None)
+        if action != "me":
+            fields.pop("username", None)
 
         return fields
 

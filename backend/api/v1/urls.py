@@ -88,6 +88,7 @@ router.register(r"communications/polls", PollViewSet, basename="polls")
 
 urlpatterns = [
     path("auth/", include("api.auth.urls")),
+    path("directory/", include("api.v1.directory.urls")),
     # Notifications API (из самого модуля notifications)
     path("notifications/", include("notifications.api.urls")),
     # Procurement API

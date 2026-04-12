@@ -54,6 +54,17 @@ class PositionService(BaseService):
         self._group_service = group_service
         self._user_service = user_service
 
+    def _ensure_runtime_services(self) -> None:
+        """Ленивая инициализация зависимостей для sync/retry путей."""
+        if self._group_service is None:
+            from .group_service import GroupService
+
+            self._group_service = GroupService()
+        if self._user_service is None:
+            from .user_service import UserService
+
+            self._user_service = UserService(self._group_service)
+
     # ======================== PUBLIC API ======================== #
 
     def reconcile_position(self, pos: Position) -> str:
@@ -75,6 +86,7 @@ class PositionService(BaseService):
             RuntimeError: Если LDAP_POSITIONS_BASE не настроен
             ValueError: Если имя должности пустое
         """
+        self._ensure_runtime_services()
         from ..infrastructure.connections import _ldap
 
         with _ldap() as conn:
@@ -93,6 +105,7 @@ class PositionService(BaseService):
             DirectoryServiceError: Если DN сотрудника не найден
             RuntimeError: Если операция LDAP не удалась
         """
+        self._ensure_runtime_services()
         from ..infrastructure.connections import _ldap
 
         emp_dn = self._user_service._get_employee_dn(employee)
@@ -121,6 +134,7 @@ class PositionService(BaseService):
             employee: Сотрудник
             position: Должность
         """
+        self._ensure_runtime_services()
         from ..infrastructure.connections import _ldap
 
         try:
@@ -148,6 +162,7 @@ class PositionService(BaseService):
         Args:
             position: Должность с POS-группой для удаления
         """
+        self._ensure_runtime_services()
         from ..infrastructure.connections import _ldap
         from ..orm_models import LdapGroup
 

@@ -19,6 +19,7 @@ if getattr(settings, 'LDAP_ENABLED', False):
     import_module('employees.signals.ldap.employee')
     import_module('employees.signals.ldap.department')
     import_module('employees.signals.ldap.group')
+    import_module('employees.signals.ldap.position')
     __all__ = ['common', 'birthday']
 else:
     __all__ = ['common', 'birthday']
