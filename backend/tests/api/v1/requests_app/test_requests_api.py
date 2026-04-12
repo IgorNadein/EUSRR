@@ -386,6 +386,32 @@ def test_comments_allowed_for_admin_and_manager(
     assert post_r.status_code == 201, "Получатель должен уметь создавать комментарий"
 
 
+def test_comment_author_can_delete_own_comment(
+    auth_client,
+    regular_user: models.Model,
+    make_request,
+) -> None:
+    """Автор комментария может удалить свой комментарий без 500."""
+    req = make_request(employee=regular_user)
+    client = auth_client(regular_user)
+
+    post_resp = client.post(
+        f"{API_BASE}{req.id}/comments/",
+        data={"text": "удаляемый комментарий"},
+        format="json",
+    )
+    assert post_resp.status_code == 201
+    comment_id = post_resp.json()["id"]
+
+    delete_resp = client.delete(f"{API_BASE}{req.id}/comments/{comment_id}/")
+    assert delete_resp.status_code == 204
+
+    list_resp = client.get(f"{API_BASE}{req.id}/comments/")
+    assert list_resp.status_code == 200
+    ids = {item["id"] for item in _results(list_resp.json())}
+    assert comment_id not in ids
+
+
 # ------------------------------------------------------------------------------
 # 8) ФИЛЬТРЫ
 # ------------------------------------------------------------------------------

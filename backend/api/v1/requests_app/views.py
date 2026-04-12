@@ -514,7 +514,7 @@ class RequestViewSet(viewsets.ModelViewSet):
         req_obj = self.get_object()
 
         # Получаем чат для этой заявки
-        chat = comments_helpers.get_or_create_comments_chat(req_obj)[0]
+        chat = comments_helpers.get_or_create_comments_chat(req_obj)
 
         # Находим комментарий
         try:

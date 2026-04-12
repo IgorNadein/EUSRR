@@ -235,7 +235,7 @@ function RequestsPageContent() {
               const summary = item.comment || item.description;
 
               return (
-                <article key={item.id} className="app-surface overflow-hidden rounded-xl transition hover:border-[var(--border-strong)]">
+                <article key={item.id} className="app-surface-muted overflow-hidden rounded-xl transition hover:border-[var(--border-strong)]">
                   <div className="p-4">
                     <div className="flex items-start gap-3">
                       <button type="button" onClick={() => h.toggleRow(item.id)} className="app-action-secondary mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition"><ChevronDown size={15} className={`transition ${rowOpen ? "rotate-180" : ""}`} /></button>
@@ -271,7 +271,7 @@ function RequestsPageContent() {
                     </div>
 
                     {(rowOpen || commentsOpen) && (
-                      <div className="app-surface-muted mt-4 rounded-xl p-4">
+                      <div className="app-surface-elevated mt-4 rounded-xl p-4">
                         {rowOpen && (
                           <div className="space-y-3 text-xs">
                             <div className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
