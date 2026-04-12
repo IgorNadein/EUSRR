@@ -42,10 +42,10 @@ class EmployeesConfig(AppConfig):
     name = "employees"
 
     def ready(self):
-
         if getattr(settings, "LDAP_WRITE_ENABLED", False):
             _ensure_ldapdb_timezone_compat()
             self._patch_ldapdb_compiler()
+        from . import signals  # noqa: F401
 
     def _patch_ldapdb_compiler(self):
         """Патчит django-ldapdb для поддержки Value выражений.

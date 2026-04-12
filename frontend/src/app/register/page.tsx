@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
+import { Eye, EyeOff } from "lucide-react";
+import { AuthLegalNotice } from "@/components/auth/AuthLegalNotice";
 
 // Динамический импорт компонента кроппера (чтобы избежать SSR проблем)
 const AvatarCropper = dynamic(() => import('@/components/AvatarCropper'), {
@@ -44,6 +46,8 @@ export default function Register() {
   // Состояния для кроппера
   const [showCropper, setShowCropper] = useState(false);
   const [tempImage, setTempImage] = useState<string>('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   
   const [formData, setFormData] = useState<RegisterFormData>({
     first_name: '',
@@ -68,6 +72,10 @@ export default function Register() {
     'Фото профиля',
     'Дополнительно'
   ];
+  const fieldBaseClass = "app-input w-full rounded-lg px-4 py-3 text-sm";
+  const fieldErrorClass =
+    "w-full rounded-lg border border-red-400/60 bg-red-500/10 px-4 py-3 text-sm text-[var(--foreground)] transition focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-500/20";
+  const labelClass = "app-field-label";
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -289,15 +297,15 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-sky-50 to-white text-gray-900">
+    <div className="app-shell min-h-screen text-[var(--foreground)]">
       <div className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center px-6 py-12 sm:px-10">
-        <div className="mx-auto w-full max-w-lg rounded-2xl bg-white p-8 shadow-xl ring-1 ring-gray-100">
+        <div className="app-surface-elevated mx-auto w-full max-w-lg rounded-[2rem] p-8">
           {/* Заголовок */}
           <div className="mb-6">
-            <h1 className="mb-2 text-3xl font-semibold tracking-tight text-gray-900">
+            <h1 className="mb-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
               Регистрация
             </h1>
-            <p className="text-sm text-gray-600">
+            <p className="app-text-muted text-sm">
               {stepTitles[currentStep - 1]} • Шаг {currentStep} из {totalSteps}
             </p>
           </div>
@@ -310,10 +318,10 @@ export default function Register() {
                   key={index}
                   className={`h-2 flex-1 rounded-full transition-all ${
                     index < currentStep
-                      ? 'bg-sky-500'
+                      ? 'bg-[var(--accent-primary)]'
                       : index === currentStep - 1
-                      ? 'bg-sky-300'
-                      : 'bg-gray-200'
+                      ? 'bg-[color-mix(in_srgb,var(--accent-primary)_45%,transparent)]'
+                      : 'bg-[var(--border-subtle)]'
                   }`}
                 />
               ))}
@@ -322,7 +330,7 @@ export default function Register() {
 
           {/* Ошибка */}
           {error && (
-            <div className="mb-6 rounded-lg bg-red-50 border border-red-200 p-4 text-sm text-red-800">
+            <div className="app-feedback-danger mb-6 rounded-lg p-4 text-sm">
               {error}
             </div>
           )}
@@ -333,7 +341,7 @@ export default function Register() {
               <div className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-700" htmlFor="first_name">
+                    <label className={labelClass} htmlFor="first_name">
                       Имя <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -343,12 +351,12 @@ export default function Register() {
                       required
                       value={formData.first_name}
                       onChange={handleInputChange}
-                      className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                      className={fieldBaseClass}
                       placeholder="Иван"
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-700" htmlFor="last_name">
+                    <label className={labelClass} htmlFor="last_name">
                       Фамилия <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -358,14 +366,14 @@ export default function Register() {
                       required
                       value={formData.last_name}
                       onChange={handleInputChange}
-                      className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                      className={fieldBaseClass}
                       placeholder="Иванов"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700" htmlFor="patronymic">
+                  <label className={labelClass} htmlFor="patronymic">
                     Отчество
                   </label>
                   <input
@@ -374,13 +382,13 @@ export default function Register() {
                     type="text"
                     value={formData.patronymic}
                     onChange={handleInputChange}
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                    className={fieldBaseClass}
                     placeholder="Иванович"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700" htmlFor="birth_date">
+                  <label className={labelClass} htmlFor="birth_date">
                     Дата рождения <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -391,12 +399,12 @@ export default function Register() {
                     value={formData.birth_date}
                     onChange={handleInputChange}
                     max={new Date().toISOString().split('T')[0]}
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                    className={fieldBaseClass}
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700" htmlFor="gender">
+                  <label className={labelClass} htmlFor="gender">
                     Пол <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -405,7 +413,7 @@ export default function Register() {
                     required
                     value={formData.gender}
                     onChange={handleInputChange}
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                    className={`app-select ${fieldBaseClass}`}
                   >
                     <option value="">Выберите пол</option>
                     <option value="1">Мужской</option>
@@ -419,7 +427,7 @@ export default function Register() {
             {currentStep === 2 && (
               <div className="space-y-4">
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700" htmlFor="email">
+                  <label className={labelClass} htmlFor="email">
                     Email <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -430,10 +438,10 @@ export default function Register() {
                     value={formData.email}
                     onChange={handleInputChange}
                     autoComplete="email"
-                    className={`w-full rounded-lg border px-4 py-3 text-sm text-gray-900 transition focus:outline-none focus:ring-2 ${
+                    className={`${
                       fieldErrors.email 
-                        ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-red-100' 
-                        : 'border-gray-200 bg-gray-50 focus:border-sky-500 focus:bg-white focus:ring-sky-100'
+                        ? fieldErrorClass
+                        : fieldBaseClass
                     }`}
                     placeholder="example@mail.com"
                   />
@@ -443,7 +451,7 @@ export default function Register() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700" htmlFor="phone_number">
+                  <label className={labelClass} htmlFor="phone_number">
                     Телефон <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -454,52 +462,72 @@ export default function Register() {
                     value={formData.phone_number}
                     onChange={handleInputChange}
                     autoComplete="tel"
-                    className={`w-full rounded-lg border px-4 py-3 text-sm text-gray-900 transition focus:outline-none focus:ring-2 ${
+                    className={`${
                       fieldErrors.phone_number 
-                        ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-red-100' 
-                        : 'border-gray-200 bg-gray-50 focus:border-sky-500 focus:bg-white focus:ring-sky-100'
+                        ? fieldErrorClass
+                        : fieldBaseClass
                     }`}
                     placeholder="+7 (900) 123-45-67"
                   />
                   {fieldErrors.phone_number ? (
                     <p className="mt-1 text-sm text-red-600">{fieldErrors.phone_number}</p>
                   ) : (
-                    <p className="mt-1 text-xs text-gray-500">Формат: +7XXXXXXXXXX</p>
+                    <p className="app-text-muted mt-1 text-xs">Формат: +7XXXXXXXXXX</p>
                   )}
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-700" htmlFor="password">
+                    <label className={labelClass} htmlFor="password">
                       Пароль <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      id="password"
-                      name="password"
-                      type="password"
-                      required
-                      value={formData.password}
-                      onChange={handleInputChange}
-                      autoComplete="new-password"
-                      className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
-                      placeholder="••••••••"
-                    />
+                    <div className="relative">
+                      <input
+                        id="password"
+                        name="password"
+                        type={showPassword ? "text" : "password"}
+                        required
+                        value={formData.password}
+                        onChange={handleInputChange}
+                        autoComplete="new-password"
+                        className={`${fieldBaseClass} pr-12`}
+                        placeholder="••••••••"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        className="app-icon-button absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full"
+                        aria-label={showPassword ? "Скрыть пароль" : "Показать пароль"}
+                      >
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-700" htmlFor="confirmPassword">
+                    <label className={labelClass} htmlFor="confirmPassword">
                       Повторите пароль <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      id="confirmPassword"
-                      name="confirmPassword"
-                      type="password"
-                      required
-                      value={formData.confirmPassword}
-                      onChange={handleInputChange}
-                      autoComplete="new-password"
-                      className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
-                      placeholder="••••••••"
-                    />
+                    <div className="relative">
+                      <input
+                        id="confirmPassword"
+                        name="confirmPassword"
+                        type={showConfirmPassword ? "text" : "password"}
+                        required
+                        value={formData.confirmPassword}
+                        onChange={handleInputChange}
+                        autoComplete="new-password"
+                        className={`${fieldBaseClass} pr-12`}
+                        placeholder="••••••••"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword((prev) => !prev)}
+                        className="app-icon-button absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full"
+                        aria-label={showConfirmPassword ? "Скрыть пароль" : "Показать пароль"}
+                      >
+                        {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -509,7 +537,7 @@ export default function Register() {
             {currentStep === 3 && (
               <div className="space-y-4">
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                  <label className={labelClass}>
                     Фото профиля <span className="text-red-500">*</span>
                   </label>
                   
@@ -518,7 +546,7 @@ export default function Register() {
                       <img
                         src={avatarPreview}
                         alt="Предпросмотр"
-                        className="h-40 w-40 rounded-full object-cover ring-4 ring-sky-100"
+                        className="app-avatar-frame h-40 w-40 rounded-full object-cover"
                       />
                       <button
                         type="button"
@@ -526,7 +554,7 @@ export default function Register() {
                           setFormData(prev => ({ ...prev, avatar: '' }));
                           setAvatarPreview(null);
                         }}
-                        className="text-sm text-sky-600 hover:text-sky-700 font-medium"
+                        className="app-link-accent text-sm font-medium"
                       >
                         Изменить фото
                       </button>
@@ -536,10 +564,10 @@ export default function Register() {
                       <div className="w-full">
                         <label
                           htmlFor="avatar-upload"
-                          className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 px-6 py-12 transition hover:border-sky-400 hover:bg-sky-50"
+                          className="app-surface-muted flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-12 transition hover:bg-[var(--surface-tertiary)]"
                         >
                           <svg
-                            className="h-12 w-12 text-gray-400"
+                            className="app-text-muted h-12 w-12"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
@@ -551,10 +579,10 @@ export default function Register() {
                               d="M12 6v6m0 0v6m0-6h6m-6 0H6"
                             />
                           </svg>
-                          <p className="mt-2 text-sm font-medium text-gray-700">
+                          <p className="mt-2 text-sm font-medium text-[var(--foreground)]">
                             Загрузить фото
                           </p>
-                          <p className="mt-1 text-xs text-gray-500">
+                          <p className="app-text-muted mt-1 text-xs">
                             PNG, JPG до 5MB
                           </p>
                           <input
@@ -575,12 +603,12 @@ export default function Register() {
             {/* Шаг 4: Дополнительно */}
             {currentStep === 4 && (
               <div className="space-y-4">
-                <p className="text-sm text-gray-600 mb-4">
+                <p className="app-text-muted mb-4 text-sm">
                   Эти поля необязательны, но помогут коллегам связаться с вами
                 </p>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700" htmlFor="telegram">
+                  <label className={labelClass} htmlFor="telegram">
                     Telegram
                   </label>
                   <input
@@ -589,13 +617,13 @@ export default function Register() {
                     type="text"
                     value={formData.telegram}
                     onChange={handleInputChange}
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                    className={fieldBaseClass}
                     placeholder="@username"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700" htmlFor="whatsapp">
+                  <label className={labelClass} htmlFor="whatsapp">
                     WhatsApp
                   </label>
                   <input
@@ -604,13 +632,13 @@ export default function Register() {
                     type="text"
                     value={formData.whatsapp}
                     onChange={handleInputChange}
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                    className={fieldBaseClass}
                     placeholder="+7 (900) 123-45-67"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700" htmlFor="wechat">
+                  <label className={labelClass} htmlFor="wechat">
                     WeChat
                   </label>
                   <input
@@ -619,7 +647,7 @@ export default function Register() {
                     type="text"
                     value={formData.wechat}
                     onChange={handleInputChange}
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                    className={fieldBaseClass}
                     placeholder="WeChat ID"
                   />
                 </div>
@@ -633,7 +661,7 @@ export default function Register() {
                   type="button"
                   onClick={handleBack}
                   disabled={isLoading}
-                  className="flex-1 rounded-lg border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-200 disabled:opacity-50"
+                  className="app-action-secondary flex-1 rounded-lg px-4 py-3 text-sm font-semibold disabled:opacity-50"
                 >
                   Назад
                 </button>
@@ -642,7 +670,7 @@ export default function Register() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="flex-1 rounded-lg bg-sky-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="app-action-primary flex-1 rounded-lg px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isLoading ? (
                   <span className="flex items-center justify-center gap-2">
@@ -663,7 +691,7 @@ export default function Register() {
             {currentStep === 1 && (
               <Link
                 href="/login"
-                className="mt-4 flex w-full items-center justify-center rounded-lg border border-gray-200 px-4 py-3 text-sm font-semibold text-sky-700 transition hover:border-sky-200 hover:bg-sky-50 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                className="app-action-secondary mt-4 flex w-full items-center justify-center rounded-lg px-4 py-3 text-sm font-semibold"
               >
                 Уже есть аккаунт? Войти
               </Link>
@@ -671,9 +699,7 @@ export default function Register() {
           </form>
 
           {currentStep === totalSteps && (
-            <p className="mt-6 text-center text-xs text-gray-500">
-              Регистрируясь, вы принимаете условия использования и политику конфиденциальности
-            </p>
+            <AuthLegalNotice prefix="Регистрируясь, вы принимаете " />
           )}
         </div>
       </div>

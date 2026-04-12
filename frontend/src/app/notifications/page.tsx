@@ -2,12 +2,12 @@
 
 import { AppShell } from '@/components/AppShell';
 import { apiClient } from '@/lib/api';
-import { Bell, Check, CheckCheck, Filter, Search, Trash2, Settings } from 'lucide-react';
+import { Bell, CheckCheck, Filter, Search, Trash2 } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale/ru';
 import { getVerbCategory, getVerbName } from '@/lib/verbTranslations';
-import Link from 'next/link';
+import { resolveNotificationActionUrl } from '@/lib/notifications/actionUrl';
 
 export default function NotificationsPage() {
   // Локальное состояние для ВСЕХ уведомлений (не только непрочитанных)
@@ -141,8 +141,9 @@ export default function NotificationsPage() {
     if (!notification.is_read) {
       await markAsRead(notification.id);
     }
-    if (notification.action_url) {
-      window.location.href = notification.action_url;
+    const actionUrl = resolveNotificationActionUrl(notification);
+    if (actionUrl) {
+      window.location.href = actionUrl;
     }
   };
 
@@ -165,20 +166,15 @@ export default function NotificationsPage() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-5xl px-4 py-6">
+      <section className="mx-auto max-w-5xl app-surface rounded-2xl p-4 sm:p-5">
         {/* Заголовок */}
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Уведомления</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              {unreadCount > 0 ? `${unreadCount} непрочитанных` : 'Все прочитано'}
-            </p>
-          </div>
-          <div className="flex gap-2">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <p className="app-text-muted text-sm font-semibold uppercase tracking-wide">Уведомления</p>
+          <div className="flex flex-wrap gap-2">
             {unreadCount > 0 && (
               <button
                 onClick={markAllAsRead}
-                className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 transition"
+                className="app-action-primary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium"
               >
                 <CheckCheck size={16} />
                 Прочитать все
@@ -192,19 +188,12 @@ export default function NotificationsPage() {
                     console.log(`Удалено ${count} прочитанных уведомлений`);
                   }
                 }}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+                className="app-feedback-danger inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium"
               >
                 <Trash2 size={16} />
                 Удалить прочитанные
               </button>
             )}
-            <Link
-              href="/notifications/settings"
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
-            >
-              <Settings size={16} />
-              Настройки
-            </Link>
           </div>
         </div>
 
@@ -212,21 +201,21 @@ export default function NotificationsPage() {
         <div className="mb-4 space-y-3">
           <div className="flex gap-2">
             <div className="relative flex-1">
-              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={16} className="app-text-muted pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Поиск по уведомлениям..."
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                className="app-input w-full rounded-lg py-2.5 pl-9 pr-3 text-sm"
               />
             </div>
             <button
               type="button"
               onClick={() => setFiltersOpen((v) => !v)}
-              className={`relative inline-flex items-center justify-center rounded-lg border p-2.5 transition ${
+              className={`relative inline-flex items-center justify-center rounded-lg p-2.5 transition ${
                 filtersOpen
-                  ? 'border-sky-400 bg-sky-50 text-sky-600'
-                  : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'
+                  ? 'app-selected app-accent-text'
+                  : 'app-surface-muted app-text-muted hover:bg-[var(--surface-tertiary)]'
               }`}
             >
               <Filter size={16} />
@@ -239,11 +228,11 @@ export default function NotificationsPage() {
           </div>
 
           {filtersOpen && (
-            <div className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
+            <div className="app-surface-muted flex flex-col gap-2 rounded-xl p-3">
               <select
                 value={filterRead}
                 onChange={(e) => setFilterRead(e.target.value as any)}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
+                className="app-select rounded-lg px-3 py-2 text-sm"
               >
                 <option value="all">Все уведомления</option>
                 <option value="unread">Только непрочитанные</option>
@@ -253,7 +242,7 @@ export default function NotificationsPage() {
               <select
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value)}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
+                className="app-select rounded-lg px-3 py-2 text-sm"
               >
                 <option value="">Все категории</option>
                 {categories.map((cat) => (
@@ -270,13 +259,37 @@ export default function NotificationsPage() {
                     setFilterRead('all');
                     setFilterCategory('');
                   }}
-                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition"
+                  className="app-action-secondary rounded-lg px-3 py-2 text-sm font-medium transition"
                 >
                   Очистить фильтры
                 </button>
               )}
             </div>
           )}
+        </div>
+
+        <div className="mb-4 flex flex-wrap gap-2">
+          {[
+            { key: 'all', label: 'Все', count: notifications.length },
+            { key: 'unread', label: 'Непрочитанные', count: unreadCount },
+            { key: 'read', label: 'Прочитанные', count: readCount },
+          ].map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setFilterRead(item.key as 'all' | 'unread' | 'read')}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                filterRead === item.key ? 'app-pill-active' : 'app-pill'
+              }`}
+            >
+              <span>{item.label}</span>
+              <span className={`app-badge px-1.5 py-0.5 text-[10px] font-bold ${
+                filterRead === item.key ? 'app-pill-count-active' : 'app-pill-count'
+              }`}>
+                {item.count}
+              </span>
+            </button>
+          ))}
         </div>
 
         {/* Бейджи категорий с счетчиками */}
@@ -286,15 +299,15 @@ export default function NotificationsPage() {
               onClick={() => setFilterCategory('')}
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
                 filterCategory === ''
-                  ? 'bg-sky-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'app-pill-active'
+                  : 'app-pill'
               }`}
             >
               <span>Все</span>
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+              <span className={`app-badge px-1.5 py-0.5 text-[10px] font-bold ${
                 filterCategory === ''
-                  ? 'bg-sky-500 text-white'
-                  : 'bg-gray-200 text-gray-600'
+                  ? 'app-pill-count-active'
+                  : 'app-pill-count'
               }`}>
                 {notifications.length}
               </span>
@@ -306,21 +319,21 @@ export default function NotificationsPage() {
                 onClick={() => setFilterCategory(filterCategory === category ? '' : category)}
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
                   filterCategory === category
-                    ? 'bg-sky-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ? 'app-pill-active'
+                    : 'app-pill'
                 }`}
               >
                 <span>{category}</span>
-                <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                <span className={`app-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold ${
                   filterCategory === category
-                    ? 'bg-sky-500 text-white'
-                    : 'bg-gray-200 text-gray-600'
+                    ? 'app-pill-count-active'
+                    : 'app-pill-count'
                 }`}>
                   <span>{total}</span>
                   {unread > 0 && (
                     <>
-                      <span className={filterCategory === category ? 'text-sky-300' : 'text-gray-400'}>•</span>
-                      <span className={filterCategory === category ? 'text-sky-100' : 'text-sky-600'}>
+                      <span className="app-text-muted">•</span>
+                      <span className="app-accent-text">
                         {unread}
                       </span>
                     </>
@@ -333,19 +346,19 @@ export default function NotificationsPage() {
 
         {/* Список уведомлений */}
         {loading ? (
-          <div className="rounded-xl bg-gray-50 p-12 text-center">
-            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-sky-500"></div>
-            <p className="text-sm text-gray-500">Загрузка уведомлений...</p>
+          <div className="app-surface-muted rounded-xl p-12 text-center">
+            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-[var(--border-subtle)] border-t-[var(--accent-primary)]"></div>
+            <p className="app-text-muted text-sm">Загрузка уведомлений...</p>
           </div>
         ) : filteredNotifications.length === 0 ? (
-          <div className="rounded-xl bg-gray-50 p-12 text-center">
-            <Bell size={48} className="mx-auto mb-3 text-gray-300" />
-            <p className="text-base font-medium text-gray-700">
+          <div className="app-surface-muted rounded-xl p-12 text-center">
+            <Bell size={48} className="app-text-muted mx-auto mb-3 opacity-40" />
+            <p className="text-base font-medium text-[var(--foreground)]">
               {search || filterRead !== 'all' || filterCategory
                 ? 'Нет уведомлений по заданным критериям'
                 : 'Нет уведомлений'}
             </p>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="app-text-muted mt-1 text-sm">
               {search || filterRead !== 'all' || filterCategory
                 ? 'Попробуйте изменить фильтры'
                 : 'Все новые уведомления появятся здесь'}
@@ -356,17 +369,17 @@ export default function NotificationsPage() {
             {filteredNotifications.map((notification: any) => (
               <article
                 key={notification.id}
-                className={`group rounded-xl border transition hover:shadow-md ${
+                className={`group overflow-hidden rounded-xl border transition ${
                   notification.is_read
-                    ? 'border-gray-200 bg-white'
-                    : 'border-sky-200 bg-sky-50/30'
+                    ? 'app-surface hover:border-[var(--border-strong)]'
+                    : 'app-unread-surface border-[color:color-mix(in_srgb,var(--accent-primary)_20%,var(--border-subtle))] hover:border-[color:var(--accent-primary)]'
                 }`}
               >
                 <div className="flex gap-4 p-4">
                   {/* Иконка */}
                   <div
                     className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xl ${
-                      notification.is_read ? 'bg-gray-100' : 'bg-sky-100'
+                      notification.is_read ? 'bg-[var(--surface-secondary)]' : 'bg-[color:color-mix(in_srgb,var(--accent-primary)_14%,var(--surface-primary))]'
                     }`}
                     style={
                       notification.color
@@ -383,21 +396,21 @@ export default function NotificationsPage() {
                     className="min-w-0 flex-1 cursor-pointer"
                   >
                     <div className="mb-1 flex items-start justify-between gap-2">
-                      <h3 className="font-semibold text-gray-900 group-hover:text-sky-600 transition">
+                      <h3 className="font-semibold text-[var(--foreground)] transition group-hover:text-[var(--accent-primary-strong)]">
                         {notification.title || getVerbName(notification.verb || notification.category)}
                       </h3>
                       {!notification.is_read && (
-                        <div className="h-2 w-2 shrink-0 rounded-full bg-sky-500 mt-1.5"></div>
+                        <div className="app-dot-accent mt-1.5 h-2 w-2 shrink-0 rounded-full"></div>
                       )}
                     </div>
 
-                    <p className="mb-2 text-sm text-gray-600 line-clamp-2">
+                    <p className="app-text-muted mb-2 line-clamp-2 text-sm">
                       {notification.short_message || notification.message}
                     </p>
 
-                    <div className="flex items-center gap-3 text-xs text-gray-400">
+                    <div className="app-text-muted flex items-center gap-3 text-xs">
                       {notification.category && (
-                        <span className="rounded bg-gray-100 px-2 py-0.5 font-medium text-gray-600">
+                        <span className="app-badge px-2 py-0.5 font-medium">
                           {getVerbCategory(notification.category)}
                         </span>
                       )}
@@ -424,18 +437,18 @@ export default function NotificationsPage() {
                       e.stopPropagation();
                       deleteNotification(notification.id);
                     }}
-                    className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
+                    className="app-action-danger flex-shrink-0 rounded-lg p-2 opacity-0 transition-all group-hover:opacity-100"
                     aria-label="Удалить"
                     title="Удалить уведомление"
                   >
-                    <Trash2 size={18} className="text-gray-400 hover:text-red-600" />
+                    <Trash2 size={18} className="app-text-muted hover:text-red-600" />
                   </button>
                 </div>
               </article>
             ))}
           </div>
         )}
-      </div>
+      </section>
     </AppShell>
   );
 }

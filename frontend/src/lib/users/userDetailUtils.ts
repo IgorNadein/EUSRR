@@ -122,32 +122,99 @@ export function formatBirthday(birthDate?: string): string | null {
   return new Date(birthDate).toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
 }
 
-export function getEmployeeActionBadgeClass(actionType?: string): string {
+export function formatBirthdayWithYear(birthDate?: string): string | null {
+  if (!birthDate) return null;
+  const date = new Date(birthDate);
+  if (Number.isNaN(date.getTime())) return birthDate;
+  return date.toLocaleDateString("ru-RU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+export function formatProfileDate(value?: string): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+export function formatProfileDateTime(value?: string): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function normalizeTelegramLink(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://t.me/${trimmed.replace(/^@/, "")}`;
+}
+
+export function normalizeWhatsAppLink(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  const digits = trimmed.replace(/[^\d]/g, "");
+  return digits ? `https://wa.me/${digits}` : "";
+}
+
+export function truncateText(value?: string, maxLength = 120) {
+  if (!value) return "";
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength).trimEnd()}…`;
+}
+
+export function getEmployeeActionTone(actionType?: string): {
+  badgeClass: string;
+  lineColor: string;
+} {
   switch (actionType) {
     case "on_leave":
-      return "bg-yellow-100 text-yellow-700";
     case "on_maternity":
-      return "bg-purple-100 text-purple-700";
+      return {
+        badgeClass: "app-feedback-warning",
+        lineColor: "#f59e0b",
+      };
     case "transferred":
-      return "bg-blue-100 text-blue-700";
+      return {
+        badgeClass: "app-selected",
+        lineColor: "#38bdf8",
+      };
     case "dismissed":
-      return "bg-red-100 text-red-700";
+      return {
+        badgeClass: "app-feedback-danger",
+        lineColor: "#ef4444",
+      };
+    case "returned_from_leave":
+    case "returned_from_maternity":
+    case "rehired":
+    case "hired":
     default:
-      return "bg-green-100 text-green-700";
+      return {
+        badgeClass: "app-feedback-success",
+        lineColor: "#22c55e",
+      };
   }
 }
 
+export function getEmployeeActionBadgeClass(actionType?: string): string {
+  return getEmployeeActionTone(actionType).badgeClass;
+}
+
 export function getEmployeeActionBorderColor(actionType?: string): string {
-  switch (actionType) {
-    case "on_leave":
-      return "#eab308";
-    case "on_maternity":
-      return "#a855f7";
-    case "transferred":
-      return "#3b82f6";
-    case "dismissed":
-      return "#ef4444";
-    default:
-      return "#22c55e";
-  }
+  return getEmployeeActionTone(actionType).lineColor;
 }

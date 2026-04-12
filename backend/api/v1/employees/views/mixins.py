@@ -34,6 +34,9 @@ class LdapUserCreationMixin:
         create_db_user(): Создаёт пользователя напрямую в БД (fallback без LDAP)
     """
 
+    def is_ldap_enabled(self) -> bool:
+        return _is_ldap_enabled()
+
     def create_user(
         self,
         *,
@@ -63,7 +66,7 @@ class LdapUserCreationMixin:
                 - (Employee, None) при успехе
                 - (None, Response) при ошибке (Response для возврата клиенту)
         """
-        if _is_ldap_enabled():
+        if self.is_ldap_enabled():
             # Режим с LDAP: создаём disabled учётку в LDAP + пароль
             return self.create_ldap_user(
                 first_name=first_name,
@@ -224,6 +227,10 @@ class LdapPasswordMixin:
                 group_cns=None,
                 move_to_department_dn=None,
             )
+            # Сохраняем локальный пароль в unusable-состоянии заново,
+            # чтобы инвалидировать любые reset-токены Django.
+            employee.set_unusable_password()
+            employee.save(update_fields=["password"])
             return True, None
         except DirectoryLdapError as e:
             logger.error(

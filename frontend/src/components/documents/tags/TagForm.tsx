@@ -63,8 +63,8 @@ export const TagForm: React.FC<TagFormProps> = ({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label htmlFor="tag-name" className="block text-sm font-medium text-gray-700 mb-1">
-          Название тега <span className="text-red-500">*</span>
+        <label htmlFor="tag-name" className="mb-1 block text-sm font-medium text-[var(--foreground)]">
+          Название тега <span className="app-accent-text">*</span>
         </label>
         <input
           id="tag-name"
@@ -75,9 +75,8 @@ export const TagForm: React.FC<TagFormProps> = ({
             if (errors.name) setErrors({ ...errors, name: undefined });
           }}
           className={`
-            w-full px-3 py-2 border rounded-md shadow-sm
-            focus:outline-none focus:ring-2 focus:ring-blue-500
-            ${errors.name ? 'border-red-500' : 'border-gray-300'}
+            app-input w-full rounded-md px-3 py-2
+            ${errors.name ? 'border-[color:#dc2626]' : ''}
           `}
           placeholder="Введите название тега"
           disabled={isLoading}
@@ -85,25 +84,20 @@ export const TagForm: React.FC<TagFormProps> = ({
           autoFocus
         />
         {errors.name && (
-          <p className="mt-1 text-sm text-red-600">{errors.name}</p>
+          <p className="mt-1 text-sm text-[color:#dc2626]">{errors.name}</p>
         )}
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="app-text-muted mt-1 text-xs">
           {name.length}/50 символов
         </p>
       </div>
 
       <TagColorPicker value={color} onChange={setColor} />
 
-      <div className="flex items-center gap-3 pt-4 border-t">
+      <div className="app-divider flex items-center gap-3 border-t pt-4">
         <button
           type="submit"
           disabled={isLoading || !name.trim()}
-          className="
-            px-4 py-2 bg-blue-600 text-white rounded-md font-medium
-            hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-            disabled:opacity-50 disabled:cursor-not-allowed
-            transition-colors
-          "
+          className="app-action-primary rounded-md px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isLoading ? (
             <span className="flex items-center gap-2">
@@ -123,12 +117,7 @@ export const TagForm: React.FC<TagFormProps> = ({
           type="button"
           onClick={onCancel}
           disabled={isLoading}
-          className="
-            px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md font-medium
-            hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-            disabled:opacity-50 disabled:cursor-not-allowed
-            transition-colors
-          "
+          className="app-action-secondary rounded-md px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
           Отмена
         </button>

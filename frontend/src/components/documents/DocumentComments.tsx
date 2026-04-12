@@ -157,20 +157,20 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
     return (
       <div
         key={comment.id}
-        className={`${depth > 0 ? "ml-6 border-l-2 border-gray-200 pl-4" : ""}`}
+        className={`${depth > 0 ? "app-divider ml-6 border-l-2 pl-4" : ""}`}
       >
-        <div className="rounded-lg bg-gray-50 p-3">
+        <div className="app-surface-muted rounded-lg p-3">
           <div className="mb-2 flex items-start justify-between gap-2">
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-900">
+                <span className="text-sm font-medium text-[var(--foreground)]">
                   {comment.author.last_name} {comment.author.first_name}
                 </span>
-                <span className="text-xs text-gray-500">
+                <span className="app-text-muted text-xs">
                   {formatDate(comment.created_at)}
                 </span>
                 {comment.updated_at !== comment.created_at && (
-                  <span className="text-xs text-gray-400">(изменено)</span>
+                  <span className="app-text-muted text-xs">(изменено)</span>
                 )}
               </div>
             </div>
@@ -182,14 +182,14 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
                     setEditingId(comment.id);
                     setEditText(comment.text);
                   }}
-                  className="rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
+                  className="app-action-ghost app-text-muted rounded p-1 hover:text-[var(--foreground)]"
                   title="Редактировать"
                 >
                   <Edit2 size={14} />
                 </button>
                 <button
                   onClick={() => handleDeleteComment(comment.id)}
-                  className="rounded p-1 text-gray-400 hover:bg-red-100 hover:text-red-600"
+                  className="app-action-danger rounded p-1"
                   title="Удалить"
                 >
                   <Trash2 size={14} />
@@ -203,14 +203,14 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
               <textarea
                 value={editText}
                 onChange={(e) => setEditText(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 p-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                className="app-input w-full rounded-lg p-2 text-sm"
                 rows={2}
               />
               <div className="flex gap-2">
                 <button
                   onClick={() => handleUpdateComment(comment.id)}
                   disabled={submitting || !editText.trim()}
-                  className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-sky-700 disabled:opacity-50"
+                  className="app-action-primary rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-50"
                 >
                   Сохранить
                 </button>
@@ -219,7 +219,7 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
                     setEditingId(null);
                     setEditText("");
                   }}
-                  className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50"
+                  className="app-action-secondary rounded-lg px-3 py-1.5 text-xs font-medium"
                 >
                   Отмена
                 </button>
@@ -227,11 +227,11 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
             </div>
           ) : (
             <>
-              <p className="text-sm text-gray-700 whitespace-pre-wrap">{comment.text}</p>
+              <p className="app-text-wrap whitespace-pre-wrap text-sm text-[var(--foreground)]">{comment.text}</p>
               {depth < 3 && (
                 <button
                   onClick={() => setReplyTo(comment.id)}
-                  className="mt-2 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-sky-600"
+                  className="app-text-muted hover:app-accent-text mt-2 inline-flex items-center gap-1 text-xs"
                 >
                   <CornerDownRight size={12} />
                   Ответить
@@ -250,13 +250,13 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
 
         {/* Reply form */}
         {replyTo === comment.id && (
-          <div className="ml-6 mt-2 border-l-2 border-sky-300 pl-4">
+          <div className="app-divider ml-6 mt-2 border-l-2 pl-4">
             <div className="flex gap-2">
               <textarea
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
                 placeholder="Напишите ответ..."
-                className="flex-1 rounded-lg border border-gray-300 p-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                className="app-input flex-1 rounded-lg p-2 text-sm"
                 rows={2}
               />
             </div>
@@ -264,7 +264,7 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
               <button
                 onClick={handleSubmitComment}
                 disabled={submitting || !newComment.trim()}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-sky-700 disabled:opacity-50"
+                className="app-action-primary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-50"
               >
                 <Send size={12} />
                 Отправить
@@ -274,7 +274,7 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
                   setReplyTo(null);
                   setNewComment("");
                 }}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50"
+                className="app-action-secondary rounded-lg px-3 py-1.5 text-xs font-medium"
               >
                 Отмена
               </button>
@@ -288,7 +288,7 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--accent-primary)] border-t-transparent" />
       </div>
     );
   }
@@ -296,8 +296,8 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <MessageCircle size={18} className="text-gray-500" />
-        <h3 className="text-sm font-medium text-gray-900">
+        <MessageCircle size={18} className="app-text-muted" />
+        <h3 className="text-sm font-medium text-[var(--foreground)]">
           Комментарии ({comments.reduce((acc, c) => acc + 1 + (c.replies?.length || 0), 0)})
         </h3>
       </div>
@@ -309,13 +309,13 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
             placeholder="Добавить комментарий..."
-            className="w-full rounded-lg border border-gray-300 p-3 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+            className="app-input w-full rounded-lg p-3 text-sm"
             rows={3}
           />
           <button
             onClick={handleSubmitComment}
             disabled={submitting || !newComment.trim()}
-            className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700 disabled:opacity-50"
+            className="app-action-primary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
           >
             <Send size={14} />
             Отправить
@@ -325,7 +325,7 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
 
       {/* Comments list */}
       {comments.length === 0 ? (
-        <p className="py-8 text-center text-sm text-gray-500">
+        <p className="app-text-muted py-8 text-center text-sm">
           Пока нет комментариев. Будьте первым!
         </p>
       ) : (

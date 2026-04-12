@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MessageCircle } from "lucide-react";
 import { useUser } from "@/contexts/UserContext";
-import type { User } from "@/types/api";
+import type { Chat, User } from "@/types/api";
 
 export default function EmployeesPage() {
   const router = useRouter();
@@ -44,7 +44,7 @@ export default function EmployeesPage() {
       setEmployees((prev) => (append ? [...prev, ...nextChunk] : nextChunk));
       setHasMore(Boolean(response.next));
       setPage(pageToLoad);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Ошибка загрузки сотрудников:", err);
       setError("Не удалось загрузить список сотрудников");
     } finally {
@@ -71,7 +71,7 @@ export default function EmployeesPage() {
       // Ищем существующий приватный чат с этим пользователем
       const allChats = await apiClient.getAllChats();
       
-      const existingChat = allChats.find((chat: any) => {
+      const existingChat = allChats.find((chat: Chat & { member_ids?: number[] }) => {
         if (chat.type !== 'private') return false;
         
         const memberIds: number[] = chat.member_ids || [];
@@ -90,7 +90,7 @@ export default function EmployeesPage() {
         });
         router.push(`/messages/${chat.id}`);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Ошибка создания чата:", err);
       alert("Не удалось открыть чат");
     } finally {
@@ -131,7 +131,7 @@ export default function EmployeesPage() {
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-sky-400 border-t-transparent"></div>
-            <p className="text-sm text-gray-500">Загрузка...</p>
+            <p className="app-text-muted text-sm">Загрузка...</p>
           </div>
         </div>
       </AppShell>
@@ -141,8 +141,8 @@ export default function EmployeesPage() {
   if (error) {
     return (
       <AppShell>
-        <div className="rounded-2xl bg-red-50 p-6 text-center">
-          <p className="text-sm text-red-800">{error}</p>
+        <div className="app-feedback-danger rounded-2xl p-6 text-center">
+          <p className="text-sm">{error}</p>
         </div>
       </AppShell>
     );
@@ -164,7 +164,7 @@ export default function EmployeesPage() {
           const isCurrentUser = currentUser?.id === employee.id;
 
           return (
-            <div key={employee.id} className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+            <div key={employee.id} className="app-surface-elevated flex items-center gap-4 rounded-2xl p-4">
               <Link href={`/users/${employee.id}`} className="flex flex-1 items-center gap-4 transition hover:opacity-80">
                 <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white">
                   {employee.avatar ? (
@@ -174,10 +174,10 @@ export default function EmployeesPage() {
                   )}
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-semibold text-gray-900">{fullName}</p>
-                  <p className="text-xs text-gray-500">{position}</p>
+                  <p className="text-sm font-semibold text-[var(--foreground)]">{fullName}</p>
+                  <p className="app-text-muted text-xs">{position}</p>
                   {employee.email && (
-                    <p className="mt-1 text-xs text-gray-500">{employee.email}</p>
+                    <p className="app-text-muted mt-1 text-xs">{employee.email}</p>
                   )}
                 </div>
               </Link>
@@ -185,11 +185,11 @@ export default function EmployeesPage() {
                 <button
                   onClick={(e) => handleStartChat(employee, e)}
                   disabled={creatingChatFor === employee.id}
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-100 text-sky-600 transition hover:bg-sky-200 disabled:opacity-50"
+                  className="app-icon-button flex h-10 w-10 items-center justify-center rounded-full disabled:opacity-50"
                   title="Написать сообщение"
                 >
                   {creatingChatFor === employee.id ? (
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-sky-600 border-t-transparent" />
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--accent-primary)] border-t-transparent" />
                   ) : (
                     <MessageCircle size={18} />
                   )}
@@ -201,9 +201,9 @@ export default function EmployeesPage() {
 
         <div ref={loaderRef} className="py-2">
           {loadingMore ? (
-            <p className="text-center text-xs text-gray-500">Подгружаем сотрудников...</p>
+            <p className="app-text-muted text-center text-xs">Подгружаем сотрудников...</p>
           ) : !hasMore && employees.length > 0 ? (
-            <p className="text-center text-xs text-gray-400">Все сотрудники загружены</p>
+            <p className="app-text-muted text-center text-xs">Все сотрудники загружены</p>
           ) : null}
         </div>
       </div>

@@ -189,3 +189,4 @@ ooo.html
 newman-report*.json
 *-report.json
 dump.rdb
+.playwright-cli/

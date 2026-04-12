@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Plus, Users } from "lucide-react";
 import { useCalendar } from "@/contexts/CalendarContext";
 import { useCalendarEvents } from "@/hooks/calendar/useCalendarEvents";
 import { calendarService, formatDateKey, type CalendarEvent } from "@/services/calendarService";
+import { DEFAULT_EVENT_COLOR, resolveEventColor } from "@/lib/calendar-event-colors";
 
 // Типы
 interface CalendarCardProps {
@@ -92,7 +93,7 @@ export const CalendarCard = memo(function CalendarCard({
       start: startDate.toISOString(),
       end: endDate.toISOString(),
       calendar: selectedCalendarId,
-      color_event: "#3498db",
+      color_event: DEFAULT_EVENT_COLOR,
     };
     onOpenEventModal(newEvent, date);
   }, [selectedCalendarId, onOpenEventModal]);
@@ -241,23 +242,23 @@ export const CalendarCard = memo(function CalendarCard({
   return (
     <>
       {/* Селектор календаря */}
-      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+      <div className="app-surface rounded-2xl p-4">
         <div className="mb-2 flex items-center justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Календарь</p>
+          <p className="app-text-muted text-[11px] font-semibold uppercase tracking-wide">Календарь</p>
           <button
             onClick={handleCreateCalendar}
-            className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-gray-100 transition"
+            className="app-icon-button flex h-6 w-6 items-center justify-center rounded-full transition"
             title="Создать календарь"
           >
-            <Plus size={14} className="text-gray-600" />
+            <Plus size={14} />
           </button>
         </div>
         {calendars.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">
-            <p className="mb-2 text-xs font-medium text-gray-700">Календарей пока нет</p>
+          <div className="rounded-lg border border-dashed border-[var(--border-strong)] bg-[var(--surface-secondary)] p-3">
+            <p className="mb-2 text-xs font-medium text-[var(--foreground)]">Календарей пока нет</p>
             <button
               onClick={handleCreateCalendar}
-              className="w-full rounded-md bg-sky-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-sky-600"
+              className="app-action-primary w-full rounded-md px-3 py-1.5 text-xs font-medium"
             >
               Создать первый календарь
             </button>
@@ -270,7 +271,7 @@ export const CalendarCard = memo(function CalendarCard({
                 const value = e.target.value;
                 setSelectedCalendarId(value === "" ? null : Number(value));
               }}
-              className="flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-xs text-gray-800 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              className="app-select flex-1 rounded-lg px-2.5 py-2 text-xs"
             >
               <option value="">📅 Все события</option>
               {calendars.map((cal) => (
@@ -283,7 +284,7 @@ export const CalendarCard = memo(function CalendarCard({
               <div className="relative">
                 <button
                   onClick={() => setShowCalendarMenu(!showCalendarMenu)}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-gray-100 transition"
+                  className="app-icon-button flex h-9 w-9 items-center justify-center rounded-lg transition"
                   title="Меню календаря"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -299,7 +300,7 @@ export const CalendarCard = memo(function CalendarCard({
                       className="fixed inset-0 z-[50]"
                       onClick={() => setShowCalendarMenu(false)}
                     />
-                    <div className="absolute right-0 top-full mt-1 w-48 rounded-lg bg-white shadow-lg ring-1 ring-black/5 z-[60]">
+                    <div className="app-menu absolute right-0 top-full z-[60] mt-1 w-48 rounded-lg">
                       <div className="py-1">
                         <button
                           onClick={() => {
@@ -309,14 +310,14 @@ export const CalendarCard = memo(function CalendarCard({
                             }
                             setShowCalendarMenu(false);
                           }}
-                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition"
+                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
                         >
                           <Users size={16} />
                           Участники
                         </button>
                         <button
                           onClick={handleExportCalendar}
-                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition"
+                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -329,7 +330,7 @@ export const CalendarCard = memo(function CalendarCard({
                           onClick={() => {
                             fileInputRef.current?.click();
                           }}
-                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition"
+                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -349,7 +350,7 @@ export const CalendarCard = memo(function CalendarCard({
                           className="hidden"
                         />
 
-                        <div className="my-1 border-t border-gray-100"></div>
+                        <div className="app-divider my-1 border-t"></div>
                         <button
                           onClick={() => {
                             const cal = calendars.find(c => c.id === selectedCalendarId);
@@ -358,7 +359,7 @@ export const CalendarCard = memo(function CalendarCard({
                             }
                             setShowCalendarMenu(false);
                           }}
-                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition"
+                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
@@ -377,37 +378,37 @@ export const CalendarCard = memo(function CalendarCard({
       </div>
 
       {/* Мини-календарь */}
-      <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-        <div className="flex items-center justify-between text-sm font-semibold text-gray-900">
+      <div className="app-surface rounded-2xl p-5">
+        <div className="flex items-center justify-between text-sm font-semibold text-[var(--foreground)]">
           <span>Месяц</span>
           <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={() => setMonthDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
-              className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-100"
+              className="app-icon-button flex h-7 w-7 items-center justify-center rounded-full"
               aria-label="Предыдущий месяц"
             >
-              <ChevronLeft size={16} className="text-gray-600" />
+              <ChevronLeft size={16} />
             </button>
-            <span className="min-w-28 text-center text-xs font-normal text-gray-500">{monthLabel}</span>
+            <span className="app-text-muted min-w-28 text-center text-xs font-normal">{monthLabel}</span>
             <button
               type="button"
               onClick={() => setMonthDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
-              className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-100"
+              className="app-icon-button flex h-7 w-7 items-center justify-center rounded-full"
               aria-label="Следующий месяц"
             >
-              <ChevronRight size={16} className="text-gray-600" />
+              <ChevronRight size={16} />
             </button>
           </div>
         </div>
-        <div className="mt-4 grid grid-cols-7 gap-1 text-center text-xs text-gray-500">
+        <div className="app-text-muted mt-4 grid grid-cols-7 gap-1 text-center text-xs">
           {weekdays.map((day) => (
             <div key={day} className="py-1 font-medium">
               {day}
             </div>
           ))}
         </div>
-        <div className="mt-1 grid grid-cols-7 gap-1 text-sm text-gray-800">
+        <div className="mt-1 grid grid-cols-7 gap-1 text-sm text-[var(--foreground)]">
           {days.map((day) => (
             <button
               key={day.key}
@@ -416,15 +417,15 @@ export const CalendarCard = memo(function CalendarCard({
               disabled={!day.inCurrentMonth}
               className={`relative flex h-9 items-center justify-center rounded-full transition ${
                 day.isToday
-                  ? "bg-sky-100 text-sky-800 font-semibold ring-1 ring-sky-200"
+                  ? "app-selected app-accent-text font-semibold"
                   : day.inCurrentMonth
-                  ? "hover:bg-sky-50 cursor-pointer"
-                  : "text-gray-300 cursor-default"
+                  ? "cursor-pointer hover:bg-[var(--accent-soft)]"
+                  : "cursor-default text-[color:color-mix(in_srgb,var(--muted-foreground)_48%,transparent)]"
               }`}
             >
               {day.day}
               {day.hasEvents && day.inCurrentMonth ? (
-                <span className="absolute bottom-1 h-1.5 w-1.5 rounded-full bg-sky-500" />
+                <span className="app-dot-accent absolute bottom-1 h-1.5 w-1.5 rounded-full" />
               ) : null}
             </button>
           ))}
@@ -432,15 +433,15 @@ export const CalendarCard = memo(function CalendarCard({
       </div>
 
       {/* События — неделя / месяц */}
-      <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-        <div className="mb-3 flex items-center gap-1 rounded-lg bg-gray-100 p-0.5">
+      <div className="app-surface rounded-2xl p-5">
+        <div className="mb-3 flex items-center gap-1 rounded-lg bg-[var(--surface-secondary)] p-0.5">
           <button
             type="button"
             onClick={() => setEventsViewMode("week")}
             className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition ${
               eventsViewMode === "week"
-                ? "bg-white text-gray-800 shadow-sm"
-                : "text-gray-500 hover:text-gray-700"
+                ? "bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-[var(--shadow-card)]"
+                : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
             }`}
           >
             Неделя
@@ -450,8 +451,8 @@ export const CalendarCard = memo(function CalendarCard({
             onClick={() => setEventsViewMode("month")}
             className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition ${
               eventsViewMode === "month"
-                ? "bg-white text-gray-800 shadow-sm"
-                : "text-gray-500 hover:text-gray-700"
+                ? "bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-[var(--shadow-card)]"
+                : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
             }`}
           >
             Месяц
@@ -461,9 +462,9 @@ export const CalendarCard = memo(function CalendarCard({
         {(() => {
           const displayEvents = eventsViewMode === "week" ? weekEvents : monthEvents;
 
-          if (loading) return <p className="text-xs text-gray-500">Загрузка...</p>;
-          if (error) return <p className="text-xs text-red-600">{error}</p>;
-          if (displayEvents.length === 0) return <p className="text-xs text-gray-500">Событий нет</p>;
+          if (loading) return <p className="app-text-muted text-xs">Загрузка...</p>;
+          if (error) return <p className="app-feedback-danger rounded-lg px-3 py-2 text-xs">{error}</p>;
+          if (displayEvents.length === 0) return <p className="app-text-muted text-xs">Событий нет</p>;
 
           return (
             <div className="space-y-2">
@@ -485,21 +486,21 @@ export const CalendarCard = memo(function CalendarCard({
                     key={`${eventsViewMode}-${event.id}-${event.start || ""}`}
                     type="button"
                     onClick={() => handleEventClick(event)}
-                    className="w-full rounded-lg bg-gray-50 px-2.5 py-2 text-left transition hover:bg-gray-100"
+                    className="w-full rounded-lg bg-[var(--surface-secondary)] px-2.5 py-2 text-left transition hover:bg-[var(--surface-tertiary)]"
                   >
                     <div className="flex items-center gap-1">
                       <div
                         className="h-2 w-2 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: event.color_event || event.color || "#3498db" }}
+                        style={{ backgroundColor: resolveEventColor(event.color_event || event.color) }}
                       />
-                      <p className="truncate text-xs font-medium text-gray-800">{event.title}</p>
+                      <p className="truncate text-xs font-medium text-[var(--foreground)]">{event.title}</p>
                       {(event.is_recurring || event.rule) && (
-                        <span className="text-[10px] text-sky-600 flex-shrink-0" title="Повторяющееся событие">
+                        <span className="app-accent-text shrink-0 text-[10px]" title="Повторяющееся событие">
                           ⟲
                         </span>
                       )}
                     </div>
-                    <p className="mt-0.5 text-[11px] text-gray-500">{dateLabel}</p>
+                    <p className="app-text-muted mt-0.5 text-[11px]">{dateLabel}</p>
                   </button>
                 );
               })}

@@ -403,22 +403,6 @@ class TestEquipmentActions:
         assert equipment.responsible_person == new_user
         assert equipment.location == 'Офис 2.10'
 
-    def test_generate_qr_code(
-        self, api_client, user, equipment
-    ):
-        """Генерация QR-кода."""
-        api_client.force_authenticate(user=user)
-        url = reverse(
-            'api:v1:procurement:equipment-qr-code',
-            kwargs={'pk': equipment.id}
-        )
-        
-        response = api_client.get(url)
-        assert response.status_code == status.HTTP_200_OK
-        assert response['Content-Type'] == 'image/png'
-        assert response.content[:4] == b'\x89PNG'
-
-
 # ==============================================================================
 # ТЕСТЫ КАТЕГОРИЙ
 # ==============================================================================

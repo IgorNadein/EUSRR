@@ -108,36 +108,41 @@ import datetime as _dt
 from django.conf import settings
 from django.utils import timezone as _dj_tz
 
-# Compatibility: django-ldapdb 1.5.1 uses timezone.utc removed in Django 5.x
-if not hasattr(_dj_tz, "utc"):
 
-    class _UtcCompat(_dt.tzinfo):
-        """pytz-compatible UTC wrapper for django-ldapdb.
+class _UtcCompat(_dt.tzinfo):
+    """pytz-compatible UTC wrapper for django-ldapdb.
 
-        Acts as a tzinfo subclass but delegates to datetime.timezone.utc
-        and provides pytz-compatible methods: localize() and normalize().
-        """
+    django-ldapdb still expects timezone.utc to provide pytz-like
+    `localize()` and `normalize()` methods. Some Django/Python combinations
+    expose `timezone.utc`, but without these methods. In that case ORM
+    save/update paths for LDAP models crash deep inside field preparation.
+    """
 
-        def localize(self, dt):
-            """pytz-style localize method."""
-            return dt.replace(tzinfo=_dt.timezone.utc)
+    def localize(self, dt):
+        """pytz-style localize method."""
+        return dt.replace(tzinfo=_dt.timezone.utc)
 
-        def normalize(self, dt):
-            """pytz-style normalize method - same as localize for UTC."""
-            return dt.replace(tzinfo=_dt.timezone.utc)
+    def normalize(self, dt):
+        """pytz-style normalize method - same as localize for UTC."""
+        return dt.replace(tzinfo=_dt.timezone.utc)
 
-        def utcoffset(self, dt):
-            return _dt.timedelta(0)
+    def utcoffset(self, dt):
+        return _dt.timedelta(0)
 
-        def tzname(self, dt):
-            return "UTC"
+    def tzname(self, dt):
+        return "UTC"
 
-        def dst(self, dt):
-            return _dt.timedelta(0)
+    def dst(self, dt):
+        return _dt.timedelta(0)
 
-        def __repr__(self):
-            return "UTC"
+    def __repr__(self):
+        return "UTC"
 
+
+# Compatibility: django-ldapdb 1.5.1 expects timezone.utc with pytz methods.
+if not hasattr(_dj_tz, "utc") or not all(
+    hasattr(_dj_tz.utc, attr) for attr in ("localize", "normalize")
+):
     _dj_tz.utc = _UtcCompat()
 
 from ldapdb.models import Model as LdapModel
@@ -443,6 +448,69 @@ class LdapGroup(ModifyDnMixin, LdapModel):
 
     def __repr__(self):
         return f"<LdapGroup: {self.cn}>"
+
+    # ==================== Membership Methods ==================== #
+
+    def list_members(self) -> list[str]:
+        """Возвращает список DN участников группы."""
+        return list(self.member or [])
+
+    def add_member(self, member_dn: str) -> None:
+        """Добавляет участника в глобальную группу."""
+        current = self.member or []
+        if member_dn in current:
+            return
+
+        from ldap3 import MODIFY_ADD
+
+        from .infrastructure.connections import _ldap
+
+        with _ldap() as conn:
+            ok = conn.modify(self.dn, {"member": [(MODIFY_ADD, [member_dn])]})
+            if not ok:
+                result_str = str(conn.result)
+                if "attributeOrValueExists" not in result_str:
+                    raise RuntimeError(f"add_member failed: {conn.result}")
+
+    def remove_member(self, member_dn: str) -> None:
+        """Удаляет участника из глобальной группы."""
+        from ldap3 import MODIFY_DELETE
+
+        from .infrastructure.connections import _ldap
+
+        with _ldap() as conn:
+            ok = conn.modify(
+                self.dn, {"member": [(MODIFY_DELETE, [member_dn])]}
+            )
+            if not ok:
+                result_str = str(conn.result)
+                if "noSuchAttribute" not in result_str:
+                    raise RuntimeError(f"remove_member failed: {conn.result}")
+
+    def sync_members(self, desired_dns: list[str]) -> dict:
+        """Синхронизирует состав группы к точному списку."""
+        current = set(self.member or [])
+        desired = set(desired_dns)
+
+        to_add = desired - current
+        to_remove = current - desired
+
+        from ldap3 import MODIFY_ADD, MODIFY_DELETE
+
+        from .infrastructure.connections import _ldap
+
+        with _ldap() as conn:
+            if to_remove:
+                conn.modify(
+                    self.dn, {"member": [(MODIFY_DELETE, list(to_remove))]}
+                )
+            if to_add:
+                conn.modify(self.dn, {"member": [(MODIFY_ADD, list(to_add))]})
+
+        return {
+            "added": len(to_add),
+            "removed": len(to_remove),
+        }
 
 
 class LdapOrganizationalUnitGroup(ModifyDnMixin, LdapModel):

@@ -1,5 +1,5 @@
 """
-Тесты для Inventory - transfer, write_off, QR-коды, инвентарные номера.
+Тесты для Inventory - transfer, write_off и инвентарные номера.
 """
 import pytest
 from rest_framework import status
@@ -11,7 +11,7 @@ from procurement.models import (
     MaintenanceRecord,
 )
 from procurement.constants import EquipmentStatus
-from procurement.services import InventoryNumberGenerator, QRCodeGenerator
+from procurement.services import InventoryNumberGenerator
 
 
 @pytest.mark.django_db
@@ -73,54 +73,6 @@ class TestInventoryNumberGenerator:
         assert InventoryNumberGenerator.validate('INV-2025') is False
         assert InventoryNumberGenerator.validate('ABC-2025-0001') is False
         assert InventoryNumberGenerator.validate('') is False
-
-
-@pytest.mark.django_db
-class TestQRCodeGenerator:
-    """Тесты для генератора QR-кодов."""
-
-    @pytest.fixture(autouse=True)
-    def setup(self, department_factory, user_factory, link_factory):
-        """Настройка тестовых данных."""
-        self.department = department_factory(name='IT QR Test')
-        self.user = user_factory(staff=True,
-            email='qr_user@test.com',
-            first_name='Test',
-            last_name='QR',
-        )
-        link_factory(self.user, self.department, is_active=True)
-        self.category = EquipmentCategory.objects.create(
-            name='Monitors',
-            description='Мониторы',
-        )
-        self.equipment = Equipment.objects.create(
-            name='Monitor Dell 27',
-            inventory_number='INV-2025-0100',
-            category=self.category,
-            department=self.department,
-            responsible_person=self.user,
-            status=EquipmentStatus.IN_USE,
-            purchase_date='2025-01-01',
-            purchase_cost='10000.00',
-        )
-
-    def test_generate_qr_code(self):
-        """Тест: генерация QR-кода для оборудования."""
-        qr_file = QRCodeGenerator.generate_for_equipment(self.equipment)
-        
-        assert qr_file is not None
-        assert qr_file.name.endswith('.png')
-        # Файл должен содержать PNG данные
-        content = qr_file.read()
-        assert len(content) > 0
-        # PNG начинается с signature
-        assert content[:4] == b'\x89PNG'
-
-    def test_qr_code_path(self):
-        """Тест: путь к файлу QR-кода."""
-        path = QRCodeGenerator.get_qr_code_path('INV-2025-0100')
-        
-        assert 'INV-2025-0100.png' in path
 
 
 @pytest.mark.django_db
@@ -339,53 +291,6 @@ class TestEquipmentMaintenanceEndpoint:
         assert record.equipment == self.equipment
         assert record.description == 'Замена блока питания'
         assert record.performed_by == self.user
-
-
-@pytest.mark.django_db
-class TestEquipmentQRCodeEndpoint:
-    """Тесты для /equipment/{id}/qr_code/ endpoint."""
-
-    @pytest.fixture(autouse=True)
-    def setup(
-        self, api_client, department_factory, user_factory, link_factory
-    ):
-        """Настройка тестовых данных."""
-        self.client = api_client
-        self.department = department_factory(name='IT QR Code')
-        self.user = user_factory(staff=True,
-            email='qrcode_user@test.com',
-            first_name='Test',
-            last_name='QRCode',
-        )
-        link_factory(self.user, self.department, is_active=True)
-        
-        self.category = EquipmentCategory.objects.create(
-            name='Networking',
-            description='Сетевое оборудование',
-        )
-        self.equipment = Equipment.objects.create(
-            name='Cisco Router',
-            inventory_number='INV-2025-0500',
-            category=self.category,
-            department=self.department,
-            responsible_person=self.user,
-            status=EquipmentStatus.IN_USE,
-            purchase_date='2025-01-01',
-            purchase_cost='10000.00',
-        )
-
-    def test_get_qr_code(self):
-        """Тест: получение QR-кода для оборудования."""
-        self.client.force_authenticate(user=self.user)
-        
-        response = self.client.get(
-            f'/api/v1/procurement/equipment/{self.equipment.id}/qr_code/'
-        )
-        
-        assert response.status_code == status.HTTP_200_OK
-        assert response['Content-Type'] == 'image/png'
-        # PNG signature
-        assert response.content[:4] == b'\x89PNG'
 
 
 @pytest.mark.django_db

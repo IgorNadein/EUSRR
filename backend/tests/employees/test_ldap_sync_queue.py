@@ -240,6 +240,143 @@ class TestProcessQueue:
         mock_task.delay.assert_not_called()
 
 
+class TestDepartmentQueueExecutors:
+
+    @override_settings(LDAP_ENABLED=True)
+    def test_department_member_retry_reconciles_active_membership(
+        self, db, user_factory
+    ):
+        from employees.models import Department, EmployeeDepartment, LdapSyncQueue
+        from employees.tasks import process_ldap_queue_item
+
+        with override_settings(LDAP_ENABLED=False):
+            employee = user_factory(email="member-active@example.com")
+            department = Department.objects.create(name="Dept Active Queue")
+            link = EmployeeDepartment.objects.create(
+                employee=employee,
+                department=department,
+                is_active=True,
+            )
+
+        item = LdapSyncQueue.objects.create(
+            operation="department_member",
+            model_name="employee_department",
+            object_pk=str(link.pk),
+            payload={
+                "employee_pk": str(employee.pk),
+                "department_pk": str(department.pk),
+                "is_active": True,
+                "role": None,
+            },
+        )
+
+        with patch(
+            "employees.ldap.services.department_service.DepartmentService.sync_member_state"
+        ) as mock_sync:
+            process_ldap_queue_item(item.pk)
+
+        item.refresh_from_db()
+        assert item.status == LdapSyncQueue.Status.COMPLETED
+        mock_sync.assert_called_once_with(
+            employee,
+            department,
+            is_active=True,
+            role=None,
+        )
+
+    @override_settings(LDAP_ENABLED=True)
+    def test_department_member_retry_reconciles_inactive_membership(
+        self, db, user_factory
+    ):
+        from employees.models import Department, EmployeeDepartment, LdapSyncQueue
+        from employees.tasks import process_ldap_queue_item
+
+        with override_settings(LDAP_ENABLED=False):
+            employee = user_factory(email="member-inactive@example.com")
+            department = Department.objects.create(name="Dept Inactive Queue")
+            link = EmployeeDepartment.objects.create(
+                employee=employee,
+                department=department,
+                is_active=False,
+            )
+
+        item = LdapSyncQueue.objects.create(
+            operation="department_member",
+            model_name="employee_department",
+            object_pk=str(link.pk),
+            payload={
+                "employee_pk": str(employee.pk),
+                "department_pk": str(department.pk),
+                "is_active": False,
+                "role": None,
+            },
+        )
+
+        with patch(
+            "employees.ldap.services.department_service.DepartmentService.sync_member_state"
+        ) as mock_sync:
+            process_ldap_queue_item(item.pk)
+
+        item.refresh_from_db()
+        assert item.status == LdapSyncQueue.Status.COMPLETED
+        mock_sync.assert_called_once_with(
+            employee,
+            department,
+            is_active=False,
+            role=None,
+        )
+
+    @override_settings(LDAP_ENABLED=True)
+    def test_department_save_retry_uses_canonical_sync(
+        self, db, user_factory
+    ):
+        from employees.models import Department, LdapSyncQueue
+        from employees.tasks import process_ldap_queue_item
+
+        with override_settings(LDAP_ENABLED=False):
+            head = user_factory(email="dept-head-queue@example.com")
+            department = Department.objects.create(
+                name="Dept Queue Original",
+                description="old description",
+            )
+            department.name = "Dept Queue Updated"
+            department.description = "new description"
+            department.head = head
+            department.save(update_fields=["name", "description", "head"])
+
+        item = LdapSyncQueue.objects.create(
+            operation="department_save",
+            model_name="department",
+            object_pk=str(department.pk),
+            payload={
+                "object_pk": str(department.pk),
+                "created": False,
+                "changes": {
+                    "name": "Dept Queue Updated",
+                    "description": "new description",
+                },
+                "sync_head": True,
+            },
+        )
+
+        with patch(
+            "employees.ldap.services.department_service.DepartmentService.sync_department_state"
+        ) as mock_sync:
+            process_ldap_queue_item(item.pk)
+
+        item.refresh_from_db()
+        assert item.status == LdapSyncQueue.Status.COMPLETED
+        mock_sync.assert_called_once_with(
+            department,
+            created=False,
+            changes={
+                "name": "Dept Queue Updated",
+                "description": "new description",
+            },
+            sync_head=True,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Сигналы: проверка enqueue при ошибке LDAP
 # ---------------------------------------------------------------------------

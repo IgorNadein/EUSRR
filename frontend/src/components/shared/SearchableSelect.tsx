@@ -36,26 +36,26 @@ export function SearchableSelectSingle({
 
   return (
     <div ref={ref} className="relative">
-      <label className="mb-1 block text-xs font-medium text-gray-500">{label}</label>
+      <label className="app-text-muted mb-1 block text-xs font-medium">{label}</label>
       <button
         type="button"
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-800 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+        className="app-select flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span className="truncate">
-          {selectedName || <span className="text-gray-400">{placeholder || "Выбрать..."}</span>}
+          {selectedName || <span className="app-text-muted">{placeholder || "Выбрать..."}</span>}
         </span>
-        <ChevronDown size={14} className={`ml-2 shrink-0 text-gray-400 transition ${open ? "rotate-180" : ""}`} />
+        <ChevronDown size={14} className={`app-text-muted ml-2 shrink-0 transition ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="absolute z-50 mt-1 max-h-56 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
-          <div className="border-b border-gray-100 p-2">
+        <div className="app-menu absolute z-50 mt-1 max-h-56 w-full overflow-hidden rounded-lg">
+          <div className="app-divider border-b p-2">
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Поиск..."
-              className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm focus:border-sky-400 focus:outline-none"
+              className="app-input w-full rounded px-2 py-1.5 text-sm"
               autoFocus
             />
           </div>
@@ -64,20 +64,20 @@ export function SearchableSelectSingle({
               <button
                 type="button"
                 onClick={() => { onSelect(null); setOpen(false); }}
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-400 hover:bg-gray-50"
+                className="app-text-muted hover:app-surface-muted flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm"
               >
                 Сбросить
               </button>
             )}
             {filtered.length === 0 ? (
-              <p className="px-2 py-1.5 text-xs text-gray-400">Ничего не найдено</p>
+              <p className="app-text-muted px-2 py-1.5 text-xs">Ничего не найдено</p>
             ) : (
               filtered.map((item) => (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => { onSelect(item.id); setOpen(false); }}
-                  className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50 ${selectedId === item.id ? "bg-sky-50 font-medium text-sky-700" : ""}`}
+                  className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm ${selectedId === item.id ? "app-selected app-accent-text font-medium" : "hover:bg-[var(--surface-secondary)]"}`}
                 >
                   {item.name}
                 </button>
@@ -121,39 +121,39 @@ export function SearchableSelectMulti({
 
   return (
     <div ref={ref} className="relative">
-      <label className="mb-1 block text-xs font-medium text-gray-500">{label}</label>
+      <label className="app-text-muted mb-1 block text-xs font-medium">{label}</label>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-800"
+        className="app-select flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm"
       >
         <span className="truncate">
-          {selectedNames.length > 0 ? selectedNames.join(", ") : <span className="text-gray-400">{placeholder || "Выбрать..."}</span>}
+          {selectedNames.length > 0 ? selectedNames.join(", ") : <span className="app-text-muted">{placeholder || "Выбрать..."}</span>}
         </span>
-        <ChevronDown size={14} className={`ml-2 shrink-0 text-gray-400 transition ${open ? "rotate-180" : ""}`} />
+        <ChevronDown size={14} className={`app-text-muted ml-2 shrink-0 transition ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="absolute z-50 mt-1 max-h-56 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
-          <div className="border-b border-gray-100 p-2">
+        <div className="app-menu absolute z-50 mt-1 max-h-56 w-full overflow-hidden rounded-lg">
+          <div className="app-divider border-b p-2">
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Поиск..."
-              className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm focus:border-sky-400 focus:outline-none"
+              className="app-input w-full rounded px-2 py-1.5 text-sm"
               autoFocus
             />
           </div>
           <div className="max-h-40 overflow-y-auto p-1">
             {filtered.length === 0 ? (
-              <p className="px-2 py-1.5 text-xs text-gray-400">Ничего не найдено</p>
+              <p className="app-text-muted px-2 py-1.5 text-xs">Ничего не найдено</p>
             ) : (
               filtered.map((item) => (
-                <label key={item.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50">
+                <label key={item.id} className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm ${selectedIds.includes(item.id) ? "app-selected" : "hover:bg-[var(--surface-secondary)]"}`}>
                   <input
                     type="checkbox"
                     checked={selectedIds.includes(item.id)}
                     onChange={() => onToggle(item.id)}
-                    className="rounded border-gray-300"
+                    className="rounded border-[var(--border-strong)]"
                   />
                   <span className="truncate">{item.name}</span>
                 </label>

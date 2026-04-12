@@ -188,8 +188,6 @@ export class EquipmentListHandler {
       this.bindPaginationEvents();
     }
     
-    // QR modals
-    this.bindQRModals();
   }
   
   renderEquipmentCard(eq) {
@@ -218,12 +216,6 @@ export class EquipmentListHandler {
               <a href="/procurement/equipment/${eq.id}/" class="btn btn-outline-primary btn-sm flex-grow-1">
                 <i class="bi-eye me-1"></i>Подробнее
               </a>
-              <button class="btn btn-outline-secondary btn-sm" 
-                      data-qr-url="/api/v1/procurement/equipment/${eq.id}/qr_code/"
-                      data-qr-name="${this.escapeHtml(eq.name)}"
-                      title="QR-код">
-                <i class="bi-qr-code"></i>
-              </button>
             </div>
           </div>
         </div>
@@ -252,50 +244,6 @@ export class EquipmentListHandler {
       return '<i class="bi-router"></i>';
     }
     return '<i class="bi-pc-display-horizontal"></i>';
-  }
-  
-  bindQRModals() {
-    document.querySelectorAll('[data-qr-url]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const url = btn.dataset.qrUrl;
-        const name = btn.dataset.qrName;
-        this.showQRModal(url, name);
-      });
-    });
-  }
-  
-  showQRModal(qrUrl, name) {
-    // Удаляем существующую модалку
-    document.querySelector('#qrModal')?.remove();
-    
-    const modal = document.createElement('div');
-    modal.id = 'qrModal';
-    modal.className = 'modal fade';
-    modal.innerHTML = `
-      <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title">QR-код</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body text-center">
-            <img src="${qrUrl}" alt="QR Code" class="img-fluid mb-2" style="max-width: 200px;">
-            <p class="small text-muted mb-0">${name}</p>
-          </div>
-          <div class="modal-footer justify-content-center">
-            <a href="${qrUrl}" download class="btn btn-outline-primary btn-sm">
-              <i class="bi-download me-1"></i>Скачать
-            </a>
-          </div>
-        </div>
-      </div>
-    `;
-    
-    document.body.appendChild(modal);
-    const bsModal = new bootstrap.Modal(modal);
-    bsModal.show();
-    
-    modal.addEventListener('hidden.bs.modal', () => modal.remove());
   }
   
   renderPagination(totalCount) {

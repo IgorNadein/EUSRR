@@ -17,6 +17,11 @@ export function createProcurementApi(request: RequestFn) {
         completeProcurementRequest: (id: number) => request(`/api/v1/procurement/requests/${id}/complete/`, { method: 'POST' }),
         cancelProcurementRequest: (id: number, reason?: string) =>
             request(`/api/v1/procurement/requests/${id}/cancel/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: reason || '' }) }),
+        getProcurementComments: (requestId: number) => request(`/api/v1/procurement/requests/${requestId}/comments/`),
+        addProcurementComment: (requestId: number, text: string) =>
+            request(`/api/v1/procurement/requests/${requestId}/comments/`, { method: 'POST', body: JSON.stringify({ text }) }),
+        deleteProcurementComment: (requestId: number, commentId: number): Promise<void> =>
+            request(`/api/v1/procurement/requests/${requestId}/comments/${commentId}/`, { method: 'DELETE' }),
         getMyProcurementRequests: (params?: Record<string, string | number>) => request(`/api/v1/procurement/requests/my_requests/${buildQuery(params)}`),
         getPendingApprovals: (params?: Record<string, string | number>) => request(`/api/v1/procurement/requests/pending_approvals/${buildQuery(params)}`),
         // Items

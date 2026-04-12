@@ -2,6 +2,7 @@
 
 import { Plus, Clock, Calendar } from "lucide-react";
 import { Modal } from "@/components/ui";
+import { resolveEventColor } from "@/lib/calendar-event-colors";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 
@@ -60,7 +61,7 @@ export function ViewDayEventsModal({
       footer={
         <button
           onClick={onCreateEvent}
-          className="w-full flex items-center justify-center gap-2 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600"
+          className="app-action-primary flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium"
         >
           <Plus size={16} />
           Создать событие
@@ -68,16 +69,16 @@ export function ViewDayEventsModal({
       }
     >
       <div className="space-y-4">
-        <p className="text-xs text-gray-500">
+        <p className="app-text-muted text-xs">
           {sortedEvents.length === 0
             ? "Нет событий"
             : `${sortedEvents.length} ${sortedEvents.length === 1 ? "событие" : "событий"}`}
         </p>
           {sortedEvents.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
-              <Calendar size={40} className="text-gray-300 mb-2" />
-              <p className="text-gray-500 text-sm mb-1">Нет событий в этот день</p>
-              <p className="text-gray-400 text-xs">Создайте новое событие</p>
+              <Calendar size={40} className="app-text-muted mb-2 opacity-40" />
+              <p className="app-text-muted mb-1 text-sm">Нет событий в этот день</p>
+              <p className="app-text-muted text-xs">Создайте новое событие</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -85,30 +86,30 @@ export function ViewDayEventsModal({
                 <button
                   key={event.id}
                   onClick={() => onEventClick(event)}
-                  className="w-full text-left rounded-lg border border-gray-200 bg-white p-3 transition hover:border-sky-300 hover:bg-sky-50"
+                  className="app-surface w-full rounded-lg p-3 text-left transition hover:bg-[var(--surface-secondary)]"
                 >
                   <div className="flex items-start gap-2">
                     {/* Color Indicator */}
                     <div
                       className="mt-1 h-8 w-1 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: event.color_event || "#3498db" }}
+                      style={{ backgroundColor: resolveEventColor(event.color_event) }}
                     />
 
                     <div className="flex-1 min-w-0">
                       {/* Title with recurring indicator */}
                       <div className="flex items-center gap-1.5 mb-1">
-                        <h4 className="text-sm font-medium text-gray-900 truncate">
+                        <h4 className="truncate text-sm font-medium text-[var(--foreground)]">
                           {event.title}
                         </h4>
                         {event.rule && (
-                          <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex-shrink-0">
+                          <span className="app-badge app-badge-accent shrink-0 rounded px-1.5 py-0.5 text-xs">
                             ⟲
                           </span>
                         )}
                       </div>
 
                       {/* Time */}
-                      <div className="flex items-center gap-1 text-xs text-gray-600">
+                      <div className="app-text-muted flex items-center gap-1 text-xs">
                         <Clock size={12} />
                         <span>
                           {formatTime(event.start)} - {formatTime(event.end)}
@@ -117,7 +118,7 @@ export function ViewDayEventsModal({
 
                       {/* Description preview */}
                       {event.description && (
-                        <p className="text-xs text-gray-500 mt-1.5 line-clamp-2">
+                        <p className="app-text-wrap app-text-muted mt-1.5 line-clamp-2 text-xs">
                           {event.description}
                         </p>
                       )}

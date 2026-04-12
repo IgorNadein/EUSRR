@@ -107,7 +107,7 @@ export function DocumentRelated({ documentId, onNavigate }: DocumentRelatedProps
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--accent-primary)] border-t-transparent" />
       </div>
     );
   }
@@ -116,14 +116,14 @@ export function DocumentRelated({ documentId, onNavigate }: DocumentRelatedProps
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Link2 size={18} className="text-gray-500" />
-          <h3 className="text-sm font-medium text-gray-900">
+          <Link2 size={18} className="app-text-muted" />
+          <h3 className="text-sm font-medium text-[var(--foreground)]">
             Связанные документы ({relatedDocs.length})
           </h3>
         </div>
         <button
           onClick={() => setShowAddDialog(true)}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-sky-700"
+          className="app-action-primary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
         >
           <Plus size={14} />
           Добавить
@@ -132,16 +132,16 @@ export function DocumentRelated({ documentId, onNavigate }: DocumentRelatedProps
 
       {/* Add Dialog */}
       {showAddDialog && (
-        <div className="rounded-lg border border-sky-300 bg-sky-50 p-3">
+        <div className="app-selected rounded-lg p-3">
           <div className="mb-3 flex items-center justify-between">
-            <h4 className="text-sm font-medium text-gray-900">Поиск документа</h4>
+            <h4 className="text-sm font-medium text-[var(--foreground)]">Поиск документа</h4>
             <button
               onClick={() => {
                 setShowAddDialog(false);
                 setSearchQuery("");
                 setSearchResults([]);
               }}
-              className="text-gray-400 hover:text-gray-600"
+              className="app-text-muted hover:text-[var(--foreground)]"
             >
               <X size={16} />
             </button>
@@ -152,13 +152,13 @@ export function DocumentRelated({ documentId, onNavigate }: DocumentRelatedProps
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Введите название документа..."
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+            className="app-input w-full rounded-lg px-3 py-2 text-sm"
             autoFocus
           />
 
           {searching && (
             <div className="mt-3 text-center">
-              <div className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
+              <div className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--accent-primary)] border-t-transparent" />
             </div>
           )}
 
@@ -167,12 +167,12 @@ export function DocumentRelated({ documentId, onNavigate }: DocumentRelatedProps
               {searchResults.map((doc) => (
                 <div
                   key={doc.id}
-                  className="flex items-center justify-between rounded-lg bg-white p-2"
+                  className="app-surface flex items-center justify-between rounded-lg p-2"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <FileText size={14} className="shrink-0 text-gray-400" />
-                      <span className="truncate text-sm font-medium text-gray-900">
+                      <FileText size={14} className="app-text-muted shrink-0" />
+                      <span className="truncate text-sm font-medium text-[var(--foreground)]">
                         {doc.title}
                       </span>
                     </div>
@@ -180,7 +180,7 @@ export function DocumentRelated({ documentId, onNavigate }: DocumentRelatedProps
                   <button
                     onClick={() => handleAdd(doc.id)}
                     disabled={adding}
-                    className="ml-2 rounded-lg bg-sky-600 px-3 py-1 text-xs font-medium text-white transition hover:bg-sky-700 disabled:opacity-50"
+                    className="app-action-primary ml-2 rounded-lg px-3 py-1 text-xs font-medium disabled:opacity-50"
                   >
                     Добавить
                   </button>
@@ -190,7 +190,7 @@ export function DocumentRelated({ documentId, onNavigate }: DocumentRelatedProps
           )}
 
           {!searching && searchQuery && searchResults.length === 0 && (
-            <p className="mt-3 text-center text-sm text-gray-500">
+            <p className="app-text-muted mt-3 text-center text-sm">
               Ничего не найдено
             </p>
           )}
@@ -199,7 +199,7 @@ export function DocumentRelated({ documentId, onNavigate }: DocumentRelatedProps
 
       {/* Related Documents List */}
       {relatedDocs.length === 0 ? (
-        <p className="py-8 text-center text-sm text-gray-500">
+        <p className="app-text-muted py-8 text-center text-sm">
           Нет связанных документов
         </p>
       ) : (
@@ -207,32 +207,32 @@ export function DocumentRelated({ documentId, onNavigate }: DocumentRelatedProps
           {relatedDocs.map((doc) => (
             <div
               key={doc.id}
-              className="flex items-center justify-between rounded-lg border border-gray-200 p-3 hover:border-sky-300 hover:bg-sky-50"
+              className="app-surface flex items-center justify-between rounded-lg p-3 hover:bg-[var(--surface-secondary)]"
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <FileText size={14} className="shrink-0 text-gray-400" />
+                  <FileText size={14} className="app-text-muted shrink-0" />
                   <button
                     onClick={() => onNavigate?.(doc.id)}
-                    className="truncate text-sm font-medium text-sky-600 hover:text-sky-700 hover:underline"
+                    className="app-link-accent truncate text-sm font-medium hover:underline"
                   >
                     {doc.title}
                   </button>
                   {doc.file_name && (
-                    <span className="shrink-0 text-xs text-gray-400">
+                    <span className="app-text-muted shrink-0 text-xs">
                       ({doc.file_name})
                     </span>
                   )}
                 </div>
                 <div className="mt-1 flex items-center gap-2">
-                  <span className="text-xs text-gray-400">
+                  <span className="app-text-muted text-xs">
                     {new Date(doc.created_at).toLocaleDateString("ru-RU")}
                   </span>
                 </div>
               </div>
               <button
                 onClick={() => handleRemove(doc.id)}
-                className="ml-2 rounded p-1 text-gray-400 hover:bg-red-100 hover:text-red-600"
+                className="app-action-danger ml-2 rounded p-1"
                 title="Удалить связь"
               >
                 <X size={16} />

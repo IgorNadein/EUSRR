@@ -183,7 +183,7 @@ export default function RelatedDocumentsList({ documentId }: RelatedDocumentsLis
               <div className="mb-4">
                 <input
                   type="text"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  className="app-input w-full rounded-lg px-3 py-2 text-sm sm:text-base"
                   placeholder="Поиск документов..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
@@ -192,12 +192,12 @@ export default function RelatedDocumentsList({ documentId }: RelatedDocumentsLis
 
               {searching && (
                 <div className="text-center py-4">
-                  <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-sky-600"></div>
+                  <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-[var(--border-strong)] border-t-[var(--accent-primary)]"></div>
                 </div>
               )}
 
               {!searching && searchQuery && searchResults.length === 0 && (
-                <div className="text-gray-500 text-center py-4 text-sm">
+                <div className="app-text-muted py-4 text-center text-sm">
                   Документы не найдены
                 </div>
               )}
@@ -208,14 +208,14 @@ export default function RelatedDocumentsList({ documentId }: RelatedDocumentsLis
                     <button
                       key={doc.id}
                       type="button"
-                      className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+                      className="app-surface w-full rounded-lg p-3 text-left transition hover:bg-[var(--surface-secondary)]"
                       onClick={() => handleAdd(doc.id)}
                     >
                       <div className="flex justify-between items-start gap-2 mb-1">
-                        <h6 className="font-medium text-sm text-gray-900 flex-1 min-w-0 truncate">{doc.title}</h6>
-                        <small className="text-xs text-gray-500 shrink-0">{doc.file_name}</small>
+                        <h6 className="flex-1 min-w-0 truncate text-sm font-medium text-[var(--foreground)]">{doc.title}</h6>
+                        <small className="app-text-muted shrink-0 text-xs">{doc.file_name}</small>
                       </div>
-                      <small className="text-xs text-gray-500">
+                      <small className="app-text-muted text-xs">
                         {doc.uploaded_by?.first_name} {doc.uploaded_by?.last_name}
                       </small>
                     </button>

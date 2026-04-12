@@ -69,12 +69,18 @@ def sync_group_to_ldap_on_save(sender, instance, created, **kwargs):
             security_enabled = getattr(instance, "_ldap_security_enabled", True)
 
             try:
-                svc.create(
+                group_dn = svc.create(
                     cn=instance.name,
                     parent_dn=parent_dn,
                     description=description,
                     scope=scope,
                     security_enabled=security_enabled,
+                )
+                svc._touch_state(
+                    model="group",
+                    object_pk=instance.pk,
+                    ldap_dn=group_dn,
+                    sync_dir="auto",
                 )
                 logger.info(f"Created LDAP group: {instance.name}")
             except Exception as e:

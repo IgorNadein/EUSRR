@@ -5,6 +5,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from dotenv import load_dotenv
+
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -13,7 +15,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # БАЗОВЫЕ НАСТРОЙКИ
 # -----------------------------------------------------------------------------
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-insecure-key")
-DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+DEBUG = os.getenv("DJANGO_DEBUG", "false").lower() == "true"
 
 
 def _split_env_list(value: str) -> list[str]:
@@ -417,7 +419,7 @@ CHANNEL_LAYERS = {
 # -----------------------------------------------------------------------------
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "api.auth.authentication.SessionAwareJWTAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",

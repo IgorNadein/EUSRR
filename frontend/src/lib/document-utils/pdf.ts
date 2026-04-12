@@ -3,12 +3,27 @@
  * Извлечение текста, операции с PDF (split, merge, rotate)
  */
 
-import * as pdfjsLib from 'pdfjs-dist';
 import { PDFDocument, degrees } from 'pdf-lib';
 
-// Настройка worker для PDF.js - используем локальный worker из public
-if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.mjs`;
+type PdfJsModule = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
+
+let pdfJsModulePromise: Promise<PdfJsModule> | null = null;
+
+async function loadPdfJs(): Promise<PdfJsModule> {
+  if (typeof window === "undefined") {
+    throw new Error("PDF utilities are only available in the browser");
+  }
+
+  if (!pdfJsModulePromise) {
+    pdfJsModulePromise = import("pdfjs-dist/legacy/build/pdf.mjs").then((module) => {
+      if (!module.GlobalWorkerOptions.workerSrc) {
+        module.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+      }
+      return module;
+    });
+  }
+
+  return pdfJsModulePromise;
 }
 
 export interface PDFTextExtractionProgress {
@@ -30,6 +45,7 @@ export async function extractPDFText(
 ): Promise<string> {
   try {
     const arrayBuffer = await file.arrayBuffer();
+    const pdfjsLib = await loadPdfJs();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const totalPages = pdf.numPages;
     
@@ -73,6 +89,7 @@ export async function generatePDFThumbnail(
 ): Promise<string> {
   try {
     const arrayBuffer = await file.arrayBuffer();
+    const pdfjsLib = await loadPdfJs();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const page = await pdf.getPage(1);
 
@@ -186,6 +203,7 @@ export async function getPDFInfo(file: File): Promise<{
 }> {
   try {
     const arrayBuffer = await file.arrayBuffer();
+    const pdfjsLib = await loadPdfJs();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const metadata = await pdf.getMetadata();
     

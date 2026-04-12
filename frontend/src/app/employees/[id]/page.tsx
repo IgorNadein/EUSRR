@@ -47,23 +47,23 @@ export default function EmployeeDetailPage() {
   return (
     <AppShell>
       <div className="space-y-4">
-        <Link href="/employees" className="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+        <Link href="/employees" className="app-action-secondary inline-flex items-center rounded-lg px-3 py-2 text-sm">
           ← К списку сотрудников
         </Link>
 
         {loading ? (
-          <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-100">
-            <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-sky-400 border-t-transparent" />
-            <p className="text-sm text-gray-500">Загрузка профиля...</p>
+          <div className="app-surface rounded-2xl p-8 text-center">
+            <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-[var(--border-subtle)] border-t-[var(--accent-primary)]" />
+            <p className="app-text-muted text-sm">Загрузка профиля...</p>
           </div>
         ) : error ? (
-          <div className="rounded-2xl bg-red-50 p-6 text-center">
-            <p className="text-sm text-red-800">{error}</p>
+          <div className="app-feedback-danger rounded-2xl p-6 text-center">
+            <p className="text-sm">{error}</p>
           </div>
         ) : employee ? (
-          <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
+          <section className="app-surface rounded-2xl p-5">
             <div className="flex items-start gap-4">
-              <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-lg font-semibold text-white">
+              <div className="app-avatar-fallback flex h-16 w-16 items-center justify-center overflow-hidden rounded-full text-lg font-semibold">
                 {employee.avatar ? (
                   <Image src={resolveMediaUrl(employee.avatar)} alt={fullName} width={64} height={64} className="h-full w-full object-cover" unoptimized />
                 ) : (
@@ -72,10 +72,10 @@ export default function EmployeeDetailPage() {
               </div>
 
               <div className="min-w-0 flex-1">
-                <h1 className="truncate text-xl font-semibold text-gray-900">{fullName}</h1>
-                <p className="mt-1 text-sm text-gray-600">Должность: {employee.position?.name || "—"}</p>
-                <p className="mt-1 text-sm text-gray-600">Email: {employee.email || "—"}</p>
-                <p className="mt-1 text-sm text-gray-600">Телефон: {employee.phone_number || "—"}</p>
+                <h1 className="truncate text-xl font-semibold text-[var(--foreground)]">{fullName}</h1>
+                <p className="app-text-muted mt-1 text-sm">Должность: {employee.position?.name || "—"}</p>
+                <p className="app-text-muted mt-1 text-sm">Email: {employee.email || "—"}</p>
+                <p className="app-text-muted mt-1 text-sm">Телефон: {employee.phone_number || "—"}</p>
               </div>
             </div>
           </section>

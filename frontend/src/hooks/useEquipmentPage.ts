@@ -710,17 +710,29 @@ export function useEquipmentPage(user: User | null) {
     }
   }, [closeOperationModal, loadRowDetails, maintenanceForm, selectedEquipment]);
 
-  const handleOpenQr = useCallback(async (equipmentId: number) => {
-    try {
-      setBusyKey(`qr-${equipmentId}`);
-      const blobUrl = await apiClient.getEquipmentQrCodeBlobUrl(equipmentId);
-      window.open(blobUrl, "_blank", "noopener,noreferrer");
-    } catch (qrError) {
-      setActionError(String((qrError as Error)?.message || "Не удалось получить QR-код"));
-    } finally {
-      setBusyKey(null);
+  const openEquipmentById = useCallback(async (equipmentId: number, options?: { expand?: boolean }) => {
+    if (options?.expand !== false) {
+      setExpandedRows((previous) => ({ ...previous, [equipmentId]: true }));
     }
-  }, []);
+
+    const existing = detailsMap[equipmentId] || items.find((item) => item.id === equipmentId);
+    if (!existing) {
+      try {
+        const detail = (await apiClient.getEquipmentDetail(equipmentId)) as Equipment;
+        setItems((previous) =>
+          previous.some((item) => item.id === equipmentId)
+            ? previous
+            : [detail, ...previous]
+        );
+        setDetailsMap((previous) => ({ ...previous, [equipmentId]: detail }));
+      } catch (loadError) {
+        setActionError(String((loadError as Error)?.message || "Не удалось открыть оборудование"));
+        return;
+      }
+    }
+
+    await loadRowDetails(equipmentId);
+  }, [detailsMap, items, loadRowDetails]);
 
   const toggleComments = useCallback(async (equipmentId: number) => {
     const isOpen = Boolean(expandedComments[equipmentId]);
@@ -820,10 +832,10 @@ export function useEquipmentPage(user: User | null) {
     handleDeleteComment,
     handleLoadMore,
     handleMaintenance,
-    handleOpenQr,
     handleSave,
     handleTransfer,
     handleWriteOff,
+    openEquipmentById,
     isCreateMode,
     isModalOpen,
     listMode,

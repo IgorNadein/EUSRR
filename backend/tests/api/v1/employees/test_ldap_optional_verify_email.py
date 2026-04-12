@@ -55,13 +55,14 @@ def verified_user(db):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("route_name", ["api:verify-email", "api:v1:verify-email"])
 def test_verify_email_without_ldap_activates_user_only_in_db(
-    api_client, unverified_user, settings
+    api_client, unverified_user, settings, route_name
 ):
     """V2: Верификация email без LDAP активирует пользователя только в БД"""
     settings.LDAP_ENABLED = False
 
-    url = reverse("api:v1:verify-email")
+    url = reverse(route_name)
     data = {
         "email": unverified_user.email,
         "code": unverified_user.email_activation_code,
@@ -80,13 +81,14 @@ def test_verify_email_without_ldap_activates_user_only_in_db(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("route_name", ["api:verify-email", "api:v1:verify-email"])
 def test_verify_email_with_wrong_code_returns_400_without_ldap(
-    api_client, unverified_user, settings
+    api_client, unverified_user, settings, route_name
 ):
     """V3: Неверный код возвращает 400"""
     settings.LDAP_ENABLED = False
 
-    url = reverse("api:v1:verify-email")
+    url = reverse(route_name)
     data = {
         "email": unverified_user.email,
         "code": "999999",  # Неправильный, но валидный формат (6 цифр)
@@ -106,13 +108,14 @@ def test_verify_email_with_wrong_code_returns_400_without_ldap(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("route_name", ["api:verify-email", "api:v1:verify-email"])
 def test_verify_email_already_verified_returns_400_without_ldap(
-    api_client, verified_user, settings
+    api_client, verified_user, settings, route_name
 ):
     """V4: Повторная верификация уже верифицированного email возвращает 400"""
     settings.LDAP_ENABLED = False
 
-    url = reverse("api:v1:verify-email")
+    url = reverse(route_name)
     data = {
         "email": verified_user.email,
         "code": "123456",  # Валидный формат, но неправильный код
@@ -128,13 +131,14 @@ def test_verify_email_already_verified_returns_400_without_ldap(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("route_name", ["api:verify-email", "api:v1:verify-email"])
 def test_verify_email_nonexistent_user_returns_404_without_ldap(
-    api_client, settings
+    api_client, settings, route_name
 ):
     """V5: Верификация несуществующего пользователя возвращает 404"""
     settings.LDAP_ENABLED = False
 
-    url = reverse("api:v1:verify-email")
+    url = reverse(route_name)
     data = {
         "email": "nonexistent@example.com",
         "code": "123456",
@@ -146,13 +150,14 @@ def test_verify_email_nonexistent_user_returns_404_without_ldap(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("route_name", ["api:verify-email", "api:v1:verify-email"])
 def test_verify_email_empty_code_returns_400_without_ldap(
-    api_client, unverified_user, settings
+    api_client, unverified_user, settings, route_name
 ):
     """V6: Пустой код возвращает 400"""
     settings.LDAP_ENABLED = False
 
-    url = reverse("api:v1:verify-email")
+    url = reverse(route_name)
     data = {
         "email": unverified_user.email,
         "code": "",
@@ -161,5 +166,4 @@ def test_verify_email_empty_code_returns_400_without_ldap(
     response = api_client.post(url, data, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-
 

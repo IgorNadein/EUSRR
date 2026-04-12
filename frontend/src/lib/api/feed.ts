@@ -32,6 +32,8 @@ export function createFeedApi(request: RequestFn, getToken: GetTokenFn) {
         createPost: (data: Record<string, any>) => formDataPost('/api/v1/posts/', 'POST', data),
         updatePost: (postId: number, data: Record<string, any>) => formDataPost(`/api/v1/posts/${postId}/`, 'PATCH', data),
         deletePost: (postId: number): Promise<void> => request(`/api/v1/posts/${postId}/`, { method: 'DELETE' }),
+        pinPost: (postId: number) => request(`/api/v1/posts/${postId}/pin/`, { method: 'POST' }),
+        unpinPost: (postId: number) => request(`/api/v1/posts/${postId}/unpin/`, { method: 'POST' }),
         likePost: (postId: number) => request(`/api/v1/posts/${postId}/like/`, { method: 'POST' }),
         unlikePost: (postId: number) => request(`/api/v1/posts/${postId}/unlike/`, { method: 'POST' }),
         getPostLikers: (postId: number) => request(`/api/v1/posts/${postId}/likers/`),

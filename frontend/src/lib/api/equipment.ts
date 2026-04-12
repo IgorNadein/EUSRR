@@ -23,15 +23,6 @@ export function createEquipmentApi(request: RequestFn, getToken: GetTokenFn) {
         getMaintenanceRecords: (params?: Record<string, string | number>) => request(`/api/v1/procurement/maintenance/${buildQuery(params)}`),
         getEquipmentCategoryTree: () => request('/api/v1/procurement/equipment-categories/tree/'),
         getEquipmentCategoryChildren: (categoryId: number) => request(`/api/v1/procurement/equipment-categories/${categoryId}/children/`),
-        getEquipmentQrCodeBlobUrl: async (equipmentId: number): Promise<string> => {
-            const headers: Record<string, string> = {};
-            const token = getToken();
-            if (token) headers['Authorization'] = `Bearer ${token}`;
-            const response = await fetch(`/api/v1/procurement/equipment/${equipmentId}/qr_code/`, { method: 'GET', headers });
-            if (!response.ok) throw new Error(`API Error: ${response.status} ${response.statusText}`);
-            const blob = await response.blob();
-            return URL.createObjectURL(blob);
-        },
         getEquipmentComments: (equipmentId: number) => request(`/api/v1/procurement/equipment/${equipmentId}/comments/`),
         addEquipmentComment: (equipmentId: number, text: string) => request(`/api/v1/procurement/equipment/${equipmentId}/comments/`, { method: 'POST', body: JSON.stringify({ text }) }),
         deleteEquipmentComment: (equipmentId: number, commentId: number): Promise<void> => request(`/api/v1/procurement/equipment/${equipmentId}/comments/${commentId}/`, { method: 'DELETE' }),

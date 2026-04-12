@@ -1,34 +1,47 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import Image from "next/image";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import {
-  Award,
-  Building2,
-  Calendar,
-  Check,
-  Clock,
-  Copy,
   Mail,
   MessageCircle,
   Pencil,
   Phone,
 } from "lucide-react";
+
 import { AppShell } from "../../../components/AppShell";
 import EditUserProfileModal from "@/components/users/EditUserProfileModal";
 import EmployeeActionModal from "@/components/users/EmployeeActionModal";
 import EmployeeActionsTimeline from "@/components/users/EmployeeActionsTimeline";
+import {
+  ProfileContactsPanel,
+  ProfileDepartmentBadge,
+  ProfileHeroCard,
+  ProfileInfoCard,
+  ProfileSkillsCard,
+  type ProfileContactRow,
+  type ProfileInfoItem,
+} from "@/components/users/ProfileSections";
 import { useUser } from "@/contexts/UserContext";
 import { useUserDetailPage } from "@/hooks/useUserDetailPage";
+import { apiClient } from "@/lib/api";
+import { resolveMediaUrl } from "@/lib/url";
 import {
-  formatBirthday,
+  formatBirthdayWithYear,
+  formatProfileDate,
+  formatProfileDateTime,
   formatPhoneForLink,
-  getEmployeeActionBadgeClass,
+  getEmployeeActionTone,
   getWorkDuration,
+  normalizeTelegramLink,
+  normalizeWhatsAppLink,
 } from "@/lib/users/userDetailUtils";
 
 export default function UserDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const { user: currentUser } = useUser();
   const userId = Number(params?.id);
 
@@ -69,272 +82,367 @@ export default function UserDetailPage() {
     sortedActions,
   } = useUserDetailPage(userId, currentUser);
 
+  useEffect(() => {
+    if (currentUser?.id && userId && currentUser.id === userId) {
+      router.replace("/profile");
+    }
+  }, [currentUser?.id, router, userId]);
+
+  const primaryDepartment = useMemo(
+    () => person?.departments?.[0] || null,
+    [person?.departments],
+  );
+  const [availableSkills, setAvailableSkills] = useState<
+    Array<{ id: number; name: string; description?: string }>
+  >([]);
+  const [personSkills, setPersonSkills] = useState<
+    Array<{ id: number; name: string; description?: string }>
+  >([]);
+  const [skillName, setSkillName] = useState("");
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const [skillsSaving, setSkillsSaving] = useState(false);
+  const [skillsError, setSkillsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPersonSkills(person?.skills || []);
+  }, [person?.skills]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadSkills() {
+      try {
+        setSkillsLoading(true);
+        const response = (await apiClient.getSkills()) as Array<{
+          id: number;
+          name: string;
+          description?: string;
+        }>;
+        if (!mounted) return;
+        setAvailableSkills(response);
+      } catch (error: any) {
+        if (!mounted) return;
+        setSkillsError(
+          String(error?.message || "Не удалось загрузить список навыков"),
+        );
+      } finally {
+        if (mounted) {
+          setSkillsLoading(false);
+        }
+      }
+    }
+
+    void loadSkills();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const contactRows = useMemo<ProfileContactRow[]>(() => {
+    if (!person) return [];
+
+    const rows: ProfileContactRow[] = [];
+
+    const email = person.email;
+    if (email) {
+      rows.push({
+        key: "email",
+        label: "Почта",
+        value: email,
+        icon: <Mail size={18} />,
+        onClick: () => void handleCopyToClipboard(email, "email"),
+        copied: copySuccess === "email",
+      });
+    }
+
+    const phone = person.phone_number;
+    if (phone) {
+      rows.push({
+        key: "phone",
+        label: "Телефон",
+        value: phone,
+        icon: <Phone size={18} />,
+        onClick: () => void handleCopyToClipboard(phone, "phone"),
+        copied: copySuccess === "phone",
+      });
+    }
+
+    const telegram = person.telegram;
+    if (telegram) {
+      rows.push({
+        key: "telegram",
+        label: "Telegram",
+        value: telegram,
+        icon: <MessageCircle size={18} />,
+        onClick: () => void handleCopyToClipboard(normalizeTelegramLink(telegram), "telegram"),
+        copied: copySuccess === "telegram",
+      });
+    }
+
+    const whatsapp = person.whatsapp;
+    if (whatsapp) {
+      rows.push({
+        key: "whatsapp",
+        label: "WhatsApp",
+        value: whatsapp,
+        icon: <MessageCircle size={18} />,
+        onClick: () => void handleCopyToClipboard(normalizeWhatsAppLink(whatsapp), "whatsapp"),
+        copied: copySuccess === "whatsapp",
+      });
+    }
+
+    const wechat = person.wechat;
+    if (wechat) {
+      rows.push({
+        key: "wechat",
+        label: "WeChat",
+        value: wechat,
+        icon: <MessageCircle size={18} />,
+        onClick: () => void handleCopyToClipboard(wechat, "wechat"),
+        copied: copySuccess === "wechat",
+      });
+    }
+
+    return rows;
+  }, [copySuccess, handleCopyToClipboard, person]);
+
+  const infoItems = useMemo<ProfileInfoItem[]>(() => ([
+    {
+      label: "В компании",
+      value: getWorkDuration(person?.date_joined) || "—",
+    },
+    {
+      label: "Дата найма",
+      value: formatProfileDate(person?.date_joined),
+    },
+    {
+      label: "Профиль создан",
+      value: formatProfileDate(person?.created_at),
+    },
+    {
+      label: "Последний вход",
+      value: formatProfileDateTime(person?.last_login),
+    },
+  ]), [person?.created_at, person?.date_joined, person?.last_login]);
+
+  const handleAddSkill = async (forcedSkill?: { id: number; name: string }) => {
+    if (!person || skillsSaving) return;
+    const rawName = forcedSkill?.name || skillName;
+    const trimmedName = rawName.trim();
+    if (!trimmedName) return;
+
+    try {
+      setSkillsSaving(true);
+      setSkillsError(null);
+
+      const existingSkill =
+        forcedSkill ||
+        availableSkills.find(
+          (skill) => skill.name.trim().toLowerCase() === trimmedName.toLowerCase(),
+        );
+
+      const response = (await apiClient.addEmployeeSkill(
+        person.id,
+        existingSkill ? { skill_id: existingSkill.id } : { name: trimmedName },
+      )) as { skills?: Array<{ id: number; name: string; description?: string }> };
+
+      setPersonSkills(response.skills || []);
+
+      if (!existingSkill && trimmedName) {
+        const created = (response.skills || []).find(
+          (skill) => skill.name.trim().toLowerCase() === trimmedName.toLowerCase(),
+        );
+        if (created) {
+          setAvailableSkills((current) =>
+            current.some((skill) => skill.id === created.id)
+              ? current
+              : [...current, created].sort((left, right) =>
+                  left.name.localeCompare(right.name, "ru"),
+                ),
+          );
+        }
+      }
+
+      setSkillName("");
+    } catch (error: any) {
+      setSkillsError(
+        String(error?.message || "Не удалось добавить навык"),
+      );
+    } finally {
+      setSkillsSaving(false);
+    }
+  };
+
+  if (currentUser?.id && userId && currentUser.id === userId) {
+    return (
+      <AppShell>
+        <div className="flex items-center justify-center py-16">
+          <p className="app-text-muted text-sm">Перенаправляем в профиль...</p>
+        </div>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell>
-      <div className="space-y-4">
-        <Link href="/employees" className="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-          ← К списку сотрудников
-        </Link>
+      <div className="mx-auto max-w-5xl space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <Link
+            href="/employees"
+            className="app-action-secondary inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium"
+          >
+            ← К списку сотрудников
+          </Link>
+        </div>
 
         {loading ? (
-          <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-100">
-            <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-sky-400 border-t-transparent" />
-            <p className="text-sm text-gray-500">Загрузка...</p>
-          </div>
+          <section className="app-surface rounded-[24px] p-8 text-center">
+            <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-[var(--border-subtle)] border-t-[var(--accent-primary)]" />
+            <p className="app-text-muted text-sm">Загрузка сотрудника...</p>
+          </section>
         ) : error ? (
-          <div className="rounded-2xl bg-red-50 p-6 text-center">
-            <p className="text-sm text-red-800">{error}</p>
-          </div>
+          <section className="app-surface rounded-[24px] p-6 text-center">
+            <p className="text-sm text-red-400">{error}</p>
+          </section>
         ) : person ? (
           <>
-            <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-              <div className="flex items-start gap-4">
-                <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-xl font-semibold text-white">
+            <ProfileHeroCard
+              caption="Профиль сотрудника"
+              statusBadge={
+                latestAction ? (
+                  <span
+                    className={`app-status-pill ${getEmployeeActionTone(latestAction.action).badgeClass}`}
+                  >
+                    {latestAction.action_display || latestAction.action}
+                  </span>
+                ) : null
+              }
+              avatar={
+                <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full app-avatar-frame">
                   {avatarUrl && !avatarFailed ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
+                    <Image
                       src={avatarUrl}
                       alt={fullName}
+                      width={80}
+                      height={80}
                       className="h-full w-full object-cover"
                       onError={() => setAvatarFailed(true)}
+                      unoptimized
                     />
                   ) : (
-                    <span>{initials}</span>
-                  )}
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start gap-2">
-                    <h1 className="flex-1 text-xl font-bold text-gray-900">{fullName}</h1>
-                    {canEdit && (
-                      <button
-                        type="button"
-                        onClick={handleOpenEditModal}
-                        className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 hover:text-sky-700"
-                        aria-label="Редактировать профиль"
-                        title="Редактировать профиль"
-                      >
-                        <Pencil size={16} />
-                      </button>
-                    )}
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <p className="text-sm text-gray-600">{person.position?.name || "—"}</p>
-                    {latestAction && (
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getEmployeeActionBadgeClass(latestAction.action)}`}>
-                        {latestAction.action_display || latestAction.action}
-                      </span>
-                    )}
-                    {canManageActions && (
-                      <button
-                        onClick={handleOpenActionModal}
-                        className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 transition hover:bg-gray-200"
-                      >
-                        + Событие
-                      </button>
-                    )}
-                  </div>
-                  {person.departments && person.departments.length > 0 && (
-                    <p className="mt-1 text-sm text-gray-500">{person.departments[0].name}</p>
-                  )}
-
-                  {currentUser && currentUser.id !== person.id && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        onClick={handleStartChat}
-                        disabled={creatingChat}
-                        className="inline-flex items-center gap-2 rounded-lg bg-sky-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-50"
-                      >
-                        <MessageCircle size={16} />
-                        {creatingChat ? "Загрузка..." : "Написать"}
-                      </button>
-
-                      {person.phone_number && (
-                        <a
-                          href={`tel:${formatPhoneForLink(person.phone_number)}`}
-                          className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                        >
-                          <Phone size={16} />
-                          Позвонить
-                        </a>
-                      )}
+                    <div className="app-avatar-fallback flex h-full w-full items-center justify-center text-2xl font-semibold">
+                      {initials}
                     </div>
                   )}
                 </div>
-              </div>
-            </section>
-
-            <div className="grid gap-4 lg:grid-cols-2">
-              <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-                <h2 className="mb-3 text-sm font-semibold text-gray-900">Контакты</h2>
-                <div className="space-y-2">
-                  {person.email && (
-                    <div className="flex items-center justify-between">
-                      <div className="min-w-0 flex-1 flex items-center gap-2">
-                        <Mail size={16} className="flex-shrink-0 text-gray-400" />
-                        <a href={`mailto:${person.email}`} className="truncate text-sm text-sky-600 hover:underline">
-                          {person.email}
-                        </a>
-                      </div>
-                      <button
-                        onClick={() => handleCopyToClipboard(person.email, "email")}
-                        className="ml-2 flex-shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                      >
-                        {copySuccess === "email" ? <Check size={14} /> : <Copy size={14} />}
-                      </button>
-                    </div>
-                  )}
-
-                  {person.phone_number && (
-                    <div className="flex items-center justify-between">
-                      <div className="min-w-0 flex-1 flex items-center gap-2">
-                        <Phone size={16} className="flex-shrink-0 text-gray-400" />
-                        <a href={`tel:${formatPhoneForLink(person.phone_number)}`} className="truncate text-sm text-sky-600 hover:underline">
-                          {person.phone_number}
-                        </a>
-                      </div>
-                      <button
-                        onClick={() => handleCopyToClipboard(person.phone_number ?? "", "phone")}
-                        className="ml-2 flex-shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                      >
-                        {copySuccess === "phone" ? <Check size={14} /> : <Copy size={14} />}
-                      </button>
-                    </div>
-                  )}
-
-                  {person.telegram && (
-                    <div className="flex items-center gap-2">
-                      <MessageCircle size={16} className="flex-shrink-0 text-gray-400" />
+              }
+              fullName={fullName}
+              secondaryLine={formatBirthdayWithYear(person.birth_date) || "Не указана"}
+              roleText={person.position?.name || "Должность не указана"}
+              departmentBadge={
+                primaryDepartment ? (
+                  <ProfileDepartmentBadge
+                    label={primaryDepartment.name}
+                    href={`/departments/${primaryDepartment.id}`}
+                  />
+                ) : undefined
+              }
+              headerActions={
+                canEdit ? (
+                  <button
+                    type="button"
+                    onClick={handleOpenEditModal}
+                    className="app-action-secondary inline-flex h-10 w-10 items-center justify-center rounded-xl"
+                    aria-label="Редактировать профиль"
+                    title="Редактировать профиль"
+                  >
+                    <Pencil size={16} />
+                  </button>
+                ) : undefined
+              }
+              actionRow={
+                currentUser && currentUser.id !== person.id ? (
+                  <>
+                    <button
+                      onClick={handleStartChat}
+                      disabled={creatingChat}
+                      className="app-action-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+                    >
+                      <MessageCircle size={16} />
+                      {creatingChat ? "Загрузка..." : "Написать"}
+                    </button>
+                    {person.phone_number ? (
                       <a
-                        href={`https://t.me/${person.telegram.replace("@", "")}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="truncate text-sm text-sky-600 hover:underline"
+                        href={`tel:${formatPhoneForLink(person.phone_number)}`}
+                        className="app-action-secondary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium"
                       >
-                        {person.telegram}
+                        <Phone size={16} />
+                        Позвонить
                       </a>
-                      <span className="ml-auto text-xs text-gray-400">Telegram</span>
-                    </div>
-                  )}
+                    ) : null}
+                  </>
+                ) : undefined
+              }
+              bottomPanel={
+                <ProfileContactsPanel
+                  rows={contactRows}
+                  emptyText="Контакты не указаны"
+                />
+              }
+            />
 
-                  {person.whatsapp && (
-                    <div className="flex items-center gap-2">
-                      <Phone size={16} className="flex-shrink-0 text-gray-400" />
-                      <a
-                        href={`https://wa.me/${formatPhoneForLink(person.whatsapp)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="truncate text-sm text-sky-600 hover:underline"
-                      >
-                        {person.whatsapp}
-                      </a>
-                      <span className="ml-auto text-xs text-gray-400">WhatsApp</span>
-                    </div>
-                  )}
+            <ProfileSkillsCard
+              inputValue={skillName}
+              onInputChange={setSkillName}
+              onSubmit={() => void handleAddSkill()}
+              submitDisabled={!skillName.trim() || skillsSaving}
+              inputDisabled={skillsSaving}
+              availableSkills={availableSkills}
+              skills={personSkills}
+              error={skillsError}
+              loading={skillsLoading}
+              emptyText="Навыки не указаны"
+            />
 
-                  {person.wechat && (
-                    <div className="flex items-center gap-2">
-                      <MessageCircle size={16} className="flex-shrink-0 text-gray-400" />
-                      <span className="truncate text-sm text-gray-700">{person.wechat}</span>
-                      <span className="ml-auto text-xs text-gray-400">WeChat</span>
-                    </div>
-                  )}
+            <ProfileInfoCard items={infoItems} />
 
-                  {!person.email && !person.phone_number && !person.telegram && !person.whatsapp && !person.wechat && (
-                    <p className="text-sm text-gray-500">Нет контактов</p>
-                  )}
+            {person.departments?.length ? (
+              <section className="app-surface rounded-[24px] p-5">
+                <div className="mb-4">
+                  <h2 className="app-card-caption">Отделы</h2>
                 </div>
-              </section>
-
-              <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-                <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
-                  <Award size={16} />
-                  Навыки
-                </h2>
-                {person.skills && person.skills.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {person.skills.map((skill) => (
-                      <span
-                        key={skill.id}
-                        className="rounded-lg bg-gray-100 px-2.5 py-1 text-sm text-gray-700"
+                <div className="app-surface-muted rounded-2xl p-4">
+                  <div className="space-y-3">
+                    {person.departments.map((department) => (
+                      <Link
+                        key={department.id}
+                        href={`/departments/${department.id}`}
+                        className="app-surface block rounded-2xl px-4 py-3 transition hover:border-[var(--accent-primary)]"
                       >
-                        {skill.name}
-                      </span>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-[var(--foreground)]">
+                              {department.name}
+                            </p>
+                            {department.role_name ? (
+                              <p className="app-text-muted mt-1 text-sm">
+                                {department.role_name}
+                              </p>
+                            ) : null}
+                          </div>
+                          {department.is_head ? (
+                            <span className="app-pill-active inline-flex rounded-full px-3 py-1 text-xs font-medium">
+                              Руководитель
+                            </span>
+                          ) : null}
+                        </div>
+                      </Link>
                     ))}
                   </div>
-                ) : (
-                  <p className="text-sm text-gray-500">Навыки не указаны</p>
-                )}
-              </section>
-
-              {(person.date_joined || person.birth_date) && (
-                <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100 lg:col-span-2">
-                  <h2 className="mb-3 text-sm font-semibold text-gray-900">Информация</h2>
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {person.date_joined && (
-                      <>
-                        <div className="flex items-center gap-2 text-sm">
-                          <Clock size={16} className="text-gray-400" />
-                          <div>
-                            <p className="text-xs text-gray-500">В компании</p>
-                            <p className="font-medium text-gray-900">{getWorkDuration(person.date_joined)}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <Calendar size={16} className="text-gray-400" />
-                          <div>
-                            <p className="text-xs text-gray-500">Дата найма</p>
-                            <p className="font-medium text-gray-900">
-                              {new Date(person.date_joined).toLocaleDateString("ru-RU")}
-                            </p>
-                          </div>
-                        </div>
-                      </>
-                    )}
-
-                    {person.birth_date && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <Calendar size={16} className="text-gray-400" />
-                        <div>
-                          <p className="text-xs text-gray-500">День рождения</p>
-                          <p className="font-medium text-gray-900">{formatBirthday(person.birth_date)}</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </section>
-              )}
-            </div>
-
-            {person.departments && person.departments.length > 0 && (
-              <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-                <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
-                  <Building2 size={16} />
-                  Отделы
-                </h2>
-                <div className="space-y-2">
-                  {person.departments.map((department) => (
-                    <Link
-                      key={department.id}
-                      href={`/departments/${department.id}`}
-                      className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 transition hover:bg-gray-100"
-                    >
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{department.name}</p>
-                        {department.role_name && (
-                          <p className="text-xs text-gray-500">{department.role_name}</p>
-                        )}
-                      </div>
-                      {department.is_head && (
-                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700">
-                          Руководитель
-                        </span>
-                      )}
-                    </Link>
-                  ))}
                 </div>
               </section>
-            )}
+            ) : null}
 
             <EmployeeActionsTimeline
               actionLoading={actionLoading}
@@ -345,6 +453,8 @@ export default function UserDetailPage() {
               onDeleteAction={handleDeleteAction}
               onEditAction={handleEditAction}
               sortedActions={sortedActions}
+              truncateCommentLength={120}
+              expandedCommentLength={240}
             />
           </>
         ) : null}

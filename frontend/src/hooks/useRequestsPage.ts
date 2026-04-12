@@ -320,6 +320,9 @@ export function useRequestsPage(_userId: number | null | undefined) {
   };
 
   const handleDelete = async (id: number) => {
+    if (!window.confirm("Удалить заявление? Это действие нельзя отменить.")) {
+      return;
+    }
     try { setBusyKey(`delete-${id}`); setActionError(null); await apiClient.deleteRequest(id); setRequests((p) => p.filter((r) => r.id !== id)); }
     catch (e: unknown) { setActionError(String((e as Error)?.message || "Не удалось удалить")); }
     finally { setBusyKey(null); }

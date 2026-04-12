@@ -18,6 +18,21 @@ CHANNEL_LAYERS = {
     }
 }
 
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "eusrr-test-cache",
+    }
+}
+
+REST_FRAMEWORK = {
+    **REST_FRAMEWORK,
+    "DEFAULT_THROTTLE_RATES": {
+        **REST_FRAMEWORK.get("DEFAULT_THROTTLE_RATES", {}),
+        "anon": "10000/min",
+    },
+}
+
 # Celery - синхронное выполнение в тестах (без отдельного worker)
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True

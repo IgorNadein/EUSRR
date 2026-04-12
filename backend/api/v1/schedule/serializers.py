@@ -496,6 +496,7 @@ class EventRelationSerializer(serializers.ModelSerializer):
 
     event_title = serializers.CharField(source="event.title", read_only=True)
     user_name = serializers.SerializerMethodField()
+    user_avatar = serializers.SerializerMethodField()
     content_type = serializers.PrimaryKeyRelatedField(
         queryset=ContentType.objects.all(),
         required=False,  # Делаем необязательным
@@ -511,6 +512,7 @@ class EventRelationSerializer(serializers.ModelSerializer):
             "object_id",
             "distinction",
             "user_name",
+            "user_avatar",
         ]
         read_only_fields = ["id"]
 
@@ -519,6 +521,18 @@ class EventRelationSerializer(serializers.ModelSerializer):
         """Имя связанного объекта."""
         if obj.content_object:
             return str(obj.content_object)
+        return None
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_user_avatar(self, obj):
+        """URL аватара связанного сотрудника."""
+        user = getattr(obj, "content_object", None)
+        avatar = getattr(user, "avatar", None)
+        if avatar:
+            try:
+                return avatar.url
+            except Exception:
+                return str(avatar)
         return None
 
     def create(self, validated_data):

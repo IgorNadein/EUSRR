@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import Any  # было: Any, Dict, List, Type
 
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import Count, OuterRef, Q, QuerySet, Subquery
+from django.db.models import Count, IntegerField, OuterRef, Q, QuerySet, Subquery, Value
+from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404  # раскомментируйте импорт
 from employees.models import (
     Department,
@@ -299,13 +300,19 @@ class RequestViewSet(viewsets.ModelViewSet):
                 chat__type="comments",
                 chat__context_content_type=request_ct,
                 chat__context_object_id=OuterRef("pk"),
+                is_deleted=False,
             )
             .values("chat")
             .annotate(count=Count("id"))
             .values("count")
         )
 
-        qs = qs.annotate(comments_count=Subquery(comments_subquery))
+        qs = qs.annotate(
+            comments_count=Coalesce(
+                Subquery(comments_subquery, output_field=IntegerField()),
+                Value(0),
+            )
+        )
 
         return qs
 
@@ -514,7 +521,7 @@ class RequestViewSet(viewsets.ModelViewSet):
         req_obj = self.get_object()
 
         # Получаем чат для этой заявки
-        chat = comments_helpers.get_or_create_comments_chat(req_obj)[0]
+        chat = comments_helpers.get_or_create_comments_chat(req_obj)
 
         # Находим комментарий
         try:

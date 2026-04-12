@@ -3,6 +3,16 @@ import { type RequestFn } from './utils';
 
 export function createEmployeesApi(request: RequestFn) {
     return {
+        getSkills: () => request('/api/v1/skills/'),
+        createSkill: (data: { name: string; description?: string }) =>
+            request('/api/v1/skills/', {
+                method: 'POST',
+                body: JSON.stringify(data),
+            }),
+        getDirectoryLogin: () =>
+            request('/api/v1/directory/me/login/'),
+        refreshDirectoryLogin: () =>
+            request('/api/v1/directory/me/login/refresh/', { method: 'POST' }),
         getEmployees: (params?: { search?: string; department?: string; page?: number; limit?: number; is_active?: boolean }) => {
             const qp = new URLSearchParams();
             if (params?.search) qp.append('search', params.search);
@@ -14,6 +24,14 @@ export function createEmployeesApi(request: RequestFn) {
             return request(`/api/v1/employees/${qs ? '?' + qs : ''}`);
         },
         getEmployee: (id: number | string) => request(`/api/v1/employees/${id}/`),
+        addEmployeeSkill: (
+            id: number | string,
+            data: { skill_id?: number; name?: string },
+        ) =>
+            request(`/api/v1/employees/${id}/add_skill/`, {
+                method: 'POST',
+                body: JSON.stringify(data),
+            }),
         updateEmployee: (id: number | string, data: Record<string, any>) =>
             request(`/api/v1/employees/${id}/`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
         uploadEmployeeAvatar: (id: number | string, file: File) => {

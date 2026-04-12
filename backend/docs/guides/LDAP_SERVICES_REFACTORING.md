@@ -1,8 +1,23 @@
 # Рефакторинг LDAP-сервисов: Архитектурные улучшения
 
-**Дата:** 19 марта 2026 г.  
+**Дата:** 10 апреля 2026 г.  
 **Статус:** В процессе миграции  
 **Цель:** Улучшение архитектуры, уменьшение дублирования, следование SOLID принципам
+
+## Обновление 10 апреля 2026: canonical Department sync
+
+Для департаментов и членства в отделах введён единый контракт синхронизации:
+
+- `DepartmentService.sync_department_state(dept, *, created, changes, sync_head)`
+- `DepartmentService.sync_department_delete(*, object_pk, dept_dn=None)`
+- `DepartmentService.sync_member_state(employee, department, *, is_active, role=None)`
+
+Ключевые правила после обновления:
+
+- Django DB является источником истины для `Department`, `EmployeeDepartment.is_active` и role assignment.
+- `employees/signals/ldap/department.py` и retry-исполнители в `employees/tasks.py` больше не содержат отдельной LDAP-логики для отдела.
+- View-слой фиксирует diff через `_ldap_changes` и `_ldap_sync_head` до `save()`, чтобы post-save не вычислял изменения по уже обновлённой строке.
+- Retry-очередь воспроизводит тот же canonical sync, что и live signals, а не отдельный legacy-сценарий.
 
 ---
 
@@ -200,7 +215,8 @@ with _ldap() as conn:
 
 ### Этап 2: Постепенная миграция (следующий шаг)
 
-🔲 Обновить DepartmentService для использования BaseService  
+✅ Обновить DepartmentService для использования BaseService  
+✅ Выделить canonical sync path для Department signals + retry  
 🔲 Обновить PositionService для использования BaseService  
 🔲 Рефакторить UserService с использованием подсервисов  
 🔲 Обновить вызовы GroupService на новый API

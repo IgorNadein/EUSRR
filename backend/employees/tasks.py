@@ -13,6 +13,22 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 
+def _require_payload_value(payload: dict, key: str):
+    """Возвращает обязательное поле payload или поднимает ValueError."""
+    value = payload.get(key)
+    if value in (None, ""):
+        raise ValueError(f"LDAP queue payload missing required field: {key}")
+    return value
+
+
+def _payload_changes(payload: dict) -> dict:
+    """Нормализует поле changes и валидирует его тип."""
+    changes = payload.get("changes") or {}
+    if not isinstance(changes, dict):
+        raise ValueError("LDAP queue payload field 'changes' must be a dict")
+    return changes
+
+
 # ---------------------------------------------------------------------------
 # Исполнители отложенных LDAP-операций
 # ---------------------------------------------------------------------------
@@ -58,71 +74,88 @@ def _execute_employee_delete(payload: dict) -> None:
 
 def _execute_department_save(payload: dict) -> None:
     """Повторяет синхронизацию Department → LDAP."""
-    from employees.ldap.services.department_service import DepartmentService
-    from employees.ldap.services.group_service import GroupService
-    from employees.ldap.services.user_service import UserService
+    from employees.ldap import DepartmentService
     from employees.models import Department
 
-    dept = Department.objects.get(pk=payload["object_pk"])
-    group_service = GroupService()
-    user_service = UserService(group_service)
-    dept_service = DepartmentService(group_service, user_service)
+    object_pk = _require_payload_value(payload, "object_pk")
+    dept = Department.objects.filter(pk=object_pk).first()
+    if dept is None:
+        logger.info(
+            "Department %s no longer exists, skipping queued sync",
+            object_pk,
+        )
+        return
 
-    if payload.get("created"):
-        dept_service._ensure_department_ou(dept)
-        if dept.description:
-            dept_service._set_ou_description(dept, dept.description)
-        if dept.head:
-            dept_service._set_ou_managed_by(dept, dept.head)
-    else:
-        changes = payload.get("changes", {})
-        if changes:
-            svc = DepartmentService()
-            svc.update_department(dept, changes)
-        if dept.head_id:
-            dept_service._set_ou_managed_by(dept, dept.head)
+    DepartmentService().sync_department_state(
+        dept,
+        created=bool(payload.get("created")),
+        changes=_payload_changes(payload),
+        sync_head=bool(payload.get("sync_head")),
+    )
 
 
 def _execute_department_delete(payload: dict) -> None:
     """Повторяет удаление Department OU из LDAP."""
     from employees.ldap import DepartmentService
-    from employees.models import LdapSyncState
 
-    sync_state = LdapSyncState.objects.filter(
-        model="department", object_pk=payload["object_pk"]
-    ).first()
-    if not sync_state or not sync_state.ldap_dn:
-        return
-
-    from types import SimpleNamespace
-
-    dept_stub = SimpleNamespace(
-        pk=payload["object_pk"], id=payload["object_pk"]
+    DepartmentService().sync_department_delete(
+        object_pk=_require_payload_value(payload, "object_pk"),
+        dept_dn=payload.get("dept_dn"),
     )
-    svc = DepartmentService()
-    svc.delete_department(dept_stub)
 
 
 def _execute_department_member(payload: dict) -> None:
     """Повторяет sync члена отдела → LDAP."""
-    from employees.ldap.services.department_service import DepartmentService
-    from employees.ldap.services.group_service import GroupService
-    from employees.ldap.services.user_service import UserService
-    from employees.models import Employee, Department
+    from employees.ldap import DepartmentService
+    from employees.models import Department, Employee, EmployeeDepartment
 
-    emp = Employee.objects.get(pk=payload["employee_pk"])
-    dept = Department.objects.get(pk=payload["department_pk"])
+    employee_pk = _require_payload_value(payload, "employee_pk")
+    department_pk = _require_payload_value(payload, "department_pk")
 
-    group_service = GroupService()
-    user_service = UserService(group_service)
-    dept_service = DepartmentService(group_service, user_service)
+    emp = Employee.objects.filter(pk=employee_pk).first()
+    if emp is None:
+        logger.info(
+            "Employee %s no longer exists, skipping queued department member sync",
+            employee_pk,
+        )
+        return
 
-    if payload.get("is_active"):
-        dept_service._move_user_to_department(emp, dept)
-        if payload.get("role"):
-            dept_service.set_member_role(dept, emp, payload["role"])
+    dept = Department.objects.filter(pk=department_pk).first()
+    if dept is None:
+        logger.info(
+            "Department %s no longer exists, skipping queued member sync",
+            department_pk,
+        )
+        return
+
+    link = (
+        EmployeeDepartment.objects.filter(
+            employee_id=employee_pk,
+            department_id=department_pk,
+        )
+        .select_related("role")
+        .first()
+    )
+
+    is_active = bool(payload.get("is_active"))
+    role_hint = payload.get("role")
+    if link is not None:
+        is_active = link.is_active
+        role_hint = link.role or role_hint
     else:
-        dept_service._move_user_to_base_ou(emp)
+        logger.warning(
+            "EmployeeDepartment link missing for employee=%s department=%s, "
+            "falling back to queued payload state",
+            employee_pk,
+            department_pk,
+        )
+
+    DepartmentService().sync_member_state(
+        emp,
+        dept,
+        is_active=is_active,
+        role=role_hint,
+    )
 
 
 def _execute_group_save(payload: dict) -> None:
@@ -278,7 +311,9 @@ def process_ldap_queue_item(self, queue_id: int):
     item.save(update_fields=["status", "updated_at"])
 
     try:
-        executor(item.payload)
+        payload = dict(item.payload or {})
+        payload.setdefault("object_pk", item.object_pk)
+        executor(payload)
         item.mark_completed()
         logger.info(
             "LDAP queue item %d (%s %s:%s) completed on attempt %d",

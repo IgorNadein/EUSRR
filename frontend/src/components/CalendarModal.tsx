@@ -94,7 +94,7 @@ export function CalendarModal({ isOpen, onClose, calendar }: CalendarModalProps)
           <button
             onClick={handleSave}
             disabled={!name.trim() || saving}
-            className="flex-1 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
+            className="app-action-primary flex-1 rounded-lg px-4 py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving ? "Сохранение..." : calendar?.id ? "Сохранить" : "Создать"}
           </button>
@@ -103,7 +103,7 @@ export function CalendarModal({ isOpen, onClose, calendar }: CalendarModalProps)
             <button
               onClick={handleDelete}
               disabled={saving}
-              className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-50"
+              className="app-action-danger rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-50"
               title="Удалить календарь"
             >
               <Trash2 size={16} />
@@ -114,21 +114,21 @@ export function CalendarModal({ isOpen, onClose, calendar }: CalendarModalProps)
     >
       <div className="space-y-4">
           {!calendar?.id && (
-            <p className="text-sm text-gray-600">
+            <p className="app-text-muted text-sm">
               Создайте календарь для организации событий. Вы сможете добавлять встречи, задачи и напоминания.
             </p>
           )}
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Название<span className="text-red-500">*</span>
+            <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
+              Название<span className="app-accent-text">*</span>
             </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              className="app-input w-full rounded-lg px-3 py-2 text-sm"
               placeholder="Например: Рабочий календарь"
               autoFocus
               disabled={saving}

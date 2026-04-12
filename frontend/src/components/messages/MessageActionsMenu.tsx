@@ -42,7 +42,7 @@ export default function MessageActionsMenu({
   return (
     <div
       data-actions-menu="true"
-      className="fixed z-[60] min-w-[208px] max-w-[232px] rounded-xl border border-gray-200 bg-white py-1.5 shadow-lg ring-1 ring-slate-100"
+      className="app-menu fixed z-[60] min-w-[208px] max-w-[232px] rounded-xl py-1.5"
       style={{
         left: anchor.x,
         top: anchor.y - 8,
@@ -50,15 +50,15 @@ export default function MessageActionsMenu({
       }}
     >
       {canReply ? (
-        <div className="border-b border-slate-100 px-2.5 pb-2 pt-1">
-          <div className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400">Реакции</div>
+        <div className="app-divider border-b px-2.5 pb-2 pt-1">
+          <div className="app-text-muted mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]">Реакции</div>
           <div className="flex items-center gap-1">
           {recentReactions.map((emoji) => (
             <button
               key={`recent-${message.id}-${emoji}`}
               type="button"
               onClick={() => onQuickReact(emoji)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-base transition hover:bg-sky-50"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-base transition hover:bg-[var(--surface-secondary)]"
               title="Быстрая реакция"
             >
               {emoji}
@@ -67,7 +67,7 @@ export default function MessageActionsMenu({
           <button
             type="button"
             onClick={onOpenReactionPicker}
-            className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition hover:bg-sky-50 hover:text-sky-700"
+            className="app-text-muted ml-auto inline-flex h-8 w-8 items-center justify-center rounded-md transition hover:bg-[var(--surface-secondary)] hover:text-[var(--accent-primary-strong)]"
             title="Все смайлы"
           >
             <Smile size={14} />
@@ -82,15 +82,15 @@ export default function MessageActionsMenu({
             <button
               type="button"
               onClick={onShowAllReaders}
-              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-50"
+              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
             >
               <span className="flex items-center gap-2">
-                <CheckCheck size={13} className="text-gray-400" />
+                <CheckCheck size={13} className="app-text-muted" />
                 Кто прочитал
               </span>
-              <span className="text-xs text-gray-400">{readers.length}</span>
+              <span className="app-text-muted text-xs">{readers.length}</span>
             </button>
-            <div className="my-1 border-t border-slate-100" />
+            <div className="app-divider my-1 border-t" />
           </>
         ) : null}
 
@@ -98,9 +98,9 @@ export default function MessageActionsMenu({
           <button
             type="button"
             onClick={onReply}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 transition hover:bg-sky-50"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
           >
-            <Reply size={13} className="text-gray-400" />
+            <Reply size={13} className="app-text-muted" />
             Ответить
           </button>
         ) : null}
@@ -109,9 +109,9 @@ export default function MessageActionsMenu({
           <button
             type="button"
             onClick={onEdit}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-50"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
           >
-            <Pencil size={13} className="text-gray-400" />
+            <Pencil size={13} className="app-text-muted" />
             Редактировать
           </button>
         ) : null}
@@ -120,9 +120,9 @@ export default function MessageActionsMenu({
           <button
             type="button"
             onClick={onDelete}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 transition hover:bg-red-50"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--danger-foreground)] transition hover:bg-[var(--danger-soft)]"
           >
-            <Trash2 size={13} className="text-red-400" />
+            <Trash2 size={13} className="text-[var(--danger-foreground)]" />
             Удалить
           </button>
         ) : null}

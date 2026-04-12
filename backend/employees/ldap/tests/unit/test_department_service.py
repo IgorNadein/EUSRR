@@ -90,8 +90,6 @@ class TestDepartmentServiceHelpers:
     @pytest.mark.django_db
     def test_reconcile_department_group(
         self,
-        mock_ldap_context,
-        mock_ldap_connection,
         mock_ldap_repository,
         mock_group_service,
         mock_user_service,
@@ -113,23 +111,38 @@ class TestDepartmentServiceHelpers:
             mock_query = mock_emp_dept.objects.filter.return_value
             mock_query.values_list.return_value = [1, 2]
 
-            with patch.object(
-                service,
-                '_ensure_department_group',
-                return_value='CN=DEP_IT,DC=example,DC=com'
-            ):
-                with patch.object(
-                    mock_user_service,
-                    'employee_ids_to_dns',
-                    return_value=['CN=Test,OU=Users,DC=example,DC=com']
-                ):
-                    # Act
-                    result = service._reconcile_department_group(
-                        mock_ldap_connection,
-                        sample_department,
-                        dept_dn
-                    )
+            with patch(
+                'employees.ldap.services.department_service.LdapSyncState.objects'
+            ) as mock_sync_objects:
+                mock_sync_filter = Mock()
+                mock_sync_filter.values_list.return_value = [
+                    ('1', 'CN=One,OU=Users,DC=example,DC=com'),
+                    ('2', 'CN=Two,OU=Users,DC=example,DC=com'),
+                ]
+                mock_sync_objects.filter.return_value = mock_sync_filter
 
-                    # Assert
-                    assert 'DEP_' in result
-                    assert mock_group_service.replace_members.called
+                mock_group = Mock()
+
+                with patch.object(
+                    service,
+                    '_ensure_department_group',
+                    return_value='CN=DEP_IT,DC=example,DC=com'
+                ):
+                    with patch(
+                        'employees.ldap.services.department_service.'
+                        'LdapOrganizationalUnitGroup.objects.get',
+                        return_value=mock_group
+                    ):
+                        # Act
+                        result = service._reconcile_department_group(
+                            sample_department,
+                            dept_dn
+                        )
+
+                        # Assert
+                        assert 'DEP_' in result
+                        assert mock_group.member == [
+                            'CN=One,OU=Users,DC=example,DC=com',
+                            'CN=Two,OU=Users,DC=example,DC=com',
+                        ]
+                        assert mock_group.save.called

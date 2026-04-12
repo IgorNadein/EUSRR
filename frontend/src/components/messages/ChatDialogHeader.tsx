@@ -83,18 +83,18 @@ export default function ChatDialogHeader({
   const subtitle = getChatSubtitle(chat);
 
   return (
-    <header className="relative z-30 flex shrink-0 items-center gap-3 border-b border-gray-100 bg-white px-4 pt-3 pb-3 lg:px-0 lg:pt-0">
+    <header className="app-divider app-header relative z-30 flex shrink-0 items-center gap-3 border-b px-4 pb-3 pt-3 lg:px-0 lg:pt-0">
       <Link
         href="/messages"
         aria-label="К списку чатов"
         title="К списку чатов"
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 hover:text-sky-700"
+        className="app-icon-button app-surface-muted flex h-10 w-10 shrink-0 items-center justify-center rounded-full border"
       >
         <ArrowLeft size={16} />
       </Link>
 
       <Link href={`/messages/${chatId}/settings`} className="flex min-w-0 flex-1 items-center gap-3 transition hover:opacity-80">
-        <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white">
+        <div className="app-avatar-fallback flex h-11 w-11 items-center justify-center overflow-hidden rounded-full text-sm font-semibold">
           {avatar ? (
             <div className="relative h-full w-full">
               <Image src={resolveMediaUrl(avatar)} alt={title} fill unoptimized className="object-cover" sizes="44px" />
@@ -104,8 +104,8 @@ export default function ChatDialogHeader({
           )}
         </div>
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-gray-900">{title}</p>
-          <p className="truncate text-xs text-gray-500">{subtitle}</p>
+          <p className="truncate text-sm font-semibold text-[var(--foreground)]">{title}</p>
+          <p className="app-text-muted truncate text-xs">{subtitle}</p>
         </div>
       </Link>
 
@@ -113,7 +113,7 @@ export default function ChatDialogHeader({
         <button
           type="button"
           onClick={() => setMenuOpen((prev) => !prev)}
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 hover:text-sky-700"
+          className="app-icon-button app-surface-muted flex h-10 w-10 items-center justify-center rounded-full border"
           aria-label="Дополнительные действия"
           aria-expanded={menuOpen}
           aria-haspopup="menu"
@@ -123,16 +123,16 @@ export default function ChatDialogHeader({
         </button>
 
         {menuOpen ? (
-          <div className="absolute right-0 top-full z-[80] mt-2 w-56 overflow-hidden rounded-2xl border border-gray-200 bg-white py-1 shadow-lg shadow-gray-200/70 ring-1 ring-gray-100">
+          <div className="app-menu absolute right-0 top-full z-[80] mt-2 w-56 overflow-hidden rounded-2xl py-1">
             <button
               type="button"
               onClick={() => {
                 setMenuOpen(false);
                 onOpenSearch();
               }}
-              className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
             >
-              <Search size={16} className="shrink-0 text-gray-500" />
+              <Search size={16} className="app-text-muted shrink-0" />
               <span>Поиск по сообщениям</span>
             </button>
 
@@ -142,9 +142,9 @@ export default function ChatDialogHeader({
                 setMenuOpen(false);
                 onTogglePin();
               }}
-              className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
             >
-              <Pin size={16} className={`shrink-0 ${isPinned ? "fill-current text-sky-700" : "text-gray-500"}`} />
+              <Pin size={16} className={`shrink-0 ${isPinned ? "fill-current text-[var(--accent-primary-strong)]" : "app-text-muted"}`} />
               <span>{isPinned ? "Открепить чат" : "Закрепить чат"}</span>
             </button>
 
@@ -154,10 +154,10 @@ export default function ChatDialogHeader({
                 setMenuOpen(false);
                 onToggleNotifications();
               }}
-              className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
             >
               {notificationsEnabled ? (
-                <Bell size={16} className="shrink-0 text-gray-500" />
+                <Bell size={16} className="app-text-muted shrink-0" />
               ) : (
                 <BellOff size={16} className="shrink-0 text-amber-700" />
               )}

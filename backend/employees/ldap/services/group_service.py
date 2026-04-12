@@ -206,7 +206,7 @@ class GroupService(BaseService):
     # ======================== Member Management ======================== #
 
     def add_members(self, group_dn: str, member_dns: List[str]) -> None:
-        """Добавляет участников в группу (ORM)."""
+        """Добавляет участников в группу через high-level LDAP модель."""
         if not member_dns:
             return
 
@@ -216,29 +216,26 @@ class GroupService(BaseService):
             self._logger.warning(f"Group not found: {group_dn}")
             return
 
-        members = list(group.member or [])
-        changed = False
         added_count = 0
-
         for dn in member_dns:
-            if dn not in members:
-                members.append(dn)
-                changed = True
+            before = set(group.list_members())
+            group.add_member(dn)
+            after = set(LdapGroup.objects.get(dn=group_dn).list_members())
+            if dn in after and dn not in before:
                 added_count += 1
 
-        if changed:
-            group.member = members
-            group.save()
+        if added_count:
+            total = len(LdapGroup.objects.get(dn=group_dn).list_members())
             self._log_operation(
                 "add_members",
                 model="group",
                 dn=group_dn,
                 success=True,
-                extra={"added": added_count, "total": len(members)},
+                extra={"added": added_count, "total": total},
             )
 
     def remove_members(self, group_dn: str, member_dns: List[str]) -> None:
-        """Удаляет участников из группы (ORM)."""
+        """Удаляет участников из группы через high-level LDAP модель."""
         if not member_dns:
             return
 
@@ -248,47 +245,47 @@ class GroupService(BaseService):
             self._logger.warning(f"Group not found: {group_dn}")
             return
 
-        members = list(group.member or [])
-        changed = False
         removed_count = 0
-
         for dn in member_dns:
-            if dn in members:
-                members.remove(dn)
-                changed = True
+            before = set(group.list_members())
+            group.remove_member(dn)
+            after = set(LdapGroup.objects.get(dn=group_dn).list_members())
+            if dn not in after and dn in before:
                 removed_count += 1
 
-        if changed:
-            group.member = members
-            group.save()
+        if removed_count:
+            total = len(LdapGroup.objects.get(dn=group_dn).list_members())
             self._log_operation(
                 "remove_members",
                 model="group",
                 dn=group_dn,
                 success=True,
-                extra={"removed": removed_count, "total": len(members)},
+                extra={"removed": removed_count, "total": total},
             )
 
     def replace_members(
         self, group_dn: str, exact_member_dns: List[str]
     ) -> None:
-        """Полная замена состава группы (ORM)."""
+        """Полная замена состава группы через high-level LDAP модель."""
         try:
             group = LdapGroup.objects.get(dn=group_dn)
         except LdapGroup.DoesNotExist:
             self._logger.warning(f"Group not found: {group_dn}")
             return
 
-        old_count = len(group.member or [])
-        group.member = exact_member_dns
-        group.save()
+        old_count = len(group.list_members())
+        diff = group.sync_members(exact_member_dns)
 
         self._log_operation(
             "replace_members",
             model="group",
             dn=group_dn,
             success=True,
-            extra={"old_count": old_count, "new_count": len(exact_member_dns)},
+            extra={
+                "old_count": old_count,
+                "new_count": len(exact_member_dns),
+                **diff,
+            },
         )
 
     def list_members(self, group_dn: str) -> List[str]:

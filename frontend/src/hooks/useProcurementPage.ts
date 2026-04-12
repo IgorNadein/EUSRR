@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "@/lib/api";
 import { canManageRequests, canManageSupplier } from "@/lib/permissions";
 import { displayUserName, extractNextPage, loadAllPages } from "@/lib/shared";
 import type {
   Department,
+  ProcurementComment,
   ProcurementRequest,
   UrgencyLevel,
   User,
@@ -51,6 +52,7 @@ type ProcurementSection = "requests" | "stats" | "suppliers";
 type PaginatedLike<T> = {
   results?: T[];
   next?: string | null;
+  count?: number;
 };
 
 const getPaginatedResults = <T,>(response: unknown): T[] => {
@@ -76,11 +78,31 @@ const getPaginatedNext = (response: unknown): number | null => {
   return extractNextPage((response as PaginatedLike<unknown>).next ?? null);
 };
 
+const getPaginatedCount = (response: unknown): number => {
+  if (!response || typeof response !== "object" || Array.isArray(response)) {
+    return 0;
+  }
+
+  const count = (response as PaginatedLike<unknown>).count;
+  return typeof count === "number" && Number.isFinite(count)
+    ? count
+    : getPaginatedResults(response).length;
+};
+
 const getReadableError = (error: unknown, fallback: string): string => {
   const raw = String((error as Error)?.message || fallback);
+  const jsonStart = raw.indexOf("{");
+  const payload = jsonStart >= 0 ? raw.slice(jsonStart) : raw;
+
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const parsed = JSON.parse(payload) as Record<string, unknown>;
     if (typeof parsed === "object" && parsed !== null) {
+      if (typeof parsed.error === "string" && parsed.error.trim()) {
+        return parsed.error;
+      }
+      if (typeof parsed.detail === "string" && parsed.detail.trim()) {
+        return parsed.detail;
+      }
       return Object.entries(parsed)
         .map(([key, value]) => {
           if (Array.isArray(value)) {
@@ -110,6 +132,14 @@ export function useProcurementPage(user: User | null) {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [nextPage, setNextPage] = useState<number | null>(null);
+  const [scopeCounts, setScopeCounts] = useState<Record<ScopeTab, number>>({
+    all: 0,
+    mine: 0,
+    department: 0,
+    pending_approvals: 0,
+    my_work: 0,
+    available: 0,
+  });
 
   const [scope, setScope] = useState<ScopeTab>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -126,7 +156,15 @@ export function useProcurementPage(user: User | null) {
   const [form, setForm] = useState<FormState>(emptyForm);
 
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const [expandedComments, setExpandedComments] = useState<Record<number, boolean>>({});
+  const [commentsMap, setCommentsMap] = useState<Record<number, ProcurementComment[]>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
   const [detailsCache, setDetailsCache] = useState<Record<number, ProcurementRequest>>({});
+  const detailsCacheRef = useRef<Record<number, ProcurementRequest>>({});
+
+  useEffect(() => {
+    detailsCacheRef.current = detailsCache;
+  }, [detailsCache]);
 
   const resolveUserId = useCallback((person?: User | number | null) => {
     if (!person) return null;
@@ -181,6 +219,23 @@ export function useProcurementPage(user: User | null) {
     [departmentFilter, periodFilter, scope, searchQuery, statusFilter, urgencyFilter],
   );
 
+  const buildScopeCountParams = useCallback(
+    (targetScope: ScopeTab): Record<string, string | number> => {
+      const params: Record<string, string | number> = { page: 1 };
+      if (targetScope === "mine") params.scope = "mine";
+      else if (targetScope === "department") params.scope = "department";
+      else if (targetScope === "my_work") params.scope = "my_work";
+      else if (targetScope === "available") params.scope = "available";
+      if (statusFilter) params.status = statusFilter;
+      if (urgencyFilter) params.urgency = urgencyFilter;
+      if (departmentFilter) params.department = departmentFilter;
+      if (periodFilter) params.period = periodFilter;
+      if (searchQuery.trim()) params.search = searchQuery.trim();
+      return params;
+    },
+    [departmentFilter, periodFilter, searchQuery, statusFilter, urgencyFilter],
+  );
+
   const loadPage1 = useCallback(async () => {
     try {
       setLoading(true);
@@ -203,6 +258,34 @@ export function useProcurementPage(user: User | null) {
   useEffect(() => {
     void loadPage1();
   }, [loadPage1]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const scopes: ScopeTab[] = ["all", "mine", "department", "pending_approvals", "my_work", "available"];
+        const results = await Promise.all(
+          scopes.map(async (scopeKey) => {
+            const response: unknown = scopeKey === "pending_approvals"
+              ? await apiClient.getPendingApprovals(buildScopeCountParams(scopeKey))
+              : await apiClient.getProcurementRequests(buildScopeCountParams(scopeKey));
+            return [scopeKey, getPaginatedCount(response)] as const;
+          }),
+        );
+
+        if (!cancelled) {
+          setScopeCounts(Object.fromEntries(results) as Record<ScopeTab, number>);
+        }
+      } catch (countsError) {
+        console.error("Load procurement scope counts error:", countsError);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [buildScopeCountParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -307,6 +390,21 @@ export function useProcurementPage(user: User | null) {
     }
   }, [loadPage1]);
 
+  const ensureRequestDetail = useCallback(async (id: number) => {
+    const cached = detailsCacheRef.current[id];
+    if (cached) {
+      return cached;
+    }
+
+    const detail = await apiClient.getProcurementRequest(id);
+    detailsCacheRef.current = { ...detailsCacheRef.current, [id]: detail };
+    setDetailsCache((previous) => ({ ...previous, [id]: detail }));
+    setRequests((previous) => previous.map((request) => (
+      request.id === id ? { ...request, ...detail } : request
+    )));
+    return detail;
+  }, []);
+
   const handleSave = useCallback(async () => {
     try {
       setBusyKey("save");
@@ -387,8 +485,10 @@ export function useProcurementPage(user: User | null) {
       await action();
       setActionSuccess(successMessage);
       await refreshOne(id);
+      return true;
     } catch (actionErrorValue) {
       setActionError(getReadableError(actionErrorValue, "Ошибка"));
+      return false;
     } finally {
       setBusyKey(null);
     }
@@ -427,15 +527,98 @@ export function useProcurementPage(user: User | null) {
       return next;
     });
 
-    if (!detailsCache[id]) {
+    if (!detailsCacheRef.current[id]) {
       try {
-        const detail = await apiClient.getProcurementRequest(id);
-        setDetailsCache((previous) => ({ ...previous, [id]: detail }));
+        await ensureRequestDetail(id);
       } catch {
         // ignore detail loading failures for collapsed rows
       }
     }
-  }, [detailsCache]);
+  }, [ensureRequestDetail]);
+
+  const ensureCommentsLoaded = useCallback(async (id: number) => {
+    if (commentsMap[id]) {
+      return commentsMap[id];
+    }
+
+    const comments = await apiClient.getProcurementComments(id);
+    const normalized = Array.isArray(comments) ? comments : [];
+    setCommentsMap((previous) => ({ ...previous, [id]: normalized }));
+    return normalized;
+  }, [commentsMap]);
+
+  const toggleComments = useCallback(async (id: number) => {
+    const isOpen = Boolean(expandedComments[id]);
+    setExpandedComments((previous) => ({ ...previous, [id]: !isOpen }));
+
+    if (!isOpen && !commentsMap[id]) {
+      try {
+        await ensureCommentsLoaded(id);
+      } catch {
+        setActionError("Не удалось загрузить комментарии");
+      }
+    }
+  }, [commentsMap, ensureCommentsLoaded, expandedComments]);
+
+  const handleAddComment = useCallback(async (id: number) => {
+    const text = (commentDrafts[id] || "").trim();
+    if (!text) return;
+
+    try {
+      setBusyKey(`comment-${id}`);
+      const created = await apiClient.addProcurementComment(id, text);
+      setCommentsMap((previous) => ({
+        ...previous,
+        [id]: [...(previous[id] || []), created],
+      }));
+      setCommentDrafts((previous) => ({ ...previous, [id]: "" }));
+      setRequests((previous) => previous.map((request) => (
+        request.id === id
+          ? { ...request, comments_count: (request.comments_count || 0) + 1 }
+          : request
+      )));
+      setDetailsCache((previous) => {
+        const detail = previous[id];
+        if (!detail) return previous;
+        return {
+          ...previous,
+          [id]: { ...detail, comments_count: (detail.comments_count || 0) + 1 },
+        };
+      });
+    } catch {
+      setActionError("Не удалось добавить комментарий");
+    } finally {
+      setBusyKey(null);
+    }
+  }, [commentDrafts]);
+
+  const handleDeleteComment = useCallback(async (requestId: number, commentId: number) => {
+    try {
+      setBusyKey(`comment-delete-${commentId}`);
+      await apiClient.deleteProcurementComment(requestId, commentId);
+      setCommentsMap((previous) => ({
+        ...previous,
+        [requestId]: (previous[requestId] || []).filter((comment) => comment.id !== commentId),
+      }));
+      setRequests((previous) => previous.map((request) => (
+        request.id === requestId
+          ? { ...request, comments_count: Math.max(0, (request.comments_count || 0) - 1) }
+          : request
+      )));
+      setDetailsCache((previous) => {
+        const detail = previous[requestId];
+        if (!detail) return previous;
+        return {
+          ...previous,
+          [requestId]: { ...detail, comments_count: Math.max(0, (detail.comments_count || 0) - 1) },
+        };
+      });
+    } catch {
+      setActionError("Не удалось удалить комментарий");
+    } finally {
+      setBusyKey(null);
+    }
+  }, []);
 
   const handleSubmit = useCallback((id: number) => doAction(
     `submit-${id}`,
@@ -444,15 +627,11 @@ export function useProcurementPage(user: User | null) {
     "Заявка отправлена на согласование.",
   ), [doAction]);
 
-  const handleApprove = useCallback((id: number) => {
-    const comment = window.prompt("Комментарий к одобрению (необязательно)", "");
-    if (comment === null) return;
+  const handleApprove = useCallback((id: number, comment = "") => {
     return doAction(`approve-${id}`, () => apiClient.approveProcurementRequest(id, comment), id, "Заявка одобрена.");
   }, [doAction]);
 
-  const handleReject = useCallback((id: number) => {
-    const comment = window.prompt("Комментарий к отклонению", "");
-    if (comment === null) return;
+  const handleReject = useCallback((id: number, comment = "") => {
     return doAction(`reject-${id}`, () => apiClient.rejectProcurementRequest(id, comment), id, "Заявка отклонена.");
   }, [doAction]);
 
@@ -470,21 +649,27 @@ export function useProcurementPage(user: User | null) {
     "Заявка завершена.",
   ), [doAction]);
 
-  const handleCancel = useCallback((id: number) => {
-    const reason = window.prompt("Причина отмены", "");
-    if (reason === null) return;
+  const handleCancel = useCallback((id: number, reason = "") => {
     return doAction(`cancel-${id}`, () => apiClient.cancelProcurementRequest(id, reason), id, "Заявка отменена.");
   }, [doAction]);
 
   const handleDelete = useCallback(async (id: number) => {
-    if (!window.confirm("Удалить эту заявку? Доступно только для черновиков.")) return;
-
     try {
       setBusyKey(`delete-${id}`);
+      setActionError(null);
       await apiClient.deleteProcurementRequest(id);
       setRequests((previous) => previous.filter((request) => request.id !== id));
+      setDetailsCache((previous) => {
+        const next = { ...previous };
+        delete next[id];
+        detailsCacheRef.current = next;
+        return next;
+      });
+      setActionSuccess("Заявка удалена.");
+      return true;
     } catch (deleteError) {
       setActionError(getReadableError(deleteError, "Не удалось удалить"));
+      return false;
     } finally {
       setBusyKey(null);
     }
@@ -520,6 +705,7 @@ export function useProcurementPage(user: User | null) {
     actionSuccess,
     busyKey,
     nextPage,
+    scopeCounts,
     scope,
     setScope,
     searchQuery,
@@ -543,6 +729,10 @@ export function useProcurementPage(user: User | null) {
     form,
     setForm,
     expandedIds,
+    expandedComments,
+    commentsMap,
+    commentDrafts,
+    setCommentDrafts,
     detailsCache,
     filteredRequests,
     openCreate,
@@ -553,6 +743,8 @@ export function useProcurementPage(user: User | null) {
     handleSave,
     handleLoadMore,
     toggleExpand,
+    toggleComments,
+    ensureCommentsLoaded,
     handleSubmit,
     handleApprove,
     handleReject,
@@ -560,6 +752,8 @@ export function useProcurementPage(user: User | null) {
     handleComplete,
     handleCancel,
     handleDelete,
+    handleAddComment,
+    handleDeleteComment,
     addItemRow,
     removeItemRow,
     updateItemRow,
@@ -571,5 +765,7 @@ export function useProcurementPage(user: User | null) {
     getDeptName,
     getRequestAmount,
     loadPage1,
+    refreshOne,
+    ensureRequestDetail,
   };
 }

@@ -113,7 +113,7 @@ class GroupViewSet(viewsets.ModelViewSet):
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
 
-        grp = Group.objects.create(name=ser.validated_data["name"])
+        grp = Group(name=ser.validated_data["name"])
 
         # Устанавливаем LDAP-специфичные атрибуты для сигнала
         grp._ldap_parent_dn = request.data.get("ldap_parent_dn")
@@ -124,11 +124,9 @@ class GroupViewSet(viewsets.ModelViewSet):
         )
 
         perms = ser.validated_data.get("permissions")
+        grp.save()
         if perms:
             grp.permissions.set(perms)
-
-        # Сохраняем для триггера сигнала создания
-        grp.save()
 
         out = self.get_serializer(grp)
         return Response(

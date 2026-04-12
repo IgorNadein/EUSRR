@@ -29,6 +29,7 @@ export interface EmployeeDepartment {
 
 export interface User {
   id: number;
+  username?: string;
   email: string;
   phone_number?: string;
   first_name: string;
@@ -46,6 +47,7 @@ export interface User {
   skills?: Skill[];
   actions?: EmployeeAction[];
   email_verified?: boolean;
+  is_ldap_managed?: boolean;
   created_at?: string;
   updated_at?: string;
   last_login?: string;
@@ -59,6 +61,56 @@ export interface User {
     permissions?: string[];
     permissions_by_app?: Record<string, string[]>;
   };
+}
+
+export interface AuthSession {
+  session_id: string;
+  is_current: boolean;
+  device_name?: string | null;
+  ip_address?: string | null;
+  created_at: string;
+  last_seen_at: string;
+  revoked_at?: string | null;
+}
+
+export interface DirectoryLoginResult {
+  username: string | null;
+  source: "db" | "ldap" | "none" | "ldap_not_found";
+  is_cached: boolean;
+  is_ldap_managed: boolean;
+}
+
+export interface SessionBulkActionResult {
+  revoked: number;
+}
+
+export interface ChangePasswordPayload {
+  current_password: string;
+  new_password: string;
+  new_password_confirm: string;
+}
+
+export interface ChangePasswordResult {
+  ok: boolean;
+}
+
+export interface PasswordResetRequestPayload {
+  login: string;
+}
+
+export interface PasswordResetRequestResult {
+  ok: boolean;
+}
+
+export interface PasswordResetConfirmPayload {
+  uid: string;
+  token: string;
+  new_password: string;
+  new_password_confirm: string;
+}
+
+export interface PasswordResetConfirmResult {
+  ok: boolean;
 }
 
 export interface Department {
@@ -93,6 +145,7 @@ export interface Post {
   tags?: string[];
   created_at: string;
   updated_at: string;
+  pinned?: boolean;
   likes_count: number;
   comments_count: number;
   is_liked?: boolean;
@@ -401,11 +454,21 @@ export interface ProcurementRequest {
   is_editable?: boolean;
   total_cost?: string | number;
   total_estimated_cost?: string | number;
+  comments_count?: number;
+  can_current_user_approve?: boolean;
   created_at: string;
   updated_at: string;
   submitted_at?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
+}
+
+export interface ProcurementComment {
+  id: number;
+  request: number;
+  author: User;
+  text: string;
+  created_at: string;
 }
 
 export interface ProcurementSupplier {

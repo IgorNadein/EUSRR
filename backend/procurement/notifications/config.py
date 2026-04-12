@@ -208,4 +208,4 @@ class ActionURLs:
     @staticmethod
     def request_detail(request_id: int) -> str:
         """URL детальной страницы заявки."""
-        return f'/procurement/requests/{request_id}'
+        return f'/procurement?request={request_id}'

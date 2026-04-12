@@ -64,7 +64,6 @@ http_ece==1.2.1
 
 # Image Processing
 pillow==11.3.0
-qrcode==8.1
 
 # Authentication and Security
 PyJWT==2.10.1

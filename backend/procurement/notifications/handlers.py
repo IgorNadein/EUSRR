@@ -13,6 +13,19 @@ from .config import NotificationVerbs, MessageTemplates, ActionURLs
 logger = logging.getLogger(__name__)
 
 
+def get_current_pending_approvals(request):
+    """Вернуть pending approvals только текущего этапа."""
+    from ..constants import ApprovalStatus
+
+    pending_approvals = request.approvals.filter(
+        status=ApprovalStatus.PENDING
+    ).order_by("priority", "created_at", "id")
+    first_pending = pending_approvals.first()
+    if first_pending is None:
+        return pending_approvals.none()
+    return pending_approvals.filter(priority=first_pending.priority)
+
+
 def notify_new_request(request):
     """
     Уведомить о новой заявке на закупку.
@@ -38,7 +51,7 @@ def notify_new_request(request):
         verb=NotificationVerbs.NEW_REQUEST,
         action_object=request,
         description=description,
-        action_url=ActionURLs.PROCUREMENT_LIST,
+        action_url=ActionURLs.request_detail(request.id),
         data={
             'title': notification_title,
             'request_id': request.id,
@@ -54,16 +67,12 @@ def notify_new_request(request):
 
 def notify_approvers(request):
     """
-    Уведомить всех согласующих о необходимости согласования заявки.
+    Уведомить согласующих только текущего этапа.
 
     Args:
         request: Объект ProcurementRequest
     """
-    from ..constants import ApprovalStatus
-
-    pending_approvals = request.approvals.filter(
-        status=ApprovalStatus.PENDING
-    )
+    pending_approvals = get_current_pending_approvals(request)
 
     if not pending_approvals.exists():
         logger.warning(
@@ -93,7 +102,7 @@ def notify_approver(approval):
         verb=NotificationVerbs.PENDING_APPROVAL,
         action_object=approval.request,
         description=description,
-        action_url=ActionURLs.PROCUREMENT_LIST,
+        action_url=ActionURLs.request_detail(approval.request.id),
         data={
             'title': notification_title,
             'request_id': approval.request.id,
@@ -124,7 +133,7 @@ def notify_requestor(request, verb, title, message):
         verb=verb,
         action_object=request,
         description=message,
-        action_url=ActionURLs.PROCUREMENT_LIST,
+        action_url=ActionURLs.request_detail(request.id),
         data={
             'title': title,
             'request_id': request.id,
@@ -203,7 +212,7 @@ def notify_request_completed(request):
             verb=NotificationVerbs.COMPLETED,
             action_object=request,
             description=description,
-            action_url=ActionURLs.PROCUREMENT_LIST,
+            action_url=ActionURLs.request_detail(request.id),
             data={
                 'title': notification_title,
                 'request_id': request.id,
@@ -241,7 +250,7 @@ def notify_request_in_progress(request, executor):
             verb=NotificationVerbs.IN_PROGRESS,
             action_object=request,
             description=description,
-            action_url=ActionURLs.PROCUREMENT_LIST,
+            action_url=ActionURLs.request_detail(request.id),
             data={
                 'title': notification_title,
                 'request_id': request.id,
@@ -261,7 +270,7 @@ def notify_request_in_progress(request, executor):
             verb=NotificationVerbs.IN_PROGRESS,
             action_object=request,
             description=description,
-            action_url=ActionURLs.PROCUREMENT_LIST,
+            action_url=ActionURLs.request_detail(request.id),
             data={
                 'title': notification_title,
                 'request_id': request.id,
@@ -291,7 +300,7 @@ def notify_request_cancelled(request):
             verb=NotificationVerbs.CANCELLED,
             action_object=request,
             description=description,
-            action_url=ActionURLs.PROCUREMENT_LIST,
+            action_url=ActionURLs.request_detail(request.id),
             data={
                 'title': notification_title,
                 'request_id': request.id,
@@ -318,6 +327,7 @@ def notify_stage_approved(approval):
         notification_title,
         description
     )
+    notify_approvers(approval.request)
 
 
 def notify_stage_rejected(approval):

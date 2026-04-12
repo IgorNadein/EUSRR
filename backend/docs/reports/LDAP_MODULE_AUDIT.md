@@ -1,7 +1,25 @@
 # Аудит модуля employees/ldap
 
-**Дата:** 18 марта 2026 г.  
-**Контекст:** После рефакторинга ViewSets (удалено -5576 строк)
+**Дата:** 10 апреля 2026 г.  
+**Контекст:** Аудит после выравнивания Department LDAP sync и retry-очереди
+
+## Обновление 10 апреля 2026
+
+### Каноническая модель Department sync
+
+- Источник истины для `Department`, `EmployeeDepartment.is_active` и ролей отдела теперь находится в Django DB.
+- `employees/signals/ldap/department.py` и `employees/tasks.py` больше не содержат отдельную handwritten LDAP-логику для отдела.
+- Оба пути делегируют в `DepartmentService`:
+  - `sync_department_state()`
+  - `sync_department_delete()`
+  - `sync_member_state()`
+- Retry-очередь больше не вызывает устаревшие private-методы вроде `_move_user_to_department` и `_move_user_to_base_ou`.
+- Diff для `Department` формируется до `save()` через временные атрибуты `_ldap_changes` и `_ldap_sync_head`; post-save больше не пытается вычислять изменения повторным чтением уже сохранённой строки.
+
+### Остаточные замечания
+
+- `DepartmentService` по-прежнему содержит legacy CRUD API, которое мутирует DB (`add_member`, `remove_member`, `set_member_role`), но live sync и retry используют только sync-oriented методы.
+- `UserService` и часть legacy service-слоя всё ещё требуют отдельной консолидации.
 
 ## Текущее использование
 
@@ -10,17 +28,14 @@
 #### DirectoryService (employees/ldap/directory_service.py)
 Используется в:
 - `api/v1/employees/views/auth.py` - RegisterAPIView
-- `employees/signals_ldap.py` - синхронизация Employee
-- `employees/signals_department.py` - синхронизация Department
-- `employees/signals_group.py` - синхронизация Group
+- `employees/signals/ldap/employee.py` - синхронизация Employee
+- `employees/signals/ldap/group.py` - синхронизация Group
 - `common/ldap_password_mixin.py` - смена пароля
 
 **Используемые методы:**
 - `create_user()` - auth.py (регистрация новых пользователей)
 - `update_user()` - signals_ldap.py, ldap_password_mixin.py
 - `delete_user()` - signals_ldap.py
-- `update_department()` - signals_department.py
-- `delete_department()` - signals_department.py
 - `group_create()` - signals_group.py
 - `group_delete()` - signals_group.py
 - `group_rename()` - signals_group.py
@@ -31,9 +46,9 @@
 
 #### Services (employees/ldap/services/*)
 Используются в сигналах через ленивый импорт:
-- `DepartmentService` - signals_department.py
-- `GroupService` - signals_department.py
-- `UserService` - signals_department.py
+- `DepartmentService` - `employees/signals/ldap/department.py`, `employees/tasks.py`
+- `GroupService` - через `DepartmentService`, `employees/signals/ldap/group.py`
+- `UserService` - через `DepartmentService`, `employees/signals/ldap/employee.py`
 - `SyncService` - management/commands/sync_directory.py
 
 #### ORM Models (employees/ldap/orm_models.py)

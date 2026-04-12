@@ -283,7 +283,7 @@ def test_dismissal_handles_ldap_error_gracefully(
 ):
     """Проверяет graceful handling ошибки LDAP при увольнении."""
     from employees.ldap.errors import DirectoryLdapError
-    from employees.models import LdapSyncState
+    from employees.models import LdapSyncQueue, LdapSyncState
 
     mock_is_enabled.return_value = True
     mock_update.side_effect = DirectoryLdapError("LDAP connection failed")
@@ -317,8 +317,20 @@ def test_dismissal_handles_ldap_error_gracefully(
     # БД-изменения должны быть применены
     assert emp.is_active is False
 
-    # LDAP был вызван (и упал)
-    mock_update.assert_called_once()
+    # LDAP sync был предпринят хотя бы один раз.
+    # При eager Celery retry может вызвать update_user повторно в рамках
+    # того же теста, поэтому количество вызовов здесь недетерминировано.
+    assert mock_update.call_count >= 1
+    first_call = mock_update.call_args_list[0]
+    assert first_call.kwargs['emp'].id == emp.id
+    assert first_call.kwargs['changes'] == {'is_active': False}
+
+    queue_item = LdapSyncQueue.objects.filter(
+        operation="employee_save",
+        model_name="employee",
+        object_pk=str(emp.pk),
+    ).first()
+    assert queue_item is not None
 
 
 @pytest.mark.django_db
@@ -591,4 +603,3 @@ def test_dismissal_without_department_moves_to_dismissed(
     assert call_args.kwargs['changes'] == {'is_active': False}
     mock_ensure_dn.assert_called_once()
     assert mock_ensure_dn.call_args.args[0].id == emp.id
-

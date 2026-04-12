@@ -31,7 +31,7 @@ from ..permissions import (
     AdminOrActionOrModelPerms,
     AdminOrDeptAllowed,
 )
-from .serializers import PostListSerializer, PostSerializer
+from .serializers import PostListSerializer, PostLikerSerializer, PostSerializer
 
 Employee = get_user_model()
 
@@ -278,6 +278,27 @@ class PostViewSet(viewsets.ModelViewSet):
             {"liked": False, "likes_count": post.likes_count},
             status=status.HTTP_200_OK,
         )
+
+    @action(detail=True, methods=["get"], permission_classes=[IsAuthenticated])
+    def likers(self, request, pk=None):
+        """Возвращает список сотрудников, поставивших лайк посту."""
+        post = self.get_object()
+        queryset = (
+            Employee.objects.filter(post_likes__post=post)
+            .order_by("-post_likes__created_at", "-id")
+            .distinct()
+        )
+
+        page = self.paginate_queryset(queryset)
+        objects = page if page is not None else queryset
+        serializer = PostLikerSerializer(
+            objects,
+            many=True,
+            context={"request": request},
+        )
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
     @action(
         detail=True,

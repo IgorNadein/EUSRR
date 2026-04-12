@@ -86,9 +86,6 @@ class CanApproveProcurementRequest(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
 
-        if request.user.is_superuser:
-            return True
-
         return ProcurementApprovalResolver.user_can_approve(request.user, obj)
 
 
@@ -229,6 +226,14 @@ class CanManageProcurementRequest(permissions.BasePermission):
         # Cancel (отмена заявки) - только владелец
         if action == "cancel":
             return obj.requestor == user
+
+        # Комментарии доступны тем, кто видит заявку
+        if action == "comments":
+            return True
+
+        # Удаление комментария дополнительно валидируется во view по автору/админу
+        if action == "delete_comment":
+            return True
 
         # Start_work (взять в работу) - любой авторизованный
         if action == "start_work":

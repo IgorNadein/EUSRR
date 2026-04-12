@@ -93,7 +93,11 @@ class ModifyDnMixin:
         """
         from .infrastructure.connections import _ldap
 
-        is_existing = hasattr(self, "_saved_dn") and self._saved_dn
+        is_existing = (
+            not getattr(self._state, "adding", True)
+            and hasattr(self, "_saved_dn")
+            and self._saved_dn
+        )
 
         # --- 1) Перемещение между OU (base_dn изменился) ---
         current_base_dn = getattr(self, "base_dn", None)

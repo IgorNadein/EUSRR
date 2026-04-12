@@ -184,7 +184,12 @@ export class ApiClientBase {
     async updateCurrentUserProfile(data: Record<string, any>): Promise<any> {
         const formData = new FormData();
         Object.keys(data).forEach((key) => {
-            if (data[key] instanceof File) { formData.append(key, data[key]); }
+            if (Array.isArray(data[key])) {
+                data[key].forEach((value: any) => {
+                    if (value !== null && value !== undefined) formData.append(key, String(value));
+                });
+            }
+            else if (data[key] instanceof File) { formData.append(key, data[key]); }
             else if (data[key] !== null && data[key] !== undefined) { formData.append(key, data[key]); }
         });
         const token = this.getToken();
