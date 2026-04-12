@@ -20,10 +20,6 @@ def _find_ldap_user(employee):
     from employees.ldap.orm_models import LdapUser
 
     employee_number = str(employee.pk)
-    ldap_user = LdapUser.objects.filter(employee_number=employee_number).first()
-    if ldap_user:
-        return ldap_user
-
     sync_state = LdapSyncState.objects.filter(
         model="employee", object_pk=employee_number
     ).first()
@@ -31,9 +27,34 @@ def _find_ldap_user(employee):
         try:
             return LdapUser.objects.get(dn=sync_state.ldap_dn)
         except LdapUser.DoesNotExist:
-            return None
+            pass
 
-    return None
+    candidates = list(
+        LdapUser.objects.filter(employee_number=employee_number)
+    )
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    employee_email = (employee.email or "").strip().lower()
+    if employee_email:
+        for candidate in candidates:
+            if (getattr(candidate, "mail", "") or "").strip().lower() == employee_email:
+                return candidate
+            if (
+                getattr(candidate, "user_principal_name", "") or ""
+            ).strip().lower() == employee_email:
+                return candidate
+
+    candidates.sort(
+        key=lambda item: (
+            0 if (getattr(item, "mail", "") or "").strip().lower() == employee_email else 1,
+            0 if (getattr(item, "user_principal_name", "") or "").strip().lower() == employee_email else 1,
+            str(getattr(item, "dn", "")).lower(),
+        )
+    )
+    return candidates[0]
 
 
 def resolve_directory_login(employee, *, force_refresh: bool = False):

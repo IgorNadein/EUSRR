@@ -23,6 +23,17 @@ from .models import (
     LdapSyncState,
 )
 
+
+def _resolve_ldap_user_for_employee(employee):
+    """Возвращает наиболее вероятную LDAP-модель сотрудника.
+
+    Идет через общий resolver: сначала sync-state DN, затем employee_number,
+    затем email/UPN fallback среди кандидатов.
+    """
+    from api.v1.directory.services import _find_ldap_user
+
+    return _find_ldap_user(employee)
+
 # =========================
 #   Формы для кастомного User (Employee)
 # =========================
@@ -628,9 +639,7 @@ class EmployeeAdmin(DjangoUserAdmin):
                             employee.pk
                         }: поиск в LDAP по employee_number={employee.pk}"
                     )
-                    ldap_user = LdapUser.objects.filter(
-                        employee_number=str(employee.pk)
-                    ).first()
+                    ldap_user = _resolve_ldap_user_for_employee(employee)
                     if ldap_user:
                         logger.info(
                             f"[sync_from_django_to_ldap] Employee {
@@ -770,9 +779,11 @@ class EmployeeAdmin(DjangoUserAdmin):
                         # Перечитываем пользователя, чтобы получить
                         # актуальный DN.
                         try:
-                            ldap_user_fresh = LdapUser.objects.get(
-                                employee_number=str(employee.pk)
+                            ldap_user_fresh = _resolve_ldap_user_for_employee(
+                                employee
                             )
+                            if ldap_user_fresh is None:
+                                raise LdapUser.DoesNotExist
                             fresh_dn = ldap_user_fresh.dn
                         except LdapUser.DoesNotExist:
                             fresh_dn = ldap_user.dn
@@ -980,9 +991,7 @@ class EmployeeAdmin(DjangoUserAdmin):
 
             try:
                 # Ищем LDAP пользователя
-                ldap_user = LdapUser.objects.filter(
-                    employee_number=str(employee.pk)
-                ).first()
+                ldap_user = _resolve_ldap_user_for_employee(employee)
 
                 if not ldap_user:
                     # Попробуем по email
@@ -1084,9 +1093,7 @@ class EmployeeAdmin(DjangoUserAdmin):
 
             try:
                 # Ищем LDAP пользователя
-                ldap_user = LdapUser.objects.filter(
-                    employee_number=str(employee.pk)
-                ).first()
+                ldap_user = _resolve_ldap_user_for_employee(employee)
 
                 if not ldap_user:
                     ldap_user = LdapUser.objects.filter(

@@ -30,6 +30,11 @@ pytestmark = [
     pytest.mark.django_db(transaction=True, databases=["default", "ldap"]),
 ]
 
+TINY_PNG_BASE64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+    "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+)
+
 
 def _employee_dn(employee) -> str:
     return LdapSyncState.objects.get(
@@ -65,7 +70,10 @@ def test_employee_profile_patch_updates_live_ldap(
         "/api/v1/employees/me/",
         {
             "first_name": "Updated",
+            "last_name": "Renamed",
+            "email": f"updated-{user.pk}@example.com",
             "phone_number": "+79995554433",
+            "avatar": f"data:image/png;base64,{TINY_PNG_BASE64}",
         },
         format="json",
     )
@@ -74,7 +82,10 @@ def test_employee_profile_patch_updates_live_ldap(
 
     ldap_user = LdapUser.objects.get(dn=_employee_dn(user))
     assert ldap_user.given_name == "Updated"
+    assert ldap_user.sn == "Renamed"
+    assert ldap_user.mail == f"updated-{user.pk}@example.com"
     assert ldap_user.telephone_number == "+79995554433"
+    assert bool(ldap_user.thumbnail_photo) is True
 
 
 def test_department_api_roundtrip_syncs_ou_head_and_membership(
@@ -133,12 +144,25 @@ def test_department_api_roundtrip_syncs_ou_head_and_membership(
     )
     assert rename_response.status_code == 200, rename_response.content
 
+    old_dept_dn = f"OU={dept_name},{settings.LDAP_DEPARTMENTS_BASE}"
     department.refresh_from_db()
     renamed_dn = _department_dn(department)
     ldap_cleanup(renamed_dn)
     renamed_ou = LdapOrganizationalUnit.objects.get(dn=renamed_dn)
     assert renamed_ou.ou == f"{dept_name}-renamed"
     assert renamed_ou.description == "Renamed department"
+    assert department.ldap_group_dn == (
+        f"CN=DEP_{dept_name}-renamed,{renamed_dn}"
+    )
+    assert not LdapOrganizationalUnitGroup.objects.filter(
+        dn=f"CN=DEP_{dept_name},{old_dept_dn}"
+    ).exists()
+    renamed_group = LdapOrganizationalUnitGroup.objects.get(
+        dn=department.ldap_group_dn
+    )
+    assert renamed_group.cn == f"DEP_{dept_name}-renamed"
+    renamed_member_dns = {_norm_dn(dn) for dn in list(renamed_group.member or [])}
+    assert _norm_dn(_employee_dn(member)) in renamed_member_dns
 
     remove_member = superuser_client.post(
         f"/api/v1/departments/{department.pk}/remove_member/",
@@ -147,7 +171,9 @@ def test_department_api_roundtrip_syncs_ou_head_and_membership(
     )
     assert remove_member.status_code == 200, remove_member.content
 
-    renamed_group = LdapOrganizationalUnitGroup.objects.get(dn=department.ldap_group_dn)
+    renamed_group = LdapOrganizationalUnitGroup.objects.get(
+        dn=department.ldap_group_dn
+    )
     renamed_member_dns = {_norm_dn(dn) for dn in list(renamed_group.member or [])}
     assert _norm_dn(_employee_dn(member)) not in renamed_member_dns
 

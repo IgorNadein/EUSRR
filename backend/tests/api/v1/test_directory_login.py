@@ -27,6 +27,20 @@ def make_user(**overrides):
     return user
 
 
+def make_ldap_user(**overrides):
+    return SimpleNamespace(
+        dn=overrides.pop(
+            "dn", "CN=User,OU=Users,OU=company,DC=robotail,DC=local"
+        ),
+        sam_account_name=overrides.pop("sam_account_name", "ldap.login"),
+        mail=overrides.pop("mail", "dir@example.com"),
+        user_principal_name=overrides.pop(
+            "user_principal_name", "dir@example.com"
+        ),
+        **overrides,
+    )
+
+
 @pytest.mark.django_db
 def test_employees_me_returns_cached_username():
     client = APIClient()
@@ -148,3 +162,73 @@ def test_directory_login_refresh_forces_ldap_lookup(settings):
 
     user.refresh_from_db()
     assert user.username == "new.login"
+
+
+@pytest.mark.django_db
+def test_find_ldap_user_prefers_sync_state_dn(settings):
+    settings.LDAP_ENABLED = True
+    user = make_user(username="", is_ldap_managed=True)
+
+    from employees.models import LdapSyncState
+
+    preferred = make_ldap_user(
+        dn="CN=Preferred,OU=Users,OU=company,DC=robotail,DC=local",
+        sam_account_name="preferred.login",
+    )
+    other = make_ldap_user(
+        dn="CN=Other,OU=Users,OU=company,DC=robotail,DC=local",
+        sam_account_name="other.login",
+    )
+
+    LdapSyncState.objects.create(
+        model="employee",
+        object_pk=str(user.pk),
+        ldap_dn=preferred.dn,
+    )
+
+    with patch("employees.ldap.orm_models.LdapUser.objects.get") as get_mock, patch(
+        "employees.ldap.orm_models.LdapUser.objects.filter"
+    ) as filter_mock:
+        get_mock.return_value = preferred
+        filter_mock.return_value = [other]
+
+        from api.v1.directory.services import _find_ldap_user
+
+        resolved = _find_ldap_user(user)
+
+    assert resolved is preferred
+    get_mock.assert_called_once_with(dn=preferred.dn)
+
+
+@pytest.mark.django_db
+def test_find_ldap_user_prefers_email_match_among_multiple_candidates(settings):
+    settings.LDAP_ENABLED = True
+    user = make_user(
+        username="",
+        is_ldap_managed=True,
+        email="match@example.com",
+    )
+
+    preferred = make_ldap_user(
+        dn="CN=Preferred,OU=Users,OU=company,DC=robotail,DC=local",
+        sam_account_name="preferred.login",
+        mail="match@example.com",
+        user_principal_name="preferred@robotail.local",
+    )
+    other = make_ldap_user(
+        dn="CN=Other,OU=Users,OU=company,DC=robotail,DC=local",
+        sam_account_name="other.login",
+        mail="other@example.com",
+        user_principal_name="other@robotail.local",
+    )
+
+    with patch(
+        "employees.ldap.orm_models.LdapUser.objects.filter"
+    ) as filter_mock:
+        filter_mock.return_value = [other, preferred]
+
+        from api.v1.directory.services import _find_ldap_user
+
+        resolved = _find_ldap_user(user)
+
+    assert resolved is preferred

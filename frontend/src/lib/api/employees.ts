@@ -3,6 +3,10 @@ import { type RequestFn } from './utils';
 
 export function createEmployeesApi(request: RequestFn) {
     return {
+        getDirectoryLogin: () =>
+            request('/api/v1/directory/me/login/'),
+        refreshDirectoryLogin: () =>
+            request('/api/v1/directory/me/login/refresh/', { method: 'POST' }),
         getEmployees: (params?: { search?: string; department?: string; page?: number; limit?: number; is_active?: boolean }) => {
             const qp = new URLSearchParams();
             if (params?.search) qp.append('search', params.search);

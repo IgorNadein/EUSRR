@@ -216,6 +216,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         """Обновление сотрудника."""
         instance = serializer.instance
         old_email = instance.email
+        avatar_payload = serializer.validated_data.get("avatar")
 
         # Передаем данные для синхронизации с LDAP (через сигналы)
         # DRF request.data может быть dict (JSON) или QueryDict (form data)
@@ -225,6 +226,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         )
         if "avatar" in self.request.FILES:
             instance._ldap_avatar = self.request.FILES["avatar"]
+        elif avatar_payload is not None:
+            instance._ldap_avatar = avatar_payload
 
         serializer.save()
 

@@ -29,6 +29,7 @@ export interface EmployeeDepartment {
 
 export interface User {
   id: number;
+  username?: string;
   email: string;
   phone_number?: string;
   first_name: string;
@@ -70,6 +71,13 @@ export interface AuthSession {
   created_at: string;
   last_seen_at: string;
   revoked_at?: string | null;
+}
+
+export interface DirectoryLoginResult {
+  username: string | null;
+  source: "db" | "ldap" | "none" | "ldap_not_found";
+  is_cached: boolean;
+  is_ldap_managed: boolean;
 }
 
 export interface SessionBulkActionResult {

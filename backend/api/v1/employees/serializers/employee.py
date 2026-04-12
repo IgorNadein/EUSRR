@@ -68,6 +68,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "actions",
             "id",
             "username",
+            "is_ldap_managed",
             "email",
             "last_name",
             "first_name",
@@ -92,6 +93,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "auth",
         )
         read_only_fields = (
+            "is_ldap_managed",
             "is_active",
             "email_verified",
             "created_at",
