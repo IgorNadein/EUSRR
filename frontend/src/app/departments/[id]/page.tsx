@@ -432,7 +432,6 @@ export default function DepartmentDetailPage() {
   const h = useDepartmentPage(departmentId);
 
   const activeMembersCount = h.members.filter((member) => member.is_active).length;
-  const inactiveMembersCount = h.members.length - activeMembersCount;
   const roleOptions = h.roles.map((role) => ({ id: role.id, name: role.name }));
   const isManagementMode =
     h.userPerms.can_manage ||
@@ -558,9 +557,6 @@ export default function DepartmentDetailPage() {
                     <p className="app-card-caption">О составе</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <MetaChip>{activeMembersCount} активных</MetaChip>
-                      {inactiveMembersCount ? (
-                        <MetaChip>{inactiveMembersCount} неактивных</MetaChip>
-                      ) : null}
                       {isManagementMode ? (
                         <MetaChip tone="warning">Режим управления</MetaChip>
                       ) : (
@@ -612,17 +608,6 @@ export default function DepartmentDetailPage() {
                     className="app-input w-full rounded-lg py-2.5 pl-9 pr-3 text-sm"
                   />
                 </div>
-                <label className="app-text-muted inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={h.showInactiveMembers}
-                    onChange={(event) =>
-                      h.setShowInactiveMembers(event.target.checked)
-                    }
-                    className="rounded border-[var(--border-strong)]"
-                  />
-                  Показывать неактивных
-                </label>
               </div>
 
               <div className="space-y-3">
@@ -646,15 +631,15 @@ export default function DepartmentDetailPage() {
                 ) : (
                   <div className="app-surface-muted rounded-xl p-8 text-center">
                     <Users size={24} className="app-text-muted mx-auto mb-3" />
-                    <p className="text-sm font-medium text-[var(--foreground)]">
-                      Участники не найдены
-                    </p>
-                    <p className="app-text-muted mt-2 text-sm">
-                      Измени поисковый запрос или включи показ неактивных связей.
-                    </p>
-                  </div>
-                )}
-              </div>
+                      <p className="text-sm font-medium text-[var(--foreground)]">
+                        Участники не найдены
+                      </p>
+                      <p className="app-text-muted mt-2 text-sm">
+                        Измени поисковый запрос.
+                      </p>
+                    </div>
+                  )}
+                </div>
             </section>
 
             <section className="app-surface rounded-2xl p-5">

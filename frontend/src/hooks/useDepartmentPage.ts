@@ -51,7 +51,6 @@ export type DepartmentPageController = {
   selectableEmployees: Array<{ id: number; name: string }>;
   selectedHeadId: number | null;
   selectedMemberId: number | null;
-  showInactiveMembers: boolean;
   userPerms: DepartmentUserPermissions;
   closeAddMember: () => void;
   closeDepartmentEditor: () => void;
@@ -67,7 +66,6 @@ export type DepartmentPageController = {
   setRoleDraft: (next: DepartmentRoleDraft | ((current: DepartmentRoleDraft) => DepartmentRoleDraft)) => void;
   setSelectedHeadId: (id: number | null) => void;
   setSelectedMemberId: (id: number | null) => void;
-  setShowInactiveMembers: (value: boolean) => void;
   submitAddMember: () => Promise<void>;
   submitHeadChange: () => Promise<void>;
   submitQuickHeadChange: (headId: number) => Promise<void>;
@@ -132,7 +130,6 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   const [error, setError] = useState<string | null>(null);
   const [pendingKey, setPendingKey] = useState<SavingKey | null>(null);
   const [membersQuery, setMembersQuery] = useState("");
-  const [showInactiveMembers, setShowInactiveMembers] = useState(false);
 
   const [editDepartmentOpen, setEditDepartmentOpen] = useState(false);
   const [departmentDraft, setDepartmentDraft] = useState({ name: "", description: "" });
@@ -234,7 +231,7 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     const q = membersQuery.trim().toLowerCase();
 
     return members.filter((item) => {
-      if (!showInactiveMembers && !item.is_active) {
+      if (!item.is_active) {
         return false;
       }
 
@@ -256,7 +253,7 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
         roleName.includes(q)
       );
     });
-  }, [members, membersQuery, showInactiveMembers]);
+  }, [members, membersQuery]);
 
   const selectableEmployees = useMemo(() => {
     const activeIds = new Set(
@@ -542,7 +539,6 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     selectableEmployees,
     selectedHeadId,
     selectedMemberId,
-    showInactiveMembers,
     userPerms: userPerms || EMPTY_USER_PERMS,
     closeAddMember,
     closeDepartmentEditor,
@@ -558,7 +554,6 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     setRoleDraft,
     setSelectedHeadId,
     setSelectedMemberId,
-    setShowInactiveMembers,
     submitAddMember,
     submitHeadChange,
     submitQuickHeadChange,
