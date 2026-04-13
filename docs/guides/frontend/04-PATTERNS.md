@@ -33,7 +33,7 @@
 Для `filter form` дополнительно:
 
 - toolbar и фильтрующий блок лучше держать отдельным feature-компонентом, если page-level файл уже управляет списком, detail modal и compose flow одновременно
-- если filter-toolbar уже соседствует с плотным list shell, сам list shell тоже должен иметь явную anatomy: action rail, content column и отдельные secondary panels вместо одного бесформенного nested block
+- если рядом уже есть удачный плотный list shell, сначала сохранять его внешний контракт и выносить логику/leaf-блоки без агрессивного редизайна
 
 ### Dropdown-like UX
 

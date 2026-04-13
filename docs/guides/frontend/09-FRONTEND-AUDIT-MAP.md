@@ -13,7 +13,7 @@
 
 | Зона | Статус | Что уже хорошо | Основные проблемы | Рекомендуемый следующий шаг |
 | --- | --- | --- | --- | --- |
-| `requests` | `ok` | compose-настроение, participant-only логика, UI вокруг `can_decide`, compose/list/detail/controls/preview разведены по feature components, screen orchestration вынесена в hook, list/swipe flow собраны в feature containers, dense row приведён к явной anatomy с отдельными detail/comments panels, avatar/preview media contract выровнен через local wrapper, controls block собран на grouped state/actions contract | остаются только точечные follow-up улучшения, но блокирующего visual debt больше нет | использовать как референс для разделения orchestration/UI, participant-heavy request flows, anatomy плотной строки, локального media-wrapper паттерна и feature-local controls contract |
+| `requests` | `mixed` | визуально удачный экран, compose-настроение, participant-only логика, UI вокруг `can_decide`, compose/list/detail/controls/preview разведены по feature components, screen orchestration вынесена в hook, list/swipe flow собраны в feature containers, avatar/preview media contract выровнен через local wrapper | зона полезна как проверка guide, но не должна автоматически становиться полным visual-reference; здесь важнее бережный structural refactor без насильственного редизайна | использовать как ориентир по декомпозиции насыщенного экрана и осторожной нормализации уже хорошего UI, а не как шаблон для жёсткой пересборки dense list-паттернов |
 | `settings` | `mixed` | сильная surface hierarchy, хорошие primary sections | встречаются custom radii и локальная геометрическая неоднородность | рефакторить карточки и кастомные радиусы без смены общего layout |
 | `documents` | `needs refactor` | богатый набор сценариев, detail/upload/comment patterns уже выделены в компоненты | смешение `rounded-md`, `rounded-lg`, `rounded-xl`, разные уровни visual density | сделать отдельный pass по карточкам и metadata/upload flows |
 | `equipment` | `needs refactor` | понятные формы и вторичные блоки | много локальных card/form решений, геометрия плавает | после `documents` пройтись по secondary cards и action forms |
@@ -33,7 +33,7 @@
 4. `procurement`
 5. отдельный audit по `calendar`
 
-`requests` теперь можно использовать как полноценный reference для compose-настроения, feature-level workspace/list-detail/controls блоков, screen-specific orchestration hooks, feature containers, anatomy плотной строки и grouped controls contract, а не как первую цель глобального переписывания.
+`requests` лучше использовать как проверочную зону для guide: сначала сохранять удачный внешний контракт и чистить структуру, а уже потом решать, какие визуальные паттерны действительно стоит поднимать в общие правила.
 
 ## Как использовать эту карту
 
