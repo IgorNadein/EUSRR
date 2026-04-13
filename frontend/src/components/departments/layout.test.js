@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   DEPARTMENT_MEMBERS_EMPTY_STATE_CLASSNAME,
   getDepartmentMembersListClassName,
-} from "./layout.ts";
+} from "./layout.js";
 
 test("showcase members layout keeps bubble flow", () => {
   assert.equal(

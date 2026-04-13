@@ -1,4 +1,4 @@
-export function getDepartmentMembersListClassName(isManagementMode: boolean) {
+export function getDepartmentMembersListClassName(isManagementMode) {
   return isManagementMode
     ? "space-y-3"
     : "flex flex-wrap items-center gap-2";

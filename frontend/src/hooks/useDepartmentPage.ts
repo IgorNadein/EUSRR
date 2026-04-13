@@ -20,6 +20,8 @@ type DepartmentRoleDraft = {
   name: string;
 };
 
+type DepartmentMemberModalMode = "add" | "assignRole";
+
 type SavingKey =
   | "department"
   | "department-delete"
@@ -33,6 +35,7 @@ type SavingKey =
 export type DepartmentPageController = {
   addMemberOpen: boolean;
   allEmployees: User[];
+  assignableEmployees: Array<{ id: number; name: string }>;
   currentUserId: number | null;
   department: Department | null;
   departmentDraft: { name: string; description: string };
@@ -43,6 +46,7 @@ export type DepartmentPageController = {
   headCandidates: Array<{ id: number; name: string }>;
   employeesDirectoryLoading: boolean;
   loading: boolean;
+  memberModalMode: DepartmentMemberModalMode;
   members: DepartmentMemberLink[];
   pendingKey: SavingKey | null;
   roleDraft: DepartmentRoleDraft;
@@ -52,11 +56,13 @@ export type DepartmentPageController = {
   selectableEmployees: Array<{ id: number; name: string }>;
   selectedHeadId: number | null;
   selectedMemberId: number | null;
+  selectedRoleId: number | null;
   userPerms: DepartmentUserPermissions;
   closeAddMember: () => void;
   closeDepartmentEditor: () => void;
   closeRoleEditor: () => void;
   openAddMember: () => void;
+  openAssignRoleModal: () => void;
   openCreateRole: () => void;
   openDepartmentEditor: () => void;
   openEditRole: (role: DepartmentRole) => void;
@@ -64,8 +70,10 @@ export type DepartmentPageController = {
   saveDepartment: () => Promise<void>;
   saveRole: () => Promise<void>;
   setRoleDraft: (next: DepartmentRoleDraft | ((current: DepartmentRoleDraft) => DepartmentRoleDraft)) => void;
+  setMemberModalMode: (mode: DepartmentMemberModalMode) => void;
   setSelectedHeadId: (id: number | null) => void;
   setSelectedMemberId: (id: number | null) => void;
+  setSelectedRoleId: (id: number | null) => void;
   submitAddMember: () => Promise<void>;
   submitDeleteDepartment: () => Promise<boolean>;
   submitHeadChange: () => Promise<void>;
@@ -136,7 +144,9 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   const [departmentDraft, setDepartmentDraft] = useState({ name: "", description: "" });
 
   const [addMemberOpen, setAddMemberOpen] = useState(false);
+  const [memberModalMode, setMemberModalMode] = useState<DepartmentMemberModalMode>("add");
   const [selectedMemberId, setSelectedMemberId] = useState<number | null>(null);
+  const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
 
   const [selectedHeadId, setSelectedHeadId] = useState<number | null>(null);
 
@@ -255,6 +265,13 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
       }));
   }, [allEmployees, members]);
 
+  const assignableEmployees = useMemo(() => {
+    return allEmployees.map((employee) => ({
+      id: employee.id,
+      name: `${employee.last_name || ""} ${employee.first_name || ""}`.trim() || employee.email,
+    }));
+  }, [allEmployees]);
+
   const headCandidates = useMemo(() => {
     return allEmployees.map((employee) => ({
       id: employee.id,
@@ -316,7 +333,21 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   }, [department, departmentDraft.description, departmentDraft.name, hydrateDepartmentDraft]);
 
   const openAddMember = useCallback(() => {
+    setMemberModalMode("add");
     setSelectedMemberId(null);
+    setSelectedRoleId(null);
+    setAddMemberOpen(true);
+    if (allEmployees.length === 0) {
+      void loadEmployeesDirectory().catch((loadError) => {
+        toast.error(getErrorMessage(loadError, "Не удалось загрузить сотрудников"));
+      });
+    }
+  }, [allEmployees.length, loadEmployeesDirectory]);
+
+  const openAssignRoleModal = useCallback(() => {
+    setMemberModalMode("assignRole");
+    setSelectedMemberId(null);
+    setSelectedRoleId(null);
     setAddMemberOpen(true);
     if (allEmployees.length === 0) {
       void loadEmployeesDirectory().catch((loadError) => {
@@ -327,6 +358,8 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
 
   const closeAddMember = useCallback(() => {
     setSelectedMemberId(null);
+    setSelectedRoleId(null);
+    setMemberModalMode("add");
     setAddMemberOpen(false);
   }, []);
 
@@ -336,19 +369,57 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
       return;
     }
 
+    if (memberModalMode === "assignRole" && !selectedRoleId) {
+      toast.error("Выберите роль");
+      return;
+    }
+
     try {
       setPendingKey("member");
-      await apiClient.addDepartmentMember(department.id, selectedMemberId);
+      if (memberModalMode === "add") {
+        await apiClient.addDepartmentMember(department.id, selectedMemberId);
+        if (selectedRoleId && userPerms?.can_assign_roles) {
+          await apiClient.setDepartmentMemberRole(department.id, {
+            employee_id: selectedMemberId,
+            role_id: selectedRoleId,
+          });
+        }
+      } else {
+        await apiClient.setDepartmentMemberRole(department.id, {
+          employee_id: selectedMemberId,
+          role_id: selectedRoleId,
+        });
+      }
       await loadCore();
       setAddMemberOpen(false);
       setSelectedMemberId(null);
-      toast.success("Сотрудник добавлен в отдел");
+      setSelectedRoleId(null);
+      setMemberModalMode("add");
+      toast.success(
+        memberModalMode === "add"
+          ? "Сотрудник добавлен в отдел"
+          : "Роль назначена сотруднику",
+      );
     } catch (submitError) {
-      toast.error(getErrorMessage(submitError, "Не удалось добавить сотрудника"));
+      toast.error(
+        getErrorMessage(
+          submitError,
+          memberModalMode === "add"
+            ? "Не удалось добавить сотрудника"
+            : "Не удалось назначить роль сотруднику",
+        ),
+      );
     } finally {
       setPendingKey(null);
     }
-  }, [department, loadCore, selectedMemberId]);
+  }, [
+    department,
+    loadCore,
+    memberModalMode,
+    selectedMemberId,
+    selectedRoleId,
+    userPerms,
+  ]);
 
   const submitDeleteDepartment = useCallback(async () => {
     if (!department) return false;
@@ -529,6 +600,7 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   return {
     addMemberOpen,
     allEmployees,
+    assignableEmployees,
     currentUserId,
     department,
     departmentDraft,
@@ -539,6 +611,7 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     filteredMembers,
     headCandidates,
     loading,
+    memberModalMode,
     members,
     pendingKey,
     roleDraft,
@@ -548,11 +621,13 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     selectableEmployees,
     selectedHeadId,
     selectedMemberId,
+    selectedRoleId,
     userPerms: userPerms || EMPTY_USER_PERMS,
     closeAddMember,
     closeDepartmentEditor,
     closeRoleEditor,
     openAddMember,
+    openAssignRoleModal,
     openCreateRole,
     openDepartmentEditor,
     openEditRole,
@@ -560,8 +635,10 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     saveDepartment,
     saveRole,
     setRoleDraft,
+    setMemberModalMode,
     setSelectedHeadId,
     setSelectedMemberId,
+    setSelectedRoleId,
     submitAddMember,
     submitDeleteDepartment,
     submitHeadChange,

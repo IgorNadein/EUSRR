@@ -19,20 +19,26 @@ import {
 
 import { AppShell } from "@/components/AppShell";
 import {
-  getAddMemberHelperText,
-  getAddMemberPlaceholder,
-  isAddMemberSelectDisabled,
-} from "@/components/departments/add-member-modal-state";
-import {
   DEPARTMENT_MEMBERS_EMPTY_STATE_CLASSNAME,
   getDepartmentMembersListClassName,
 } from "@/components/departments/layout";
+import {
+  getDepartmentMemberModalEmployeeLabel,
+  getDepartmentMemberModalHelperText,
+  getDepartmentMemberModalItems,
+  getDepartmentMemberModalPlaceholder,
+  getDepartmentMemberModalSubmitLabel,
+  getDepartmentMemberModalTitle,
+  isDepartmentMemberModalSubmitDisabled,
+} from "@/components/departments/member-modal-state";
 import { RequestAvatar } from "@/components/requests/RequestAvatar";
 import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
 import { Modal } from "@/components/ui/Modal";
 import { useDepartmentPage } from "@/hooks/useDepartmentPage";
 import { displayUserName, userProfileLink } from "@/lib/shared";
 import type { DepartmentMemberLink } from "@/types/api";
+
+type DepartmentMemberModalMode = "add" | "assignRole";
 
 function MetaChip({
   children,
@@ -391,29 +397,54 @@ function DepartmentMembersEmptyState() {
 }
 
 function AddMemberModal({
+  canAssignRoles,
   isOpen,
   items,
   loading,
+  mode,
   optionsLoading,
   onClose,
+  onCreateRole,
   onSave,
   onSelect,
+  onSelectRole,
+  roleOptions,
   selectedId,
+  selectedRoleId,
 }: {
+  canAssignRoles: boolean;
   isOpen: boolean;
   items: Array<{ id: number; name: string }>;
   loading: boolean;
+  mode: DepartmentMemberModalMode;
   optionsLoading: boolean;
   onClose: () => void;
+  onCreateRole: () => void;
   onSave: () => Promise<void>;
   onSelect: (id: number | null) => void;
+  onSelectRole: (id: number | null) => void;
+  roleOptions: Array<{ id: number; name: string }>;
   selectedId: number | null;
+  selectedRoleId: number | null;
 }) {
+  const helperText = getDepartmentMemberModalHelperText(
+    mode,
+    optionsLoading,
+    items.length,
+  );
+  const selectDisabled = optionsLoading || items.length === 0;
+  const submitDisabled = isDepartmentMemberModalSubmitDisabled({
+    loading,
+    mode,
+    selectedEmployeeId: selectedId,
+    selectedRoleId,
+  });
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Добавить участника"
+      title={getDepartmentMemberModalTitle(mode)}
       size="md"
       className="overflow-visible"
       footer={
@@ -428,26 +459,59 @@ function AddMemberModal({
           <button
             type="button"
             onClick={() => void onSave()}
-            disabled={loading || !selectedId}
+            disabled={submitDisabled}
             className="app-action-primary rounded-lg px-4 py-2 text-sm disabled:opacity-50"
           >
-            Добавить
+            {getDepartmentMemberModalSubmitLabel(mode)}
           </button>
         </div>
       }
     >
-      <section className="app-surface-muted rounded-xl p-4">
+      <section className="app-surface-muted space-y-4 rounded-xl p-4">
         <SearchableSelectSingle
-          label="Сотрудник"
+          label={getDepartmentMemberModalEmployeeLabel(mode)}
           items={items}
           selectedId={selectedId}
           onSelect={onSelect}
-          placeholder={getAddMemberPlaceholder(optionsLoading)}
-          disabled={isAddMemberSelectDisabled(optionsLoading, items.length)}
+          placeholder={getDepartmentMemberModalPlaceholder(mode, optionsLoading)}
+          disabled={selectDisabled}
         />
-        {getAddMemberHelperText(optionsLoading, items.length) ? (
+
+        {canAssignRoles ? (
+          <div className="space-y-3">
+            <SearchableSelectSingle
+              label={mode === "assignRole" ? "Роль *" : "Роль"}
+              items={roleOptions}
+              selectedId={selectedRoleId}
+              onSelect={onSelectRole}
+              placeholder={
+                roleOptions.length
+                  ? "Выберите роль"
+                  : "Сначала создайте роль отдела"
+              }
+              disabled={loading || roleOptions.length === 0}
+            />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="app-text-muted text-sm">
+                {mode === "add"
+                  ? "Роль можно назначить сразу при добавлении, но это необязательно."
+                  : "Роль можно выдать любому активному сотруднику, даже вне состава отдела."}
+              </p>
+              <button
+                type="button"
+                onClick={onCreateRole}
+                className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
+              >
+                <Plus size={14} />
+                Создать роль
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {helperText ? (
           <p className="app-text-muted mt-3 text-sm">
-            {getAddMemberHelperText(optionsLoading, items.length)}
+            {helperText}
           </p>
         ) : null}
       </section>
@@ -658,17 +722,32 @@ export default function DepartmentDetailPage() {
                     {departmentMenuOpen ? (
                       <div className="app-menu absolute right-0 top-full z-20 mt-2 w-56 rounded-xl py-1.5">
                         {h.userPerms.can_manage ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDepartmentMenuOpen(false);
+                          setManagementMode(true);
+                          h.openAddMember();
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                          >
+                          <UserPlus size={14} className="app-text-muted" />
+                          Добавить участников
+                        </button>
+                      ) : null}
+
+                        {h.userPerms.can_assign_roles ? (
                           <button
                             type="button"
                             onClick={() => {
                               setDepartmentMenuOpen(false);
                               setManagementMode(true);
-                              h.openAddMember();
+                              h.openAssignRoleModal();
                             }}
                             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
                           >
-                            <UserPlus size={14} className="app-text-muted" />
-                            Позвать сотрудников
+                            <Plus size={14} className="app-text-muted" />
+                            Выдать роль
                           </button>
                         ) : null}
 
@@ -775,14 +854,27 @@ export default function DepartmentDetailPage() {
       />
 
       <AddMemberModal
+        canAssignRoles={h.userPerms.can_assign_roles}
         isOpen={h.addMemberOpen}
-        items={h.selectableEmployees}
+        items={getDepartmentMemberModalItems(
+          h.memberModalMode,
+          h.selectableEmployees,
+          h.assignableEmployees,
+        )}
         loading={h.pendingKey === "member"}
+        mode={h.memberModalMode}
         optionsLoading={h.employeesDirectoryLoading}
         onClose={h.closeAddMember}
+        onCreateRole={() => {
+          h.closeAddMember();
+          h.openCreateRole();
+        }}
         onSave={h.submitAddMember}
         onSelect={h.setSelectedMemberId}
+        onSelectRole={h.setSelectedRoleId}
+        roleOptions={roleOptions}
         selectedId={h.selectedMemberId}
+        selectedRoleId={h.selectedRoleId}
       />
 
       <RoleEditorModal
