@@ -13,7 +13,7 @@
 
 | Зона | Статус | Что уже хорошо | Основные проблемы | Рекомендуемый следующий шаг |
 | --- | --- | --- | --- | --- |
-| `requests` | `mixed` | compose-настроение, participant-only логика, UI вокруг `can_decide`, compose/list/detail/controls/preview разведены по feature components, screen orchestration вынесена в hook, list/swipe flow собраны в feature containers | visual debt остаётся в отдельных локальных визуальных решениях; зона ещё не стала полным target-state | использовать как референс для разделения orchestration/UI и participant-heavy request flows, затем отдельно чистить локальную визуальную неоднородность |
+| `requests` | `mixed` | compose-настроение, participant-only логика, UI вокруг `can_decide`, compose/list/detail/controls/preview разведены по feature components, screen orchestration вынесена в hook, list/swipe flow собраны в feature containers, dense row приведён к явной anatomy с отдельными detail/comments panels | visual debt сузился, но ещё остаются image warnings и контракт controls block | использовать как референс для разделения orchestration/UI, participant-heavy request flows и anatomy плотной строки, затем добить image/controls cleanup |
 | `settings` | `mixed` | сильная surface hierarchy, хорошие primary sections | встречаются custom radii и локальная геометрическая неоднородность | рефакторить карточки и кастомные радиусы без смены общего layout |
 | `documents` | `needs refactor` | богатый набор сценариев, detail/upload/comment patterns уже выделены в компоненты | смешение `rounded-md`, `rounded-lg`, `rounded-xl`, разные уровни visual density | сделать отдельный pass по карточкам и metadata/upload flows |
 | `equipment` | `needs refactor` | понятные формы и вторичные блоки | много локальных card/form решений, геометрия плавает | после `documents` пройтись по secondary cards и action forms |
@@ -33,7 +33,7 @@
 4. `procurement`
 5. отдельный audit по `calendar`
 
-`requests` лучше использовать как референс для compose-настроения, выделения feature-level workspace/list-detail/controls блоков, screen-specific orchestration hooks и feature containers уже сейчас, а не как первую цель глобального переписывания.
+`requests` лучше использовать как референс для compose-настроения, выделения feature-level workspace/list-detail/controls блоков, screen-specific orchestration hooks, feature containers и anatomy плотной строки уже сейчас, а не как первую цель глобального переписывания.
 
 ## Как использовать эту карту
 

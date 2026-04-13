@@ -1,6 +1,6 @@
 import type { RequestAttachmentPreview } from "@/hooks/useRequestsPage";
 import type { Request, RequestComment } from "@/types/api";
-import type { Dispatch, RefObject, SetStateAction } from "react";
+import type { RefObject } from "react";
 import { FileSignature } from "lucide-react";
 import { RequestListItem } from "./RequestListItem";
 
@@ -26,8 +26,8 @@ type RequestListSectionProps = {
   requestMenuOpenId: number | null;
   requestMenuRef: RefObject<HTMLDivElement | null>;
   requests: Request[];
+  onSetCommentDraft: (requestId: number, value: string) => void;
   setAttachmentPreview: (preview: RequestAttachmentPreview | null) => void;
-  setCommentDrafts: Dispatch<SetStateAction<Record<number, string>>>;
   setDetailsRequest: (request: Request | null) => void;
   setRequestMenuOpenId: (requestId: number | null) => void;
   toggleComments: (requestId: number) => void | Promise<void>;
@@ -56,8 +56,8 @@ export function RequestListSection({
   requestMenuOpenId,
   requestMenuRef,
   requests,
+  onSetCommentDraft,
   setAttachmentPreview,
-  setCommentDrafts,
   setDetailsRequest,
   setRequestMenuOpenId,
   toggleComments,
@@ -92,7 +92,7 @@ export function RequestListSection({
             onOpenDetails={setDetailsRequest}
             onPreviewAttachment={setAttachmentPreview}
             onReject={handleReject}
-            onSetCommentDraft={(requestId, value) => setCommentDrafts((prev) => ({ ...prev, [requestId]: value }))}
+            onSetCommentDraft={onSetCommentDraft}
             onToggleComments={toggleComments}
             onToggleMenu={setRequestMenuOpenId}
             onToggleRow={toggleRow}

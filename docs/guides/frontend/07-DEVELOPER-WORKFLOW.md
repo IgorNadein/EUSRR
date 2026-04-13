@@ -78,6 +78,7 @@
 - то же касается toolbar/filter block и attachment preview, если они уже стали самостоятельными зонами сценария
 - router-sync, deep-link opening и dismissable menu state тоже можно выносить в feature hook, если это screen orchestration, а не данные домена
 - если внутри одной зоны уже несколько leaf-компонентов, стоит ввести feature container вроде `*Section` или `*Panel`, а не возвращать всё обратно в page-level JSX
+- dense row после такого выноса не должна оставаться одним бесформенным JSX-комком: отдельно собираются action rail, main content и secondary panels вроде details/comments
 
 ## 5. Как делать dropdown-поле
 

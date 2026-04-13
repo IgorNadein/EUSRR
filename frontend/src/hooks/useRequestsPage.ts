@@ -431,6 +431,10 @@ export function useRequestsPage(_userId: number | null | undefined) {
     finally { setBusyKey(null); }
   };
 
+  const setCommentDraft = useCallback((requestId: number, value: string) => {
+    setCommentDrafts((prev) => ({ ...prev, [requestId]: value }));
+  }, []);
+
   const isFinal = (status?: string) => ["approved", "rejected", "cancelled"].includes(String(status || "").toLowerCase());
 
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -456,7 +460,7 @@ export function useRequestsPage(_userId: number | null | undefined) {
     expandedRows,
     expandedComments,
     commentDrafts,
-    setCommentDrafts,
+    setCommentDraft,
 
     /* form */
     form,

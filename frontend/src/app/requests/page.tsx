@@ -115,7 +115,7 @@ function RequestsPageContent() {
             requestMenuRef={screen.requestMenuRef}
             requests={h.requests}
             setAttachmentPreview={h.setAttachmentPreview}
-            setCommentDrafts={h.setCommentDrafts}
+            onSetCommentDraft={h.setCommentDraft}
             setDetailsRequest={h.setDetailsRequest}
             setRequestMenuOpenId={screen.setRequestMenuOpenId}
             toggleComments={h.toggleComments}
