@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { extractDepartmentApiErrorMessage } from "@/components/departments/api-error";
 import { getDepartmentMemberModalError } from "@/components/departments/member-modal-state";
 import { useUser } from "@/contexts/UserContext";
 import { apiClient } from "@/lib/api";
@@ -96,31 +97,7 @@ const EMPTY_USER_PERMS: DepartmentUserPermissions = {
   can_assign_roles: false,
 };
 
-function getErrorMessage(error: unknown, fallback: string) {
-  const raw = String((error as Error)?.message || fallback).trim();
-  const prefix = "API Error:";
-  if (!raw.startsWith(prefix)) return raw || fallback;
-
-  const payload = raw.slice(prefix.length).trim();
-  const jsonStart = payload.indexOf("{");
-  if (jsonStart >= 0) {
-    try {
-      const parsed = JSON.parse(payload.slice(jsonStart)) as Record<string, unknown>;
-      const detail = parsed.detail;
-      if (typeof detail === "string" && detail.trim()) return detail;
-      const firstEntry = Object.entries(parsed)[0];
-      if (firstEntry) {
-        const value = firstEntry[1];
-        if (Array.isArray(value) && value[0]) return String(value[0]);
-        if (typeof value === "string" && value.trim()) return value;
-      }
-    } catch {
-      return fallback;
-    }
-  }
-
-  return fallback;
-}
+const getErrorMessage = extractDepartmentApiErrorMessage;
 
 function sortEmployeesByName(items: User[]) {
   return [...items].sort((a, b) => {
