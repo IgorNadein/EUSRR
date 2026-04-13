@@ -304,8 +304,46 @@ export function RequestListItem({
 
         {(rowOpen || commentsOpen) ? (
           <div className="app-surface-elevated mt-4 rounded-xl p-4">
+            {commentsOpen ? (
+              <div className={rowOpen ? "app-surface rounded-xl p-3" : "app-surface rounded-xl p-3"}>
+                <div className="space-y-2">
+                  {comments.length === 0 ? (
+                    <p className="app-text-muted text-xs">Комментариев пока нет</p>
+                  ) : (
+                    comments.map((comment) => (
+                      <div
+                        key={comment.id}
+                        className="app-surface-muted rounded-lg px-3 py-2 text-xs text-[var(--foreground)]"
+                      >
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <span className="font-medium">{displayUserName(comment.author)}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="app-text-muted">{formatDate(comment.created_at)}</span>
+                            {Boolean(comment.author?.id && currentUserId === comment.author.id) ? (
+                              <CommentDeleteButton
+                                onClick={() => onDeleteComment(request.id, comment.id)}
+                              />
+                            ) : null}
+                          </div>
+                        </div>
+                        <p className="app-text-wrap text-[var(--foreground)]">{comment.text}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="mt-2">
+                  <CommentComposer
+                    value={commentDraft}
+                    onChange={(value) => onSetCommentDraft(request.id, value)}
+                    onSubmit={() => onAddComment(request.id)}
+                    disabled={busyKey === `comment-${request.id}`}
+                  />
+                </div>
+              </div>
+            ) : null}
+
             {rowOpen ? (
-              <div className="space-y-3 text-xs">
+              <div className={`${commentsOpen ? "mt-3" : ""} space-y-3 text-xs`}>
                 <div className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
                   <div>
                     <span className="app-text-muted">Принял решение:</span>{" "}
@@ -384,44 +422,6 @@ export function RequestListItem({
                       </button>
                     </div>
                   ) : null}
-                </div>
-              </div>
-            ) : null}
-
-            {commentsOpen ? (
-              <div className={rowOpen ? "app-surface mt-3 rounded-xl p-3" : "app-surface rounded-xl p-3"}>
-                <div className="space-y-2">
-                  {comments.length === 0 ? (
-                    <p className="app-text-muted text-xs">Комментариев пока нет</p>
-                  ) : (
-                    comments.map((comment) => (
-                      <div
-                        key={comment.id}
-                        className="app-surface-muted rounded-lg px-3 py-2 text-xs text-[var(--foreground)]"
-                      >
-                        <div className="mb-1 flex items-center justify-between gap-2">
-                          <span className="font-medium">{displayUserName(comment.author)}</span>
-                          <div className="flex items-center gap-2">
-                            <span className="app-text-muted">{formatDate(comment.created_at)}</span>
-                            {Boolean(comment.author?.id && currentUserId === comment.author.id) ? (
-                              <CommentDeleteButton
-                                onClick={() => onDeleteComment(request.id, comment.id)}
-                              />
-                            ) : null}
-                          </div>
-                        </div>
-                        <p className="app-text-wrap text-[var(--foreground)]">{comment.text}</p>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <div className="mt-2">
-                  <CommentComposer
-                    value={commentDraft}
-                    onChange={(value) => onSetCommentDraft(request.id, value)}
-                    onSubmit={() => onAddComment(request.id)}
-                    disabled={busyKey === `comment-${request.id}`}
-                  />
                 </div>
               </div>
             ) : null}

@@ -829,33 +829,6 @@ export default function ProcurementPage() {
 
                   {(expanded || commentsOpen) && (
                     <div className="mt-4 space-y-3 px-4 pb-4">
-                      {expanded ? (
-                        <ProcurementRequestDetailContent
-                          request={resolvedDetail}
-                          displayUserName={displayUserName}
-                          footer={(
-                            <ProcurementRequestActionButtons
-                              request={req}
-                              busyKey={busyKey}
-                              canManage={canManage}
-                              isAuthor={isAuthor}
-                              isExecutor={isExecutor}
-                              isFinal={isFinal}
-                              showApprovalActions={false}
-                              showSecondaryActions={false}
-                              onSubmit={handleSubmit}
-                              onEdit={openEdit}
-                              onDelete={handleDelete}
-                              onApprove={handleApprove}
-                              onReject={handleReject}
-                              onStart={handleStart}
-                              onComplete={handleComplete}
-                              onCancel={handleCancel}
-                            />
-                          )}
-                        />
-                      ) : null}
-
                       {commentsOpen ? (
                         <div className={expanded ? "app-surface rounded-xl p-3" : "app-surface-elevated rounded-xl p-3"}>
                           <div className="space-y-2">
@@ -892,6 +865,33 @@ export default function ProcurementPage() {
                             />
                           </div>
                         </div>
+                      ) : null}
+
+                      {expanded ? (
+                        <ProcurementRequestDetailContent
+                          request={resolvedDetail}
+                          displayUserName={displayUserName}
+                          footer={(
+                            <ProcurementRequestActionButtons
+                              request={req}
+                              busyKey={busyKey}
+                              canManage={canManage}
+                              isAuthor={isAuthor}
+                              isExecutor={isExecutor}
+                              isFinal={isFinal}
+                              showApprovalActions={false}
+                              showSecondaryActions={false}
+                              onSubmit={handleSubmit}
+                              onEdit={openEdit}
+                              onDelete={handleDelete}
+                              onApprove={handleApprove}
+                              onReject={handleReject}
+                              onStart={handleStart}
+                              onComplete={handleComplete}
+                              onCancel={handleCancel}
+                            />
+                          )}
+                        />
                       ) : null}
                     </div>
                   )}
