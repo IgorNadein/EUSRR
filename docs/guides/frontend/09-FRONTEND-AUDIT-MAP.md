@@ -34,7 +34,7 @@
 | `users/directory` | `mixed` | `users/page.tsx` и `employees/page.tsx` уже живут в app-surface language, сценарии user/employee navigation выровнены и читаются как один cluster | список людей всё ещё проще и беднее по interaction density, чем основные рабочие модули, поэтому это не полноценный stylistic reference | считать baseline-pass завершённым и трогать дальше только при появлении richer directory requirements |
 | `home/feed` | `mixed` | сильный app-shell fit, хорошая operational density, уже много app primitives | page очень большой, комментарии и post-compose logic перегружены, встречаются legacy `rounded-md` fragments | использовать как reference по feed density, но разрезать modal/comments/post flows и дочистить geometry |
 | `notifications` | `mixed` | близок к operational app-style, фильтры и list hierarchy уже читаются системно | page-level logic пока монолитная, нет выделенного feature controller, есть место для уплотнения и симметрии с messages/requests | после people cluster сделать короткий structural pass без крупного редизайна |
-| `departments` | `mixed` | detail screen уже поднят до полноценного management workspace: сильный header, команда как основной блок, роли как secondary-блок, page-level controller вынесен в hook | список отделов всё ещё проще detail screen, а сам модуль ещё не проверен длинным visual-pass и живым backend-сценарием | считать `departments/[id]` baseline reference для object-management pages и затем при желании подтянуть list screen до той же richness |
+| `departments` | `mixed` | detail screen уже работает как dual-mode page: showcase-first для обычного просмотра и встроенный management-layer для управленцев, page-level controller вынесен в hook | список отделов всё ещё проще detail screen, а сам модуль ещё не проверен длинным visual-pass и живым backend-сценарием | считать `departments/[id]` baseline reference для object-detail pages с mixed audience и затем при желании подтянуть list screen до той же richness |
 | `auth/legal` | `mixed` | изолированные flows уже отделены от app-shell, общая подача аккуратная | `rounded-[2rem]` и локальная hero-card геометрия образуют мини-систему отдельно от app shell | не смешивать с operational refactor; сделать отдельный compact pass по auth/legal geometry |
 | `documents/dashboard` | `legacy-heavy` | есть готовые data blocks | заметны старые rounded patterns и мелкие utility-решения | включить в documents refactor pass |
 
@@ -177,8 +177,8 @@
 Что делать:
 
 - у `settings` после controller extraction резать section-level UI и только затем geometry
-- у `departments` поднять богатство patterns до общего уровня app
-- detail screen `departments/[id]` уже не считать пустой зоной; дальнейшие работы здесь должны быть про polishing, а не про изобретение management UI с нуля
+- у `departments` держать detail screen в логике `showcase + management layer`, а не возвращать его в mini-admin panel
+- detail screen `departments/[id]` уже не считать пустой зоной; дальнейшие работы здесь должны быть про polishing, а не про возврат permission-editor и служебных панелей
 - у `auth/legal` выровнять isolated geometry отдельно от app-shell жанра
 
 ### Волна 7. Calendar special audit

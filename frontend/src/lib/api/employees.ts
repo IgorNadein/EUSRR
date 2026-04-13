@@ -92,12 +92,12 @@ export function createEmployeesApi(request: RequestFn) {
             const qs = qp.toString();
             return request(`/api/v1/department-roles/${qs ? '?' + qs : ''}`);
         },
-        createDepartmentRole: (data: { department: number; name: string; scoped_permission_codes?: string[] }) =>
+        createDepartmentRole: (data: { department: number; name: string }) =>
             request('/api/v1/department-roles/', {
                 method: 'POST',
                 body: JSON.stringify(data),
             }),
-        updateDepartmentRole: (id: number | string, data: { name?: string; scoped_permission_codes?: string[] }) =>
+        updateDepartmentRole: (id: number | string, data: { name?: string }) =>
             request(`/api/v1/department-roles/${id}/`, {
                 method: 'PATCH',
                 body: JSON.stringify(data),

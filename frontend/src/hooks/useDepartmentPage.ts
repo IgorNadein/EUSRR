@@ -9,7 +9,6 @@ import { loadAllPages } from "@/lib/shared";
 import type {
   Department,
   DepartmentMemberLink,
-  DepartmentPermissionChoice,
   DepartmentRole,
   DepartmentUserPermissions,
   PaginatedResponse,
@@ -19,7 +18,6 @@ import type {
 type DepartmentRoleDraft = {
   id: number | null;
   name: string;
-  permissionCodes: string[];
 };
 
 type SavingKey =
@@ -46,7 +44,6 @@ export type DepartmentPageController = {
   members: DepartmentMemberLink[];
   membersQuery: string;
   pendingKey: SavingKey | null;
-  permissionChoices: DepartmentPermissionChoice[];
   roleDraft: DepartmentRoleDraft;
   roleEditorOpen: boolean;
   roleUsage: Record<number, number>;
@@ -129,7 +126,6 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   const [department, setDepartment] = useState<Department | null>(null);
   const [members, setMembers] = useState<DepartmentMemberLink[]>([]);
   const [roles, setRoles] = useState<DepartmentRole[]>([]);
-  const [permissionChoices, setPermissionChoices] = useState<DepartmentPermissionChoice[]>([]);
   const [userPerms, setUserPerms] = useState<DepartmentUserPermissions | null>(null);
   const [allEmployees, setAllEmployees] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,7 +146,6 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   const [roleDraft, setRoleDraft] = useState<DepartmentRoleDraft>({
     id: null,
     name: "",
-    permissionCodes: [],
   });
 
   const hydrateDepartmentDraft = useCallback((nextDepartment: Department | null) => {
@@ -171,7 +166,6 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
       setDepartment(null);
       setMembers([]);
       setRoles([]);
-      setPermissionChoices([]);
       setUserPerms(null);
       setAllEmployees([]);
       setError("Некорректный идентификатор отдела");
@@ -188,13 +182,11 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
         membersResponse,
         userPermsResponse,
         rolesResponse,
-        permChoicesResponse,
       ] = await Promise.all([
         apiClient.getDepartment(departmentId) as Promise<Department>,
         apiClient.getDepartmentMembers(departmentId) as Promise<PaginatedResponse<DepartmentMemberLink>>,
         apiClient.getDepartmentUserPerms(departmentId) as Promise<DepartmentUserPermissions>,
         apiClient.getDepartmentRoles({ department: departmentId, limit: 200 }) as Promise<PaginatedResponse<DepartmentRole> | DepartmentRole[]>,
-        apiClient.getDepartmentRolePermChoices() as Promise<{ results?: DepartmentPermissionChoice[] } | DepartmentPermissionChoice[]>,
       ]);
 
       const nextDepartment = departmentResponse;
@@ -209,14 +201,10 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
       const roleResults = Array.isArray(rolesResponse)
         ? rolesResponse
         : (rolesResponse.results || []);
-      const permResults = Array.isArray(permChoicesResponse)
-        ? permChoicesResponse
-        : (permChoicesResponse.results || []);
 
       setDepartment(nextDepartment);
       setMembers(nextMembers);
       setRoles([...roleResults].sort((a, b) => a.name.localeCompare(b.name, "ru")));
-      setPermissionChoices(permResults);
       setUserPerms(userPermsResponse);
       hydrateDepartmentDraft(nextDepartment);
     } catch (loadError) {
@@ -468,7 +456,7 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   }, [department, loadCore]);
 
   const openCreateRole = useCallback(() => {
-    setRoleDraft({ id: null, name: "", permissionCodes: [] });
+    setRoleDraft({ id: null, name: "" });
     setRoleEditorOpen(true);
   }, []);
 
@@ -476,14 +464,13 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     setRoleDraft({
       id: role.id,
       name: role.name,
-      permissionCodes: role.permissions_verbose.map((permission) => permission.code),
     });
     setRoleEditorOpen(true);
   }, []);
 
   const closeRoleEditor = useCallback(() => {
     setRoleEditorOpen(false);
-    setRoleDraft({ id: null, name: "", permissionCodes: [] });
+    setRoleDraft({ id: null, name: "" });
   }, []);
 
   const saveRole = useCallback(async () => {
@@ -500,14 +487,12 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
       if (roleDraft.id) {
         await apiClient.updateDepartmentRole(roleDraft.id, {
           name,
-          scoped_permission_codes: roleDraft.permissionCodes,
         });
         toast.success("Роль обновлена");
       } else {
         await apiClient.createDepartmentRole({
           department: department.id,
           name,
-          scoped_permission_codes: roleDraft.permissionCodes,
         });
         toast.success("Роль создана");
       }
@@ -518,7 +503,7 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     } finally {
       setPendingKey(null);
     }
-  }, [closeRoleEditor, department, loadCore, roleDraft.id, roleDraft.name, roleDraft.permissionCodes]);
+  }, [closeRoleEditor, department, loadCore, roleDraft.id, roleDraft.name]);
 
   const submitRoleDelete = useCallback(async (role: DepartmentRole) => {
     if (!window.confirm(`Удалить роль «${role.name}»?`)) return;
@@ -550,7 +535,6 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     members,
     membersQuery,
     pendingKey,
-    permissionChoices,
     roleDraft,
     roleEditorOpen,
     roleUsage,

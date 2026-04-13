@@ -74,6 +74,19 @@
 
 - `frontend/src/components/requests/RequestUserBadge.tsx`
 
+### Object detail screens
+
+Если один detail-route обслуживает и обычный просмотр, и управление объектом:
+
+- базовый режим должен быть `showcase-first`, а не выглядеть как обрубленная админка
+- management controls встраиваются в ту же anatomy, а не создают второй отдельный layout
+- главный акцент у сильного header и одного основного рабочего блока
+- secondary-настройки должны быть заметно спокойнее главного контента
+
+Референс по духу:
+
+- `frontend/src/app/departments/[id]/page.tsx`
+
 ### Compose forms
 
 Compose-паттерн должен восприниматься как рабочее пространство, а не как список независимых инпутов.
