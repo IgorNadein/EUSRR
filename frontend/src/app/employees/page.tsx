@@ -3,8 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { MessageCircle } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { MessageCircle, Search } from "lucide-react";
 
 import { AppShell } from "../../components/AppShell";
 import { useUser } from "@/contexts/UserContext";
@@ -28,6 +28,7 @@ export default function EmployeesPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [creatingChatFor, setCreatingChatFor] = useState<number | null>(null);
@@ -141,6 +142,25 @@ export default function EmployeesPage() {
     };
   }, [hasMore, loading, loadingMore, page]);
 
+  const filteredEmployees = useMemo(() => {
+    const sorted = [...employees].sort((left, right) => {
+      const leftName = `${left.last_name || ""} ${left.first_name || ""}`.trim();
+      const rightName = `${right.last_name || ""} ${right.first_name || ""}`.trim();
+      return leftName.localeCompare(rightName, "ru");
+    });
+
+    const query = search.trim().toLowerCase();
+    if (!query) return sorted;
+
+    return sorted.filter((employee) => {
+      const fullName =
+        `${employee.last_name || ""} ${employee.first_name || ""} ${employee.patronymic || ""}`.trim().toLowerCase();
+      const position = (employee.position?.name || "").toLowerCase();
+      const email = (employee.email || "").toLowerCase();
+      return fullName.includes(query) || position.includes(query) || email.includes(query);
+    });
+  }, [employees, search]);
+
   if (loading) {
     return (
       <AppShell>
@@ -162,17 +182,21 @@ export default function EmployeesPage() {
     );
   }
 
-  const sortedEmployees = [...employees].sort((left, right) => {
-    const leftName = `${left.last_name || ""} ${left.first_name || ""}`.trim();
-    const rightName = `${right.last_name || ""} ${right.first_name || ""}`.trim();
-    return leftName.localeCompare(rightName, "ru");
-  });
-
   return (
     <AppShell>
       <section className="app-surface rounded-2xl p-4">
+        <div className="relative mb-4">
+          <Search size={16} className="app-text-muted pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Поиск по сотрудникам"
+            className="app-input w-full rounded-lg py-2.5 pl-9 pr-3 text-sm"
+          />
+        </div>
+
         <div className="space-y-3">
-          {sortedEmployees.map((employee) => {
+          {filteredEmployees.map((employee) => {
             const fullName =
               `${employee.last_name || ""} ${employee.first_name || ""} ${employee.patronymic || ""}`.trim();
             const initials = getInitials(employee);
@@ -235,6 +259,12 @@ export default function EmployeesPage() {
               </div>
             );
           })}
+
+          {filteredEmployees.length === 0 ? (
+            <div className="app-surface-muted rounded-xl p-8 text-center">
+              <p className="app-text-muted text-sm">Сотрудники не найдены</p>
+            </div>
+          ) : null}
 
           <div ref={loaderRef} className="py-2">
             {loadingMore ? (
