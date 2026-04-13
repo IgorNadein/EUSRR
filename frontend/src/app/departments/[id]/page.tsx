@@ -874,6 +874,21 @@ export default function DepartmentDetailPage() {
                           </button>
                         ) : null}
 
+                        {h.userPerms.can_assign_roles ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDepartmentMenuOpen(false);
+                              setManagementMode(true);
+                              h.openCreateRole();
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                          >
+                            <Plus size={14} className="app-text-muted" />
+                            Создать роль
+                          </button>
+                        ) : null}
+
                         {h.userPerms.can_manage ? (
                           <button
                             type="button"
