@@ -10,6 +10,7 @@ import {
   PencilLine,
   Plus,
   Search,
+  Settings2,
   Trash2,
   UserPlus,
   Users,
@@ -463,10 +464,10 @@ export default function DepartmentDetailPage() {
           </div>
         ) : h.department ? (
           <>
-            <section className="app-surface rounded-2xl p-5 sm:p-6">
-              <div className="grid gap-6 lg:grid-cols-[minmax(0,1.8fr)_minmax(240px,0.9fr)]">
+            <section className="app-surface rounded-2xl p-5">
+              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
-                  <div className="mb-4 flex flex-wrap items-center gap-2">
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
                     <MetaChip tone="accent">
                       <Building2 size={12} />
                       Отдел
@@ -476,142 +477,55 @@ export default function DepartmentDetailPage() {
                       {activeMembersCount} участников
                     </MetaChip>
                     <MetaChip>{h.roles.length} ролей</MetaChip>
-                  </div>
-
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0">
-                      <h1 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">
-                        {h.department.name}
-                      </h1>
-                      <p className="app-text-muted mt-3 max-w-3xl text-sm leading-relaxed sm:text-base">
-                        {h.department.description ||
-                          "В этом разделе собран обзор отдела, состав команды и рабочие роли."}
-                      </p>
-                    </div>
-
-                    {canUseManagementMode ? (
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setManagementMode((current) => !current)}
-                          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm ${
-                            isManagementMode
-                              ? "app-action-primary"
-                              : "app-action-secondary"
-                          }`}
-                        >
-                          <PencilLine size={14} />
-                          {isManagementMode ? "Вернуться к просмотру" : "Открыть управление"}
-                        </button>
-                        {isManagementMode && h.userPerms.can_manage ? (
-                          <button
-                            type="button"
-                            onClick={h.openDepartmentEditor}
-                            className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm"
-                          >
-                            <PencilLine size={14} />
-                            Редактировать отдел
-                          </button>
-                        ) : null}
-                      </div>
+                    {isManagementMode ? (
+                      <MetaChip tone="warning">Режим управления</MetaChip>
                     ) : null}
                   </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="app-surface-muted rounded-xl p-4">
-                    <p className="app-card-caption">Руководитель отдела</p>
-                    <div className="mt-3">
-                      {h.department.head ? (
-                        <DepartmentPersonChip
-                          currentUserId={h.currentUserId}
-                          person={h.department.head}
-                          subtitle={
-                            h.department.head.position?.name ||
-                            h.department.head.email
-                          }
-                        />
-                      ) : (
-                        <div className="app-surface rounded-xl px-4 py-3 text-sm text-[var(--foreground)]">
-                          Руководитель пока не назначен.
-                        </div>
-                      )}
-                    </div>
-
-                    {isManagementMode && h.userPerms.can_change_head ? (
-                      <div className="mt-4 space-y-3">
-                        <SearchableSelectSingle
-                          label="Назначить руководителя"
-                          items={h.headCandidates}
-                          selectedId={h.selectedHeadId}
-                          onSelect={h.setSelectedHeadId}
-                          placeholder="Выберите сотрудника"
-                          disabled={!h.headCandidates.length}
-                        />
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => void h.submitHeadChange()}
-                            disabled={h.pendingKey === "head"}
-                            className="app-action-primary rounded-lg px-4 py-2 text-sm disabled:opacity-50"
-                          >
-                            Сохранить
-                          </button>
-                          {h.department.head ? (
-                            <button
-                              type="button"
-                              onClick={() => void h.submitHeadRemoval()}
-                              disabled={h.pendingKey === "head"}
-                              className="app-action-secondary rounded-lg px-4 py-2 text-sm disabled:opacity-50"
-                            >
-                              Снять
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="app-surface-muted rounded-xl p-4">
-                    <p className="app-card-caption">О составе</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <MetaChip>{activeMembersCount} активных</MetaChip>
-                      {isManagementMode ? (
-                        <MetaChip tone="warning">Режим управления</MetaChip>
-                      ) : (
-                        <MetaChip>Режим просмотра</MetaChip>
-                      )}
-                    </div>
-                    <p className="app-text-muted mt-3 text-sm">
-                      {isManagementMode
-                        ? "Ты видишь рабочий экран отдела и можешь управлять составом и ролями."
-                        : "Здесь можно посмотреть состав отдела и его внутренние роли без лишнего admin-шумa."}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className="app-surface rounded-2xl p-5">
-              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <h2 className="app-card-caption">Команда отдела</h2>
+                  <h1 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">
+                    {h.department.name}
+                  </h1>
                   <p className="app-text-muted mt-2 text-sm">
-                    {isManagementMode
-                      ? "Основной рабочий блок: состав команды, роли участников и быстрые действия."
-                      : "Состав отдела, роли участников и текущая структура команды."}
+                    {h.department.description ||
+                      "Здесь можно посмотреть состав отдела и его внутренние роли."}
                   </p>
                 </div>
-                {isManagementMode && h.userPerms.can_manage ? (
-                  <button
-                    type="button"
-                    onClick={h.openAddMember}
-                    className="app-action-primary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm"
-                  >
-                    <UserPlus size={14} />
-                    Добавить участника
-                  </button>
-                ) : null}
+                <div className="flex flex-wrap items-center gap-2">
+                  {canUseManagementMode ? (
+                    <button
+                      type="button"
+                      onClick={() => setManagementMode((current) => !current)}
+                      aria-label={isManagementMode ? "Вернуться к просмотру" : "Открыть управление"}
+                      title={isManagementMode ? "Вернуться к просмотру" : "Открыть управление"}
+                      className={`inline-flex h-10 w-10 items-center justify-center rounded-lg ${
+                        isManagementMode ? "app-action-primary" : "app-action-secondary"
+                      }`}
+                    >
+                      <Settings2 size={16} />
+                    </button>
+                  ) : null}
+                  {isManagementMode && h.userPerms.can_manage ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={h.openAddMember}
+                        aria-label="Добавить участника"
+                        title="Добавить участника"
+                        className="app-action-primary inline-flex h-10 w-10 items-center justify-center rounded-lg"
+                      >
+                        <UserPlus size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={h.openDepartmentEditor}
+                        aria-label="Редактировать отдел"
+                        title="Редактировать отдел"
+                        className="app-action-secondary inline-flex h-10 w-10 items-center justify-center rounded-lg"
+                      >
+                        <PencilLine size={16} />
+                      </button>
+                    </>
+                  ) : null}
+                </div>
               </div>
 
               <div className="app-surface-muted mb-4 flex flex-col gap-3 rounded-xl p-3 md:flex-row md:items-center">
@@ -650,15 +564,68 @@ export default function DepartmentDetailPage() {
                 ) : (
                   <div className="app-surface-muted rounded-xl p-8 text-center">
                     <Users size={24} className="app-text-muted mx-auto mb-3" />
-                      <p className="text-sm font-medium text-[var(--foreground)]">
-                        Участники не найдены
-                      </p>
-                      <p className="app-text-muted mt-2 text-sm">
-                        Измени поисковый запрос.
-                      </p>
+                    <p className="text-sm font-medium text-[var(--foreground)]">
+                      Участники не найдены
+                    </p>
+                    <p className="app-text-muted mt-2 text-sm">
+                      Измени поисковый запрос.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {isManagementMode && h.userPerms.can_change_head ? (
+                <div className="app-surface-muted rounded-xl p-4">
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <p className="app-card-caption">Руководитель отдела</p>
+                    {h.department.head ? (
+                      <DepartmentPersonChip
+                        currentUserId={h.currentUserId}
+                        person={h.department.head}
+                        subtitle={
+                          h.department.head.position?.name ||
+                          h.department.head.email
+                        }
+                      />
+                    ) : (
+                      <span className="app-text-muted text-sm">
+                        Руководитель пока не назначен
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <SearchableSelectSingle
+                      label="Назначить руководителя"
+                      items={h.headCandidates}
+                      selectedId={h.selectedHeadId}
+                      onSelect={h.setSelectedHeadId}
+                      placeholder="Выберите сотрудника"
+                      disabled={!h.headCandidates.length}
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void h.submitHeadChange()}
+                        disabled={h.pendingKey === "head"}
+                        className="app-action-primary rounded-lg px-4 py-2 text-sm disabled:opacity-50"
+                      >
+                        Сохранить
+                      </button>
+                      {h.department.head ? (
+                        <button
+                          type="button"
+                          onClick={() => void h.submitHeadRemoval()}
+                          disabled={h.pendingKey === "head"}
+                          className="app-action-secondary rounded-lg px-4 py-2 text-sm disabled:opacity-50"
+                        >
+                          Снять
+                        </button>
+                      ) : null}
                     </div>
-                  )}
+                  </div>
                 </div>
+              ) : null}
             </section>
 
             <section className="app-surface rounded-2xl p-5">
