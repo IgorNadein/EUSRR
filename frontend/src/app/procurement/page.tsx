@@ -31,6 +31,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
 import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
 import { formatDate, formatMoney } from "@/lib/shared";
 import { useProcurementPage } from "@/hooks/useProcurementPage";
@@ -828,6 +829,44 @@ export default function ProcurementPage() {
 
                   {(expanded || commentsOpen) && (
                     <div className="mt-4 space-y-3 px-4 pb-4">
+                      {commentsOpen ? (
+                        <div className={expanded ? "app-surface rounded-xl p-3" : "app-surface-elevated rounded-xl p-3"}>
+                          <div className="space-y-2">
+                            {comments.length === 0 ? (
+                              <p className="app-text-muted text-xs">Комментариев пока нет</p>
+                            ) : (
+                              comments.map((comment) => {
+                                const canDeleteCommentThis = Boolean(comment.author?.id && (user?.id === comment.author.id || user?.auth?.is_staff || user?.auth?.is_superuser));
+                                return (
+                                  <div key={comment.id} className="app-surface-muted rounded-lg px-3 py-2 text-xs text-[var(--foreground)]">
+                                    <div className="mb-1 flex items-center justify-between gap-2">
+                                      <span className="font-medium">{displayUserName(comment.author)}</span>
+                                      <div className="flex items-center gap-2">
+                                        <span className="app-text-muted">{fmt(comment.created_at)}</span>
+                                        {canDeleteCommentThis ? (
+                                          <CommentDeleteButton
+                                            onClick={() => handleDeleteComment(req.id, comment.id)}
+                                          />
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                    <p className="app-text-wrap text-[var(--foreground)]">{comment.text}</p>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                          <div className="mt-2">
+                            <CommentComposer
+                              value={commentDrafts[req.id] || ""}
+                              onChange={(value) => setCommentDrafts((previous) => ({ ...previous, [req.id]: value }))}
+                              onSubmit={() => handleAddComment(req.id)}
+                              disabled={busyKey === `comment-${req.id}`}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+
                       {expanded ? (
                         <ProcurementRequestDetailContent
                           request={resolvedDetail}
@@ -853,40 +892,6 @@ export default function ProcurementPage() {
                             />
                           )}
                         />
-                      ) : null}
-
-                      {commentsOpen ? (
-                        <div className={expanded ? "app-surface rounded-xl p-3" : "app-surface-elevated rounded-xl p-3"}>
-                          <div className="space-y-2">
-                            {comments.length === 0 ? (
-                              <p className="app-text-muted text-xs">Комментариев пока нет</p>
-                            ) : (
-                              comments.map((comment) => {
-                                const canDeleteCommentThis = Boolean(comment.author?.id && (user?.id === comment.author.id || user?.auth?.is_staff || user?.auth?.is_superuser));
-                                return (
-                                  <div key={comment.id} className="app-surface-muted rounded-lg px-3 py-2 text-xs text-[var(--foreground)]">
-                                    <div className="mb-1 flex items-center justify-between gap-2">
-                                      <span className="font-medium">{displayUserName(comment.author)}</span>
-                                      <div className="flex items-center gap-2">
-                                        <span className="app-text-muted">{fmt(comment.created_at)}</span>
-                                        {canDeleteCommentThis ? (
-                                          <button type="button" onClick={() => void handleDeleteComment(req.id, comment.id)} className="app-action-danger rounded-md px-1.5 py-0.5">
-                                            удалить
-                                          </button>
-                                        ) : null}
-                                      </div>
-                                    </div>
-                                    <p className="app-text-wrap text-[var(--foreground)]">{comment.text}</p>
-                                  </div>
-                                );
-                              })
-                            )}
-                          </div>
-                          <div className="mt-2 flex items-center gap-2">
-                            <input value={commentDrafts[req.id] || ""} onChange={(e) => setCommentDrafts((previous) => ({ ...previous, [req.id]: e.target.value }))} placeholder="Добавить комментарий" className="app-input flex-1 rounded-lg px-3 py-2 text-xs" />
-                            <button type="button" onClick={() => void handleAddComment(req.id)} disabled={busyKey === `comment-${req.id}`} className="app-action-primary rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-60">Отправить</button>
-                          </div>
-                        </div>
                       ) : null}
                     </div>
                   )}
@@ -1006,9 +1011,9 @@ export default function ProcurementPage() {
                           <div className="flex items-center gap-2">
                             <span className="app-text-muted">{fmt(comment.created_at)}</span>
                             {canDeleteCommentThis ? (
-                              <button type="button" onClick={() => void handleDeleteComment(selectedRequest.id, comment.id)} className="app-action-danger rounded-md px-1.5 py-0.5">
-                                удалить
-                              </button>
+                              <CommentDeleteButton
+                                onClick={() => handleDeleteComment(selectedRequest.id, comment.id)}
+                              />
                             ) : null}
                           </div>
                         </div>
@@ -1018,9 +1023,13 @@ export default function ProcurementPage() {
                   })
                 )}
               </div>
-              <div className="mt-3 flex items-center gap-2">
-                <input value={commentDrafts[selectedRequest.id] || ""} onChange={(e) => setCommentDrafts((previous) => ({ ...previous, [selectedRequest.id]: e.target.value }))} placeholder="Добавить комментарий" className="app-input flex-1 rounded-lg px-3 py-2 text-xs" />
-                <button type="button" onClick={() => void handleAddComment(selectedRequest.id)} disabled={busyKey === `comment-${selectedRequest.id}`} className="app-action-primary rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-60">Отправить</button>
+              <div className="mt-3">
+                <CommentComposer
+                  value={commentDrafts[selectedRequest.id] || ""}
+                  onChange={(value) => setCommentDrafts((previous) => ({ ...previous, [selectedRequest.id]: value }))}
+                  onSubmit={() => handleAddComment(selectedRequest.id)}
+                  disabled={busyKey === `comment-${selectedRequest.id}`}
+                />
               </div>
             </div>
           </div>

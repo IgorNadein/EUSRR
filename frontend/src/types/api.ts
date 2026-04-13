@@ -298,6 +298,7 @@ export interface Request {
   recipient_count?: number;
   cc_count?: number;
   is_recipient?: boolean;
+  can_decide?: boolean;
   comments_count?: number;
   is_final?: boolean;
   attachment?: string | null;

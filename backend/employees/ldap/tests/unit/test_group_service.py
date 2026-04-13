@@ -158,7 +158,17 @@ class TestGroupServiceMembers:
 
         # Mock ORM
         mock_group = Mock()
-        mock_group.member = []
+        member_state = []
+
+        def list_members():
+            return list(member_state)
+
+        def add_member(dn):
+            if dn not in member_state:
+                member_state.append(dn)
+
+        mock_group.list_members.side_effect = list_members
+        mock_group.add_member.side_effect = add_member
         with patch(
             'employees.ldap.services.group_service.LdapGroup'
         ) as MockLdapGroup:
@@ -168,8 +178,10 @@ class TestGroupServiceMembers:
             service.add_members(group_dn, member_dns)
 
         # Assert
-        assert mock_group.member == member_dns
-        mock_group.save.assert_called_once()
+        assert member_state == member_dns
+        assert mock_group.add_member.call_count == len(member_dns)
+        mock_group.add_member.assert_any_call(member_dns[0])
+        mock_group.add_member.assert_any_call(member_dns[1])
 
     @pytest.mark.django_db
     def test_remove_members(
@@ -186,7 +198,17 @@ class TestGroupServiceMembers:
 
         # Mock ORM — группа содержит удаляемого участника
         mock_group = Mock()
-        mock_group.member = ["CN=User1,OU=Users,DC=example,DC=com"]
+        member_state = ["CN=User1,OU=Users,DC=example,DC=com"]
+
+        def list_members():
+            return list(member_state)
+
+        def remove_member(dn):
+            if dn in member_state:
+                member_state.remove(dn)
+
+        mock_group.list_members.side_effect = list_members
+        mock_group.remove_member.side_effect = remove_member
         with patch(
             'employees.ldap.services.group_service.LdapGroup'
         ) as MockLdapGroup:
@@ -196,8 +218,8 @@ class TestGroupServiceMembers:
             service.remove_members(group_dn, member_dns)
 
         # Assert
-        assert mock_group.member == []
-        mock_group.save.assert_called_once()
+        assert member_state == []
+        mock_group.remove_member.assert_called_once_with(member_dns[0])
 
     @pytest.mark.django_db
     def test_replace_members(
@@ -214,7 +236,12 @@ class TestGroupServiceMembers:
 
         # Mock ORM — группа с текущими участниками
         mock_group = Mock()
-        mock_group.member = ['CN=OldUser,OU=Users,DC=example,DC=com']
+        old_members = ['CN=OldUser,OU=Users,DC=example,DC=com']
+        mock_group.list_members.return_value = list(old_members)
+        mock_group.sync_members.return_value = {
+            "added": member_dns,
+            "removed": old_members,
+        }
         with patch(
             'employees.ldap.services.group_service.LdapGroup'
         ) as MockLdapGroup:
@@ -224,8 +251,8 @@ class TestGroupServiceMembers:
             service.replace_members(group_dn, member_dns)
 
         # Assert
-        assert mock_group.member == member_dns
-        mock_group.save.assert_called_once()
+        mock_group.list_members.assert_called_once()
+        mock_group.sync_members.assert_called_once_with(member_dns)
 
     @pytest.mark.django_db
     def test_list_members(

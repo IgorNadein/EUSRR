@@ -26,6 +26,7 @@
 
 - [README.md](../README.md) - основная документация проекта
 - [docs/reports/](reports/) - отчеты и планы по проекту
+- [docs/guides/frontend/](guides/frontend/) - карта frontend UI-системы и guide по рефакторингу интерфейса
 
 ## 🔍 Поиск информации
 

@@ -48,19 +48,23 @@ export default function EmployeeActionsTimeline({
   expandedCommentLength = truncateCommentLength,
 }: EmployeeActionsTimelineProps) {
   const [showAll, setShowAll] = useState(false);
+  const canCollapse = Boolean(
+    initialVisibleCount && sortedActions.length > initialVisibleCount,
+  );
+  const visibleActions = useMemo(
+    () =>
+      canCollapse && !showAll
+        ? sortedActions.slice(0, initialVisibleCount)
+        : sortedActions,
+    [canCollapse, initialVisibleCount, showAll, sortedActions],
+  );
 
   if (!canViewActions || sortedActions.length === 0) {
     return null;
   }
 
-  const canCollapse = Boolean(initialVisibleCount && sortedActions.length > initialVisibleCount);
-  const visibleActions = useMemo(
-    () => (canCollapse && !showAll ? sortedActions.slice(0, initialVisibleCount) : sortedActions),
-    [canCollapse, initialVisibleCount, showAll, sortedActions],
-  );
-
   return (
-    <section className="app-surface rounded-[24px] p-5">
+    <section className="app-surface rounded-2xl p-5">
       <div className="mb-4 flex items-start justify-between gap-4">
         <h2 className="app-card-caption">Кадровые события</h2>
         <div className="flex items-center gap-2">
@@ -122,13 +126,11 @@ export default function EmployeeActionsTimeline({
                   style={{ backgroundColor: tone.lineColor }}
                 />
               ) : null}
-              <div className="app-surface-muted rounded-2xl px-4 py-3">
+              <div className="app-surface-muted rounded-xl px-4 py-3">
                 <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={`app-status-pill ${tone.badgeClass}`}
-                      >
+                      <span className={`app-status-pill ${tone.badgeClass}`}>
                         {action.action_display || action.action}
                       </span>
                       {isCurrent ? (

@@ -9,7 +9,6 @@
  * @param {string} options.apiListUrl - URL API для списка заявлений
  * @param {string} options.detailUrlTemplate - Шаблон URL для детального просмотра: "/requests/{id}/"
  * @param {number} options.userId - ID текущего пользователя
- * @param {boolean} options.canProcess - Может ли пользователь обрабатывать заявления
  * @param {Object} options.headers - HTTP заголовки для запросов
  * @returns {Object} API с методами load, destroy
  */
@@ -18,7 +17,6 @@ export function initRequestListHandler(options) {
     apiListUrl,
     detailUrlTemplate,
     userId,
-    canProcess,
     headers = {},
   } = options;
 
@@ -435,8 +433,8 @@ export function initRequestListHandler(options) {
           </span>
         </a>
       `;
-    } else if (req.employee?.id !== userId && canProcess && req.status === "pending") {
-      // Если pending и не автор и есть права - показываем кнопки действий
+    } else if (req.employee?.id !== userId && req.can_decide && req.status === "pending") {
+      // Если pending и заявка адресована текущему пользователю - показываем кнопки действий
       actionButtons = `
         <button type="button" class="btn btn-ghost btn-sm text-success"
                 data-bs-toggle="modal" data-bs-target="#reqApproveModal"
