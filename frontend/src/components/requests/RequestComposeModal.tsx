@@ -111,9 +111,7 @@ export function RequestComposeModal({
       className="h-[100dvh] max-w-full rounded-none sm:h-auto sm:rounded-2xl"
       footer={(
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="app-text-muted text-xs">
-            <span className="app-accent-text">*</span> обязательны для отправки. Черновик можно сохранить неполным.
-          </p>
+          
           <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
@@ -149,68 +147,6 @@ export function RequestComposeModal({
       )}
 
       <div className="space-y-4 pb-2">
-        <section className="app-surface-muted rounded-xl p-3 sm:p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-[var(--foreground)]">Адресация</p>
-              <p className="app-text-muted text-xs">Решение принимает только пользователь из поля «Кому».</p>
-            </div>
-            {!showCcField && (
-              <button
-                type="button"
-                onClick={() => setShowCcField(true)}
-                className="app-link-accent text-xs font-medium"
-              >
-                Добавить копию
-              </button>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <SearchableSelectMulti
-              label="Кому *"
-              layout="inline"
-              placeholder="Добавьте получателей"
-              items={selectableEmployees}
-              selectedIds={form.recipient_ids}
-              onToggle={(id) => toggleSelection("recipient_ids", id)}
-            />
-            {showCcField && (
-              <SearchableSelectMulti
-                label="Копия"
-                layout="inline"
-                placeholder="Добавьте пользователей в копию"
-                items={selectableEmployees}
-                selectedIds={form.cc_user_ids}
-                onToggle={(id) => toggleSelection("cc_user_ids", id)}
-              />
-            )}
-          </div>
-        </section>
-
-        <div className="space-y-3">
-          <div>
-            <FieldLabel>Тема</FieldLabel>
-            <input
-              value={form.title}
-              onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
-              placeholder="Например: Отпуск с 12 по 16 августа"
-              className="app-input w-full rounded-lg px-4 py-3 text-sm"
-            />
-          </div>
-
-          <div>
-            <FieldLabel>Сообщение</FieldLabel>
-            <textarea
-              value={form.comment}
-              onChange={(event) => setForm((prev) => ({ ...prev, comment: event.target.value }))}
-              placeholder="Кратко опишите заявление. Для черновика можно оставить поле пустым."
-              rows={8}
-              className="app-input min-h-44 w-full rounded-lg px-4 py-3 text-sm leading-6"
-            />
-          </div>
-        </div>
-
         <section className="app-surface-muted rounded-xl p-3 sm:p-4">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <SearchableSelectSingle
@@ -350,6 +286,68 @@ export function RequestComposeModal({
             )}
           </div>
         </section>
+
+        <section className="app-surface-muted rounded-xl p-3 sm:p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-[var(--foreground)]">Адресация</p>
+              <p className="app-text-muted text-xs">Решение принимает только пользователь из поля «Кому».</p>
+            </div>
+            {!showCcField && (
+              <button
+                type="button"
+                onClick={() => setShowCcField(true)}
+                className="app-link-accent text-xs font-medium"
+              >
+                Добавить копию
+              </button>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <SearchableSelectMulti
+              label="Кому *"
+              layout="inline"
+              placeholder="Добавьте получателей"
+              items={selectableEmployees}
+              selectedIds={form.recipient_ids}
+              onToggle={(id) => toggleSelection("recipient_ids", id)}
+            />
+            {showCcField && (
+              <SearchableSelectMulti
+                label="Копия"
+                layout="inline"
+                placeholder="Добавьте пользователей в копию"
+                items={selectableEmployees}
+                selectedIds={form.cc_user_ids}
+                onToggle={(id) => toggleSelection("cc_user_ids", id)}
+              />
+            )}
+          </div>
+        </section>
+
+        <div className="space-y-3">
+          <div>
+            <FieldLabel>Тема</FieldLabel>
+            <input
+              value={form.title}
+              onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
+              placeholder="Например: Отпуск с 12 по 16 августа"
+              className="app-input w-full rounded-lg px-4 py-3 text-sm"
+            />
+          </div>
+
+          <div>
+            <FieldLabel>Сообщение</FieldLabel>
+            <textarea
+              value={form.comment}
+              onChange={(event) => setForm((prev) => ({ ...prev, comment: event.target.value }))}
+              placeholder="Кратко опишите заявление. Для черновика можно оставить поле пустым."
+              rows={8}
+              className="app-input min-h-44 w-full rounded-lg px-4 py-3 text-sm leading-6"
+            />
+          </div>
+        </div>
       </div>
     </Modal>
   );
