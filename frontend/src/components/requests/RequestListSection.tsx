@@ -65,7 +65,7 @@ export function RequestListSection({
 }: RequestListSectionProps) {
   return (
     <>
-      <div className="space-y-2.5">
+      <div className="space-y-3">
         {requests.length === 0 ? (
           <div className="app-surface-muted rounded-xl p-8 text-center">
             <FileSignature size={22} className="app-text-muted mx-auto mb-2" />
