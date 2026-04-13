@@ -168,4 +168,4 @@ class ActionURLs:
     @staticmethod
     def request_detail(request_id: int) -> str:
         """URL детальной страницы заявления."""
-        return f'/requests/{request_id}'
+        return f'/requests?request={request_id}'

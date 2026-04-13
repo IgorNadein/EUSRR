@@ -196,6 +196,7 @@ function EquipmentPageContent() {
     activeFilterCount,
     busyKey,
     canManage,
+    canManageCategories,
     categories,
     categoryFilter,
     closeModal,
@@ -222,6 +223,7 @@ function EquipmentPageContent() {
     getResponsibleLink,
     getResponsibleName,
     handleAddComment,
+    handleCreateCategory,
     handleDelete,
     handleDeleteComment,
     handleLoadMore,
@@ -276,6 +278,8 @@ function EquipmentPageContent() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [qrError, setQrError] = useState<string | null>(null);
   const [qrCopySuccess, setQrCopySuccess] = useState(false);
+  const [categoryMode, setCategoryMode] = useState<"select" | "create">("select");
+  const [newCategoryName, setNewCategoryName] = useState("");
   const handledLinkedEquipmentRef = useRef<number | null>(null);
   const equipmentMenuRef = useRef<HTMLDivElement | null>(null);
   const [equipmentMenuOpenId, setEquipmentMenuOpenId] = useState<number | null>(null);
@@ -323,11 +327,7 @@ function EquipmentPageContent() {
   }, [linkedEquipmentId, linkedEquipmentParam, openEquipmentById]);
 
   useEffect(() => {
-    if (!qrEquipment) {
-      setQrDataUrl(null);
-      setQrError(null);
-      return;
-    }
+    if (!qrEquipment) return;
 
     let cancelled = false;
 
@@ -383,6 +383,8 @@ function EquipmentPageContent() {
   }, [equipmentMenuOpenId]);
 
   const handleOpenQrModal = useCallback((equipment: typeof filteredItems[number]) => {
+    setQrDataUrl(null);
+    setQrError(null);
     setQrCopySuccess(false);
     setQrEquipment(equipment);
   }, []);
@@ -428,6 +430,33 @@ function EquipmentPageContent() {
     router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
   }, [pathname, router, searchParams]);
 
+  const resetCategoryCreateState = useCallback(() => {
+    setCategoryMode("select");
+    setNewCategoryName("");
+  }, []);
+
+  const handleOpenCreateEquipmentModal = useCallback(() => {
+    resetCategoryCreateState();
+    void openCreateModal();
+  }, [openCreateModal, resetCategoryCreateState]);
+
+  const handleOpenEditEquipmentModal = useCallback((equipment: Equipment) => {
+    resetCategoryCreateState();
+    openEdit(equipment);
+  }, [openEdit, resetCategoryCreateState]);
+
+  const handleCloseEquipmentModal = useCallback(() => {
+    resetCategoryCreateState();
+    closeModal();
+  }, [closeModal, resetCategoryCreateState]);
+
+  const submitNewCategory = useCallback(async () => {
+    const created = await handleCreateCategory(newCategoryName);
+    if (!created) return;
+    setCategoryMode("select");
+    setNewCategoryName("");
+  }, [handleCreateCategory, newCategoryName]);
+
   const qrLink = useMemo(
     () => (qrEquipment ? buildEquipmentLink(qrEquipment.id) : ""),
     [buildEquipmentLink, qrEquipment],
@@ -451,7 +480,7 @@ function EquipmentPageContent() {
             <p className="app-text-muted text-sm font-semibold uppercase tracking-wide">Оборудование</p>
             <button
               type="button"
-              onClick={() => { void openCreateModal(); }}
+              onClick={handleOpenCreateEquipmentModal}
               className="app-action-primary inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium"
             >
               <Plus size={14} /> Добавить оборудование
@@ -651,7 +680,7 @@ function EquipmentPageContent() {
                                           type="button"
                                           onClick={() => {
                                             setEquipmentMenuOpenId(null);
-                                            openEdit(item);
+                                            handleOpenEditEquipmentModal(item);
                                           }}
                                           className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
                                         >
@@ -855,15 +884,16 @@ function EquipmentPageContent() {
       )}
 
       {/* ===== Modal create/edit ===== */}
-      <Modal isOpen={isModalOpen} onClose={closeModal} title={modalMode === "create" ? "Добавить оборудование" : "Редактировать оборудование"} size="md" footer={
+      <Modal isOpen={isModalOpen} onClose={handleCloseEquipmentModal} title={modalMode === "create" ? "Добавить оборудование" : "Редактировать оборудование"} size="md" footer={
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <button type="button" onClick={closeModal} className="app-action-secondary rounded-lg px-3 py-2 text-sm font-medium">Отмена</button>
+              <button type="button" onClick={handleCloseEquipmentModal} className="app-action-secondary rounded-lg px-3 py-2 text-sm font-medium">Отмена</button>
               <button type="button" onClick={() => handleSave(modalMode)} disabled={busyKey !== null} className="app-action-primary rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-60">
                 {modalMode === "create" ? "Добавить" : "Сохранить"}
               </button>
             </div>
       }>
             {actionError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
+            {actionSuccess && <p className="app-feedback-success mb-3 rounded-lg px-3 py-2 text-sm">{actionSuccess}</p>}
 
             <div className="flex flex-col gap-3">
               {/* Название */}
@@ -877,14 +907,97 @@ function EquipmentPageContent() {
                 />
               </div>
 
-              {/* Категория */}
-              <SearchableSelectSingle
-                label="Категория *"
-                placeholder="Выберите категорию..."
-                items={categories.map((c) => ({ id: c.id, name: c.name }))}
-                selectedId={form.category}
-                onSelect={(id) => setForm((p) => ({ ...p, category: id }))}
-              />
+              <div className="app-surface-muted rounded-2xl p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-[var(--foreground)]">Категория *</p>
+                    <p className="app-text-muted mt-1 text-sm">
+                      Выберите существующую категорию или создайте новую, не выходя из формы.
+                    </p>
+                  </div>
+                  {canManageCategories && (
+                    <div className="inline-flex rounded-xl bg-[var(--surface-elevated)] p-1">
+                      <button
+                        type="button"
+                        onClick={() => setCategoryMode("select")}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                          categoryMode === "select"
+                            ? "app-selected app-accent-text"
+                            : "app-text-muted hover:bg-[var(--surface-secondary)]"
+                        }`}
+                      >
+                        Выбрать
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCategoryMode("create")}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                          categoryMode === "create"
+                            ? "app-selected app-accent-text"
+                            : "app-text-muted hover:bg-[var(--surface-secondary)]"
+                        }`}
+                      >
+                        Создать
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  <SearchableSelectSingle
+                    label="Справочник категорий"
+                    placeholder="Выберите категорию..."
+                    items={categories.map((c) => ({ id: c.id, name: c.name }))}
+                    selectedId={form.category}
+                    onSelect={(id) => setForm((p) => ({ ...p, category: id }))}
+                    disabled={busyKey === "create-category"}
+                  />
+
+                  {form.category ? (
+                    <div className="app-surface rounded-xl px-3 py-2.5">
+                      <p className="app-text-muted text-[11px] font-medium uppercase tracking-wide">Текущий выбор</p>
+                      <p className="mt-1 text-sm font-medium text-[var(--foreground)]">
+                        {categories.find((category) => category.id === form.category)?.name || `Категория #${form.category}`}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {canManageCategories && categoryMode === "create" && (
+                    <div className="app-surface rounded-xl p-3">
+                      <div className="space-y-3">
+                        <div>
+                          <label className="app-text-muted mb-2 block text-sm">Новая категория</label>
+                          <input
+                            value={newCategoryName}
+                            onChange={(e) => setNewCategoryName(e.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                void submitNewCategory();
+                              }
+                            }}
+                            placeholder="Например, Моноблоки"
+                            className="app-input w-full rounded-lg px-3 py-2.5 text-sm"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="app-text-muted text-xs">
+                            После создания категория сразу появится в списке и будет выбрана в форме.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => void submitNewCategory()}
+                            disabled={busyKey === "create-category" || !newCategoryName.trim()}
+                            className="app-action-primary shrink-0 rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-60"
+                          >
+                            {busyKey === "create-category" ? "Создаём..." : "Создать"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {isCreateMode && previewInventoryNumber && (
                 <div className="app-surface-muted rounded-lg px-3 py-2 text-sm text-[var(--muted-foreground)]">
