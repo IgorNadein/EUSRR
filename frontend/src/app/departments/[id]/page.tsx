@@ -851,7 +851,6 @@ export default function DepartmentDetailPage() {
                         type="button"
                         onClick={() => {
                           setDepartmentMenuOpen(false);
-                          setManagementMode(true);
                           h.openAddMember();
                             }}
                             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
@@ -866,7 +865,6 @@ export default function DepartmentDetailPage() {
                             type="button"
                             onClick={() => {
                               setDepartmentMenuOpen(false);
-                              setManagementMode(true);
                               h.openAssignRoleModal();
                             }}
                             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
@@ -881,7 +879,6 @@ export default function DepartmentDetailPage() {
                             type="button"
                             onClick={() => {
                               setDepartmentMenuOpen(false);
-                              setManagementMode(true);
                               h.openCreateRole();
                             }}
                             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
@@ -896,7 +893,6 @@ export default function DepartmentDetailPage() {
                             type="button"
                             onClick={() => {
                               setDepartmentMenuOpen(false);
-                              setManagementMode(true);
                               h.openDepartmentEditor();
                             }}
                             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
