@@ -17,6 +17,24 @@ from phonenumbers import PhoneNumberFormat
 Employee = get_user_model()
 
 
+def _other_active_department_link(
+    employee_id: int,
+    *,
+    exclude_department_id: int | None = None,
+) -> EmployeeDepartment | None:
+    qs = (
+        EmployeeDepartment.objects.filter(
+            employee_id=employee_id,
+            is_active=True,
+        )
+        .select_related("department")
+        .order_by("id")
+    )
+    if exclude_department_id is not None:
+        qs = qs.exclude(department_id=exclude_department_id)
+    return qs.first()
+
+
 def _to_bool(val: str | None) -> bool | None:
     if val is None:
         return None
@@ -86,6 +104,20 @@ def _validate_head_active(
     # Требование верификации email — опционально
     if require_email_verified and getattr(emp, "email_verified", True) is False:
         return False, {"head_id": ["Employee is inactive."]}
+
+    other_active_link = _other_active_department_link(
+        employee_id,
+        exclude_department_id=dept.id,
+    )
+    if other_active_link is not None:
+        return False, {
+            "head_id": [
+                (
+                    "Employee already belongs to another active department: "
+                    f"{other_active_link.department.name}."
+                )
+            ]
+        }
 
     return True, None
 

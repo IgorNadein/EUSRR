@@ -27,7 +27,11 @@ from employees.models import (
     EmployeeDepartment,
     RoleAssignment,
 )
-from employees.utils import _build_links_for_dept, _validate_head_active
+from employees.utils import (
+    _build_links_for_dept,
+    _other_active_department_link,
+    _validate_head_active,
+)
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -473,7 +477,30 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         emp_id = payload.validated_data["employee_id"]
 
         employee_model = Department._meta.get_field("head").remote_field.model
-        get_object_or_404(employee_model, id=emp_id)
+        employee = get_object_or_404(employee_model, id=emp_id)
+
+        if getattr(employee, "is_active", True) is False:
+            return Response(
+                {"employee_id": ["Employee is inactive."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        other_active_link = _other_active_department_link(
+            emp_id,
+            exclude_department_id=dept.id,
+        )
+        if other_active_link is not None:
+            return Response(
+                {
+                    "employee_id": [
+                        (
+                            "Employee already belongs to another active "
+                            f"department: {other_active_link.department.name}."
+                        )
+                    ]
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         link, created = EmployeeDepartment.objects.get_or_create(
             employee_id=emp_id,

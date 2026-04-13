@@ -514,6 +514,58 @@ def test_set_head_requires_perm(api_client: APIClient):
         == status.HTTP_403_FORBIDDEN
     )
 
+
+def test_set_head_rejects_employee_from_another_active_department(
+    api_client: APIClient,
+):
+    d1 = Department.objects.create(name="Dept 1")
+    d2 = Department.objects.create(name="Dept 2")
+
+    manager = make_user("head-manager@example.com")
+    api_client.force_authenticate(user=manager)
+    r_change = make_role(d1, "head-assigner", ["change_department_head"])
+    EmployeeDepartment.objects.create(
+        employee=manager,
+        department=d1,
+        is_active=True,
+        role=r_change,
+    )
+
+    candidate = make_user("foreign-head@example.com")
+    EmployeeDepartment.objects.create(
+        employee=candidate,
+        department=d2,
+        is_active=True,
+    )
+
+    url = reverse("api:v1:departments-set-head", args=[d1.pk])
+    resp = api_client.post(url, {"head_id": candidate.id}, format="json")
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert "another active department" in resp.json()["head_id"][0]
+
+
+def test_set_head_makes_head_active_department_member(api_client: APIClient):
+    d = Department.objects.create(name="Dept Head Link")
+
+    manager = make_user("head-manager-2@example.com")
+    api_client.force_authenticate(user=manager)
+    r_change = make_role(d, "head-assigner", ["change_department_head"])
+    EmployeeDepartment.objects.create(
+        employee=manager,
+        department=d,
+        is_active=True,
+        role=r_change,
+    )
+
+    candidate = make_user("new-head@example.com")
+
+    url = reverse("api:v1:departments-set-head", args=[d.pk])
+    resp = api_client.post(url, {"head_id": candidate.id}, format="json")
+    assert resp.status_code == status.HTTP_200_OK
+
+    link = EmployeeDepartment.objects.get(employee=candidate, department=d)
+    assert link.is_active is True
+
 # ---------- tests: action set_member_role ----------
 
 def test_set_member_role_happy_path(api_client: APIClient):
@@ -592,3 +644,32 @@ def test_set_member_role_missing_employee_id(api_client: APIClient):
     url = reverse("api:v1:departments-set-member-role", args=[d.pk])
     resp = api_client.post(url, {"role_id": None}, format="json")
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
+def test_add_member_rejects_employee_from_another_active_department(
+    api_client: APIClient,
+):
+    d1 = Department.objects.create(name="Target Dept")
+    d2 = Department.objects.create(name="Other Dept")
+
+    manager = make_user("dept-manager@example.com")
+    api_client.force_authenticate(user=manager)
+    r_manage = make_role(d1, "manager", ["manage_department"])
+    EmployeeDepartment.objects.create(
+        employee=manager,
+        department=d1,
+        is_active=True,
+        role=r_manage,
+    )
+
+    employee = make_user("busy-member@example.com")
+    EmployeeDepartment.objects.create(
+        employee=employee,
+        department=d2,
+        is_active=True,
+    )
+
+    url = reverse("api:v1:departments-add-member", args=[d1.pk])
+    resp = api_client.post(url, {"employee_id": employee.id}, format="json")
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert "another active department" in resp.json()["employee_id"][0]
