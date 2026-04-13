@@ -17,6 +17,7 @@ class NotificationItemSerializer(serializers.Serializer):
     category = serializers.CharField()
     action_url = serializers.CharField(
         required=False, allow_blank=True, allow_null=True)
+    data = serializers.JSONField(required=False, allow_null=True)
     verb = serializers.CharField()
     description = serializers.CharField()
     actor = NotificationActorSerializer(required=False, allow_null=True)

@@ -245,15 +245,15 @@ def _notify_comment(message):
 
     if model_name == 'Post':
         object_author = getattr(context_obj, 'author', None)
-        object_url = f"/feed/#{context_obj.id}"
+        object_url = f"/?post={context_obj.id}"
         object_type = "публикации"
     elif model_name == 'Document':
         object_author = getattr(context_obj, 'uploaded_by', None)
-        object_url = f"/documents/{context_obj.id}/"
+        object_url = f"/documents?document={context_obj.id}"
         object_type = "документа"
     elif hasattr(context_obj, 'employee'):  # Request
         object_author = getattr(context_obj, 'employee', None)
-        object_url = f"/requests/{context_obj.id}/"
+        object_url = f"/requests?request={context_obj.id}"
         object_type = "заявки"
 
     # 1. Уведомляем автора объекта

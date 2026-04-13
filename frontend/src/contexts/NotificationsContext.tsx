@@ -17,6 +17,7 @@ export type NotificationItem = {
   timestamp?: string;
   created_at?: string;
   action_url?: string;
+  data?: Record<string, unknown> | null;
   [key: string]: unknown;
 };
 

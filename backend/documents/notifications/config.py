@@ -84,7 +84,7 @@ class ActionURLs:
 
         TODO: реализовать прямые ссылки на конкретные документы
         """
-        return f'/documents?id={document_id}'
+        return f'/documents?document={document_id}'
 
 
 # ===== Константы =====

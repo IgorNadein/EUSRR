@@ -132,6 +132,7 @@ def get_notifications(request):
                 'created_at': n.timestamp.isoformat(),
                 'category': n.verb,
                 'action_url': n.action_url,
+                'data': n.data,
                 # Дополнительные поля для обратной совместимости
                 'verb': n.verb,
                 'description': n.description,
