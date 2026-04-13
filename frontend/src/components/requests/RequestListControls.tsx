@@ -130,7 +130,7 @@ export function RequestListControls({
       </div>
 
       {state.filtersOpen ? (
-        <div className="app-surface-muted mb-3 flex flex-col gap-2 rounded-xl p-3">
+        <div className="app-surface-muted mb-4 flex flex-col gap-2 rounded-xl p-3">
           <select
             value={state.view}
             onChange={(event) => actions.setView(event.target.value as "" | "mine" | "addressed")}

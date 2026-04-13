@@ -11,6 +11,23 @@
 
 Эта шкала обязательна для новых экранов и перерабатываемых блоков.
 
+## Целевая шкала вертикального ритма
+
+Радиусы сами по себе не делают систему согласованной. Если блоки одного веса выглядят похоже, у них должен быть одинаковый spacing.
+
+Нормативная шкала:
+
+- `gap-2` для compact control clusters и плотных inline actions
+- `space-y-2` для плотного стека внутри одного secondary/detail block
+- `space-y-3` для стека однотипных rows или peer secondary cards внутри одной primary panel
+- `space-y-4` для стека крупных grouped blocks или major subsections внутри одной primary panel
+- `space-y-6` для page-level section stack
+
+Правило:
+
+- spacing выбирается по весу блока и уровню иерархии, а не по конкретному экрану
+- одинаковые `app-surface-muted rounded-xl` блоки не должны жить на `space-y-2` в одной зоне и на `space-y-4` в другой без явной UX-причины
+
 ## Controls
 
 К controls относятся:

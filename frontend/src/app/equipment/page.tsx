@@ -6,7 +6,7 @@ import { useUser } from "@/contexts/UserContext";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, ArrowRightLeft, ArrowUpDown, Check, ChevronDown, ChevronRight, Copy, Download, ExternalLink, Filter, MessageSquare, Monitor, Pencil, Plus, QrCode, Search, Shield, Trash2, Wrench, X } from "lucide-react";
+import { Archive, ArrowRightLeft, ArrowUpDown, Check, ChevronDown, ChevronRight, Copy, Download, ExternalLink, Filter, MessageSquare, Monitor, Pencil, Plus, QrCode, Search, Shield, Trash2, Wrench } from "lucide-react";
 import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
 import { formatDate, formatMoney } from "@/lib/shared";
 import { useEquipmentPage } from "@/hooks/useEquipmentPage";
@@ -549,7 +549,7 @@ function EquipmentPageContent() {
 
           {/* Filters panel */}
           {filtersOpen && (
-            <div className="app-surface-muted mb-3 flex flex-col gap-2 rounded-xl p-3">
+            <div className="app-surface-muted mb-4 flex flex-col gap-2 rounded-xl p-3">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="app-select rounded-lg px-3 py-2 text-sm">
                   <option value="">Все статусы</option>
@@ -591,7 +591,7 @@ function EquipmentPageContent() {
           )}
 
           {/* Items list */}
-          <div className="space-y-2">
+          <div className="space-y-3">
             {filteredItems.length === 0 ? (
               <div className="app-surface-muted rounded-xl p-8 text-center">
                 <Monitor size={22} className="app-text-muted mx-auto mb-2" />

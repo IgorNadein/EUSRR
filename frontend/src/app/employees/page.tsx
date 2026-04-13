@@ -171,7 +171,7 @@ export default function EmployeesPage() {
   return (
     <AppShell>
       <section className="app-surface rounded-2xl p-4">
-        <div className="space-y-2">
+        <div className="space-y-3">
           {sortedEmployees.map((employee) => {
             const fullName =
               `${employee.last_name || ""} ${employee.first_name || ""} ${employee.patronymic || ""}`.trim();
