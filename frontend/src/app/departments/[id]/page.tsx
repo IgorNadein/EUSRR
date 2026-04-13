@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   Building2,
@@ -430,13 +430,16 @@ export default function DepartmentDetailPage() {
   const params = useParams<{ id: string }>();
   const departmentId = Number(params?.id);
   const h = useDepartmentPage(departmentId);
+  const [managementMode, setManagementMode] = useState(false);
 
   const activeMembersCount = h.members.filter((member) => member.is_active).length;
   const roleOptions = h.roles.map((role) => ({ id: role.id, name: role.name }));
-  const isManagementMode =
+  const canUseManagementMode =
     h.userPerms.can_manage ||
     h.userPerms.can_change_head ||
     h.userPerms.can_assign_roles;
+
+  const isManagementMode = canUseManagementMode && managementMode;
 
   return (
     <AppShell>
@@ -486,15 +489,31 @@ export default function DepartmentDetailPage() {
                       </p>
                     </div>
 
-                    {h.userPerms.can_manage ? (
-                      <button
-                        type="button"
-                        onClick={h.openDepartmentEditor}
-                        className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm"
-                      >
-                        <PencilLine size={14} />
-                        Редактировать отдел
-                      </button>
+                    {canUseManagementMode ? (
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setManagementMode((current) => !current)}
+                          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm ${
+                            isManagementMode
+                              ? "app-action-primary"
+                              : "app-action-secondary"
+                          }`}
+                        >
+                          <PencilLine size={14} />
+                          {isManagementMode ? "Вернуться к просмотру" : "Открыть управление"}
+                        </button>
+                        {isManagementMode && h.userPerms.can_manage ? (
+                          <button
+                            type="button"
+                            onClick={h.openDepartmentEditor}
+                            className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm"
+                          >
+                            <PencilLine size={14} />
+                            Редактировать отдел
+                          </button>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
                 </div>
@@ -519,7 +538,7 @@ export default function DepartmentDetailPage() {
                       )}
                     </div>
 
-                    {h.userPerms.can_change_head ? (
+                    {isManagementMode && h.userPerms.can_change_head ? (
                       <div className="mt-4 space-y-3">
                         <SearchableSelectSingle
                           label="Назначить руководителя"
@@ -583,7 +602,7 @@ export default function DepartmentDetailPage() {
                       : "Состав отдела, роли участников и текущая структура команды."}
                   </p>
                 </div>
-                {h.userPerms.can_manage ? (
+                {isManagementMode && h.userPerms.can_manage ? (
                   <button
                     type="button"
                     onClick={h.openAddMember}
@@ -615,9 +634,9 @@ export default function DepartmentDetailPage() {
                   h.filteredMembers.map((member) => (
                     <DepartmentMemberRow
                       key={`${member.employee.id}-${member.is_active ? "active" : "inactive"}`}
-                      canAssignRoles={h.userPerms.can_assign_roles}
-                      canChangeHead={h.userPerms.can_change_head}
-                      canManage={h.userPerms.can_manage}
+                      canAssignRoles={isManagementMode && h.userPerms.can_assign_roles}
+                      canChangeHead={isManagementMode && h.userPerms.can_change_head}
+                      canManage={isManagementMode && h.userPerms.can_manage}
                       currentHeadId={h.department?.head?.id}
                       currentUserId={h.currentUserId}
                       member={member}
@@ -652,7 +671,7 @@ export default function DepartmentDetailPage() {
                       : "Справочный список ролей, которые используются внутри отдела."}
                   </p>
                 </div>
-                {h.userPerms.can_assign_roles ? (
+                {isManagementMode && h.userPerms.can_assign_roles ? (
                   <button
                     type="button"
                     onClick={h.openCreateRole}
@@ -669,7 +688,7 @@ export default function DepartmentDetailPage() {
                   h.roles.map((role) => (
                     <DepartmentRoleCard
                       key={role.id}
-                      canManageRoles={h.userPerms.can_assign_roles}
+                      canManageRoles={isManagementMode && h.userPerms.can_assign_roles}
                       pendingKey={h.pendingKey}
                       role={role}
                       usageCount={h.roleUsage[role.id] || 0}
