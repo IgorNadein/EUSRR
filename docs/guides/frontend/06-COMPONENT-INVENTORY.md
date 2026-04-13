@@ -232,8 +232,8 @@
 Использовать как референс для:
 
 - detail screen, который должен быть полноценным management workspace, а не бедной карточкой-описанием
-- page-level controller для domain actions вокруг одного объекта: overview, members, head management, roles, permissions
-- richer detail layout, где основной управленческий список сочетается с правой summary/actions колонкой
+- page-level controller для domain actions вокруг одного объекта: overview, members, head management, roles
+- richer detail layout, где есть сильный header, один основной roster-блок и один secondary-блок настроек, без раздувания служебных summary-panels
 - member roster с role assignment и person-chip подачей вместо сырых строк участников
 
 С оговоркой:

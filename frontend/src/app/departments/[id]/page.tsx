@@ -5,12 +5,11 @@ import { useParams } from "next/navigation";
 import type { ReactNode } from "react";
 import {
   ArrowLeft,
-  BriefcaseBusiness,
   Building2,
   Crown,
   PencilLine,
   Plus,
-  ShieldCheck,
+  Search,
   Trash2,
   UserPlus,
   Users,
@@ -27,32 +26,12 @@ import type {
   DepartmentRole,
 } from "@/types/api";
 
-function StatCard({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value: string;
-  icon: ReactNode;
-}) {
-  return (
-    <div className="app-surface-muted rounded-xl p-4">
-      <div className="app-text-muted mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em]">
-        {icon}
-        {label}
-      </div>
-      <p className="text-xl font-semibold text-[var(--foreground)]">{value}</p>
-    </div>
-  );
-}
-
 function PermissionBadge({
   active,
   children,
 }: {
   active: boolean;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <span
@@ -96,10 +75,11 @@ function DepartmentMemberRow({
   const isBusy = pendingKey === `member-remove-${member.employee.id}`;
   const isRoleBusy = pendingKey === `member-role-${member.employee.id}`;
   const subtitle = member.employee.position?.name || member.employee.email || null;
+  const roleItems = roleOptions.map((role) => ({ id: role.id, name: role.name }));
 
   return (
     <article className="app-surface-muted rounded-xl p-4">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0 space-y-3">
           <DepartmentPersonChip
             currentUserId={currentUserId}
@@ -124,37 +104,29 @@ function DepartmentMemberRow({
                 {member.role.name}
               </span>
             ) : null}
+            {!member.role && !canAssignRoles ? (
+              <span className="app-surface rounded-full px-2.5 py-1 text-xs text-[var(--muted-foreground)]">
+                Без роли
+              </span>
+            ) : null}
           </div>
         </div>
 
-        <div className="flex w-full flex-col gap-3 xl:max-w-[360px] xl:items-end">
+        <div className="flex w-full flex-col gap-3 lg:max-w-[420px] lg:items-end">
           {canAssignRoles ? (
-            <div className="w-full xl:w-64">
-              <label className="app-text-muted mb-1 block text-xs font-medium">
-                Роль в отделе
-              </label>
-              <select
-                value={member.role?.id ?? ""}
-                onChange={(event) =>
-                  void onAssignRole(
-                    member.employee.id,
-                    event.target.value ? Number(event.target.value) : null,
-                  )
-                }
+            <div className="w-full lg:w-64">
+              <SearchableSelectSingle
+                label="Роль"
+                items={roleItems}
+                selectedId={member.role?.id ?? null}
+                onSelect={(roleId) => void onAssignRole(member.employee.id, roleId)}
+                placeholder="Без роли"
                 disabled={isRoleBusy}
-                className="app-select w-full rounded-lg px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <option value="">Без роли</option>
-                {roleOptions.map((role) => (
-                  <option key={role.id} value={role.id}>
-                    {role.name}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
           ) : null}
 
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
             {canChangeHead && !isHead ? (
               <button
                 type="button"
@@ -532,6 +504,12 @@ export default function DepartmentDetailPage() {
 
   const activeMembersCount = h.members.filter((member) => member.is_active).length;
   const roleOptions = h.roles.map((role) => ({ id: role.id, name: role.name }));
+  const permissionSummary = [
+    h.userPerms.is_head ? "Руководитель отдела" : null,
+    h.userPerms.can_manage ? "Управление составом" : null,
+    h.userPerms.can_change_head ? "Смена руководителя" : null,
+    h.userPerms.can_assign_roles ? "Назначение ролей" : null,
+  ].filter(Boolean) as string[];
 
   return (
     <AppShell>
@@ -561,15 +539,15 @@ export default function DepartmentDetailPage() {
                   <div className="mb-3 flex flex-wrap items-center gap-2">
                     <span className="app-selected app-accent-text inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs">
                       <Building2 size={12} />
-                      Управление отделом
+                      Отдел
                     </span>
-                    <PermissionBadge active={h.userPerms.is_head}>
-                      <Crown size={12} className="mr-1" />
-                      Вы руководитель
-                    </PermissionBadge>
-                    <PermissionBadge active={h.userPerms.can_manage}>
-                      Может управлять
-                    </PermissionBadge>
+                    <span className="app-badge inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs">
+                      <Users size={12} />
+                      {activeMembersCount} участников
+                    </span>
+                    <span className="app-badge inline-flex rounded-full px-2.5 py-1 text-xs">
+                      {h.roles.length} ролей
+                    </span>
                   </div>
 
                   <h1 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">
@@ -578,6 +556,16 @@ export default function DepartmentDetailPage() {
                   <p className="app-text-muted mt-3 max-w-3xl text-sm leading-relaxed sm:text-base">
                     {h.department.description || "Описание отдела ещё не заполнено."}
                   </p>
+
+                  {permissionSummary.length ? (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {permissionSummary.map((label) => (
+                        <PermissionBadge key={label} active>
+                          {label}
+                        </PermissionBadge>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="flex flex-wrap gap-2">
@@ -591,6 +579,71 @@ export default function DepartmentDetailPage() {
                       Редактировать отдел
                     </button>
                   ) : null}
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+                <div className="app-surface-muted rounded-xl p-4">
+                  <p className="app-card-caption">Руководитель</p>
+                  <div className="mt-3">
+                    {h.department.head ? (
+                      <DepartmentPersonChip
+                        currentUserId={h.currentUserId}
+                        person={h.department.head}
+                        subtitle={h.department.head.position?.name || h.department.head.email}
+                      />
+                    ) : (
+                      <div className="app-surface rounded-xl px-4 py-3 text-sm text-[var(--foreground)]">
+                        Руководитель пока не назначен.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {h.userPerms.can_change_head ? (
+                  <div className="app-surface-muted rounded-xl p-4">
+                    <SearchableSelectSingle
+                      label="Назначить руководителя"
+                      items={h.headCandidates}
+                      selectedId={h.selectedHeadId}
+                      onSelect={h.setSelectedHeadId}
+                      placeholder="Выберите сотрудника"
+                      disabled={!h.headCandidates.length}
+                    />
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void h.submitHeadChange()}
+                        disabled={h.pendingKey === "head"}
+                        className="app-action-primary rounded-lg px-4 py-2 text-sm disabled:opacity-50"
+                      >
+                        Сохранить
+                      </button>
+                      {h.department.head ? (
+                        <button
+                          type="button"
+                          onClick={() => void h.submitHeadRemoval()}
+                          disabled={h.pendingKey === "head"}
+                          className="app-action-secondary rounded-lg px-4 py-2 text-sm disabled:opacity-50"
+                        >
+                          Снять
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </section>
+
+            <div className="space-y-6">
+              <section className="app-surface rounded-2xl p-5">
+                <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <h2 className="app-card-caption">Команда отдела</h2>
+                    <p className="app-text-muted mt-2 text-sm">
+                      Основной рабочий блок отдела: состав команды, роли участников и быстрые действия.
+                    </p>
+                  </div>
                   {h.userPerms.can_manage ? (
                     <button
                       type="button"
@@ -602,245 +655,110 @@ export default function DepartmentDetailPage() {
                     </button>
                   ) : null}
                 </div>
-              </div>
 
-              <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <StatCard
-                  label="Участники"
-                  value={String(activeMembersCount)}
-                  icon={<Users size={14} />}
-                />
-                <StatCard
-                  label="Ролей"
-                  value={String(h.roles.length)}
-                  icon={<ShieldCheck size={14} />}
-                />
-                <StatCard
-                  label="Руководитель"
-                  value={h.department.head ? "Назначен" : "Не назначен"}
-                  icon={<Crown size={14} />}
-                />
-                <StatCard
-                  label="Контур"
-                  value={h.userPerms.can_manage ? "Управление" : "Просмотр"}
-                  icon={<BriefcaseBusiness size={14} />}
-                />
-              </div>
-            </section>
-
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.95fr)]">
-              <div className="space-y-6">
-                <section className="app-surface rounded-2xl p-5">
-                  <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                      <h2 className="app-card-caption">Участники отдела</h2>
-                      <p className="app-text-muted mt-2 text-sm">
-                        Управление составом отдела и ролями участников.
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <label className="app-text-muted inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={h.showInactiveMembers}
-                          onChange={(event) =>
-                            h.setShowInactiveMembers(event.target.checked)
-                          }
-                          className="rounded border-[var(--border-strong)]"
-                        />
-                        Показывать неактивных
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="relative mb-4">
+                <div className="app-surface-muted mb-4 flex flex-col gap-3 rounded-xl p-3 md:flex-row md:items-center">
+                  <div className="relative min-w-0 flex-1">
+                    <Search
+                      size={16}
+                      className="app-text-muted pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
+                    />
                     <input
                       value={h.membersQuery}
                       onChange={(event) => h.setMembersQuery(event.target.value)}
                       placeholder="Поиск по участникам, почте, должности или роли"
-                      className="app-input w-full rounded-lg px-3 py-2.5 text-sm"
+                      className="app-input w-full rounded-lg py-2.5 pl-9 pr-3 text-sm"
                     />
                   </div>
+                  <label className="app-text-muted inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={h.showInactiveMembers}
+                      onChange={(event) =>
+                        h.setShowInactiveMembers(event.target.checked)
+                      }
+                      className="rounded border-[var(--border-strong)]"
+                    />
+                    Показывать неактивных
+                  </label>
+                </div>
 
-                  <div className="space-y-3">
-                    {h.filteredMembers.length ? (
-                      h.filteredMembers.map((member) => (
-                        <DepartmentMemberRow
-                          key={`${member.employee.id}-${member.is_active ? "active" : "inactive"}`}
-                          canAssignRoles={h.userPerms.can_assign_roles}
-                          canChangeHead={h.userPerms.can_change_head}
-                          canManage={h.userPerms.can_manage}
-                          currentHeadId={h.department?.head?.id}
-                          currentUserId={h.currentUserId}
-                          member={member}
-                          pendingKey={h.pendingKey}
-                          roleOptions={roleOptions}
-                          onAssignRole={h.submitMemberRole}
-                          onRemoveMember={h.submitRemoveMember}
-                          onSetHead={h.submitQuickHeadChange}
-                        />
-                      ))
-                    ) : (
-                      <div className="app-surface-muted rounded-xl p-8 text-center">
-                        <Users size={24} className="app-text-muted mx-auto mb-3" />
-                        <p className="text-sm font-medium text-[var(--foreground)]">
-                          Участники не найдены
-                        </p>
-                        <p className="app-text-muted mt-2 text-sm">
-                          Измени поисковый запрос или включи показ неактивных связей.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </section>
-
-                <section className="app-surface rounded-2xl p-5">
-                  <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                      <h2 className="app-card-caption">Роли отдела</h2>
-                      <p className="app-text-muted mt-2 text-sm">
-                        Наборы прав для участников отдела и их назначение в составе команды.
-                      </p>
-                    </div>
-                    {h.userPerms.can_assign_roles ? (
-                      <button
-                        type="button"
-                        onClick={h.openCreateRole}
-                        className="app-action-primary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm"
-                      >
-                        <Plus size={14} />
-                        Создать роль
-                      </button>
-                    ) : null}
-                  </div>
-
-                  <div className="space-y-3">
-                    {h.roles.length ? (
-                      h.roles.map((role) => (
-                        <DepartmentRoleCard
-                          key={role.id}
-                          canAssignRoles={h.userPerms.can_assign_roles}
-                          pendingKey={h.pendingKey}
-                          role={role}
-                          usageCount={h.roleUsage[role.id] || 0}
-                          onDelete={h.submitRoleDelete}
-                          onEdit={h.openEditRole}
-                        />
-                      ))
-                    ) : (
-                      <div className="app-surface-muted rounded-xl p-8 text-center">
-                        <ShieldCheck size={24} className="app-text-muted mx-auto mb-3" />
-                        <p className="text-sm font-medium text-[var(--foreground)]">
-                          Роли ещё не созданы
-                        </p>
-                        <p className="app-text-muted mt-2 text-sm">
-                          Создай роли, чтобы распределять управленческие права внутри отдела.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </section>
-              </div>
-
-              <aside className="space-y-6">
-                <section className="app-surface rounded-2xl p-5">
-                  <h2 className="app-card-caption">Руководитель отдела</h2>
-                  <div className="mt-4 space-y-4">
-                    {h.department.head ? (
-                      <DepartmentPersonChip
+                <div className="space-y-3">
+                  {h.filteredMembers.length ? (
+                    h.filteredMembers.map((member) => (
+                      <DepartmentMemberRow
+                        key={`${member.employee.id}-${member.is_active ? "active" : "inactive"}`}
+                        canAssignRoles={h.userPerms.can_assign_roles}
+                        canChangeHead={h.userPerms.can_change_head}
+                        canManage={h.userPerms.can_manage}
+                        currentHeadId={h.department?.head?.id}
                         currentUserId={h.currentUserId}
-                        person={h.department.head}
-                        subtitle={h.department.head.position?.name || h.department.head.email}
+                        member={member}
+                        pendingKey={h.pendingKey}
+                        roleOptions={roleOptions}
+                        onAssignRole={h.submitMemberRole}
+                        onRemoveMember={h.submitRemoveMember}
+                        onSetHead={h.submitQuickHeadChange}
                       />
-                    ) : (
-                      <div className="app-surface-muted rounded-xl p-4 text-sm text-[var(--foreground)]">
-                        Руководитель пока не назначен.
-                      </div>
-                    )}
-
-                    {h.userPerms.can_change_head ? (
-                      <div className="app-surface-muted rounded-xl p-4">
-                        <SearchableSelectSingle
-                          label="Новый руководитель"
-                          items={h.headCandidates}
-                          selectedId={h.selectedHeadId}
-                          onSelect={h.setSelectedHeadId}
-                          placeholder="Выберите сотрудника"
-                          disabled={!h.headCandidates.length}
-                        />
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => void h.submitHeadChange()}
-                            disabled={h.pendingKey === "head"}
-                            className="app-action-primary rounded-lg px-4 py-2 text-sm disabled:opacity-50"
-                          >
-                            Сохранить руководителя
-                          </button>
-                          {h.department.head ? (
-                          <button
-                            type="button"
-                            onClick={() => void h.submitHeadRemoval()}
-                            disabled={h.pendingKey === "head"}
-                            className="app-action-secondary rounded-lg px-4 py-2 text-sm disabled:opacity-50"
-                          >
-                              Снять руководителя
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </section>
-
-                <section className="app-surface rounded-2xl p-5">
-                  <h2 className="app-card-caption">Права текущего пользователя</h2>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <PermissionBadge active={h.userPerms.is_head}>
-                      Руководитель отдела
-                    </PermissionBadge>
-                    <PermissionBadge active={h.userPerms.can_manage}>
-                      Управление составом
-                    </PermissionBadge>
-                    <PermissionBadge active={h.userPerms.can_change_head}>
-                      Смена руководителя
-                    </PermissionBadge>
-                    <PermissionBadge active={h.userPerms.can_assign_roles}>
-                      Назначение ролей
-                    </PermissionBadge>
-                  </div>
-                </section>
-
-                <section className="app-surface rounded-2xl p-5">
-                  <h2 className="app-card-caption">Состояние отдела</h2>
-                  <div className="mt-4 space-y-3">
-                    <div className="app-surface-muted rounded-xl p-4">
-                      <p className="app-text-muted text-xs uppercase tracking-[0.14em]">
-                        Всего связей
+                    ))
+                  ) : (
+                    <div className="app-surface-muted rounded-xl p-8 text-center">
+                      <Users size={24} className="app-text-muted mx-auto mb-3" />
+                      <p className="text-sm font-medium text-[var(--foreground)]">
+                        Участники не найдены
                       </p>
-                      <p className="mt-2 text-lg font-semibold text-[var(--foreground)]">
-                        {h.members.length}
+                      <p className="app-text-muted mt-2 text-sm">
+                        Измени поисковый запрос или включи показ неактивных связей.
                       </p>
                     </div>
-                    <div className="app-surface-muted rounded-xl p-4">
-                      <p className="app-text-muted text-xs uppercase tracking-[0.14em]">
-                        Активных участников
-                      </p>
-                      <p className="mt-2 text-lg font-semibold text-[var(--foreground)]">
-                        {activeMembersCount}
-                      </p>
-                    </div>
-                    <div className="app-surface-muted rounded-xl p-4">
-                      <p className="app-text-muted text-xs uppercase tracking-[0.14em]">
-                        Ролевых наборов
-                      </p>
-                      <p className="mt-2 text-lg font-semibold text-[var(--foreground)]">
-                        {h.roles.length}
-                      </p>
-                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section className="app-surface rounded-2xl p-5">
+                <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <h2 className="app-card-caption">Роли отдела</h2>
+                    <p className="app-text-muted mt-2 text-sm">
+                      Наборы прав для участников. Это secondary-настройка состава, а не основной центр страницы.
+                    </p>
                   </div>
-                </section>
-              </aside>
+                  {h.userPerms.can_assign_roles ? (
+                    <button
+                      type="button"
+                      onClick={h.openCreateRole}
+                      className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm"
+                    >
+                      <Plus size={14} />
+                      Создать роль
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="space-y-3">
+                  {h.roles.length ? (
+                    h.roles.map((role) => (
+                      <DepartmentRoleCard
+                        key={role.id}
+                        canAssignRoles={h.userPerms.can_assign_roles}
+                        pendingKey={h.pendingKey}
+                        role={role}
+                        usageCount={h.roleUsage[role.id] || 0}
+                        onDelete={h.submitRoleDelete}
+                        onEdit={h.openEditRole}
+                      />
+                    ))
+                  ) : (
+                    <div className="app-surface-muted rounded-xl p-8 text-center">
+                      <p className="text-sm font-medium text-[var(--foreground)]">
+                        Роли ещё не созданы
+                      </p>
+                      <p className="app-text-muted mt-2 text-sm">
+                        Создай роли, если внутри отдела нужно разделить управленческие права.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </section>
             </div>
           </>
         ) : null}
