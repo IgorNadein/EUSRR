@@ -1,7 +1,10 @@
 "use client";
 
 import { Modal } from "@/components/ui";
-import type { EmployeeActionField, EmployeeActionForm } from "@/lib/users/userDetailUtils";
+import type {
+  EmployeeActionField,
+  EmployeeActionForm,
+} from "@/lib/users/userDetailUtils";
 
 type EmployeeActionOption = {
   value: string;
@@ -27,23 +30,25 @@ export default function EmployeeActionModal({
   onFieldChange,
   onSave,
 }: EmployeeActionModalProps) {
+  const isSaving = actionLoading === "action";
+
   const footerContent = (
     <div className="flex gap-3">
       <button
         type="button"
         onClick={onClose}
-        disabled={actionLoading === "action"}
-        className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50"
+        disabled={isSaving}
+        className="app-action-secondary flex-1 rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-50"
       >
         Отмена
       </button>
       <button
         type="button"
         onClick={onSave}
-        disabled={actionLoading === "action" || !form.type || !form.date}
-        className="flex-1 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-sky-700 disabled:opacity-50"
+        disabled={isSaving || !form.type || !form.date}
+        className="app-action-primary flex-1 rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-50"
       >
-        {actionLoading === "action" ? "Сохранение..." : "Сохранить"}
+        {isSaving ? "Сохранение..." : "Сохранить"}
       </button>
     </div>
   );
@@ -54,55 +59,61 @@ export default function EmployeeActionModal({
       onClose={onClose}
       title={form.editingId ? "Редактировать событие" : "Кадровое событие"}
       size="sm"
-      closeOnEsc={actionLoading !== "action"}
+      closeOnEsc={!isSaving}
       footer={footerContent}
     >
       <div className="space-y-4">
-        <div>
-          <label htmlFor="action-type" className="mb-2 block text-sm font-medium text-gray-700">
-            Тип события *
+        <section className="app-surface-muted rounded-xl p-4">
+          <label htmlFor="action-type" className="block">
+            <span className="mb-2 block text-sm font-medium text-[var(--foreground)]">
+              Тип события *
+            </span>
+            <select
+              id="action-type"
+              value={form.type}
+              onChange={(event) => onFieldChange("type", event.target.value)}
+              className="app-select w-full rounded-lg px-4 py-2.5 text-sm"
+            >
+              <option value="">Выберите тип события</option>
+              {actionTypes.map((type) => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
+                </option>
+              ))}
+            </select>
           </label>
-          <select
-            id="action-type"
-            value={form.type}
-            onChange={(event) => onFieldChange("type", event.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-          >
-            <option value="">Выберите тип события</option>
-            {actionTypes.map((type) => (
-              <option key={type.value} value={type.value}>
-                {type.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        </section>
 
-        <div>
-          <label htmlFor="action-date" className="mb-2 block text-sm font-medium text-gray-700">
-            Дата *
+        <section className="app-surface-muted rounded-xl p-4">
+          <label htmlFor="action-date" className="block">
+            <span className="mb-2 block text-sm font-medium text-[var(--foreground)]">
+              Дата *
+            </span>
+            <input
+              id="action-date"
+              type="date"
+              value={form.date}
+              onChange={(event) => onFieldChange("date", event.target.value)}
+              className="app-input w-full rounded-lg px-4 py-2.5 text-sm"
+            />
           </label>
-          <input
-            id="action-date"
-            type="date"
-            value={form.date}
-            onChange={(event) => onFieldChange("date", event.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-          />
-        </div>
+        </section>
 
-        <div>
-          <label htmlFor="action-comment" className="mb-2 block text-sm font-medium text-gray-700">
-            Комментарий
+        <section className="app-surface-muted rounded-xl p-4">
+          <label htmlFor="action-comment" className="block">
+            <span className="mb-2 block text-sm font-medium text-[var(--foreground)]">
+              Комментарий
+            </span>
+            <textarea
+              id="action-comment"
+              value={form.comment}
+              onChange={(event) => onFieldChange("comment", event.target.value)}
+              placeholder="Дополнительная информация..."
+              rows={4}
+              className="app-input w-full rounded-xl px-4 py-2.5 text-sm"
+            />
           </label>
-          <textarea
-            id="action-comment"
-            value={form.comment}
-            onChange={(event) => onFieldChange("comment", event.target.value)}
-            placeholder="Дополнительная информация..."
-            rows={3}
-            className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-          />
-        </div>
+        </section>
       </div>
     </Modal>
   );

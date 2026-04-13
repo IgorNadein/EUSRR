@@ -27,7 +27,6 @@ import {
 import { useUser } from "@/contexts/UserContext";
 import { useUserDetailPage } from "@/hooks/useUserDetailPage";
 import { apiClient } from "@/lib/api";
-import { resolveMediaUrl } from "@/lib/url";
 import {
   formatBirthdayWithYear,
   formatProfileDate,
@@ -120,10 +119,10 @@ export default function UserDetailPage() {
         }>;
         if (!mounted) return;
         setAvailableSkills(response);
-      } catch (error: any) {
+      } catch (error: unknown) {
         if (!mounted) return;
         setSkillsError(
-          String(error?.message || "Не удалось загрузить список навыков"),
+          String((error as Error)?.message || "Не удалось загрузить список навыков"),
         );
       } finally {
         if (mounted) {
@@ -265,9 +264,9 @@ export default function UserDetailPage() {
       }
 
       setSkillName("");
-    } catch (error: any) {
+    } catch (error: unknown) {
       setSkillsError(
-        String(error?.message || "Не удалось добавить навык"),
+        String((error as Error)?.message || "Не удалось добавить навык"),
       );
     } finally {
       setSkillsSaving(false);

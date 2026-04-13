@@ -202,6 +202,8 @@
 - `users/EditUserProfileModal.tsx`
 - `users/EmployeeActionModal.tsx`
 - `users/EmployeeActionsTimeline.tsx`
+- `hooks/useProfilePage.ts`
+- `hooks/useUserDetailPage.ts`
 
 Использовать как референс для:
 
@@ -209,6 +211,7 @@
 - profile sections
 - info cards
 - action timeline
+- page-level profile controllers, которые держат loading/derived state/API orchestration вне page JSX
 
 ### Messages
 

@@ -30,7 +30,7 @@
 | `procurement` | `needs refactor` | крупные панели и часть detail blocks уже читаются неплохо, есть shared-like detail content | большой page-file, gray/white legacy в stats/suppliers/forms, смешение operational page и старых local panels | нормализовать page panels, suppliers/stats/forms и только потом решать дальнейшую декомпозицию |
 | `calendar` | `legacy-heavy` | богатая функциональность, много reusable доменных компонентов | historical layering, legacy-термины и неоднородные модалки | отдельный audit до системного refactor |
 | `messages` | `mixed` | зрелая interaction model, сильный composer и message item, app-style в основных экранах в целом выдержан | очень доменно-специфичный UX, крупные page-files, часть settings/create/chat-experiment flows ещё шумят по state/legacy dialogs | использовать выборочно как reference, без механического копирования в другие зоны; дальше резать state-heavy pages |
-| `users/profile` | `needs refactor` | хорошие profile sections, hero-like anatomy, action timeline, переиспользуемые section-level components | профиль визуально ощущается как screen из другого проекта, `/profile` и `/users/[id]` архитектурно несимметричны, модалки и часть users-list screens живут в gray/white legacy language | держать как reference по profile anatomy, но сделать отдельный alignment-pass по people/profile cluster без превращения его в request-like layout |
+| `users/profile` | `needs refactor` | хорошие profile sections, hero-like anatomy, action timeline, переиспользуемые section-level components, `/profile` и `/users/[id]` теперь оба опираются на page-level controllers | профиль всё ещё визуально ощущается как screen из другого проекта, `ProfileSections` держат custom hero geometry, users modals и часть users-list screens ещё тянут cluster назад | держать как reference по profile anatomy, но продолжить alignment-pass по people/profile cluster без превращения его в request-like layout |
 | `users/directory` | `needs refactor` | простые сценарии, понятные employee/user navigation flows | `users/page.tsx` и часть directory screens всё ещё в white/gray card language, визуально выпадают из app surfaces | после profile cluster пройтись по user/employee lists и привести их к общему app-shell contract |
 | `home/feed` | `mixed` | сильный app-shell fit, хорошая operational density, уже много app primitives | page очень большой, комментарии и post-compose logic перегружены, встречаются legacy `rounded-md` fragments | использовать как reference по feed density, но разрезать modal/comments/post flows и дочистить geometry |
 | `notifications` | `mixed` | близок к operational app-style, фильтры и list hierarchy уже читаются системно | page-level logic пока монолитная, нет выделенного feature controller, есть место для уплотнения и симметрии с messages/requests | после people cluster сделать короткий structural pass без крупного редизайна |
@@ -75,8 +75,8 @@
 
 Что делать:
 
-- вынести controller для `/profile` по аналогии с `useUserDetailPage`
-- убрать gray/white modal/forms debt из `EditUserProfileModal` и `EmployeeActionModal`
+- `/profile` уже переведён на page-level controller по аналогии с `useUserDetailPage`
+- `EditUserProfileModal` и `EmployeeActionModal` уже подтянуты к app-style primitives
 - нормализовать `ProfileSections` по геометрии без уничтожения hero/section contract
 - привести `users/page.tsx` к app-surface language
 
