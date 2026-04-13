@@ -131,6 +131,7 @@ export interface DepartmentMemberLink {
   employee: User;
   role?: DepartmentMemberRole | null;
   is_active: boolean;
+  via_assignment?: boolean;
 }
 
 export interface DepartmentUserPermissions {

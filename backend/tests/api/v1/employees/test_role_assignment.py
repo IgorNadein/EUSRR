@@ -168,6 +168,32 @@ class TestRoleAssignmentEndpoints:
         
         assert resp.status_code == status.HTTP_201_CREATED
 
+    def test_department_members_include_role_only_employees(self, api_client: APIClient):
+        """members endpoint показывает сотрудников с ролью в отделе даже без membership."""
+        admin = make_user("admin-members@test.com", is_staff=True)
+        dept = make_dept("IT")
+        role = make_role(dept, "Developer", [])
+        role_only_user = make_user("role-only@test.com")
+
+        RoleAssignment.objects.create(
+            employee=role_only_user,
+            role=role,
+            is_active=True,
+        )
+
+        api_client.force_authenticate(admin)
+        resp = api_client.get(f"/api/v1/departments/{dept.id}/members/")
+
+        assert resp.status_code == status.HTTP_200_OK
+        role_only_link = next(
+            item
+            for item in resp.data["results"]
+            if item["employee"]["id"] == role_only_user.id
+        )
+        assert role_only_link["via_assignment"] is True
+        assert role_only_link["is_active"] is True
+        assert role_only_link["role"]["name"] == "Developer"
+
 @pytest.mark.django_db
 class TestRoleAssignmentPermissions:
     """Тесты для проверки прав через RoleAssignment."""

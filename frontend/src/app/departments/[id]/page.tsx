@@ -103,6 +103,7 @@ function DepartmentMemberRow({
   const managementMode = canAssignRoles || canChangeHead || canManage;
   const roleLabel = member.role?.name || "Без роли";
   const isRoleMenuOpen = roleMenuOpenForId === member.employee.id;
+  const isRoleOnly = member.via_assignment === true;
   const personName = displayUserName(member.employee);
   const profileLink = userProfileLink(member.employee, currentUserId);
   const fallback = (
@@ -139,6 +140,7 @@ function DepartmentMemberRow({
             <Crown size={12} />
           </MetaChip>
         ) : null}
+        {isRoleOnly ? <MetaChip>Роль вне состава</MetaChip> : null}
       </span>
     );
 
@@ -282,6 +284,8 @@ function DepartmentMemberRow({
           </MetaChip>
         ) : null}
 
+        {isRoleOnly ? <MetaChip>Роль вне состава</MetaChip> : null}
+
         {canChangeHead && !isHead ? (
           <button
             type="button"
@@ -294,7 +298,7 @@ function DepartmentMemberRow({
           </button>
         ) : null}
 
-        {canManage && !isHead ? (
+        {canManage && !isHead && !isRoleOnly ? (
           <button
             type="button"
             onClick={() => void onRemoveMember(member.employee.id)}
