@@ -239,6 +239,30 @@ export function useRequestsPage(_userId: number | null | undefined) {
     () => filteredRequests.filter((request) => String(request.status || "").toLowerCase() === "pending" && request.can_decide),
     [filteredRequests],
   );
+  const pendingDecisionCount = pendingDecisionRequests.length;
+  const activeFiltersCount = useMemo(
+    () => [
+      view,
+      typeFilter,
+      statusFilter,
+      employeeFilter,
+      createdFromFilter,
+      createdToFilter,
+      periodFromFilter,
+      periodToFilter,
+    ].filter(Boolean).length,
+    [
+      view,
+      typeFilter,
+      statusFilter,
+      employeeFilter,
+      createdFromFilter,
+      createdToFilter,
+      periodFromFilter,
+      periodToFilter,
+    ],
+  );
+  const hasActiveFilters = activeFiltersCount > 0;
 
   /* ── form ── */
   const resetForm = () => setForm(createEmptyForm());
@@ -268,6 +292,8 @@ export function useRequestsPage(_userId: number | null | undefined) {
     setCreateOpen(true);
   };
 
+  const openSwipeMode = () => setSwipeMode(true);
+
   const closeModal = () => {
     setCreateOpen(false);
     setEditingRequest(null);
@@ -285,6 +311,8 @@ export function useRequestsPage(_userId: number | null | undefined) {
     setPeriodFromFilter("");
     setPeriodToFilter("");
   };
+
+  const toggleFilters = () => setFiltersOpen((value) => !value);
 
   /* ── CRUD ── */
   const handleCreateOrUpdate = async (mode: "create" | "edit", saveAs: "draft" | "submit") => {
@@ -488,7 +516,12 @@ export function useRequestsPage(_userId: number | null | undefined) {
     filtersOpen, setFiltersOpen,
     ordering, setOrdering,
     swipeMode, setSwipeMode,
+    activeFiltersCount,
+    hasActiveFilters,
+    pendingDecisionCount,
     clearFilters,
+    toggleFilters,
+    openSwipeMode,
 
     /* UI */
     attachmentPreview, setAttachmentPreview,

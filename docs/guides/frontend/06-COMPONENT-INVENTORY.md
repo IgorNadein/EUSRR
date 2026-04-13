@@ -180,6 +180,7 @@
 - compose-like form pattern
 - detail modal с participant-heavy content
 - page-level toolbar/filter block, который вынесен из страницы в feature component
+- feature-local controls contract, где toolbar/filter state и actions сгруппированы вместо длинного списка разрозненных props
 - dense list row с actions/comments/expandable secondary content, где row anatomy разложена на action rail, content column и отдельные detail/comments panels
 - feature container для list shell, который собирает rows + empty state + load more
 - отдельный mode-panel для alternate flow вроде swipe-review

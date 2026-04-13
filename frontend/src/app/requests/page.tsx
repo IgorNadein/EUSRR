@@ -39,6 +39,43 @@ function RequestsPageContent() {
     requests: h.requests,
     setDetailsRequest: h.setDetailsRequest,
   });
+  const requestControlsActions = {
+    clearFilters: h.clearFilters,
+    openCreate: h.openCreate,
+    openSwipeMode: h.openSwipeMode,
+    setCreatedFromFilter: h.setCreatedFromFilter,
+    setCreatedToFilter: h.setCreatedToFilter,
+    setEmployeeFilter: h.setEmployeeFilter,
+    setOrdering: h.setOrdering,
+    setPeriodFromFilter: h.setPeriodFromFilter,
+    setPeriodToFilter: h.setPeriodToFilter,
+    setSearch: h.setSearch,
+    setStatusFilter: h.setStatusFilter,
+    setTypeFilter: h.setTypeFilter,
+    setView: h.setView,
+    toggleFilters: h.toggleFilters,
+  };
+  const requestControlsFeedback = {
+    actionError: h.actionError,
+    actionSuccess: h.actionSuccess,
+  };
+  const requestControlsState = {
+    activeFiltersCount: h.activeFiltersCount,
+    createdFromFilter: h.createdFromFilter,
+    createdToFilter: h.createdToFilter,
+    employeeFilter: h.employeeFilter,
+    employees: h.employees,
+    filtersOpen: h.filtersOpen,
+    hasActiveFilters: h.hasActiveFilters,
+    ordering: h.ordering,
+    pendingDecisionCount: h.pendingDecisionCount,
+    periodFromFilter: h.periodFromFilter,
+    periodToFilter: h.periodToFilter,
+    search: h.search,
+    statusFilter: h.statusFilter,
+    typeFilter: h.typeFilter,
+    view: h.view,
+  };
 
   return (
     <AppShell>
@@ -62,35 +99,9 @@ function RequestsPageContent() {
           ) : (
           <>
           <RequestListControls
-            actionError={h.actionError}
-            actionSuccess={h.actionSuccess}
-            createdFromFilter={h.createdFromFilter}
-            createdToFilter={h.createdToFilter}
-            employeeFilter={h.employeeFilter}
-            employees={h.employees}
-            filtersOpen={h.filtersOpen}
-            onClearFilters={h.clearFilters}
-            onOpenCreate={h.openCreate}
-            onSetCreatedFromFilter={h.setCreatedFromFilter}
-            onSetCreatedToFilter={h.setCreatedToFilter}
-            onSetEmployeeFilter={h.setEmployeeFilter}
-            onSetOrdering={h.setOrdering}
-            onSetPeriodFromFilter={h.setPeriodFromFilter}
-            onSetPeriodToFilter={h.setPeriodToFilter}
-            onSetSearch={h.setSearch}
-            onSetStatusFilter={h.setStatusFilter}
-            onSetTypeFilter={h.setTypeFilter}
-            onSetView={h.setView}
-            onStartSwipeMode={() => h.setSwipeMode(true)}
-            onToggleFilters={() => h.setFiltersOpen((value) => !value)}
-            ordering={h.ordering}
-            pendingDecisionCount={h.pendingDecisionRequests.length}
-            periodFromFilter={h.periodFromFilter}
-            periodToFilter={h.periodToFilter}
-            search={h.search}
-            statusFilter={h.statusFilter}
-            typeFilter={h.typeFilter}
-            view={h.view}
+            actions={requestControlsActions}
+            feedback={requestControlsFeedback}
+            state={requestControlsState}
           />
           <RequestListSection
             busyKey={h.busyKey}
