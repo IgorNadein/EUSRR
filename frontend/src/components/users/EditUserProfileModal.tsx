@@ -116,7 +116,9 @@ export default function EditUserProfileModal({
         <div className="space-y-4">
           <section className="app-surface-muted rounded-xl p-4">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-              <div className="app-avatar-frame flex h-20 w-20 items-center justify-center overflow-hidden rounded-full shrink-0">
+              <div
+                className={`flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full text-xl font-semibold ${form.avatarPreview || (avatarUrl && !avatarFailed) ? "app-avatar-frame" : "app-avatar-fallback"}`}
+              >
                 {form.avatarPreview ? (
                   <Image
                     src={form.avatarPreview}
@@ -136,9 +138,7 @@ export default function EditUserProfileModal({
                     unoptimized
                   />
                 ) : (
-                  <span className="app-avatar-fallback flex h-full w-full items-center justify-center text-xl font-semibold">
-                    {initials}
-                  </span>
+                  initials
                 )}
               </div>
 

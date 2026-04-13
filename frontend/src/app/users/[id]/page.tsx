@@ -318,7 +318,9 @@ export default function UserDetailPage() {
                 ) : null
               }
               avatar={
-                <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full app-avatar-frame">
+                <div
+                  className={`flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full text-2xl font-semibold ${avatarUrl && !avatarFailed ? "app-avatar-frame" : "app-avatar-fallback"}`}
+                >
                   {avatarUrl && !avatarFailed ? (
                     <Image
                       src={avatarUrl}
@@ -330,9 +332,7 @@ export default function UserDetailPage() {
                       unoptimized
                     />
                   ) : (
-                    <div className="app-avatar-fallback flex h-full w-full items-center justify-center text-2xl font-semibold">
-                      {initials}
-                    </div>
+                    initials
                   )}
                 </div>
               }

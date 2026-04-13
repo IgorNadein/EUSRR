@@ -122,7 +122,9 @@ export default function ProfilePage() {
             ) : null
           }
           avatar={
-            <div className="app-avatar-frame h-20 w-20 shrink-0 overflow-hidden rounded-full">
+            <div
+              className={`${user.avatar ? "app-avatar-frame" : "app-avatar-fallback"} flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full text-2xl font-semibold`}
+            >
               {user.avatar ? (
                 <Image
                   src={resolveMediaUrl(user.avatar)}
@@ -133,9 +135,7 @@ export default function ProfilePage() {
                   unoptimized
                 />
               ) : (
-                <div className="app-avatar-fallback flex h-full w-full items-center justify-center text-2xl font-semibold">
-                  {initials(user.first_name, user.last_name)}
-                </div>
+                initials(user.first_name, user.last_name)
               )}
             </div>
           }

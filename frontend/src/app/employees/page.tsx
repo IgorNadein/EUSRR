@@ -188,7 +188,9 @@ export default function EmployeesPage() {
                   href={`/users/${employee.id}`}
                   className="flex min-w-0 flex-1 items-center gap-4"
                 >
-                  <div className="app-avatar-frame flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full">
+                  <div
+                    className={`${employee.avatar ? "app-avatar-frame" : "app-avatar-fallback"} flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-semibold`}
+                  >
                     {employee.avatar ? (
                       <Image
                         src={resolveMediaUrl(employee.avatar)}
@@ -199,9 +201,7 @@ export default function EmployeesPage() {
                         unoptimized
                       />
                     ) : (
-                      <span className="app-avatar-fallback flex h-full w-full items-center justify-center text-sm font-semibold">
-                        {initials}
-                      </span>
+                      initials
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
