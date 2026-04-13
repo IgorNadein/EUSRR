@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
   ArrowLeft,
   Building2,
@@ -12,6 +12,7 @@ import {
   Crown,
   PencilLine,
   Plus,
+  Search,
   Trash2,
   UserPlus,
   Users,
@@ -23,7 +24,6 @@ import {
   getDepartmentMembersListClassName,
 } from "@/components/departments/layout";
 import {
-  getDepartmentMemberModalEmployeeLabel,
   getDepartmentMemberModalHelperText,
   getDepartmentMemberModalItems,
   getDepartmentMemberModalPlaceholder,
@@ -36,7 +36,7 @@ import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
 import { Modal } from "@/components/ui/Modal";
 import { useDepartmentPage } from "@/hooks/useDepartmentPage";
 import { displayUserName, userProfileLink } from "@/lib/shared";
-import type { DepartmentMemberLink } from "@/types/api";
+import type { DepartmentMemberLink, User } from "@/types/api";
 
 type DepartmentMemberModalMode = "add" | "assignRole";
 
@@ -417,7 +417,7 @@ function AddMemberModal({
   canAssignRoles: boolean;
   directoryError: string | null;
   isOpen: boolean;
-  items: Array<{ id: number; name: string }>;
+  items: User[];
   loading: boolean;
   mode: DepartmentMemberModalMode;
   optionsLoading: boolean;
@@ -431,6 +431,12 @@ function AddMemberModal({
   selectedId: number | null;
   selectedRoleId: number | null;
 }) {
+  const [query, setQuery] = useState("");
+  const handleClose = () => {
+    setQuery("");
+    onClose();
+  };
+
   const helperText = getDepartmentMemberModalHelperText(
     mode,
     optionsLoading,
@@ -443,11 +449,26 @@ function AddMemberModal({
     selectedEmployeeId: selectedId,
     selectedRoleId,
   });
+  const filteredItems = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return items;
+
+    return items.filter((employee) => {
+      const personName = displayUserName(employee).toLowerCase();
+      const email = (employee.email || "").toLowerCase();
+      const position = (employee.position?.name || "").toLowerCase();
+      return (
+        personName.includes(normalizedQuery) ||
+        email.includes(normalizedQuery) ||
+        position.includes(normalizedQuery)
+      );
+    });
+  }, [items, query]);
 
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={handleClose}
       title={getDepartmentMemberModalTitle(mode)}
       size="md"
       className="overflow-visible"
@@ -455,7 +476,7 @@ function AddMemberModal({
         <div className="flex flex-wrap justify-end gap-2">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="app-action-secondary rounded-lg px-4 py-2 text-sm"
           >
             Отмена
@@ -472,14 +493,87 @@ function AddMemberModal({
       }
     >
       <section className="app-surface-muted space-y-4 rounded-xl p-4">
-        <SearchableSelectSingle
-          label={getDepartmentMemberModalEmployeeLabel(mode)}
-          items={items}
-          selectedId={selectedId}
-          onSelect={onSelect}
-          placeholder={getDepartmentMemberModalPlaceholder(mode, optionsLoading)}
-          disabled={selectDisabled}
-        />
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-secondary)] px-3 py-2.5">
+            <Search size={16} className="app-text-muted shrink-0" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={getDepartmentMemberModalPlaceholder(mode, optionsLoading)}
+              disabled={selectDisabled}
+              className="min-w-0 flex-1 bg-transparent text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] disabled:cursor-not-allowed"
+            />
+          </div>
+
+          <div className="flex items-center justify-between px-1 text-xs">
+            <span className="app-text-muted">
+              {optionsLoading ? "Загружаем сотрудников..." : `Найдено: ${filteredItems.length}`}
+            </span>
+            <span className="app-accent-text font-medium">
+              Выбрано: {selectedId ? 1 : 0}
+            </span>
+          </div>
+
+          <div className="app-surface max-h-72 space-y-2 overflow-y-auto rounded-2xl p-2">
+            {!directoryError && !optionsLoading && filteredItems.length > 0 ? (
+              filteredItems.map((employee) => {
+                const isSelected = selectedId === employee.id;
+                const personName = displayUserName(employee);
+                const fallback = (
+                  employee.first_name?.[0] ||
+                  employee.last_name?.[0] ||
+                  employee.email?.[0] ||
+                  "?"
+                ).toUpperCase();
+
+                return (
+                  <button
+                    key={employee.id}
+                    type="button"
+                    onClick={() => onSelect(isSelected ? null : employee.id)}
+                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
+                      isSelected
+                        ? "app-selected"
+                        : "app-surface-muted hover:bg-[var(--surface-tertiary)]"
+                    }`}
+                  >
+                    <RequestAvatar
+                      alt={personName}
+                      fallback={fallback}
+                      size="lg"
+                      src={employee.avatar}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-[var(--foreground)]">
+                        {personName}
+                      </div>
+                      <div className="truncate text-xs text-[var(--muted-foreground)]">
+                        {employee.email || employee.position?.name || "Сотрудник"}
+                      </div>
+                    </div>
+                    <div
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition ${
+                        isSelected
+                          ? "border-[color:var(--accent-primary)] bg-[var(--accent-primary)] text-white"
+                          : "border-[color:var(--border-strong)] text-transparent"
+                      }`}
+                      aria-hidden="true"
+                    >
+                      <Check size={14} />
+                    </div>
+                  </button>
+                );
+              })
+            ) : !directoryError && !optionsLoading ? (
+              <div className="app-surface-muted rounded-xl px-3 py-6 text-center">
+                <p className="text-sm font-medium text-[var(--foreground)]">Ничего не найдено</p>
+                <p className="app-text-muted mt-1 text-xs">
+                  Попробуй изменить запрос или очистить поиск.
+                </p>
+              </div>
+            ) : null}
+          </div>
+        </div>
 
         {directoryError ? (
           <div className="app-feedback-danger rounded-xl p-3 text-sm">

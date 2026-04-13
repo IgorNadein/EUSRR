@@ -35,7 +35,7 @@ type SavingKey =
 export type DepartmentPageController = {
   addMemberOpen: boolean;
   allEmployees: User[];
-  assignableEmployees: Array<{ id: number; name: string }>;
+  assignableEmployees: User[];
   currentUserId: number | null;
   department: Department | null;
   departmentDraft: { name: string; description: string };
@@ -54,7 +54,7 @@ export type DepartmentPageController = {
   roleEditorOpen: boolean;
   roleUsage: Record<number, number>;
   roles: DepartmentRole[];
-  selectableEmployees: Array<{ id: number; name: string }>;
+  selectableEmployees: User[];
   selectedHeadId: number | null;
   selectedMemberId: number | null;
   selectedRoleId: number | null;
@@ -272,19 +272,11 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
       members.filter((member) => member.is_active).map((member) => member.employee.id),
     );
 
-    return allEmployees
-      .filter((employee) => !activeIds.has(employee.id))
-      .map((employee) => ({
-        id: employee.id,
-        name: `${employee.last_name || ""} ${employee.first_name || ""}`.trim() || employee.email,
-      }));
+    return allEmployees.filter((employee) => !activeIds.has(employee.id));
   }, [allEmployees, members]);
 
   const assignableEmployees = useMemo(() => {
-    return allEmployees.map((employee) => ({
-      id: employee.id,
-      name: `${employee.last_name || ""} ${employee.first_name || ""}`.trim() || employee.email,
-    }));
+    return allEmployees;
   }, [allEmployees]);
 
   const headCandidates = useMemo(() => {
