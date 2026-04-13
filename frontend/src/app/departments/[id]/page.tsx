@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
   ArrowLeft,
+  BadgePlus,
   Building2,
   Check,
   ChevronDown,
@@ -14,6 +15,7 @@ import {
   Plus,
   Search,
   Trash2,
+  UserRoundCog,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -869,7 +871,7 @@ export default function DepartmentDetailPage() {
                             }}
                             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
                           >
-                            <Plus size={14} className="app-text-muted" />
+                            <UserRoundCog size={14} className="app-text-muted" />
                             Выдать роль
                           </button>
                         ) : null}
@@ -884,7 +886,7 @@ export default function DepartmentDetailPage() {
                             }}
                             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
                           >
-                            <Plus size={14} className="app-text-muted" />
+                            <BadgePlus size={14} className="app-text-muted" />
                             Создать роль
                           </button>
                         ) : null}
