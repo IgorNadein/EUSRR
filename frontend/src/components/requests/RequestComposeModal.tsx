@@ -19,6 +19,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
+import { RequestUserBadge } from "./RequestUserBadge";
 
 type RequestComposeModalProps = {
   actionError: string | null;
@@ -70,7 +71,7 @@ export function RequestComposeModal({
   const selectableEmployees = useMemo(
     () => employees
       .filter((employee) => !currentUserId || employee.id !== currentUserId)
-      .map((employee) => ({ id: employee.id, name: displayUserName(employee) })),
+      .map((employee) => ({ id: employee.id, name: displayUserName(employee), user: employee })),
     [currentUserId, employees],
   );
 
@@ -312,6 +313,13 @@ export function RequestComposeModal({
               items={selectableEmployees}
               selectedIds={form.recipient_ids}
               onToggle={(id) => toggleSelection("recipient_ids", id)}
+              renderSelectedItem={(item) => (
+                <RequestUserBadge
+                  person={item.user}
+                  currentUserId={currentUserId}
+                  disableLink
+                />
+              )}
             />
             {showCcField && (
               <SearchableSelectMulti
@@ -321,6 +329,13 @@ export function RequestComposeModal({
                 items={selectableEmployees}
                 selectedIds={form.cc_user_ids}
                 onToggle={(id) => toggleSelection("cc_user_ids", id)}
+                renderSelectedItem={(item) => (
+                  <RequestUserBadge
+                    person={item.user}
+                    currentUserId={currentUserId}
+                    disableLink
+                  />
+                )}
               />
             )}
           </div>

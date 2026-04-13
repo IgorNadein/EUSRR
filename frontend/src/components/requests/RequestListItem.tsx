@@ -53,16 +53,7 @@ type RequestListItemProps = {
 function renderDecisionMaker(decisionMaker: User | undefined, currentUserId?: number | null) {
   if (!decisionMaker) return <span className="app-text-muted">—</span>;
 
-  const decisionMakerLink = userProfileLink(decisionMaker, currentUserId);
-  const decisionMakerName = displayUserName(decisionMaker);
-
-  return decisionMakerLink ? (
-    <Link href={decisionMakerLink} className="app-link-accent font-medium">
-      {decisionMakerName}
-    </Link>
-  ) : (
-    <span className="font-medium text-[var(--foreground)]">{decisionMakerName}</span>
-  );
+  return <RequestUserBadge person={decisionMaker} currentUserId={currentUserId} />;
 }
 
 export function RequestListItem({

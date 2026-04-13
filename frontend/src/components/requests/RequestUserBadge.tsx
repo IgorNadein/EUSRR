@@ -5,12 +5,14 @@ import { RequestAvatar } from "./RequestAvatar";
 
 type RequestUserBadgeProps = {
   currentUserId?: number | null;
+  disableLink?: boolean;
   large?: boolean;
   person: User;
 };
 
 export function RequestUserBadge({
   currentUserId,
+  disableLink = false,
   large = false,
   person,
 }: RequestUserBadgeProps) {
@@ -31,7 +33,7 @@ export function RequestUserBadge({
 
   const className = `app-badge inline-flex max-w-full items-center gap-2 rounded-full ${large ? "px-3 py-1.5 text-sm" : "px-2.5 py-1 text-xs"} font-medium`;
 
-  return personLink
+  return personLink && !disableLink
     ? <Link href={personLink} className={`${className} hover:bg-[var(--surface-tertiary)]`}>{chip}</Link>
     : <span className={className}>{chip}</span>;
 }

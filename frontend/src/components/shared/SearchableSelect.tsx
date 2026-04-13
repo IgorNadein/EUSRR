@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
+import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 
 /* ── Single-select dropdown with search ── */
@@ -91,7 +92,7 @@ export function SearchableSelectSingle<T extends string | number>({
 }
 
 /* ── Multi-select dropdown with search ── */
-export function SearchableSelectMulti({
+export function SearchableSelectMulti<T extends { id: number; name: string }>({
   label,
   items,
   selectedIds,
@@ -99,14 +100,16 @@ export function SearchableSelectMulti({
   placeholder,
   layout = "stacked",
   className = "",
+  renderSelectedItem,
 }: {
   label: string;
-  items: { id: number; name: string }[];
+  items: T[];
   selectedIds: number[];
   onToggle: (id: number) => void;
   placeholder?: string;
   layout?: "stacked" | "inline";
   className?: string;
+  renderSelectedItem?: (item: T) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -140,9 +143,15 @@ export function SearchableSelectMulti({
             <span className="app-text-muted w-14 shrink-0 pt-0.5 text-sm font-medium">{label}</span>
             <span className="flex min-w-0 flex-1 flex-wrap gap-1.5">
               {selectedItems.length > 0 ? selectedItems.map((item) => (
-                <span key={item.id} className="app-badge inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-medium">
-                  <span className="truncate">{item.name}</span>
-                </span>
+                renderSelectedItem ? (
+                  <span key={item.id} className="min-w-0 max-w-full">
+                    {renderSelectedItem(item)}
+                  </span>
+                ) : (
+                  <span key={item.id} className="app-badge inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-medium">
+                    <span className="truncate">{item.name}</span>
+                  </span>
+                )
               )) : <span className="app-text-muted py-0.5">{placeholder || "Выбрать..."}</span>}
             </span>
           </>
