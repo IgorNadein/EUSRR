@@ -197,11 +197,11 @@ function DepartmentMemberRow({
             </button>
 
             {isRoleMenuOpen ? (
-              <div className="app-surface absolute left-0 top-[calc(100%+0.5rem)] z-30 min-w-[220px] rounded-xl p-2 shadow-[0_12px_32px_rgba(0,0,0,0.35)]">
-                <div className="mb-1 px-2 py-1 text-xs font-medium text-[var(--muted-foreground)]">
+              <div className="app-menu absolute left-0 top-[calc(100%+0.5rem)] z-30 min-w-[220px] rounded-xl py-1.5">
+                <div className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
                   Роль участника
                 </div>
-                <div className="space-y-1">
+                <div className="py-1">
                   {roleOptions.map((role) => {
                     const isSelected = member.role?.id === role.id;
                     return (
@@ -213,13 +213,17 @@ function DepartmentMemberRow({
                           void onAssignRole(member.employee.id, role.id);
                         }}
                         disabled={isRoleBusy}
-                        className="app-action-secondary flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm disabled:opacity-50"
+                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)] disabled:opacity-50"
                       >
                         <span className="truncate">{role.name}</span>
-                        {isSelected ? <Check size={14} className="shrink-0" /> : null}
+                        {isSelected ? <Check size={14} className="app-accent-text shrink-0" /> : null}
                       </button>
                     );
                   })}
+
+                  {member.role ? (
+                    <div className="app-divider my-1 border-t" />
+                  ) : null}
 
                   {member.role ? (
                     <button
@@ -229,22 +233,23 @@ function DepartmentMemberRow({
                         void onAssignRole(member.employee.id, null);
                       }}
                       disabled={isRoleBusy}
-                      className="app-action-danger flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm disabled:opacity-50"
+                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-[var(--danger-foreground)] transition hover:bg-[var(--danger-soft)] disabled:opacity-50"
                     >
                       <span>Снять роль</span>
-                      <Trash2 size={14} className="shrink-0" />
+                      <Trash2 size={14} className="shrink-0 text-[var(--danger-foreground)]" />
                     </button>
                   ) : null}
 
+                  <div className="app-divider my-1 border-t" />
                   <button
                     type="button"
                     onClick={() => {
                       onToggleRoleMenu(null);
                       onCreateRole();
                     }}
-                    className="app-action-secondary flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
                   >
-                    <Plus size={14} className="shrink-0" />
+                    <Plus size={14} className="app-text-muted shrink-0" />
                     Создать роль
                   </button>
                 </div>
