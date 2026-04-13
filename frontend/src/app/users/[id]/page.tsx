@@ -296,12 +296,12 @@ export default function UserDetailPage() {
         </div>
 
         {loading ? (
-          <section className="app-surface rounded-[24px] p-8 text-center">
+          <section className="app-surface rounded-2xl p-8 text-center">
             <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-[var(--border-subtle)] border-t-[var(--accent-primary)]" />
             <p className="app-text-muted text-sm">Загрузка сотрудника...</p>
           </section>
         ) : error ? (
-          <section className="app-surface rounded-[24px] p-6 text-center">
+          <section className="app-surface rounded-2xl p-6 text-center">
             <p className="text-sm text-red-400">{error}</p>
           </section>
         ) : person ? (
@@ -407,7 +407,7 @@ export default function UserDetailPage() {
             <ProfileInfoCard items={infoItems} />
 
             {person.departments?.length ? (
-              <section className="app-surface rounded-[24px] p-5">
+              <section className="app-surface rounded-2xl p-5">
                 <div className="mb-4">
                   <h2 className="app-card-caption">Отделы</h2>
                 </div>

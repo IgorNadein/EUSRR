@@ -30,8 +30,8 @@
 | `procurement` | `needs refactor` | крупные панели и часть detail blocks уже читаются неплохо, есть shared-like detail content | большой page-file, gray/white legacy в stats/suppliers/forms, смешение operational page и старых local panels | нормализовать page panels, suppliers/stats/forms и только потом решать дальнейшую декомпозицию |
 | `calendar` | `legacy-heavy` | богатая функциональность, много reusable доменных компонентов | historical layering, legacy-термины и неоднородные модалки | отдельный audit до системного refactor |
 | `messages` | `mixed` | зрелая interaction model, сильный composer и message item, app-style в основных экранах в целом выдержан | очень доменно-специфичный UX, крупные page-files, часть settings/create/chat-experiment flows ещё шумят по state/legacy dialogs | использовать выборочно как reference, без механического копирования в другие зоны; дальше резать state-heavy pages |
-| `users/profile` | `mixed` | хорошие profile sections, hero-like anatomy, action timeline, переиспользуемые section-level components, `/profile` и `/users/[id]` теперь оба опираются на page-level controllers, modals подтянуты к app-style | profile cluster уже выровнен структурно, но hero/section character всё ещё требует финальной product-tuning и часть user detail blocks остаётся локально особенной | держать как reference по profile anatomy и завершить alignment-pass точечно, без превращения его в request-like layout |
-| `users/directory` | `mixed` | `users/page.tsx` уже живёт в app-surface language, сценарии user/employee navigation простые и понятные | `employees/page.tsx` и часть directory flows ещё не доведены до того же visual contract, cluster всё ещё не полностью симметричен | после profile cluster пройтись по employee directory и довести весь people-list слой до одного app-shell contract |
+| `users/profile` | `mixed` | хорошие profile sections, hero-like anatomy, action timeline, переиспользуемые section-level components, `/profile` и `/users/[id]` опираются на page-level controllers, modals подтянуты к app-style, локальные detail blocks выровнены по геометрии | profile cluster уже собран в одну систему, но hero/section character всё ещё требует ручного visual review перед тем, как считать его зрелым reference | держать как reference по profile anatomy и возвращаться только на точечный visual-tuning без новой structural волны |
+| `users/directory` | `mixed` | `users/page.tsx` и `employees/page.tsx` уже живут в app-surface language, сценарии user/employee navigation выровнены и читаются как один cluster | список людей всё ещё проще и беднее по interaction density, чем основные рабочие модули, поэтому это не полноценный stylistic reference | считать baseline-pass завершённым и трогать дальше только при появлении richer directory requirements |
 | `home/feed` | `mixed` | сильный app-shell fit, хорошая operational density, уже много app primitives | page очень большой, комментарии и post-compose logic перегружены, встречаются legacy `rounded-md` fragments | использовать как reference по feed density, но разрезать modal/comments/post flows и дочистить geometry |
 | `notifications` | `mixed` | близок к operational app-style, фильтры и list hierarchy уже читаются системно | page-level logic пока монолитная, нет выделенного feature controller, есть место для уплотнения и симметрии с messages/requests | после people cluster сделать короткий structural pass без крупного редизайна |
 | `departments` | `mixed` | page/detail screens небольшие и уже живут в app-shell language | не хватает единых richer patterns между list/detail, зона выглядит недоразвитой по сравнению с остальными модулями | low-cost pass после крупных зон: выровнять richness и reuse |
@@ -51,7 +51,6 @@
 7. отдельный audit по `calendar`
 8. `departments`
 9. `auth/legal`
-10. завершение `users/profile` + `users/directory` residual pass
 
 Логика порядка:
 
@@ -71,20 +70,20 @@
 
 Статус:
 
-- базовый structural + modal + directory-shell pass уже сделан
+- wave 1 baseline pass завершён
 
 Цель:
 
 - подтянуть people/profile cluster к общему product feel без потери profile anatomy
 
-Что осталось:
+Что зафиксировано:
 
 - `/profile` уже переведён на page-level controller по аналогии с `useUserDetailPage`
 - `EditUserProfileModal` и `EmployeeActionModal` уже подтянуты к app-style primitives
 - `ProfileSections` уже нормализованы по базовой геометрии без слома anatomy
 - `users/page.tsx` уже переведён на app-surface language
-- отдельно добить `employees/page.tsx` и остаточные локальные blocks в `/users/[id]`
-- при необходимости сделать финальный visual-tuning hero density после ручного review
+- `employees/page.tsx` и остаточные локальные blocks в `/users/[id]` уже приведены к тому же cluster contract
+- дальнейший проход нужен только если после ручного review выяснится, что hero density всё ещё визуально выбивается
 
 ### Волна 2. Operational pages with high leverage
 
