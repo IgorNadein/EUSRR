@@ -46,3 +46,28 @@ def format_iso_date(value, format_string="d.m.Y"):
     except (ValueError, AttributeError):
         # Если не удалось распарсить, возвращаем первые 10 символов
         return str(value)[:10] if value else ""
+
+
+@register.filter
+def can_decide_request(request_obj, user):
+    """Проверяет, является ли пользователь прямым получателем заявки."""
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+
+    recipients = getattr(request_obj, "recipients", None)
+    if recipients is None and isinstance(request_obj, dict):
+        recipients = request_obj.get("recipients")
+
+    if recipients is None:
+        return False
+
+    if hasattr(recipients, "filter"):
+        return recipients.filter(id=user.id).exists()
+
+    for recipient in recipients:
+        if isinstance(recipient, dict) and recipient.get("id") == user.id:
+            return True
+        if getattr(recipient, "id", None) == user.id:
+            return True
+
+    return False

@@ -7,6 +7,7 @@ from rest_framework.exceptions import ValidationError
 
 # VACATION/SICK_LEAVE/TRANSFER/DISMISSAL/OTHER
 from requests_app.enums import RequestType
+from requests_app.enums import RequestStatus
 
 
 class RequestDatesByTypeValidator:
@@ -23,7 +24,24 @@ class RequestDatesByTypeValidator:
 
     requires_context = True
 
+    def _is_draft_mode(self, serializer) -> bool:
+        request = serializer.context.get("request")
+        save_as = (
+            (getattr(getattr(request, "query_params", None), "get", lambda *_: "")("save_as") or "")
+            .strip()
+            .lower()
+        )
+        if save_as == "draft":
+            return True
+        if save_as == "submit":
+            return False
+        instance = getattr(serializer, "instance", None)
+        return getattr(instance, "status", None) == RequestStatus.DRAFT
+
     def __call__(self, attrs: Mapping[str, Any], serializer) -> None:
+        if self._is_draft_mode(serializer):
+            return
+
         instance = getattr(serializer, "instance", None)
 
         # Определяем «эффективные» значения с учётом instance
@@ -70,7 +88,24 @@ class RequestApproverNotEmployeeValidator:
 
     requires_context = True
 
+    def _is_draft_mode(self, serializer) -> bool:
+        request = serializer.context.get("request")
+        save_as = (
+            (getattr(getattr(request, "query_params", None), "get", lambda *_: "")("save_as") or "")
+            .strip()
+            .lower()
+        )
+        if save_as == "draft":
+            return True
+        if save_as == "submit":
+            return False
+        instance = getattr(serializer, "instance", None)
+        return getattr(instance, "status", None) == RequestStatus.DRAFT
+
     def __call__(self, attrs: Mapping[str, Any], serializer) -> None:
+        if self._is_draft_mode(serializer):
+            return
+
         instance = getattr(serializer, "instance", None)
 
         def eff(name: str) -> Any:
