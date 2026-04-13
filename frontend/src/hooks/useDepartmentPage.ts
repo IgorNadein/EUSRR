@@ -42,7 +42,6 @@ export type DepartmentPageController = {
   headCandidates: Array<{ id: number; name: string }>;
   loading: boolean;
   members: DepartmentMemberLink[];
-  membersQuery: string;
   pendingKey: SavingKey | null;
   roleDraft: DepartmentRoleDraft;
   roleEditorOpen: boolean;
@@ -62,7 +61,6 @@ export type DepartmentPageController = {
   refreshPage: () => Promise<void>;
   saveDepartment: () => Promise<void>;
   saveRole: () => Promise<void>;
-  setMembersQuery: (value: string) => void;
   setRoleDraft: (next: DepartmentRoleDraft | ((current: DepartmentRoleDraft) => DepartmentRoleDraft)) => void;
   setSelectedHeadId: (id: number | null) => void;
   setSelectedMemberId: (id: number | null) => void;
@@ -129,7 +127,6 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pendingKey, setPendingKey] = useState<SavingKey | null>(null);
-  const [membersQuery, setMembersQuery] = useState("");
 
   const [editDepartmentOpen, setEditDepartmentOpen] = useState(false);
   const [departmentDraft, setDepartmentDraft] = useState({ name: "", description: "" });
@@ -228,32 +225,13 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   }, [allEmployees.length, loadEmployeesDirectory, userPerms]);
 
   const filteredMembers = useMemo(() => {
-    const q = membersQuery.trim().toLowerCase();
-
     return members.filter((item) => {
       if (!item.is_active) {
         return false;
       }
-
-      if (!q) {
-        return true;
-      }
-
-      const employeeName = `${item.employee.last_name || ""} ${item.employee.first_name || ""} ${item.employee.patronymic || ""}`
-        .trim()
-        .toLowerCase();
-      const email = item.employee.email?.toLowerCase() || "";
-      const position = item.employee.position?.name?.toLowerCase() || "";
-      const roleName = item.role?.name?.toLowerCase() || "";
-
-      return (
-        employeeName.includes(q) ||
-        email.includes(q) ||
-        position.includes(q) ||
-        roleName.includes(q)
-      );
+      return true;
     });
-  }, [members, membersQuery]);
+  }, [members]);
 
   const selectableEmployees = useMemo(() => {
     const activeIds = new Set(
@@ -530,7 +508,6 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     headCandidates,
     loading,
     members,
-    membersQuery,
     pendingKey,
     roleDraft,
     roleEditorOpen,
@@ -550,7 +527,6 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     refreshPage,
     saveDepartment,
     saveRole,
-    setMembersQuery,
     setRoleDraft,
     setSelectedHeadId,
     setSelectedMemberId,

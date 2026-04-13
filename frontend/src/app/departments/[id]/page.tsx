@@ -9,7 +9,6 @@ import {
   Crown,
   PencilLine,
   Plus,
-  Search,
   Settings2,
   Trash2,
   UserPlus,
@@ -76,6 +75,7 @@ function DepartmentMemberRow({
   const isHead = currentHeadId === member.employee.id;
   const isRemoving = pendingKey === `member-remove-${member.employee.id}`;
   const isRoleBusy = pendingKey === `member-role-${member.employee.id}`;
+  const subtitle = member.employee.position?.name || null;
   const managementMode = canAssignRoles || canChangeHead || canManage;
   const roleLabel = member.role?.name || "Без роли";
   const personName = displayUserName(member.employee);
@@ -89,15 +89,20 @@ function DepartmentMemberRow({
 
   if (!managementMode) {
     const personBubble = (
-      <span className="app-badge inline-flex max-w-full items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium">
+      <span className="app-badge inline-flex max-w-full items-center gap-2 rounded-full px-2 py-1.5">
         <RequestAvatar
           alt={personName}
           fallback={fallback}
-          size="sm"
+          size="lg"
           src={member.employee.avatar}
         />
-        <span className="truncate text-[var(--foreground)]">
-          {personName}
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-medium text-[var(--foreground)]">
+            {personName}
+          </span>
+          {subtitle ? (
+            <span className="app-text-muted block truncate text-xs">{subtitle}</span>
+          ) : null}
         </span>
         {member.role ? (
           <span className="app-surface inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-medium text-[var(--muted-foreground)]">
@@ -131,7 +136,7 @@ function DepartmentMemberRow({
       <DepartmentPersonChip
         currentUserId={currentUserId}
         person={member.employee}
-        subtitle={member.employee.position?.name || null}
+        subtitle={subtitle}
       />
 
       <span className="app-badge inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-medium">
@@ -560,21 +565,6 @@ export default function DepartmentDetailPage() {
                       </button>
                     </>
                   ) : null}
-                </div>
-              </div>
-
-              <div className="app-surface-muted mb-4 flex flex-col gap-3 rounded-xl p-3 md:flex-row md:items-center">
-                <div className="relative min-w-0 flex-1">
-                  <Search
-                    size={16}
-                    className="app-text-muted pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
-                  />
-                  <input
-                    value={h.membersQuery}
-                    onChange={(event) => h.setMembersQuery(event.target.value)}
-                    placeholder="Поиск по участникам, почте, должности или роли"
-                    className="app-input w-full rounded-lg py-2.5 pl-9 pr-3 text-sm"
-                  />
                 </div>
               </div>
 
