@@ -56,7 +56,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 
     queryset = ProcurementRequest.objects.select_related(
         "department", "requestor", "executor"
-    ).prefetch_related("items", "approvals")
+    ).prefetch_related("items", "approvals__approver")
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
