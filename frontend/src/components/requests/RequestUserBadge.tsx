@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { displayUserName, userProfileLink } from "@/lib/shared";
 import type { User } from "@/types/api";
+import { RequestAvatar } from "./RequestAvatar";
 
 type RequestUserBadgeProps = {
   currentUserId?: number | null;
@@ -15,21 +16,15 @@ export function RequestUserBadge({
 }: RequestUserBadgeProps) {
   const personLink = userProfileLink(person, currentUserId);
   const personName = displayUserName(person);
+  const fallback = (person.first_name?.[0] || person.last_name?.[0] || "?").toUpperCase();
   const chip = (
     <>
-      {person.avatar ? (
-        <img
-          src={person.avatar}
-          alt={personName}
-          className={`app-avatar-frame ${large ? "h-7 w-7" : "h-6 w-6"} shrink-0 rounded-full object-cover`}
-        />
-      ) : (
-        <span
-          className={`app-avatar-fallback ${large ? "h-7 w-7 text-xs" : "h-6 w-6 text-[11px]"} flex shrink-0 items-center justify-center rounded-full font-semibold`}
-        >
-          {(person.first_name?.[0] || person.last_name?.[0] || "?").toUpperCase()}
-        </span>
-      )}
+      <RequestAvatar
+        alt={personName}
+        fallback={fallback}
+        size={large ? "md" : "sm"}
+        src={person.avatar}
+      />
       <span className="break-words">{personName}</span>
     </>
   );

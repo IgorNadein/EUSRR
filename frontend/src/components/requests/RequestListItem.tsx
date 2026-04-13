@@ -9,6 +9,7 @@ import { displayUserName, formatDate, formatDateTime, userProfileLink } from "@/
 import type { Request, RequestComment, User } from "@/types/api";
 import { Ban, ChevronDown, ChevronRight, MessageSquare, Paperclip, Pencil, ThumbsDown, ThumbsUp, Trash2 } from "lucide-react";
 import type { ReactNode, Ref } from "react";
+import { RequestAvatar } from "./RequestAvatar";
 import { RequestUserBadge } from "./RequestUserBadge";
 
 type RequestListItemProps = {
@@ -137,6 +138,7 @@ export function RequestListItem({
 }: RequestListItemProps) {
   const requestAuthor = request.employee || request.created_by;
   const authorName = displayUserName(requestAuthor);
+  const authorFallback = (requestAuthor?.first_name?.[0] || requestAuthor?.last_name?.[0] || "?").toUpperCase();
   const authorLink = requestAuthor ? userProfileLink(requestAuthor, currentUserId) : null;
   const statusKey = String(request.status || "").toLowerCase();
   const status = statusMeta[statusKey] ?? defaultStatusMeta;
@@ -204,24 +206,23 @@ export function RequestListItem({
                 <div className="flex flex-wrap items-center gap-2">
                   {authorLink ? (
                     <Link href={authorLink} className="group flex min-w-0 items-center gap-2">
-                      {requestAuthor?.avatar ? (
-                        <img
-                          src={requestAuthor.avatar}
-                          alt={authorName}
-                          className="app-avatar-frame h-8 w-8 shrink-0 rounded-full object-cover"
-                        />
-                      ) : (
-                        <span className="app-avatar-fallback flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold">
-                          {(requestAuthor?.first_name?.[0] || requestAuthor?.last_name?.[0] || "?").toUpperCase()}
-                        </span>
-                      )}
+                      <RequestAvatar
+                        alt={authorName}
+                        fallback={authorFallback}
+                        size="lg"
+                        src={requestAuthor?.avatar}
+                      />
                       <span className="truncate text-sm font-medium text-[var(--foreground)] group-hover:text-[var(--accent-primary-strong)]">
                         {authorName}
                       </span>
                     </Link>
                   ) : (
                     <div className="flex min-w-0 items-center gap-2">
-                      <span className="app-badge flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold">?</span>
+                      <RequestAvatar
+                        alt={authorName}
+                        fallback={authorFallback}
+                        size="lg"
+                      />
                       <span className="truncate text-sm font-medium text-[var(--foreground)]">{authorName}</span>
                     </div>
                   )}

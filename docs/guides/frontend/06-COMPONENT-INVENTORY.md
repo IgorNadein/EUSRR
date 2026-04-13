@@ -162,6 +162,7 @@
 Файлы:
 
 - `requests/RequestAttachmentPreviewModal.tsx`
+- `requests/RequestAvatar.tsx`
 - `requests/RequestComposeModal.tsx`
 - `requests/RequestDetailModal.tsx`
 - `requests/RequestListControls.tsx`
@@ -183,6 +184,7 @@
 - feature container для list shell, который собирает rows + empty state + load more
 - отдельный mode-panel для alternate flow вроде swipe-review
 - attachment preview modal как отдельный feature block, а не хвост page-level JSX
+- локальный avatar/media wrapper вокруг `next/image`, когда feature уже использует несколько однотипных аватаров и preview
 - participant badge pattern для request-like доменов
 - participant-only UI decisions
 - conditional action rendering по данным API
