@@ -18,9 +18,11 @@ import {
 
 import { AppShell } from "@/components/AppShell";
 import { DepartmentPersonChip } from "@/components/departments/DepartmentPersonChip";
+import { RequestAvatar } from "@/components/requests/RequestAvatar";
 import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
 import { Modal } from "@/components/ui/Modal";
 import { useDepartmentPage } from "@/hooks/useDepartmentPage";
+import { displayUserName, userProfileLink } from "@/lib/shared";
 import type { DepartmentMemberLink, DepartmentRole } from "@/types/api";
 
 function MetaChip({
@@ -78,9 +80,59 @@ function DepartmentMemberRow({
     member.employee.position?.name || member.employee.email || null;
   const managementMode = canAssignRoles || canChangeHead || canManage;
   const roleLabel = member.role?.name || "Без роли";
+  const personName = displayUserName(member.employee);
+  const profileLink = userProfileLink(member.employee, currentUserId);
+  const fallback = (
+    member.employee.first_name?.[0] ||
+    member.employee.last_name?.[0] ||
+    member.employee.email?.[0] ||
+    "?"
+  ).toUpperCase();
+
+  if (!managementMode) {
+    const personBubble = (
+      <span className="app-badge inline-flex max-w-full items-center gap-2 rounded-full px-2 py-1.5">
+        <RequestAvatar
+          alt={personName}
+          fallback={fallback}
+          size="lg"
+          src={member.employee.avatar}
+        />
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-medium text-[var(--foreground)]">
+            {personName}
+          </span>
+          {subtitle ? (
+            <span className="app-text-muted block truncate text-xs">{subtitle}</span>
+          ) : null}
+        </span>
+        <span className="app-surface inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-medium text-[var(--muted-foreground)]">
+          <span className="truncate">{roleLabel}</span>
+        </span>
+      </span>
+    );
+
+    return (
+      <>
+        {profileLink ? (
+          <Link href={profileLink} className="min-w-0 max-w-full">
+            {personBubble}
+          </Link>
+        ) : (
+          <span className="min-w-0 max-w-full">{personBubble}</span>
+        )}
+        {isHead ? (
+          <MetaChip tone="warning">
+            <Crown size={12} />
+            Руководитель
+          </MetaChip>
+        ) : null}
+      </>
+    );
+  }
 
   return (
-    <article className="flex flex-wrap items-center gap-2">
+    <article className="flex w-full flex-wrap items-center gap-2">
       <DepartmentPersonChip
         currentUserId={currentUserId}
         person={member.employee}
@@ -531,7 +583,13 @@ export default function DepartmentDetailPage() {
                 </div>
               </div>
 
-              <div className="space-y-3">
+              <div
+                className={
+                  isManagementMode
+                    ? "space-y-3"
+                    : "flex flex-wrap items-center gap-2"
+                }
+              >
                 {h.filteredMembers.length ? (
                   h.filteredMembers.map((member) => (
                     <DepartmentMemberRow
