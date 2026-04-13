@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { MessageCircle, Send, Edit2, Trash2, CornerDownRight } from "lucide-react";
+import { MessageCircle, Edit2, CornerDownRight } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { toast } from "sonner";
 import { useUser } from "@/contexts/UserContext";
+import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
 
 interface Comment {
   id: number;
@@ -187,13 +188,7 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
                 >
                   <Edit2 size={14} />
                 </button>
-                <button
-                  onClick={() => handleDeleteComment(comment.id)}
-                  className="app-action-danger rounded p-1"
-                  title="Удалить"
-                >
-                  <Trash2 size={14} />
-                </button>
+                <CommentDeleteButton onClick={() => handleDeleteComment(comment.id)} />
               </div>
             )}
           </div>
@@ -251,34 +246,18 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
         {/* Reply form */}
         {replyTo === comment.id && (
           <div className="app-divider ml-6 mt-2 border-l-2 pl-4">
-            <div className="flex gap-2">
-              <textarea
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                placeholder="Напишите ответ..."
-                className="app-input flex-1 rounded-lg p-2 text-sm"
-                rows={2}
-              />
-            </div>
-            <div className="mt-2 flex gap-2">
-              <button
-                onClick={handleSubmitComment}
-                disabled={submitting || !newComment.trim()}
-                className="app-action-primary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-50"
-              >
-                <Send size={12} />
-                Отправить
-              </button>
-              <button
-                onClick={() => {
-                  setReplyTo(null);
-                  setNewComment("");
-                }}
-                className="app-action-secondary rounded-lg px-3 py-1.5 text-xs font-medium"
-              >
-                Отмена
-              </button>
-            </div>
+            <CommentComposer
+              value={newComment}
+              onChange={setNewComment}
+              onSubmit={handleSubmitComment}
+              onCancel={() => {
+                setReplyTo(null);
+                setNewComment("");
+              }}
+              disabled={submitting}
+              multiline
+              placeholder="Напишите ответ..."
+            />
           </div>
         )}
       </div>
@@ -304,23 +283,15 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
 
       {/* New comment form */}
       {!replyTo && (
-        <div className="space-y-2">
-          <textarea
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            placeholder="Добавить комментарий..."
-            className="app-input w-full rounded-lg p-3 text-sm"
-            rows={3}
-          />
-          <button
-            onClick={handleSubmitComment}
-            disabled={submitting || !newComment.trim()}
-            className="app-action-primary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
-          >
-            <Send size={14} />
-            Отправить
-          </button>
-        </div>
+        <CommentComposer
+          value={newComment}
+          onChange={setNewComment}
+          onSubmit={handleSubmitComment}
+          disabled={submitting}
+          multiline
+          rows={3}
+          placeholder="Добавить комментарий..."
+        />
       )}
 
       {/* Comments list */}

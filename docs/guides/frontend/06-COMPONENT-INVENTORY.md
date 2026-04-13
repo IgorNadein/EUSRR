@@ -254,6 +254,7 @@
 - modal: `Modal`
 - searchable dropdown: `SearchableSelect*`
 - compose address line: `SearchableSelectMulti` с compose-like layout
+- comment composer / delete action: `shared/CommentControls.tsx`
 - primary/secondary surface: `app-surface` / `app-surface-muted`
 - feedback block: `app-selected`, `app-feedback-*`
 

@@ -135,6 +135,7 @@ Target state:
 | Обычный input / textarea / select | `app-input` / `app-select` + `rounded-lg` | нет | `ok` |
 | Searchable dropdown trigger | shared `SearchableSelect*` + `rounded-lg` | compose inline-row может быть крупнее по shell | `ok` |
 | Compose address row | shared select pattern на базе `app-input` | `rounded-2xl` допустим для compose-shell строки | `ok` |
+| Inline comment composer | shared `CommentControls` + icon-only send action | feed/footer variant может добавлять attachment actions перед input | `ok` |
 | Helper / alert / selected block | `app-selected`, `app-feedback-*`, `app-surface-muted` + `rounded-lg`/`rounded-xl` | зависит от веса блока | `needs refactor` |
 | Pills / status chips / avatar | `rounded-full` | нет | `ok` |
 | `rounded-md` у новых карточек и полей | не использовать | только legacy до отдельной переработки | `legacy` |

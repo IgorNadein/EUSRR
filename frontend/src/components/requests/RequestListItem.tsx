@@ -19,6 +19,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { Ref } from "react";
+import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
 import { RequestAvatar } from "./RequestAvatar";
 import { RequestUserBadge } from "./RequestUserBadge";
 
@@ -403,13 +404,9 @@ export function RequestListItem({
                           <div className="flex items-center gap-2">
                             <span className="app-text-muted">{formatDate(comment.created_at)}</span>
                             {Boolean(comment.author?.id && currentUserId === comment.author.id) ? (
-                              <button
-                                type="button"
-                                onClick={() => void onDeleteComment(request.id, comment.id)}
-                                className="app-action-danger rounded-lg px-1.5 py-0.5"
-                              >
-                                удалить
-                              </button>
+                              <CommentDeleteButton
+                                onClick={() => onDeleteComment(request.id, comment.id)}
+                              />
                             ) : null}
                           </div>
                         </div>
@@ -418,21 +415,13 @@ export function RequestListItem({
                     ))
                   )}
                 </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <input
+                <div className="mt-2">
+                  <CommentComposer
                     value={commentDraft}
-                    onChange={(event) => onSetCommentDraft(request.id, event.target.value)}
-                    placeholder="Добавить комментарий"
-                    className="app-input flex-1 rounded-lg px-3 py-2 text-xs"
+                    onChange={(value) => onSetCommentDraft(request.id, value)}
+                    onSubmit={() => onAddComment(request.id)}
+                    disabled={busyKey === `comment-${request.id}`}
                   />
-                  <button
-                    type="button"
-                    onClick={() => void onAddComment(request.id)}
-                    disabled={busyKey === `comment-${request.id}` || !commentDraft.trim()}
-                    className="app-action-primary rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-60"
-                  >
-                    Отправить
-                  </button>
                 </div>
               </div>
             ) : null}

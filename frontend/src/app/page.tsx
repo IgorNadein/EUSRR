@@ -208,7 +208,7 @@ function HomePageContent() {
     async function loadPosts() {
       try {
         await refreshPosts();
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Ошибка загрузки ленты:', err);
         setError('Не удалось загрузить ленту');
       } finally {
@@ -376,8 +376,8 @@ function HomePageContent() {
     try {
       const response = await apiClient.getPostLikers(postId);
       setLikesUsersMap((prev) => ({ ...prev, [postId]: response.results || [] }));
-    } catch (err: any) {
-      const message = String(err?.message || "");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "";
       if (
         message.includes("404") ||
         message.includes("NetworkError") ||
@@ -579,8 +579,8 @@ function HomePageContent() {
 
       setCreatePostOpen(false);
       setEditingPostId(null);
-    } catch (err: any) {
-      const message = String(err?.message || "Не удалось сохранить публикацию");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Не удалось сохранить публикацию";
       setCreateError(message);
     } finally {
       setCreateSubmitting(false);
@@ -980,7 +980,7 @@ function HomePageContent() {
                 )}
               </div>
             )}
-            <div className="flex items-center gap-2">
+            <div className="grid grid-cols-[auto_auto_auto] gap-2 sm:grid-cols-[auto_auto_minmax(0,1fr)_auto] sm:items-center">
               <input ref={commentImageRef} type="file" accept="image/*" className="hidden" onChange={(e) => { setCommentImage(e.target.files?.[0] || null); e.target.value = ""; }} />
               <input ref={commentAttachmentRef} type="file" className="hidden" onChange={(e) => { setCommentAttachment(e.target.files?.[0] || null); e.target.value = ""; }} />
               <button
@@ -1010,13 +1010,13 @@ function HomePageContent() {
                   }
                 }}
                 placeholder="Напишите комментарий..."
-                className="app-input h-10 flex-1 rounded-lg px-3 text-sm"
+                className="app-input order-4 col-span-3 min-w-0 h-10 w-full rounded-lg px-3 text-sm sm:order-3 sm:col-span-1"
               />
               <button
                 type="button"
                 disabled={commentSending || (!newComment.trim() && !commentImage && !commentAttachment)}
                 onClick={handleCreateComment}
-                className="app-action-primary flex h-10 w-10 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-50"
+                className="app-action-primary order-3 flex h-10 w-10 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-50 sm:order-4"
               >
                 <Send size={16} />
               </button>
