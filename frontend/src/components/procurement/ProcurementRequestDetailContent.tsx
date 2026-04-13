@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, CircleDot, X } from "lucide-react";
+import { RequestAvatar } from "@/components/requests/RequestAvatar";
 
 import { formatDate, formatMoney } from "@/lib/shared";
 import type { ProcurementRequest, User } from "@/types/api";
@@ -25,6 +26,14 @@ const approvalIconByStatus = (status?: string) => {
   }
   return <CircleDot size={13} className="text-amber-500" />;
 };
+
+const initialsFromName = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("") || "?";
 
 export function ProcurementRequestDetailContent({
   request,
@@ -98,19 +107,28 @@ export function ProcurementRequestDetailContent({
           <p className="mb-3 text-sm font-semibold text-[var(--foreground)]">Согласования</p>
           <div className="space-y-2">
             {request.approvals.map((approval) => (
-              <div
-                key={approval.id}
-                className="app-surface-muted flex items-center gap-2 rounded-lg px-3 py-2 text-xs"
-              >
-                {approvalIconByStatus(approval.status)}
-                <span className="font-medium text-[var(--foreground)]">
-                  {displayUserName(approval.approver, approval.approver_name)}
-                </span>
-                <span className="app-text-muted">({approval.step_label || `Этап ${approval.priority}`})</span>
-                {approval.comment ? (
-                  <span className="app-text-wrap app-text-muted ml-auto max-w-full italic">
-                    «{approval.comment}»
+              <div key={approval.id} className="app-surface-muted rounded-lg px-3 py-2 text-xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  {approvalIconByStatus(approval.status)}
+                  <span className="app-badge inline-flex max-w-full items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium">
+                    <RequestAvatar
+                      alt={displayUserName(approval.approver, approval.approver_name)}
+                      fallback={initialsFromName(displayUserName(approval.approver, approval.approver_name))}
+                      size="sm"
+                      src={typeof approval.approver === "object" ? approval.approver?.avatar : null}
+                    />
+                    <span className="truncate">
+                      {displayUserName(approval.approver, approval.approver_name)}
+                    </span>
                   </span>
+                  <span className="app-text-muted">
+                    ({approval.step_label || `Этап ${approval.priority}`})
+                  </span>
+                </div>
+                {approval.comment ? (
+                  <p className="app-text-wrap app-text-muted mt-2 pl-6 italic">
+                    «{approval.comment}»
+                  </p>
                 ) : null}
               </div>
             ))}
