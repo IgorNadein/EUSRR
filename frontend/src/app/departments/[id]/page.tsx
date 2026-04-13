@@ -18,6 +18,10 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
+import {
+  DEPARTMENT_MEMBERS_EMPTY_STATE_CLASSNAME,
+  getDepartmentMembersListClassName,
+} from "@/components/departments/layout";
 import { RequestAvatar } from "@/components/requests/RequestAvatar";
 import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
 import { Modal } from "@/components/ui/Modal";
@@ -367,6 +371,20 @@ function DepartmentEditorModal({
   );
 }
 
+function DepartmentMembersEmptyState() {
+  return (
+    <div className={DEPARTMENT_MEMBERS_EMPTY_STATE_CLASSNAME}>
+      <Users size={24} className="app-text-muted mx-auto mb-3" />
+      <p className="text-sm font-medium text-[var(--foreground)]">
+        Участники не найдены
+      </p>
+      <p className="app-text-muted mt-2 text-sm">
+        Измени поисковый запрос.
+      </p>
+    </div>
+  );
+}
+
 function AddMemberModal({
   isOpen,
   items,
@@ -707,13 +725,7 @@ export default function DepartmentDetailPage() {
                 ) : null}
               </div>
 
-              <div
-                className={
-                  isManagementMode
-                    ? "space-y-3"
-                    : "flex flex-wrap items-center gap-2"
-                }
-              >
+              <div className={getDepartmentMembersListClassName(isManagementMode)}>
                 {h.filteredMembers.length ? (
                   h.filteredMembers.map((member) => (
                     <DepartmentMemberRow
@@ -736,15 +748,7 @@ export default function DepartmentDetailPage() {
                     />
                   ))
                 ) : (
-                  <div className="app-surface-muted rounded-xl p-8 text-center">
-                    <Users size={24} className="app-text-muted mx-auto mb-3" />
-                    <p className="text-sm font-medium text-[var(--foreground)]">
-                      Участники не найдены
-                    </p>
-                    <p className="app-text-muted mt-2 text-sm">
-                      Измени поисковый запрос.
-                    </p>
-                  </div>
+                  <DepartmentMembersEmptyState />
                 )}
               </div>
 
