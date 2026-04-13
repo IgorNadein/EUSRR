@@ -1,10 +1,10 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+const test = require("node:test");
+const assert = require("node:assert/strict");
 
-import {
+const {
   DEPARTMENT_MEMBERS_EMPTY_STATE_CLASSNAME,
   getDepartmentMembersListClassName,
-} from "./layout.ts";
+} = require("./layout.ts");
 
 test("showcase members layout keeps bubble flow", () => {
   assert.equal(
