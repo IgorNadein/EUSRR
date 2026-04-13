@@ -48,22 +48,28 @@ export default function EmployeeActionsTimeline({
   expandedCommentLength = truncateCommentLength,
 }: EmployeeActionsTimelineProps) {
   const [showAll, setShowAll] = useState(false);
-
-  if (!canViewActions || sortedActions.length === 0) {
-    return null;
-  }
-
   const canCollapse = Boolean(initialVisibleCount && sortedActions.length > initialVisibleCount);
   const visibleActions = useMemo(
     () => (canCollapse && !showAll ? sortedActions.slice(0, initialVisibleCount) : sortedActions),
     [canCollapse, initialVisibleCount, showAll, sortedActions],
   );
 
+  if (!canViewActions || sortedActions.length === 0) {
+    return null;
+  }
+
   return (
-    <section className="app-surface rounded-[24px] p-5">
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <h2 className="app-card-caption">Кадровые события</h2>
-        <div className="flex items-center gap-2">
+    <section className="app-surface rounded-2xl p-5">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="app-card-caption">Кадровые события</h2>
+          {!showAll && canCollapse ? (
+            <p className="app-text-muted mt-2 text-sm">
+              Последние {visibleActions.length} из {sortedActions.length}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           {showCountLabel ? (
             <span className="app-text-muted text-sm">
               {sortedActions.length}{" "}
@@ -95,12 +101,6 @@ export default function EmployeeActionsTimeline({
         </div>
       </div>
 
-      {!showAll && canCollapse ? (
-        <p className="app-text-muted mb-3 text-sm">
-          Последние {visibleActions.length} из {sortedActions.length}
-        </p>
-      ) : null}
-
       <div className="space-y-3">
         {visibleActions.map((action) => {
           const isCurrent = latestActionId === action.id;
@@ -111,28 +111,27 @@ export default function EmployeeActionsTimeline({
             : action.comment;
 
           return (
-            <div key={action.id} className="relative pl-5">
+            <div key={action.id} className="relative pl-6">
               <span
-                className="absolute bottom-0 left-1.5 top-0 w-px"
+                className="absolute bottom-0 left-[7px] top-0 w-px"
                 style={{ backgroundColor: tone.lineColor }}
               />
-              {isCurrent ? (
-                <span
-                  className="absolute left-0 top-2 h-3.5 w-3.5 rounded-full border-4 border-[var(--surface-primary)]"
-                  style={{ backgroundColor: tone.lineColor }}
-                />
-              ) : null}
-              <div className="app-surface-muted rounded-2xl px-4 py-3">
-                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+              <span
+                className={[
+                  "absolute left-0 top-3 h-[14px] w-[14px] rounded-full border border-[var(--surface-primary)]",
+                  isCurrent ? "shadow-[0_0_0_4px_var(--surface-primary)]" : "",
+                ].join(" ")}
+                style={{ backgroundColor: tone.lineColor }}
+              />
+              <div className="app-surface-muted rounded-xl px-4 py-3.5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={`app-status-pill ${tone.badgeClass}`}
-                      >
+                      <span className={`app-status-pill ${tone.badgeClass}`}>
                         {action.action_display || action.action}
                       </span>
                       {isCurrent ? (
-                        <span className="app-text-muted text-xs font-medium">
+                        <span className="app-pill inline-flex rounded-full px-2 py-0.5 text-xs font-medium">
                           текущий
                         </span>
                       ) : null}
@@ -143,8 +142,8 @@ export default function EmployeeActionsTimeline({
                       </p>
                     ) : null}
                   </div>
-                  <div className="flex shrink-0 items-start gap-2">
-                    <time className="app-text-muted pt-1 text-sm">
+                  <div className="flex shrink-0 items-center gap-2 self-start">
+                    <time className="app-text-muted text-sm">
                       {formatActionDate(action.date)}
                     </time>
                     {canManageActions && onEditAction && onDeleteAction ? (
