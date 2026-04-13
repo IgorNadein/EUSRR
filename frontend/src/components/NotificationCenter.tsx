@@ -196,7 +196,7 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                                                     e.stopPropagation();
                                                     deleteNotification(notification.id);
                                                 }}
-                                                className="flex-shrink-0 rounded p-1.5 opacity-0 transition-all group-hover:opacity-100 hover:bg-[var(--danger-soft)]"
+                                                className="app-action-danger flex-shrink-0 rounded p-1.5 transition-all"
                                                 aria-label="Удалить"
                                                 title="Удалить уведомление"
                                             >
