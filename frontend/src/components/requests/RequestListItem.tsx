@@ -348,22 +348,19 @@ export function RequestListItem({
                       {formatDate(request.updated_at) || "—"}
                     </span>
                   </div>
-                  <div>
-                    <span className="app-text-muted">Принял решение:</span>{" "}
-                    {renderDecisionMaker(decisionMaker, currentUserId)}
-                  </div>
-                  {departmentLabels ? (
-                    <div className="sm:col-span-2">
-                      <span className="app-text-muted">Отделы:</span>{" "}
-                      <span className="font-medium text-[var(--foreground)]">{departmentLabels}</span>
-                    </div>
-                  ) : null}
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex flex-wrap items-start gap-2">
+                  <div className="grid grid-cols-[104px_minmax(0,1fr)] items-start gap-2">
+                    <span className="app-text-muted pt-1">Принял решение:</span>
+                    <div className="min-w-0">
+                      {renderDecisionMaker(decisionMaker, currentUserId)}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-[104px_minmax(0,1fr)] items-start gap-2">
                     <span className="app-text-muted pt-1">Получатели:</span>
-                    <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+                    <div className="flex min-w-0 flex-wrap gap-1.5">
                       {recipients.slice(0, 2).map((recipient) => (
                         <RequestUserBadge
                           key={recipient.id}
@@ -382,9 +379,9 @@ export function RequestListItem({
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-start gap-2">
+                  <div className="grid grid-cols-[104px_minmax(0,1fr)] items-start gap-2">
                     <span className="app-text-muted pt-1">В копии:</span>
-                    <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+                    <div className="flex min-w-0 flex-wrap gap-1.5">
                       {ccUsers.slice(0, 2).map((ccUser) => (
                         <RequestUserBadge
                           key={ccUser.id}
@@ -401,8 +398,16 @@ export function RequestListItem({
                     </div>
                   </div>
 
+                  {departmentLabels ? (
+                    <div className="grid grid-cols-[104px_minmax(0,1fr)] items-start gap-2">
+                      <span className="app-text-muted pt-1">Отделы:</span>
+                      <span className="pt-1 font-medium text-[var(--foreground)]">{departmentLabels}</span>
+                    </div>
+                  ) : null}
+
                   {attachmentUrl ? (
-                    <div className="flex min-w-0 items-center gap-1.5">
+                    <div className="grid grid-cols-[104px_minmax(0,1fr)] items-start gap-2">
+                      <span className="app-text-muted pt-1">Вложение:</span>
                       <button
                         type="button"
                         onClick={() => onPreviewAttachment({ url: attachmentUrl, name: attachmentName })}
