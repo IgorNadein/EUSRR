@@ -4,6 +4,8 @@ import { buildQuery, type RequestFn, type GetTokenFn } from './utils';
 export function createEquipmentApi(request: RequestFn, getToken: GetTokenFn) {
     return {
         getEquipmentCategories: (params?: Record<string, string | number>) => request(`/api/v1/procurement/equipment-categories/${buildQuery(params)}`),
+        createEquipmentCategory: (data: { name: string; parent?: number | null; description?: string; icon?: string }) =>
+            request('/api/v1/procurement/equipment-categories/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
         getEquipment: (params?: Record<string, string | number>) => request(`/api/v1/procurement/equipment/${buildQuery(params)}`),
         getEquipmentDetail: (id: number) => request(`/api/v1/procurement/equipment/${id}/`),
         getMyEquipment: (params?: Record<string, string | number>) => request(`/api/v1/procurement/equipment/my_equipment/${buildQuery(params)}`),

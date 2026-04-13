@@ -2,7 +2,7 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { apiClient } from "@/lib/api";
-import { canManageEquipment } from "@/lib/permissions";
+import { canManageEquipment, canManageEquipmentCategories } from "@/lib/permissions";
 import { displayUserName as sharedDisplayUserName, extractNextPage, formatDate, formatMoney, loadAllPages } from "@/lib/shared";
 import type {
   Department,
@@ -108,6 +108,7 @@ const getReadableError = (error: unknown, fallback: string): string => {
 
 export function useEquipmentPage(user: User | null) {
   const canManage = canManageEquipment(user);
+  const canManageCategories = canManageEquipmentCategories(user);
   const auth = user?.auth;
 
   const [items, setItems] = useState<Equipment[]>([]);
@@ -610,6 +611,44 @@ export function useEquipmentPage(user: User | null) {
     }
   }, [editingId, form, reloadEquipmentList, resetForm]);
 
+  const handleCreateCategory = useCallback(async (name: string) => {
+    const normalizedName = name.trim();
+    if (!normalizedName) {
+      setActionError("Укажите название категории.");
+      return null;
+    }
+
+    const existing = categories.find(
+      (category) => category.name.trim().toLowerCase() === normalizedName.toLowerCase(),
+    );
+    if (existing) {
+      setForm((previous) => ({ ...previous, category: existing.id }));
+      setActionSuccess(`Категория "${existing.name}" уже существует и выбрана.`);
+      setActionError(null);
+      return existing;
+    }
+
+    try {
+      setBusyKey("create-category");
+      setActionError(null);
+      setActionSuccess(null);
+
+      const created = await apiClient.createEquipmentCategory({ name: normalizedName }) as EquipmentCategory;
+
+      setCategories((previous) => (
+        [...previous, created].sort((left, right) => left.name.localeCompare(right.name, "ru"))
+      ));
+      setForm((previous) => ({ ...previous, category: created.id }));
+      setActionSuccess(`Категория "${created.name}" создана.`);
+      return created;
+    } catch (categoryError) {
+      setActionError(getReadableError(categoryError, "Не удалось создать категорию"));
+      return null;
+    } finally {
+      setBusyKey(null);
+    }
+  }, [categories]);
+
   const handleLoadMore = useCallback(async () => {
     if (!nextPage || loadingMore) return;
 
@@ -801,6 +840,7 @@ export function useEquipmentPage(user: User | null) {
     activeFilterCount,
     busyKey,
     canManage,
+    canManageCategories,
     categories,
     categoryFilter,
     closeModal,
@@ -828,6 +868,7 @@ export function useEquipmentPage(user: User | null) {
     getResponsibleLink,
     getResponsibleName,
     handleAddComment,
+    handleCreateCategory,
     handleDelete,
     handleDeleteComment,
     handleLoadMore,

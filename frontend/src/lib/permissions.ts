@@ -130,6 +130,37 @@ export function canManageEquipment(user?: User | null): boolean {
     return false;
 }
 
+export function canManageEquipmentCategories(user?: User | null): boolean {
+    if (!user) return false;
+
+    const auth = user.auth;
+    if (!auth) return false;
+
+    if (auth.is_staff || auth.is_superuser) {
+        return true;
+    }
+
+    const perms = auth.permissions || [];
+    if (
+        perms.includes("procurement.add_equipmentcategory") ||
+        perms.includes("procurement.change_equipmentcategory") ||
+        perms.includes("procurement.delete_equipmentcategory")
+    ) {
+        return true;
+    }
+
+    const procPerms = auth.permissions_by_app?.["procurement"] || [];
+    if (
+        procPerms.includes("add_equipmentcategory") ||
+        procPerms.includes("change_equipmentcategory") ||
+        procPerms.includes("delete_equipmentcategory")
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
 export function canManageSupplier(user?: User | null): boolean {
     if (!user) return false;
 
