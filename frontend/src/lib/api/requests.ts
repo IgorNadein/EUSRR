@@ -2,7 +2,7 @@
 import type { RequestFn, GetTokenFn } from './utils';
 
 export function createRequestsApi(request: RequestFn, getToken: GetTokenFn) {
-    async function formDataRequest(url: string, method: string, data: Record<string, any>, saveAs?: 'draft' | 'submitted') {
+    async function formDataRequest(url: string, method: string, data: Record<string, any>, saveAs?: 'draft' | 'submit') {
         const fd = new FormData();
         Object.keys(data).forEach((key) => {
             if (key === 'attachments' && Array.isArray(data[key])) { data[key].forEach((f: File) => fd.append('attachments', f)); }
@@ -30,8 +30,8 @@ export function createRequestsApi(request: RequestFn, getToken: GetTokenFn) {
             return request(`/api/v1/requests/${qs ? '?' + qs : ''}`);
         },
         getRequest: (requestId: number) => request(`/api/v1/requests/${requestId}/`),
-        createRequest: (data: Record<string, any>, saveAs?: 'draft' | 'submitted') => formDataRequest('/api/v1/requests/', 'POST', data, saveAs),
-        updateRequest: (requestId: number, data: Record<string, any>, saveAs?: 'draft' | 'submitted') => formDataRequest(`/api/v1/requests/${requestId}/`, 'PATCH', data, saveAs),
+        createRequest: (data: Record<string, any>, saveAs?: 'draft' | 'submit') => formDataRequest('/api/v1/requests/', 'POST', data, saveAs),
+        updateRequest: (requestId: number, data: Record<string, any>, saveAs?: 'draft' | 'submit') => formDataRequest(`/api/v1/requests/${requestId}/`, 'PATCH', data, saveAs),
         deleteRequest: (requestId: number): Promise<void> => request(`/api/v1/requests/${requestId}/`, { method: 'DELETE' }),
         getRequestComments: (requestId: number) => request(`/api/v1/requests/${requestId}/comments/`),
         deleteRequestComment: (requestId: number, commentId: number): Promise<void> => request(`/api/v1/requests/${requestId}/comments/${commentId}/`, { method: 'DELETE' }),
