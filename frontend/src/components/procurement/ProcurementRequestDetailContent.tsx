@@ -1,12 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { Check, CircleDot, X } from "lucide-react";
 import { RequestAvatar } from "@/components/requests/RequestAvatar";
 
-import { formatDate, formatMoney } from "@/lib/shared";
+import { formatDate, formatMoney, userProfileLink } from "@/lib/shared";
 import type { ProcurementRequest, User } from "@/types/api";
 
 interface ProcurementRequestDetailContentProps {
+  currentUserId?: number | null;
   request: ProcurementRequest;
   displayUserName: (
     person?: User | number | null,
@@ -36,6 +38,7 @@ const initialsFromName = (name: string) =>
     .join("") || "?";
 
 export function ProcurementRequestDetailContent({
+  currentUserId,
   request,
   displayUserName,
   footer,
@@ -106,21 +109,42 @@ export function ProcurementRequestDetailContent({
         <div className="app-surface rounded-xl p-4">
           <p className="mb-3 text-sm font-semibold text-[var(--foreground)]">Согласования</p>
           <div className="space-y-2">
-            {request.approvals.map((approval) => (
-              <div key={approval.id} className="app-surface-muted rounded-lg px-3 py-2 text-xs">
+            {request.approvals.map((approval) => {
+              const approver =
+                typeof approval.approver === "object" && approval.approver
+                  ? approval.approver
+                  : null;
+              const approverName = displayUserName(approval.approver, approval.approver_name);
+              const approverLink = approver ? userProfileLink(approver, currentUserId) : "";
+
+              return (
+              <div key={approval.id} className="rounded-lg px-1 py-1 text-xs">
                 <div className="flex flex-wrap items-center gap-2">
                   {approvalIconByStatus(approval.status)}
-                  <span className="app-badge inline-flex max-w-full items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium">
-                    <RequestAvatar
-                      alt={displayUserName(approval.approver, approval.approver_name)}
-                      fallback={initialsFromName(displayUserName(approval.approver, approval.approver_name))}
-                      size="sm"
-                      src={typeof approval.approver === "object" ? approval.approver?.avatar : null}
-                    />
-                    <span className="truncate">
-                      {displayUserName(approval.approver, approval.approver_name)}
+                  {approverLink ? (
+                    <Link
+                      href={approverLink}
+                      className="app-badge inline-flex max-w-full items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium hover:bg-[var(--surface-tertiary)]"
+                    >
+                      <RequestAvatar
+                        alt={approverName}
+                        fallback={initialsFromName(approverName)}
+                        size="sm"
+                        src={approver?.avatar}
+                      />
+                      <span className="truncate">{approverName}</span>
+                    </Link>
+                  ) : (
+                    <span className="app-badge inline-flex max-w-full items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium">
+                      <RequestAvatar
+                        alt={approverName}
+                        fallback={initialsFromName(approverName)}
+                        size="sm"
+                        src={approver?.avatar}
+                      />
+                      <span className="truncate">{approverName}</span>
                     </span>
-                  </span>
+                  )}
                   <span className="app-text-muted">
                     ({approval.step_label || `Этап ${approval.priority}`})
                   </span>
@@ -131,7 +155,8 @@ export function ProcurementRequestDetailContent({
                   </p>
                 ) : null}
               </div>
-            ))}
+            );
+            })}
           </div>
         </div>
       ) : null}

@@ -869,6 +869,7 @@ export default function ProcurementPage() {
 
                       {expanded ? (
                         <ProcurementRequestDetailContent
+                          currentUserId={user?.id}
                           request={resolvedDetail}
                           displayUserName={displayUserName}
                           footer={(
@@ -974,6 +975,7 @@ export default function ProcurementPage() {
             ) : null}
 
             <ProcurementRequestDetailContent
+              currentUserId={user?.id}
               request={selectedRequest}
               displayUserName={displayUserName}
               footer={(
