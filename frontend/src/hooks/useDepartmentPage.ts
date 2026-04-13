@@ -41,6 +41,7 @@ export type DepartmentPageController = {
   error: string | null;
   filteredMembers: DepartmentMemberLink[];
   headCandidates: Array<{ id: number; name: string }>;
+  employeesDirectoryLoading: boolean;
   loading: boolean;
   members: DepartmentMemberLink[];
   pendingKey: SavingKey | null;
@@ -126,6 +127,7 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   const [roles, setRoles] = useState<DepartmentRole[]>([]);
   const [userPerms, setUserPerms] = useState<DepartmentUserPermissions | null>(null);
   const [allEmployees, setAllEmployees] = useState<User[]>([]);
+  const [employeesDirectoryLoading, setEmployeesDirectoryLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pendingKey, setPendingKey] = useState<SavingKey | null>(null);
@@ -153,8 +155,13 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   }, []);
 
   const loadEmployeesDirectory = useCallback(async () => {
-    const employees = await loadAllPages<User>((params) => apiClient.getEmployees(params));
-    setAllEmployees(sortEmployeesByName(employees.filter((employee) => employee.is_active)));
+    setEmployeesDirectoryLoading(true);
+    try {
+      const employees = await loadAllPages<User>((params) => apiClient.getEmployees(params));
+      setAllEmployees(sortEmployeesByName(employees.filter((employee) => employee.is_active)));
+    } finally {
+      setEmployeesDirectoryLoading(false);
+    }
   }, []);
 
   const loadCore = useCallback(async () => {
@@ -311,7 +318,12 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   const openAddMember = useCallback(() => {
     setSelectedMemberId(null);
     setAddMemberOpen(true);
-  }, []);
+    if (allEmployees.length === 0) {
+      void loadEmployeesDirectory().catch((loadError) => {
+        toast.error(getErrorMessage(loadError, "Не удалось загрузить сотрудников"));
+      });
+    }
+  }, [allEmployees.length, loadEmployeesDirectory]);
 
   const closeAddMember = useCallback(() => {
     setSelectedMemberId(null);
@@ -522,6 +534,7 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     departmentDraft,
     departmentId,
     editDepartmentOpen,
+    employeesDirectoryLoading,
     error,
     filteredMembers,
     headCandidates,

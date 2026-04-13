@@ -19,6 +19,11 @@ import {
 
 import { AppShell } from "@/components/AppShell";
 import {
+  getAddMemberHelperText,
+  getAddMemberPlaceholder,
+  isAddMemberSelectDisabled,
+} from "@/components/departments/add-member-modal-state";
+import {
   DEPARTMENT_MEMBERS_EMPTY_STATE_CLASSNAME,
   getDepartmentMembersListClassName,
 } from "@/components/departments/layout";
@@ -389,6 +394,7 @@ function AddMemberModal({
   isOpen,
   items,
   loading,
+  optionsLoading,
   onClose,
   onSave,
   onSelect,
@@ -397,6 +403,7 @@ function AddMemberModal({
   isOpen: boolean;
   items: Array<{ id: number; name: string }>;
   loading: boolean;
+  optionsLoading: boolean;
   onClose: () => void;
   onSave: () => Promise<void>;
   onSelect: (id: number | null) => void;
@@ -408,6 +415,7 @@ function AddMemberModal({
       onClose={onClose}
       title="Добавить участника"
       size="md"
+      className="overflow-visible"
       footer={
         <div className="flex flex-wrap justify-end gap-2">
           <button
@@ -434,12 +442,12 @@ function AddMemberModal({
           items={items}
           selectedId={selectedId}
           onSelect={onSelect}
-          placeholder="Выберите сотрудника"
-          disabled={!items.length}
+          placeholder={getAddMemberPlaceholder(optionsLoading)}
+          disabled={isAddMemberSelectDisabled(optionsLoading, items.length)}
         />
-        {!items.length ? (
+        {getAddMemberHelperText(optionsLoading, items.length) ? (
           <p className="app-text-muted mt-3 text-sm">
-            В директории нет доступных сотрудников для добавления.
+            {getAddMemberHelperText(optionsLoading, items.length)}
           </p>
         ) : null}
       </section>
@@ -770,6 +778,7 @@ export default function DepartmentDetailPage() {
         isOpen={h.addMemberOpen}
         items={h.selectableEmployees}
         loading={h.pendingKey === "member"}
+        optionsLoading={h.employeesDirectoryLoading}
         onClose={h.closeAddMember}
         onSave={h.submitAddMember}
         onSelect={h.setSelectedMemberId}
