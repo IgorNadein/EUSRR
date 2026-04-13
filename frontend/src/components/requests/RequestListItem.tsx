@@ -7,7 +7,17 @@ import {
 } from "@/hooks/useRequestsPage";
 import { displayUserName, formatDate, formatDateTime, userProfileLink } from "@/lib/shared";
 import type { Request, RequestComment, User } from "@/types/api";
-import { Ban, ChevronDown, ChevronRight, MessageSquare, Paperclip, Pencil, ThumbsDown, ThumbsUp, Trash2 } from "lucide-react";
+import {
+  Ban,
+  ChevronDown,
+  ChevronRight,
+  MessageSquare,
+  Paperclip,
+  Pencil,
+  ThumbsDown,
+  ThumbsUp,
+  Trash2,
+} from "lucide-react";
 import type { ReactNode, Ref } from "react";
 import { RequestAvatar } from "./RequestAvatar";
 import { RequestUserBadge } from "./RequestUserBadge";
@@ -54,9 +64,9 @@ type RequestAudienceRowProps = {
 
 function RequestMetaField({ label, value }: RequestMetaFieldProps) {
   return (
-    <div className="space-y-1">
+    <div className="min-w-0 space-y-1">
       <p className="app-text-muted text-[11px] font-medium uppercase tracking-wide">{label}</p>
-      <div className="text-sm text-[var(--foreground)]">{value}</div>
+      <div className="min-w-0 text-sm text-[var(--foreground)]">{value}</div>
     </div>
   );
 }
@@ -69,10 +79,10 @@ function RequestAudienceRow({
   people,
 }: RequestAudienceRowProps) {
   return (
-    <div className="space-y-2">
+    <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-primary)] px-3 py-2.5">
       <p className="app-text-muted text-[11px] font-medium uppercase tracking-wide">{label}</p>
       {people.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="mt-2 flex flex-wrap gap-1.5">
           {people.slice(0, 2).map((person) => (
             <RequestUserBadge
               key={person.id}
@@ -87,7 +97,7 @@ function RequestAudienceRow({
           ) : null}
         </div>
       ) : (
-        <p className="app-text-muted text-sm">{count ? count : emptyText}</p>
+        <p className="app-text-muted mt-2 text-sm">{count ? count : emptyText}</p>
       )}
     </div>
   );
@@ -171,9 +181,9 @@ export function RequestListItem({
     <article
       className={`app-surface-muted rounded-xl border border-transparent transition hover:border-[var(--border-strong)] ${isMenuOpen ? "relative z-20 overflow-visible" : "overflow-hidden"}`}
     >
-      <div className="p-4 sm:p-5">
-        <div className="flex items-start gap-4">
-          <div className="app-surface flex shrink-0 flex-col items-center gap-2 rounded-xl p-1.5">
+      <div className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="flex shrink-0 flex-col gap-2 pt-0.5">
             <button
               type="button"
               onClick={() => onToggleRow(request.id)}
@@ -200,9 +210,9 @@ export function RequestListItem({
             </button>
           </div>
 
-          <div className="min-w-0 flex-1 space-y-4">
+          <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1 space-y-3">
+              <div className="min-w-0 flex-1 space-y-2.5">
                 <div className="flex flex-wrap items-center gap-2">
                   {authorLink ? (
                     <Link href={authorLink} className="group flex min-w-0 items-center gap-2">
@@ -226,14 +236,20 @@ export function RequestListItem({
                       <span className="truncate text-sm font-medium text-[var(--foreground)]">{authorName}</span>
                     </div>
                   )}
-                  <span className="app-badge inline-flex rounded-full px-2.5 py-1 text-xs font-medium">
+                  <span className="app-badge inline-flex rounded-full px-2 py-1 text-[11px] font-medium">
                     {typeLabel}
                   </span>
                 </div>
 
-                <div className="space-y-2">
-                  <button type="button" onClick={() => onOpenDetails(request)} className="block w-full text-left">
-                    <h3 className={`${rowOpen ? "app-text-wrap line-clamp-3" : "truncate"} text-sm font-semibold text-[var(--foreground)] transition hover:text-[var(--accent-primary-strong)]`}>
+                <div className="space-y-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onOpenDetails(request)}
+                    className="block w-full text-left"
+                  >
+                    <h3
+                      className={`${rowOpen ? "app-text-wrap line-clamp-3" : "app-text-wrap line-clamp-2"} text-sm font-semibold leading-6 text-[var(--foreground)] transition hover:text-[var(--accent-primary-strong)]`}
+                    >
                       {title}
                     </h3>
                   </button>
@@ -244,22 +260,50 @@ export function RequestListItem({
                       {request.date_to ? ` - ${formatDate(request.date_to)}` : ""}
                     </span>
                     <span>Создано: {formatDate(request.created_at) || "-"}</span>
-                    {departmentLabels ? <span>Отделы: {departmentLabels}</span> : null}
                   </div>
                 </div>
 
                 {summary ? (
-                  <p className={`${rowOpen ? "app-text-wrap line-clamp-10" : "app-text-wrap line-clamp-3"} text-sm leading-relaxed text-[var(--foreground)]`}>
+                  <p
+                    className={`${rowOpen ? "app-text-wrap line-clamp-4" : "app-text-wrap line-clamp-2"} text-sm leading-relaxed text-[var(--foreground)]`}
+                  >
                     {summary}
                   </p>
                 ) : null}
               </div>
 
-              <div className="flex shrink-0 flex-col items-end gap-2">
-                <div ref={isMenuOpen ? menuRef : null} className="flex items-center justify-end gap-2">
+              <div className="shrink-0 pl-1">
+                <div
+                  ref={isMenuOpen ? menuRef : null}
+                  className="flex max-w-[220px] flex-wrap items-center justify-end gap-2"
+                >
                   <span className={`inline-flex rounded-full px-2.5 py-1 text-xs ring-1 ${status.className}`}>
                     {status.label}
                   </span>
+
+                  {canProcess ? (
+                    <>
+                      <button
+                        type="button"
+                        title="Одобрить"
+                        onClick={() => void onApprove(request.id)}
+                        disabled={busyKey === `approve-${request.id}`}
+                        className="app-feedback-success inline-flex h-8 w-8 items-center justify-center rounded-lg disabled:opacity-60"
+                      >
+                        <ThumbsUp size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        title="Отклонить"
+                        onClick={() => void onReject(request.id)}
+                        disabled={busyKey === `reject-${request.id}`}
+                        className="app-action-danger inline-flex h-8 w-8 items-center justify-center rounded-lg disabled:opacity-60"
+                      >
+                        <ThumbsDown size={16} />
+                      </button>
+                    </>
+                  ) : null}
+
                   {hasSecondaryActions ? (
                     <div className="relative">
                       <button
@@ -324,53 +368,32 @@ export function RequestListItem({
                     </div>
                   ) : null}
                 </div>
-
-                {canProcess ? (
-                  <div className="app-surface flex items-center gap-1 rounded-xl p-1">
-                    <button
-                      type="button"
-                      title="Одобрить"
-                      onClick={() => void onApprove(request.id)}
-                      disabled={busyKey === `approve-${request.id}`}
-                      className="app-feedback-success inline-flex items-center justify-center rounded-lg p-2 disabled:opacity-60"
-                    >
-                      <ThumbsUp size={18} />
-                    </button>
-                    <button
-                      type="button"
-                      title="Отклонить"
-                      onClick={() => void onReject(request.id)}
-                      disabled={busyKey === `reject-${request.id}`}
-                      className="app-action-danger inline-flex items-center justify-center rounded-lg p-2 disabled:opacity-60"
-                    >
-                      <ThumbsDown size={18} />
-                    </button>
-                  </div>
-                ) : null}
               </div>
             </div>
 
             {hasExpandedPanels ? (
-              <div className="space-y-3 border-t border-[var(--border-subtle)] pt-4">
-                {rowOpen ? (
-                  <section className="app-surface-elevated rounded-xl p-4">
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                      <p className="app-text-muted text-xs font-semibold uppercase tracking-wide">Подробности</p>
-                      {attachmentUrl ? (
-                        <button
-                          type="button"
-                          onClick={() => onPreviewAttachment({ url: attachmentUrl, name: attachmentName })}
-                          className="app-action-secondary inline-flex min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium"
-                        >
-                          <Paperclip size={13} className="shrink-0" />
-                          <span className="truncate">{attachmentName}</span>
-                        </button>
-                      ) : null}
-                    </div>
+              <div className="mt-3 border-t border-[var(--border-subtle)] pt-3">
+                <div className="app-surface-elevated rounded-xl p-3">
+                  {rowOpen ? (
+                    <section className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="app-text-muted text-xs font-semibold uppercase tracking-wide">
+                          Подробности
+                        </p>
+                        {attachmentUrl ? (
+                          <button
+                            type="button"
+                            onClick={() => onPreviewAttachment({ url: attachmentUrl, name: attachmentName })}
+                            className="app-action-secondary inline-flex min-w-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium"
+                          >
+                            <Paperclip size={13} className="shrink-0" />
+                            <span className="truncate">{attachmentName}</span>
+                          </button>
+                        ) : null}
+                      </div>
 
-                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                      <div className="app-surface rounded-xl p-3">
-                        <div className="space-y-3">
+                      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.95fr)]">
+                        <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
                           <RequestMetaField
                             label="Принял решение"
                             value={renderDecisionMaker(decisionMaker, currentUserId)}
@@ -388,10 +411,8 @@ export function RequestListItem({
                             value={departmentLabels || <span className="app-text-muted">-</span>}
                           />
                         </div>
-                      </div>
 
-                      <div className="app-surface rounded-xl p-3">
-                        <div className="space-y-3">
+                        <div className="space-y-2.5">
                           <RequestAudienceRow
                             label="Получатели"
                             people={recipients}
@@ -407,63 +428,74 @@ export function RequestListItem({
                           />
                         </div>
                       </div>
-                    </div>
-                  </section>
-                ) : null}
+                    </section>
+                  ) : null}
 
-                {commentsOpen ? (
-                  <section className="app-surface-elevated rounded-xl p-4">
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                      <p className="app-text-muted text-xs font-semibold uppercase tracking-wide">Комментарии</p>
-                      <span className="app-badge inline-flex rounded-full px-2.5 py-1 text-xs font-medium">
-                        {commentCount}
-                      </span>
-                    </div>
+                  {commentsOpen ? (
+                    <section className={rowOpen ? "mt-3 border-t border-[var(--border-subtle)] pt-3" : ""}>
+                      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+                        <p className="app-text-muted text-xs font-semibold uppercase tracking-wide">
+                          Комментарии
+                        </p>
+                        <span className="app-badge inline-flex rounded-full px-2.5 py-1 text-xs font-medium">
+                          {commentCount}
+                        </span>
+                      </div>
 
-                    <div className="space-y-2">
-                      {comments.length === 0 ? (
-                        <p className="app-text-muted text-sm">Комментариев пока нет</p>
-                      ) : comments.map((comment) => (
-                        <div key={comment.id} className="app-surface rounded-xl px-3 py-3 text-sm text-[var(--foreground)]">
-                          <div className="mb-2 flex items-center justify-between gap-2">
-                            <span className="font-medium">{displayUserName(comment.author)}</span>
-                            <div className="flex items-center gap-2">
-                              <span className="app-text-muted text-xs">{formatDateTime(comment.created_at) || "-"}</span>
-                              {Boolean(comment.author?.id && currentUserId === comment.author.id) ? (
-                                <button
-                                  type="button"
-                                  onClick={() => void onDeleteComment(request.id, comment.id)}
-                                  disabled={busyKey === `comment-delete-${comment.id}`}
-                                  className="app-action-danger inline-flex rounded-lg px-2 py-1 text-xs font-medium disabled:opacity-60"
-                                >
-                                  Удалить
-                                </button>
-                              ) : null}
+                      <div className="space-y-2">
+                        {comments.length === 0 ? (
+                          <p className="app-text-muted rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-primary)] px-3 py-2.5 text-sm">
+                            Комментариев пока нет
+                          </p>
+                        ) : comments.map((comment) => (
+                          <div
+                            key={comment.id}
+                            className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-primary)] px-3 py-2.5 text-sm text-[var(--foreground)]"
+                          >
+                            <div className="mb-1.5 flex items-center justify-between gap-2">
+                              <span className="font-medium">{displayUserName(comment.author)}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="app-text-muted text-xs">
+                                  {formatDateTime(comment.created_at) || "-"}
+                                </span>
+                                {Boolean(comment.author?.id && currentUserId === comment.author.id) ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => void onDeleteComment(request.id, comment.id)}
+                                    disabled={busyKey === `comment-delete-${comment.id}`}
+                                    className="app-action-danger inline-flex rounded-lg px-2 py-1 text-xs font-medium disabled:opacity-60"
+                                  >
+                                    Удалить
+                                  </button>
+                                ) : null}
+                              </div>
                             </div>
+                            <p className="app-text-wrap leading-relaxed text-[var(--foreground)]">
+                              {comment.text}
+                            </p>
                           </div>
-                          <p className="app-text-wrap leading-relaxed text-[var(--foreground)]">{comment.text}</p>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
 
-                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                      <input
-                        value={commentDraft}
-                        onChange={(event) => onSetCommentDraft(request.id, event.target.value)}
-                        placeholder="Добавить комментарий"
-                        className="app-input flex-1 rounded-lg px-3 py-2.5 text-sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void onAddComment(request.id)}
-                        disabled={busyKey === `comment-${request.id}` || !trimmedCommentDraft}
-                        className="app-action-primary rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-60"
-                      >
-                        Отправить
-                      </button>
-                    </div>
-                  </section>
-                ) : null}
+                      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                        <input
+                          value={commentDraft}
+                          onChange={(event) => onSetCommentDraft(request.id, event.target.value)}
+                          placeholder="Добавить комментарий"
+                          className="app-input flex-1 rounded-lg px-3 py-2.5 text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void onAddComment(request.id)}
+                          disabled={busyKey === `comment-${request.id}` || !trimmedCommentDraft}
+                          className="app-action-primary rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-60"
+                        >
+                          Отправить
+                        </button>
+                      </div>
+                    </section>
+                  ) : null}
+                </div>
               </div>
             ) : null}
           </div>
