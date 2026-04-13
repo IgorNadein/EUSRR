@@ -76,8 +76,7 @@ function DepartmentMemberRow({
   const isHead = currentHeadId === member.employee.id;
   const isRemoving = pendingKey === `member-remove-${member.employee.id}`;
   const isRoleBusy = pendingKey === `member-role-${member.employee.id}`;
-  const subtitle =
-    member.employee.position?.name || member.employee.email || null;
+  const subtitle = member.employee.position?.name || null;
   const managementMode = canAssignRoles || canChangeHead || canManage;
   const roleLabel = member.role?.name || "Без роли";
   const personName = displayUserName(member.employee);
@@ -106,9 +105,11 @@ function DepartmentMemberRow({
             <span className="app-text-muted block truncate text-xs">{subtitle}</span>
           ) : null}
         </span>
-        <span className="app-surface inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-medium text-[var(--muted-foreground)]">
-          <span className="truncate">{roleLabel}</span>
-        </span>
+        {member.role ? (
+          <span className="app-surface inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-medium text-[var(--muted-foreground)]">
+            <span className="truncate">{roleLabel}</span>
+          </span>
+        ) : null}
       </span>
     );
 
