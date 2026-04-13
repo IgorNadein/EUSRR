@@ -36,6 +36,21 @@ type RequestComposeModalProps = {
 
 const allowedAttachmentExtensions = new Set(["pdf", "jpg", "jpeg", "png"]);
 
+function FieldLabel({
+  children,
+  required = false,
+}: {
+  children: string;
+  required?: boolean;
+}) {
+  return (
+    <label className="app-text-muted mb-1.5 block text-xs font-medium">
+      {children}
+      {required ? <span className="app-accent-text"> *</span> : null}
+    </label>
+  );
+}
+
 export function RequestComposeModal({
   actionError,
   busyKey,
@@ -95,36 +110,34 @@ export function RequestComposeModal({
       size="lg"
       className="h-[100dvh] max-w-full rounded-none sm:h-auto sm:rounded-2xl"
       footer={(
-        <div className="border-t border-[var(--border-subtle)] pt-3 sm:pt-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="app-text-muted text-xs">
-              Черновик можно сохранить неполным. Для отправки нужны получатели и тип заявления.
-            </p>
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="app-action-secondary rounded-lg px-4 py-2.5 text-sm font-medium"
-              >
-                Отмена
-              </button>
-              <button
-                type="button"
-                onClick={() => void onSubmit(mode, "draft")}
-                disabled={busyKey !== null}
-                className="app-action-secondary rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-60"
-              >
-                {mode === "create" ? "Сохранить черновик" : "Сохранить как черновик"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void onSubmit(mode, "submit")}
-                disabled={busyKey !== null}
-                className="app-action-primary rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-60"
-              >
-                Отправить
-              </button>
-            </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="app-text-muted text-xs">
+            <span className="app-accent-text">*</span> обязательны для отправки. Черновик можно сохранить неполным.
+          </p>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="app-action-secondary rounded-lg px-4 py-2.5 text-sm font-medium"
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={() => void onSubmit(mode, "draft")}
+              disabled={busyKey !== null}
+              className="app-action-secondary rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-60"
+            >
+              {mode === "create" ? "Сохранить черновик" : "Сохранить как черновик"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void onSubmit(mode, "submit")}
+              disabled={busyKey !== null}
+              className="app-action-primary rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-60"
+            >
+              Отправить
+            </button>
           </div>
         </div>
       )}
@@ -155,7 +168,7 @@ export function RequestComposeModal({
 
           <div className="space-y-2">
             <SearchableSelectMulti
-              label="Кому"
+              label="Кому *"
               layout="inline"
               placeholder="Добавьте получателей"
               items={selectableEmployees}
@@ -177,7 +190,7 @@ export function RequestComposeModal({
 
         <div className="space-y-3">
           <div>
-            <label className="app-text-muted mb-1.5 block text-xs font-medium">Тема</label>
+            <FieldLabel>Тема</FieldLabel>
             <input
               value={form.title}
               onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
@@ -187,7 +200,7 @@ export function RequestComposeModal({
           </div>
 
           <div>
-            <label className="app-text-muted mb-1.5 block text-xs font-medium">Сообщение</label>
+            <FieldLabel>Сообщение</FieldLabel>
             <textarea
               value={form.comment}
               onChange={(event) => setForm((prev) => ({ ...prev, comment: event.target.value }))}
@@ -201,7 +214,7 @@ export function RequestComposeModal({
         <section className="app-surface-muted rounded-xl p-3 sm:p-4">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <SearchableSelectSingle
-              label="Тип заявления"
+              label="Тип заявления *"
               placeholder="Выберите тип"
               items={Object.entries(requestTypeLabels).map(([value, label]) => ({ id: value, name: label }))}
               selectedId={form.type || null}
@@ -215,9 +228,10 @@ export function RequestComposeModal({
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-2">
-                <label className="app-text-muted block text-xs font-medium">
+                <span className="app-text-muted block text-xs font-medium">
                   {dateMode === "range" ? "Период" : "Дата"}
-                </label>
+                  {dateMode !== "optional" ? <span className="app-accent-text"> *</span> : null}
+                </span>
                 {dateMode === "optional" && !showOptionalDates && (
                   <span className="app-text-muted text-[11px]">Даты не обязательны для этого типа</span>
                 )}
