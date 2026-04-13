@@ -315,6 +315,130 @@ def test_set_member_role_does_not_create_membership_and_does_not_toggle_active(
     assert link.is_active is True, "set_member_role не должен менять is_active"
     assert link.role_id == role.id
 
+
+@pytest.mark.django_db
+def test_set_member_role_uses_role_assignment_for_inactive_membership(
+    api_client: APIClient,
+):
+    d = Department.objects.create(name="Dept")
+    role = make_role(d, "Worker")
+
+    assigner = make_user("assigner-inactive-link@example.com")
+    api_client.force_authenticate(assigner)
+    grant_assign_in_dept(assigner, d)
+
+    worker = make_user("worker-inactive-link@example.com")
+    inactive_link = EmployeeDepartment.objects.create(
+        employee=worker,
+        department=d,
+        is_active=False,
+    )
+
+    resp = api_client.post(
+        url_set_member_role(d.pk),
+        {"employee_id": worker.id, "role_id": role.id},
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["via_assignment"] is True
+    inactive_link.refresh_from_db()
+    assert inactive_link.role_id is None
+    assert RoleAssignment.objects.filter(
+        employee=worker,
+        role=role,
+        is_active=True,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_removed_former_head_can_receive_role_only_assignment_and_appear_in_members(
+    api_client: APIClient,
+):
+    dept = Department.objects.create(name="Dept")
+    head_assigner = make_user("head-assigner@example.com")
+    role_assigner = make_user("role-assigner@example.com")
+    former_head = make_user("former-head@example.com")
+    new_head = make_user("new-head-regression@example.com")
+    role = make_role(dept, "Auditor")
+
+    change_head_role = make_role(dept, "Head Changer", ["change_department_head"])
+    EmployeeDepartment.objects.create(
+        employee=head_assigner,
+        department=dept,
+        is_active=True,
+        role=change_head_role,
+    )
+
+    assign_role = make_role(dept, "Role Assigner", ["assign_department_role"])
+    EmployeeDepartment.objects.create(
+        employee=role_assigner,
+        department=dept,
+        is_active=True,
+        role=assign_role,
+    )
+
+    api_client.force_authenticate(head_assigner)
+    set_head_url = f"/api/v1/departments/{dept.id}/set_head/"
+    assert (
+        api_client.post(
+            set_head_url,
+            {"head_id": former_head.id},
+            format="json",
+        ).status_code
+        == status.HTTP_200_OK
+    )
+    assert (
+        api_client.post(
+            set_head_url,
+            {"head_id": new_head.id},
+            format="json",
+        ).status_code
+        == status.HTTP_200_OK
+    )
+
+    api_client.force_authenticate(role_assigner)
+    assert (
+        api_client.post(
+            url_remove_member(dept.pk),
+            {"employee_id": former_head.id},
+            format="json",
+        ).status_code
+        == status.HTTP_403_FORBIDDEN
+    )
+
+    manager = make_user("manager-remove-former-head@example.com")
+    api_client.force_authenticate(manager)
+    grant_manage_in_dept(manager, dept)
+    assert (
+        api_client.post(
+            url_remove_member(dept.pk),
+            {"employee_id": former_head.id},
+            format="json",
+        ).status_code
+        == status.HTTP_200_OK
+    )
+
+    api_client.force_authenticate(role_assigner)
+    resp = api_client.post(
+        url_set_member_role(dept.pk),
+        {"employee_id": former_head.id, "role_id": role.id},
+        format="json",
+    )
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["via_assignment"] is True
+
+    members_resp = api_client.get(f"/api/v1/departments/{dept.id}/members/")
+    assert members_resp.status_code == status.HTTP_200_OK
+    former_head_link = next(
+        item
+        for item in members_resp.json()["results"]
+        if item["employee"]["id"] == former_head.id
+    )
+    assert former_head_link["via_assignment"] is True
+    assert former_head_link["is_active"] is True
+    assert former_head_link["role"]["name"] == "Auditor"
+
 # =========================
 # Доп. тест: авторизация и отсутствие пересечений
 # =========================

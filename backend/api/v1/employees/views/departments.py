@@ -380,7 +380,9 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 
         # Проверяем, является ли сотрудник членом отдела
         link = EmployeeDepartment.objects.filter(
-            employee_id=emp_id, department_id=dept.id
+            employee_id=emp_id,
+            department_id=dept.id,
+            is_active=True,
         ).first()
 
         via_assignment = False

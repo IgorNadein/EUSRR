@@ -218,7 +218,7 @@ def _build_links_for_dept(dept: Department, serializer) -> list[dict]:
     links: list[dict] = []
     seen_employee_ids: set[int] = set()
     qs = (
-        EmployeeDepartment.objects.filter(department_id=dept.id)
+        EmployeeDepartment.objects.filter(department_id=dept.id, is_active=True)
         .select_related("employee", "role")
         .order_by(
             "employee__last_name",
