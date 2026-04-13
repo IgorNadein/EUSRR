@@ -18,13 +18,12 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
-import { DepartmentPersonChip } from "@/components/departments/DepartmentPersonChip";
 import { RequestAvatar } from "@/components/requests/RequestAvatar";
 import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
 import { Modal } from "@/components/ui/Modal";
 import { useDepartmentPage } from "@/hooks/useDepartmentPage";
 import { displayUserName, userProfileLink } from "@/lib/shared";
-import type { DepartmentMemberLink, DepartmentRole } from "@/types/api";
+import type { DepartmentMemberLink } from "@/types/api";
 
 function MetaChip({
   children,
@@ -293,68 +292,6 @@ function DepartmentMemberRow({
           </button>
         ) : null}
       </span>
-    </article>
-  );
-}
-
-function DepartmentRoleCard({
-  canManageRoles,
-  pendingKey,
-  role,
-  usageCount,
-  onDelete,
-  onEdit,
-}: {
-  canManageRoles: boolean;
-  pendingKey: string | null;
-  role: DepartmentRole;
-  usageCount: number;
-  onDelete: (role: DepartmentRole) => Promise<void>;
-  onEdit: (role: DepartmentRole) => void;
-}) {
-  const isDeleting = pendingKey === `role-delete-${role.id}`;
-
-  return (
-    <article className="app-surface-muted rounded-xl p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold text-[var(--foreground)]">
-              {role.name}
-            </h3>
-            <span className="app-badge inline-flex rounded-full px-2.5 py-1 text-xs font-medium">
-              {usageCount} участников
-            </span>
-          </div>
-          <p className="app-text-muted mt-2 text-sm">
-            {usageCount
-              ? "Используется в составе отдела."
-              : "Пока не назначена участникам отдела."}
-          </p>
-        </div>
-
-        {canManageRoles ? (
-          <div className="flex shrink-0 flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => onEdit(role)}
-              className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
-            >
-              <PencilLine size={14} />
-              Переименовать
-            </button>
-            <button
-              type="button"
-              onClick={() => void onDelete(role)}
-              disabled={isDeleting}
-              className="app-action-danger inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-            >
-              <Trash2 size={14} />
-              Удалить
-            </button>
-          </div>
-        ) : null}
-      </div>
     </article>
   );
 }
@@ -811,108 +748,6 @@ export default function DepartmentDetailPage() {
                 )}
               </div>
 
-              {isManagementMode && h.userPerms.can_change_head ? (
-                <div className="app-surface-muted rounded-xl p-4">
-                  <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <p className="app-card-caption">Руководитель отдела</p>
-                    {h.department.head ? (
-                      <DepartmentPersonChip
-                        currentUserId={h.currentUserId}
-                        person={h.department.head}
-                        subtitle={
-                          h.department.head.position?.name ||
-                          h.department.head.email
-                        }
-                      />
-                    ) : (
-                      <span className="app-text-muted text-sm">
-                        Руководитель пока не назначен
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="space-y-3">
-                    <SearchableSelectSingle
-                      label="Назначить руководителя"
-                      items={h.headCandidates}
-                      selectedId={h.selectedHeadId}
-                      onSelect={h.setSelectedHeadId}
-                      placeholder="Выберите сотрудника"
-                      disabled={!h.headCandidates.length}
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void h.submitHeadChange()}
-                        disabled={h.pendingKey === "head"}
-                        className="app-action-primary rounded-lg px-4 py-2 text-sm disabled:opacity-50"
-                      >
-                        Сохранить
-                      </button>
-                      {h.department.head ? (
-                        <button
-                          type="button"
-                          onClick={() => void h.submitHeadRemoval()}
-                          disabled={h.pendingKey === "head"}
-                          className="app-action-secondary rounded-lg px-4 py-2 text-sm disabled:opacity-50"
-                        >
-                          Снять
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </section>
-
-            <section className="app-surface rounded-2xl p-5">
-              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <h2 className="app-card-caption">Роли отдела</h2>
-                  <p className="app-text-muted mt-2 text-sm">
-                    {isManagementMode
-                      ? "Именованные роли внутри отдела: их можно создавать, переименовывать и назначать участникам."
-                      : "Справочный список ролей, которые используются внутри отдела."}
-                  </p>
-                </div>
-                {isManagementMode && h.userPerms.can_assign_roles ? (
-                  <button
-                    type="button"
-                    onClick={h.openCreateRole}
-                    className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm"
-                  >
-                    <Plus size={14} />
-                    Создать роль
-                  </button>
-                ) : null}
-              </div>
-
-              <div className="space-y-3">
-                {h.roles.length ? (
-                  h.roles.map((role) => (
-                    <DepartmentRoleCard
-                      key={role.id}
-                      canManageRoles={isManagementMode && h.userPerms.can_assign_roles}
-                      pendingKey={h.pendingKey}
-                      role={role}
-                      usageCount={h.roleUsage[role.id] || 0}
-                      onDelete={h.submitRoleDelete}
-                      onEdit={h.openEditRole}
-                    />
-                  ))
-                ) : (
-                  <div className="app-surface-muted rounded-xl p-8 text-center">
-                    <p className="text-sm font-medium text-[var(--foreground)]">
-                      Роли ещё не созданы
-                    </p>
-                    <p className="app-text-muted mt-2 text-sm">
-                      {isManagementMode
-                        ? "Создай первую роль, если внутри отдела нужно разделить обязанности."
-                        : "В этом отделе пока не заведены отдельные внутренние роли."}
-                    </p>
-                  </div>
-                )}
-              </div>
             </section>
           </>
         ) : null}
