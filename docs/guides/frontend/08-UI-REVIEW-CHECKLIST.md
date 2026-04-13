@@ -33,6 +33,7 @@
 - Есть ли один очевидный primary action?
 - Не спорят ли secondary и danger actions по визуальному весу с primary?
 - Семантика destructive actions понятна?
+- В парных action-clusters `danger` не выглядит ли недорисованным по сравнению с `secondary`?
 
 ## 6. Responsive
 

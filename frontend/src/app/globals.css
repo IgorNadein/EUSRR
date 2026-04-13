@@ -394,13 +394,14 @@ html[data-bs-theme="dark"] .app-input::-webkit-calendar-picker-indicator {
 }
 
 .app-action-danger {
-  border: 1px solid transparent;
-  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--danger-foreground) 18%, var(--border-strong));
+  background: var(--surface-elevated);
   color: #dc2626;
 }
 
 .app-action-danger:hover {
   background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger-foreground) 24%, var(--border-strong));
 }
 
 .app-selected {
