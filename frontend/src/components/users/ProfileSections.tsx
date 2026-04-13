@@ -59,18 +59,18 @@ export function ProfileHeroCard({
   bottomPanel?: ReactNode;
 }) {
   return (
-    <section className="app-surface rounded-[28px] p-5">
+    <section className="app-surface rounded-2xl p-5 sm:p-6">
       <div className="mb-4 flex items-start justify-between gap-4">
         <p className="app-card-caption">{caption}</p>
         {statusBadge}
       </div>
 
       <div className="space-y-4">
-        <div className="flex items-start gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
           {avatar}
 
           <div className="min-w-0 flex-1">
-            <div className="flex items-start gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
               <div className="min-w-0 flex-1">
                 <h1 className="app-text-wrap text-[2rem] font-semibold leading-tight text-[var(--foreground)]">
                   {fullName}
@@ -166,7 +166,7 @@ export function ProfileInfoCard({
   items: ProfileInfoItem[];
 }) {
   return (
-    <section className="app-surface rounded-[24px] p-5">
+    <section className="app-surface rounded-2xl p-5">
       <SectionTitle title={title} />
       <div className="app-surface-muted overflow-hidden rounded-2xl">
         <div className="grid md:grid-cols-2">
@@ -221,78 +221,78 @@ export function ProfileSkillsCard({
   removeDisabled?: boolean;
   emptyText?: string;
 }) {
-    const listId = `${title.toLowerCase().replace(/\s+/g, "-")}-skills-list`;
+  const listId = `${title.toLowerCase().replace(/\s+/g, "-")}-skills-list`;
 
-    return (
-      <section className="app-surface rounded-[24px] p-5">
-        <SectionTitle title={title} />
-        <div className="app-surface-muted rounded-2xl p-3.5">
-          <div className="flex flex-col gap-2.5 md:flex-row">
-            <div className="min-w-0 flex-1">
-              <input
-                list={listId}
-                value={inputValue}
-                onChange={(event) => onInputChange(event.target.value)}
-                placeholder="Добавить навык"
-                className="app-input w-full rounded-xl px-4 py-2.5 text-sm"
-                disabled={inputDisabled}
-              />
-              <datalist id={listId}>
-                {availableSkills.map((skill) => (
-                  <option key={skill.id} value={skill.name} />
-                ))}
-              </datalist>
-            </div>
-            <button
-              type="button"
-              onClick={onSubmit}
-              disabled={submitDisabled}
-              className="app-action-primary inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
-            >
-              <Plus size={16} />
-              Добавить
-            </button>
+  return (
+    <section className="app-surface rounded-2xl p-5">
+      <SectionTitle title={title} />
+      <div className="app-surface-muted rounded-2xl p-3.5">
+        <div className="flex flex-col gap-2.5 md:flex-row">
+          <div className="min-w-0 flex-1">
+            <input
+              list={listId}
+              value={inputValue}
+              onChange={(event) => onInputChange(event.target.value)}
+              placeholder="Добавить навык"
+              className="app-input w-full rounded-xl px-4 py-2.5 text-sm"
+              disabled={inputDisabled}
+            />
+            <datalist id={listId}>
+              {availableSkills.map((skill) => (
+                <option key={skill.id} value={skill.name} />
+              ))}
+            </datalist>
           </div>
-
-          {error ? <p className="mt-3 text-sm text-red-400">{error}</p> : null}
-
-          <div className="mt-3">
-            {skills.length ? (
-              <div className="flex flex-wrap gap-2">
-                {skills.map((skill) =>
-                  onRemoveSkill ? (
-                    <button
-                      key={skill.id}
-                      type="button"
-                      onClick={() => onRemoveSkill(skill.id)}
-                      disabled={removeDisabled}
-                      className="app-pill inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)] disabled:opacity-50"
-                      title="Удалить навык"
-                    >
-                      <span>{skill.name}</span>
-                      <X size={14} />
-                    </button>
-                  ) : (
-                    <span
-                      key={skill.id}
-                      className="app-pill inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium"
-                    >
-                      {skill.name}
-                    </span>
-                  ),
-                )}
-              </div>
-            ) : (
-              <p className="app-text-muted text-sm">{emptyText}</p>
-            )}
-          </div>
-
-          {loading ? (
-            <p className="app-text-muted mt-2.5 text-sm">Загружаем навыки...</p>
-          ) : null}
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={submitDisabled}
+            className="app-action-primary inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+          >
+            <Plus size={16} />
+            Добавить
+          </button>
         </div>
-      </section>
-    );
+
+        {error ? <p className="mt-3 text-sm text-red-400">{error}</p> : null}
+
+        <div className="mt-3">
+          {skills.length ? (
+            <div className="flex flex-wrap gap-2">
+              {skills.map((skill) =>
+                onRemoveSkill ? (
+                  <button
+                    key={skill.id}
+                    type="button"
+                    onClick={() => onRemoveSkill(skill.id)}
+                    disabled={removeDisabled}
+                    className="app-pill inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)] disabled:opacity-50"
+                    title="Удалить навык"
+                  >
+                    <span>{skill.name}</span>
+                    <X size={14} />
+                  </button>
+                ) : (
+                  <span
+                    key={skill.id}
+                    className="app-pill inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium"
+                  >
+                    {skill.name}
+                  </span>
+                ),
+              )}
+            </div>
+          ) : (
+            <p className="app-text-muted text-sm">{emptyText}</p>
+          )}
+        </div>
+
+        {loading ? (
+          <p className="app-text-muted mt-2.5 text-sm">Загружаем навыки...</p>
+        ) : null}
+      </div>
+    </section>
+  );
 }
 
 export function ProfileDepartmentBadge({
