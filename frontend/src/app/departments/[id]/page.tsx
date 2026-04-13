@@ -398,6 +398,7 @@ function DepartmentMembersEmptyState() {
 
 function AddMemberModal({
   canAssignRoles,
+  directoryError,
   isOpen,
   items,
   loading,
@@ -405,6 +406,7 @@ function AddMemberModal({
   optionsLoading,
   onClose,
   onCreateRole,
+  onRetryEmployees,
   onSave,
   onSelect,
   onSelectRole,
@@ -413,6 +415,7 @@ function AddMemberModal({
   selectedRoleId,
 }: {
   canAssignRoles: boolean;
+  directoryError: string | null;
   isOpen: boolean;
   items: Array<{ id: number; name: string }>;
   loading: boolean;
@@ -420,6 +423,7 @@ function AddMemberModal({
   optionsLoading: boolean;
   onClose: () => void;
   onCreateRole: () => void;
+  onRetryEmployees: () => Promise<void>;
   onSave: () => Promise<void>;
   onSelect: (id: number | null) => void;
   onSelectRole: (id: number | null) => void;
@@ -432,7 +436,7 @@ function AddMemberModal({
     optionsLoading,
     items.length,
   );
-  const selectDisabled = optionsLoading || items.length === 0;
+  const selectDisabled = optionsLoading || !!directoryError || items.length === 0;
   const submitDisabled = isDepartmentMemberModalSubmitDisabled({
     loading,
     mode,
@@ -477,7 +481,20 @@ function AddMemberModal({
           disabled={selectDisabled}
         />
 
-        {canAssignRoles ? (
+        {directoryError ? (
+          <div className="app-feedback-danger rounded-xl p-3 text-sm">
+            <p>{directoryError}</p>
+            <button
+              type="button"
+              onClick={() => void onRetryEmployees()}
+              className="app-action-secondary mt-3 inline-flex rounded-lg px-3 py-2 text-sm"
+            >
+              Повторить загрузку
+            </button>
+          </div>
+        ) : null}
+
+        {canAssignRoles && !directoryError ? (
           <div className="space-y-3">
             <SearchableSelectSingle
               label={mode === "assignRole" ? "Роль *" : "Роль"}
@@ -509,7 +526,7 @@ function AddMemberModal({
           </div>
         ) : null}
 
-        {helperText ? (
+        {!directoryError && helperText ? (
           <p className="app-text-muted mt-3 text-sm">
             {helperText}
           </p>
@@ -855,6 +872,7 @@ export default function DepartmentDetailPage() {
 
       <AddMemberModal
         canAssignRoles={h.userPerms.can_assign_roles}
+        directoryError={h.employeesDirectoryError}
         isOpen={h.addMemberOpen}
         items={getDepartmentMemberModalItems(
           h.memberModalMode,
@@ -869,6 +887,7 @@ export default function DepartmentDetailPage() {
           h.closeAddMember();
           h.openCreateRole();
         }}
+        onRetryEmployees={h.reloadEmployeesDirectory}
         onSave={h.submitAddMember}
         onSelect={h.setSelectedMemberId}
         onSelectRole={h.setSelectedRoleId}

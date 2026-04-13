@@ -41,6 +41,7 @@ export type DepartmentPageController = {
   departmentDraft: { name: string; description: string };
   departmentId: number;
   editDepartmentOpen: boolean;
+  employeesDirectoryError: string | null;
   error: string | null;
   filteredMembers: DepartmentMemberLink[];
   headCandidates: Array<{ id: number; name: string }>;
@@ -66,6 +67,7 @@ export type DepartmentPageController = {
   openCreateRole: () => void;
   openDepartmentEditor: () => void;
   openEditRole: (role: DepartmentRole) => void;
+  reloadEmployeesDirectory: () => Promise<void>;
   refreshPage: () => Promise<void>;
   saveDepartment: () => Promise<void>;
   saveRole: () => Promise<void>;
@@ -136,6 +138,7 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   const [userPerms, setUserPerms] = useState<DepartmentUserPermissions | null>(null);
   const [allEmployees, setAllEmployees] = useState<User[]>([]);
   const [employeesDirectoryLoading, setEmployeesDirectoryLoading] = useState(false);
+  const [employeesDirectoryError, setEmployeesDirectoryError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pendingKey, setPendingKey] = useState<SavingKey | null>(null);
@@ -166,9 +169,14 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
 
   const loadEmployeesDirectory = useCallback(async () => {
     setEmployeesDirectoryLoading(true);
+    setEmployeesDirectoryError(null);
     try {
       const employees = await loadAllPages<User>((params) => apiClient.getEmployees(params));
       setAllEmployees(sortEmployeesByName(employees.filter((employee) => employee.is_active)));
+    } catch (loadError) {
+      const message = getErrorMessage(loadError, "Не удалось загрузить сотрудников");
+      setEmployeesDirectoryError(message);
+      throw loadError;
     } finally {
       setEmployeesDirectoryLoading(false);
     }
@@ -232,7 +240,12 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   }, [loadCore]);
 
   useEffect(() => {
-    if (!userPerms || (!userPerms.can_manage && !userPerms.can_change_head)) {
+    if (
+      !userPerms ||
+      (!userPerms.can_manage &&
+        !userPerms.can_change_head &&
+        !userPerms.can_assign_roles)
+    ) {
       return;
     }
     if (allEmployees.length > 0) {
@@ -291,6 +304,10 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   const refreshPage = useCallback(async () => {
     await loadCore();
   }, [loadCore]);
+
+  const reloadEmployeesDirectory = useCallback(async () => {
+    await loadEmployeesDirectory();
+  }, [loadEmployeesDirectory]);
 
   const updateDepartmentDraft = useCallback((patch: Partial<{ name: string; description: string }>) => {
     setDepartmentDraft((current) => ({ ...current, ...patch }));
@@ -606,6 +623,7 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     departmentDraft,
     departmentId,
     editDepartmentOpen,
+    employeesDirectoryError,
     employeesDirectoryLoading,
     error,
     filteredMembers,
@@ -631,6 +649,7 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     openCreateRole,
     openDepartmentEditor,
     openEditRole,
+    reloadEmployeesDirectory,
     refreshPage,
     saveDepartment,
     saveRole,
