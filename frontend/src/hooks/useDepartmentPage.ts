@@ -171,8 +171,10 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     setEmployeesDirectoryLoading(true);
     setEmployeesDirectoryError(null);
     try {
-      const employees = await loadAllPages<User>((params) => apiClient.getEmployees(params));
-      setAllEmployees(sortEmployeesByName(employees.filter((employee) => employee.is_active)));
+      const employees = await loadAllPages<User>((params) =>
+        apiClient.getEmployees({ ...params, is_active: true }),
+      );
+      setAllEmployees(sortEmployeesByName(employees));
     } catch (loadError) {
       const message = getErrorMessage(loadError, "Не удалось загрузить сотрудников");
       setEmployeesDirectoryError(message);
