@@ -1,15 +1,15 @@
 import Link from "next/link";
-import { defaultStatusMeta, requestTypeLabels, statusMeta } from "@/hooks/useRequestsPage";
+import {
+  defaultStatusMeta,
+  requestTypeLabels,
+  statusMeta,
+  type RequestAttachmentPreview,
+} from "@/hooks/useRequestsPage";
 import { displayUserName, formatDate, userProfileLink } from "@/lib/shared";
 import type { Request, RequestComment } from "@/types/api";
 import { Ban, ChevronDown, ChevronRight, MessageSquare, Paperclip, Pencil, ThumbsDown, ThumbsUp, Trash2 } from "lucide-react";
 import type { Ref } from "react";
 import { RequestUserBadge } from "./RequestUserBadge";
-
-type AttachmentPreview = {
-  url: string;
-  name: string;
-};
 
 type RequestListItemProps = {
   busyKey: string | null;
@@ -28,7 +28,7 @@ type RequestListItemProps = {
   onDeleteComment: (requestId: number, commentId: number) => void | Promise<void>;
   onEdit: (request: Request) => void;
   onOpenDetails: (request: Request) => void;
-  onPreviewAttachment: (preview: AttachmentPreview) => void;
+  onPreviewAttachment: (preview: RequestAttachmentPreview) => void;
   onReject: (requestId: number) => void | Promise<void>;
   onSetCommentDraft: (requestId: number, value: string) => void;
   onToggleComments: (requestId: number) => void | Promise<void>;

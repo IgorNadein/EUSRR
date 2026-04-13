@@ -76,6 +76,8 @@
 
 - если у страницы появились тяжёлые expandable rows, detail modal или participant-heavy blocks, это уже кандидат на feature components, а не на дальнейшее разрастание page-level JSX
 - то же касается toolbar/filter block и attachment preview, если они уже стали самостоятельными зонами сценария
+- router-sync, deep-link opening и dismissable menu state тоже можно выносить в feature hook, если это screen orchestration, а не данные домена
+- если внутри одной зоны уже несколько leaf-компонентов, стоит ввести feature container вроде `*Section` или `*Panel`, а не возвращать всё обратно в page-level JSX
 
 ## 5. Как делать dropdown-поле
 

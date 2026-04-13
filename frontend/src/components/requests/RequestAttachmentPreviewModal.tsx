@@ -1,12 +1,10 @@
 import { Modal } from "@/components/ui";
+import type { RequestAttachmentPreview } from "@/hooks/useRequestsPage";
 import { FileSignature } from "lucide-react";
 
 type RequestAttachmentPreviewModalProps = {
   onClose: () => void;
-  preview: {
-    name: string;
-    url: string;
-  } | null;
+  preview: RequestAttachmentPreview | null;
 };
 
 export function RequestAttachmentPreviewModal({

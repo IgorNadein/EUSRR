@@ -67,6 +67,8 @@ Guide не покрывает:
 
 - hook не кодирует дизайн-систему
 - hook может возвращать данные для UI, но не должен становиться хранилищем визуальных классов
+- page-specific orchestration вроде router-sync, deep-link открытия detail modal и menu dismiss logic допустимо выносить в feature hook, если page-level файл начинает разрастаться
+- derived actions уровня feature, например `clearFilters` или готовая выборка `pendingDecisionRequests`, лучше держать рядом с feature hook, а не собирать заново в page-level JSX
 
 ### `frontend/src/lib`
 

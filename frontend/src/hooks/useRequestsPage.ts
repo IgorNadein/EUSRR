@@ -17,6 +17,11 @@ export type RequestFormState = {
   attachment: File | null;
 };
 
+export type RequestAttachmentPreview = {
+  url: string;
+  name: string;
+};
+
 export const createEmptyForm = (): RequestFormState => ({
   type: "",
   title: "",
@@ -128,7 +133,7 @@ export function useRequestsPage(_userId: number | null | undefined) {
   const [swipeMode, setSwipeMode] = useState(false);
 
   /* UI */
-  const [attachmentPreview, setAttachmentPreview] = useState<{ url: string; name: string } | null>(null);
+  const [attachmentPreview, setAttachmentPreview] = useState<RequestAttachmentPreview | null>(null);
   const [detailsRequest, setDetailsRequest] = useState<Request | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -230,6 +235,11 @@ export function useRequestsPage(_userId: number | null | undefined) {
     });
   }, [ordering, requests, search]);
 
+  const pendingDecisionRequests = useMemo(
+    () => filteredRequests.filter((request) => String(request.status || "").toLowerCase() === "pending" && request.can_decide),
+    [filteredRequests],
+  );
+
   /* ── form ── */
   const resetForm = () => setForm(createEmptyForm());
 
@@ -263,6 +273,17 @@ export function useRequestsPage(_userId: number | null | undefined) {
     setEditingRequest(null);
     resetForm();
     setActionError(null);
+  };
+
+  const clearFilters = () => {
+    setView("");
+    setTypeFilter("");
+    setStatusFilter("");
+    setEmployeeFilter("");
+    setCreatedFromFilter("");
+    setCreatedToFilter("");
+    setPeriodFromFilter("");
+    setPeriodToFilter("");
   };
 
   /* ── CRUD ── */
@@ -427,6 +448,7 @@ export function useRequestsPage(_userId: number | null | undefined) {
   return {
     /* data */
     requests: filteredRequests,
+    pendingDecisionRequests,
     employees,
     departments,
     departmentNameMap,
@@ -462,6 +484,7 @@ export function useRequestsPage(_userId: number | null | undefined) {
     filtersOpen, setFiltersOpen,
     ordering, setOrdering,
     swipeMode, setSwipeMode,
+    clearFilters,
 
     /* UI */
     attachmentPreview, setAttachmentPreview,
@@ -477,3 +500,5 @@ export function useRequestsPage(_userId: number | null | undefined) {
     isFinal,
   };
 }
+
+export type RequestsPageController = ReturnType<typeof useRequestsPage>;

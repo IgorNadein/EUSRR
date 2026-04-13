@@ -1,20 +1,20 @@
 import { Modal } from "@/components/ui";
-import { defaultStatusMeta, requestTypeLabels, statusMeta } from "@/hooks/useRequestsPage";
+import {
+  defaultStatusMeta,
+  requestTypeLabels,
+  statusMeta,
+  type RequestAttachmentPreview,
+} from "@/hooks/useRequestsPage";
 import { formatDate, formatDateTime } from "@/lib/shared";
 import type { Request } from "@/types/api";
 import { Paperclip } from "lucide-react";
 import { RequestUserBadge } from "./RequestUserBadge";
 
-type AttachmentPreview = {
-  url: string;
-  name: string;
-};
-
 type RequestDetailModalProps = {
   currentUserId?: number | null;
   departmentNameMap: Map<number, string>;
   onClose: () => void;
-  onPreviewAttachment: (preview: AttachmentPreview) => void;
+  onPreviewAttachment: (preview: RequestAttachmentPreview) => void;
   request: Request | null;
 };
 

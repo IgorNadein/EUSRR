@@ -166,10 +166,13 @@
 - `requests/RequestDetailModal.tsx`
 - `requests/RequestListControls.tsx`
 - `requests/RequestListItem.tsx`
+- `requests/RequestListSection.tsx`
+- `requests/RequestSwipeModePanel.tsx`
 - `requests/RequestUserBadge.tsx`
 - `requests/SwipeApprovalMode.tsx`
 - `app/requests/page.tsx`
 - `hooks/useRequestsPage.ts`
+- `hooks/useRequestsPageScreen.ts`
 
 Использовать как референс для:
 
@@ -177,11 +180,14 @@
 - detail modal с participant-heavy content
 - page-level toolbar/filter block, который вынесен из страницы в feature component
 - dense list row с actions/comments/expandable secondary content
+- feature container для list shell, который собирает rows + empty state + load more
+- отдельный mode-panel для alternate flow вроде swipe-review
 - attachment preview modal как отдельный feature block, а не хвост page-level JSX
 - participant badge pattern для request-like доменов
 - participant-only UI decisions
 - conditional action rendering по данным API
 - разделения page-level orchestration и feature-level compose workspace
+- screen-specific router/menu/deep-link orchestration без засорения page-level JSX
 
 ### Users / profile-like screens
 

@@ -2,7 +2,12 @@
 
 import { Modal } from "@/components/ui";
 import { SearchableSelectMulti, SearchableSelectSingle } from "@/components/shared/SearchableSelect";
-import { getRequestDateMode, requestTypeLabels, type RequestFormState } from "@/hooks/useRequestsPage";
+import {
+  getRequestDateMode,
+  requestTypeLabels,
+  type RequestAttachmentPreview,
+  type RequestFormState,
+} from "@/hooks/useRequestsPage";
 import { displayUserName } from "@/lib/shared";
 import type { Request, User } from "@/types/api";
 import { Paperclip, X } from "lucide-react";
@@ -15,11 +20,6 @@ import {
   type SetStateAction,
 } from "react";
 
-type AttachmentPreview = {
-  url: string;
-  name: string;
-};
-
 type RequestComposeModalProps = {
   actionError: string | null;
   busyKey: string | null;
@@ -29,7 +29,7 @@ type RequestComposeModalProps = {
   form: RequestFormState;
   mode: "create" | "edit";
   onClose: () => void;
-  onPreviewAttachment: (preview: AttachmentPreview) => void;
+  onPreviewAttachment: (preview: RequestAttachmentPreview) => void;
   onSubmit: (mode: "create" | "edit", saveAs: "draft" | "submit") => void | Promise<void>;
   setForm: Dispatch<SetStateAction<RequestFormState>>;
 };
