@@ -337,10 +337,6 @@ export function RequestListItem({
               <div className={`${commentsOpen ? "mt-3" : ""} space-y-3 text-xs`}>
                 <div className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
                   <div>
-                    <span className="app-text-muted">Принял решение:</span>{" "}
-                    {renderDecisionMaker(decisionMaker, currentUserId)}
-                  </div>
-                  <div>
                     <span className="app-text-muted">Создано:</span>{" "}
                     <span className="font-medium text-[var(--foreground)]">
                       {formatDate(request.created_at) || "—"}
@@ -351,6 +347,10 @@ export function RequestListItem({
                     <span className="font-medium text-[var(--foreground)]">
                       {formatDate(request.updated_at) || "—"}
                     </span>
+                  </div>
+                  <div>
+                    <span className="app-text-muted">Принял решение:</span>{" "}
+                    {renderDecisionMaker(decisionMaker, currentUserId)}
                   </div>
                   {departmentLabels ? (
                     <div className="sm:col-span-2">
