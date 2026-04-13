@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
   ArrowLeft,
   Building2,
+  Check,
+  ChevronDown,
   Crown,
   PencilLine,
   Plus,
-  Settings2,
   Trash2,
   UserPlus,
   Users,
@@ -57,8 +58,12 @@ function DepartmentMemberRow({
   pendingKey,
   roleOptions,
   onAssignRole,
+  onCreateRole,
   onRemoveMember,
   onSetHead,
+  onToggleRoleMenu,
+  roleMenuOpenForId,
+  roleMenuRef,
 }: {
   canAssignRoles: boolean;
   canChangeHead: boolean;
@@ -69,8 +74,12 @@ function DepartmentMemberRow({
   pendingKey: string | null;
   roleOptions: Array<{ id: number; name: string }>;
   onAssignRole: (employeeId: number, roleId: number | null) => Promise<void>;
+  onCreateRole: () => void;
   onRemoveMember: (employeeId: number) => Promise<void>;
   onSetHead: (employeeId: number) => Promise<void>;
+  onToggleRoleMenu: (employeeId: number | null) => void;
+  roleMenuOpenForId: number | null;
+  roleMenuRef: RefObject<HTMLDivElement | null>;
 }) {
   const isHead = currentHeadId === member.employee.id;
   const isRemoving = pendingKey === `member-remove-${member.employee.id}`;
@@ -78,6 +87,7 @@ function DepartmentMemberRow({
   const subtitle = member.employee.position?.name || null;
   const managementMode = canAssignRoles || canChangeHead || canManage;
   const roleLabel = member.role?.name || "Без роли";
+  const isRoleMenuOpen = roleMenuOpenForId === member.employee.id;
   const personName = displayUserName(member.employee);
   const profileLink = userProfileLink(member.employee, currentUserId);
   const fallback = (
@@ -132,16 +142,84 @@ function DepartmentMemberRow({
   }
 
   return (
-    <article className="flex w-full flex-wrap items-center gap-2">
-      <DepartmentPersonChip
-        currentUserId={currentUserId}
-        person={member.employee}
-        subtitle={subtitle}
-      />
+    <article className="flex max-w-full flex-wrap items-center gap-2">
+      <DepartmentPersonChip currentUserId={currentUserId} person={member.employee} subtitle={subtitle} />
 
-      <span className="app-badge inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-medium">
-        <span className="truncate">{roleLabel}</span>
-      </span>
+      {canAssignRoles ? (
+        <div className="relative" ref={isRoleMenuOpen ? roleMenuRef : null}>
+          <button
+            type="button"
+            onClick={() => onToggleRoleMenu(isRoleMenuOpen ? null : member.employee.id)}
+            aria-expanded={isRoleMenuOpen}
+            className="app-badge inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition hover:border-[var(--border-strong)]"
+          >
+            <span className="truncate">{roleLabel}</span>
+            <ChevronDown
+              size={12}
+              className={`shrink-0 transition-transform ${isRoleMenuOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+
+          {isRoleMenuOpen ? (
+            <div className="app-surface absolute left-0 top-[calc(100%+0.5rem)] z-30 min-w-[220px] rounded-xl p-2 shadow-[0_12px_32px_rgba(0,0,0,0.35)]">
+              <div className="mb-1 px-2 py-1 text-xs font-medium text-[var(--muted-foreground)]">
+                Роль участника
+              </div>
+              <div className="space-y-1">
+                {roleOptions.map((role) => {
+                  const isSelected = member.role?.id === role.id;
+                  return (
+                    <button
+                      key={role.id}
+                      type="button"
+                      onClick={() => {
+                        onToggleRoleMenu(null);
+                        void onAssignRole(member.employee.id, role.id);
+                      }}
+                      disabled={isRoleBusy}
+                      className="app-action-secondary flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm disabled:opacity-50"
+                    >
+                      <span className="truncate">{role.name}</span>
+                      {isSelected ? <Check size={14} className="shrink-0" /> : null}
+                    </button>
+                  );
+                })}
+
+                {member.role ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onToggleRoleMenu(null);
+                      void onAssignRole(member.employee.id, null);
+                    }}
+                    disabled={isRoleBusy}
+                    className="app-action-danger flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm disabled:opacity-50"
+                  >
+                    <span>Снять роль</span>
+                    <Trash2 size={14} className="shrink-0" />
+                  </button>
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onToggleRoleMenu(null);
+                    onCreateRole();
+                  }}
+                  className="app-action-secondary flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
+                >
+                  <Plus size={14} className="shrink-0" />
+                  Создать роль
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : member.role ? (
+        <span className="app-badge inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-medium">
+          <span className="truncate">{roleLabel}</span>
+        </span>
+      ) : null}
 
       {isHead ? (
         <MetaChip tone="warning">
@@ -150,52 +228,29 @@ function DepartmentMemberRow({
         </MetaChip>
       ) : null}
 
-      {!member.is_active ? (
-        <span className="app-feedback-danger inline-flex rounded-full px-2.5 py-1 text-xs font-medium">
-          Неактивное участие
-        </span>
+      {canChangeHead && !isHead ? (
+        <button
+          type="button"
+          onClick={() => void onSetHead(member.employee.id)}
+          aria-label="Назначить руководителем"
+          title="Назначить руководителем"
+          className="app-action-secondary inline-flex h-8 w-8 items-center justify-center rounded-full"
+        >
+          <Crown size={14} />
+        </button>
       ) : null}
 
-      {managementMode ? (
-        <>
-          {canAssignRoles ? (
-            <div className="min-w-[220px] flex-1 sm:flex-none sm:w-60">
-              <SearchableSelectSingle
-                label="Роль"
-                items={roleOptions}
-                selectedId={member.role?.id ?? null}
-                onSelect={(roleId) =>
-                  void onAssignRole(member.employee.id, roleId)
-                }
-                placeholder="Без роли"
-                disabled={isRoleBusy}
-              />
-            </div>
-          ) : null}
-
-          {canChangeHead && !isHead ? (
-            <button
-              type="button"
-              onClick={() => void onSetHead(member.employee.id)}
-              className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
-            >
-              <Crown size={14} />
-              Руководитель
-            </button>
-          ) : null}
-
-          {canManage && !isHead ? (
-            <button
-              type="button"
-              onClick={() => void onRemoveMember(member.employee.id)}
-              disabled={isRemoving}
-              className="app-action-danger inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-            >
-              <Trash2 size={14} />
-              Убрать
-            </button>
-          ) : null}
-        </>
+      {canManage && !isHead ? (
+        <button
+          type="button"
+          onClick={() => void onRemoveMember(member.employee.id)}
+          disabled={isRemoving}
+          aria-label="Убрать из отдела"
+          title="Убрать из отдела"
+          className="app-action-danger inline-flex h-8 w-8 items-center justify-center rounded-full disabled:opacity-50"
+        >
+          <Trash2 size={14} />
+        </button>
       ) : null}
     </article>
   );
@@ -472,6 +527,8 @@ export default function DepartmentDetailPage() {
   const departmentId = Number(params?.id);
   const h = useDepartmentPage(departmentId);
   const [managementMode, setManagementMode] = useState(false);
+  const [roleMenuOpenForId, setRoleMenuOpenForId] = useState<number | null>(null);
+  const roleMenuRef = useRef<HTMLDivElement | null>(null);
 
   const activeMembersCount = h.members.filter((member) => member.is_active).length;
   const roleOptions = h.roles.map((role) => ({ id: role.id, name: role.name }));
@@ -481,6 +538,29 @@ export default function DepartmentDetailPage() {
     h.userPerms.can_assign_roles;
 
   const isManagementMode = canUseManagementMode && managementMode;
+
+  useEffect(() => {
+    if (roleMenuOpenForId === null) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (roleMenuRef.current && !roleMenuRef.current.contains(event.target as Node)) {
+        setRoleMenuOpenForId(null);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setRoleMenuOpenForId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [roleMenuOpenForId]);
 
   return (
     <AppShell>
@@ -525,22 +605,27 @@ export default function DepartmentDetailPage() {
                     {h.department.name}
                   </h1>
                   <p className="app-text-muted mt-2 text-sm">
-                    {h.department.description ||
-                      "Здесь можно посмотреть состав отдела и его внутренние роли."}
+                    {h.department.description}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {canUseManagementMode ? (
                     <button
                       type="button"
-                      onClick={() => setManagementMode((current) => !current)}
+                      onClick={() => {
+                        setRoleMenuOpenForId(null);
+                        setManagementMode((current) => !current);
+                      }}
                       aria-label={isManagementMode ? "Вернуться к просмотру" : "Открыть управление"}
                       title={isManagementMode ? "Вернуться к просмотру" : "Открыть управление"}
                       className={`inline-flex h-10 w-10 items-center justify-center rounded-lg ${
                         isManagementMode ? "app-action-primary" : "app-action-secondary"
                       }`}
                     >
-                      <Settings2 size={16} />
+                      <ChevronDown
+                        size={16}
+                        className={`transition-transform ${isManagementMode ? "rotate-180" : "-rotate-90"}`}
+                      />
                     </button>
                   ) : null}
                   {isManagementMode && h.userPerms.can_manage ? (
@@ -588,8 +673,12 @@ export default function DepartmentDetailPage() {
                       pendingKey={h.pendingKey}
                       roleOptions={roleOptions}
                       onAssignRole={h.submitMemberRole}
+                      onCreateRole={h.openCreateRole}
                       onRemoveMember={h.submitRemoveMember}
                       onSetHead={h.submitQuickHeadChange}
+                      onToggleRoleMenu={setRoleMenuOpenForId}
+                      roleMenuOpenForId={roleMenuOpenForId}
+                      roleMenuRef={roleMenuRef}
                     />
                   ))
                 ) : (
