@@ -120,6 +120,11 @@ function DepartmentMemberRow({
             <span className="truncate">{roleLabel}</span>
           </span>
         ) : null}
+        {isHead ? (
+          <MetaChip tone="warning">
+            <Crown size={12} />
+          </MetaChip>
+        ) : null}
       </span>
     );
 
@@ -132,127 +137,157 @@ function DepartmentMemberRow({
         ) : (
           <span className="min-w-0 max-w-full">{personBubble}</span>
         )}
-        {isHead ? (
-          <MetaChip tone="warning">
-            <Crown size={12} />
-            Руководитель
-          </MetaChip>
-        ) : null}
+       
       </>
     );
   }
 
   return (
     <article className="flex max-w-full flex-wrap items-center gap-2">
-      <DepartmentPersonChip currentUserId={currentUserId} person={member.employee} subtitle={subtitle} />
-
-      {canAssignRoles ? (
-        <div className="relative" ref={isRoleMenuOpen ? roleMenuRef : null}>
-          <button
-            type="button"
-            onClick={() => onToggleRoleMenu(isRoleMenuOpen ? null : member.employee.id)}
-            aria-expanded={isRoleMenuOpen}
-            className="app-badge inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition hover:border-[var(--border-strong)]"
-          >
-            <span className="truncate">{roleLabel}</span>
-            <ChevronDown
-              size={12}
-              className={`shrink-0 transition-transform ${isRoleMenuOpen ? "rotate-180" : ""}`}
+      <span className="app-badge inline-flex max-w-full items-center gap-2 rounded-full px-2 py-1.5">
+        {profileLink ? (
+          <Link href={profileLink} className="inline-flex min-w-0 items-center gap-2">
+            <RequestAvatar
+              alt={personName}
+              fallback={fallback}
+              size="lg"
+              src={member.employee.avatar}
             />
-          </button>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-medium text-[var(--foreground)]">
+                {personName}
+              </span>
+              {subtitle ? (
+                <span className="app-text-muted block truncate text-xs">{subtitle}</span>
+              ) : null}
+            </span>
+          </Link>
+        ) : (
+          <span className="inline-flex min-w-0 items-center gap-2">
+            <RequestAvatar
+              alt={personName}
+              fallback={fallback}
+              size="lg"
+              src={member.employee.avatar}
+            />
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-medium text-[var(--foreground)]">
+                {personName}
+              </span>
+              {subtitle ? (
+                <span className="app-text-muted block truncate text-xs">{subtitle}</span>
+              ) : null}
+            </span>
+          </span>
+        )}
 
-          {isRoleMenuOpen ? (
-            <div className="app-surface absolute left-0 top-[calc(100%+0.5rem)] z-30 min-w-[220px] rounded-xl p-2 shadow-[0_12px_32px_rgba(0,0,0,0.35)]">
-              <div className="mb-1 px-2 py-1 text-xs font-medium text-[var(--muted-foreground)]">
-                Роль участника
-              </div>
-              <div className="space-y-1">
-                {roleOptions.map((role) => {
-                  const isSelected = member.role?.id === role.id;
-                  return (
+        {canAssignRoles ? (
+          <div className="relative" ref={isRoleMenuOpen ? roleMenuRef : null}>
+            <button
+              type="button"
+              onClick={() => onToggleRoleMenu(isRoleMenuOpen ? null : member.employee.id)}
+              aria-expanded={isRoleMenuOpen}
+              className="app-surface inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition hover:border-[var(--border-strong)]"
+            >
+              <span className="truncate">{roleLabel}</span>
+              <ChevronDown
+                size={12}
+                className={`shrink-0 transition-transform ${isRoleMenuOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            {isRoleMenuOpen ? (
+              <div className="app-surface absolute left-0 top-[calc(100%+0.5rem)] z-30 min-w-[220px] rounded-xl p-2 shadow-[0_12px_32px_rgba(0,0,0,0.35)]">
+                <div className="mb-1 px-2 py-1 text-xs font-medium text-[var(--muted-foreground)]">
+                  Роль участника
+                </div>
+                <div className="space-y-1">
+                  {roleOptions.map((role) => {
+                    const isSelected = member.role?.id === role.id;
+                    return (
+                      <button
+                        key={role.id}
+                        type="button"
+                        onClick={() => {
+                          onToggleRoleMenu(null);
+                          void onAssignRole(member.employee.id, role.id);
+                        }}
+                        disabled={isRoleBusy}
+                        className="app-action-secondary flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm disabled:opacity-50"
+                      >
+                        <span className="truncate">{role.name}</span>
+                        {isSelected ? <Check size={14} className="shrink-0" /> : null}
+                      </button>
+                    );
+                  })}
+
+                  {member.role ? (
                     <button
-                      key={role.id}
                       type="button"
                       onClick={() => {
                         onToggleRoleMenu(null);
-                        void onAssignRole(member.employee.id, role.id);
+                        void onAssignRole(member.employee.id, null);
                       }}
                       disabled={isRoleBusy}
-                      className="app-action-secondary flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm disabled:opacity-50"
+                      className="app-action-danger flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm disabled:opacity-50"
                     >
-                      <span className="truncate">{role.name}</span>
-                      {isSelected ? <Check size={14} className="shrink-0" /> : null}
+                      <span>Снять роль</span>
+                      <Trash2 size={14} className="shrink-0" />
                     </button>
-                  );
-                })}
+                  ) : null}
 
-                {member.role ? (
                   <button
                     type="button"
                     onClick={() => {
                       onToggleRoleMenu(null);
-                      void onAssignRole(member.employee.id, null);
+                      onCreateRole();
                     }}
-                    disabled={isRoleBusy}
-                    className="app-action-danger flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm disabled:opacity-50"
+                    className="app-action-secondary flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
                   >
-                    <span>Снять роль</span>
-                    <Trash2 size={14} className="shrink-0" />
+                    <Plus size={14} className="shrink-0" />
+                    Создать роль
                   </button>
-                ) : null}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    onToggleRoleMenu(null);
-                    onCreateRole();
-                  }}
-                  className="app-action-secondary flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
-                >
-                  <Plus size={14} className="shrink-0" />
-                  Создать роль
-                </button>
+                </div>
               </div>
-            </div>
-          ) : null}
-        </div>
-      ) : member.role ? (
-        <span className="app-badge inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-medium">
-          <span className="truncate">{roleLabel}</span>
-        </span>
-      ) : null}
+            ) : null}
+          </div>
+        ) : member.role ? (
+          <span className="app-surface inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-medium">
+            <span className="truncate">{roleLabel}</span>
+          </span>
+        ) : null}
 
-      {isHead ? (
-        <MetaChip tone="warning">
-          <Crown size={12} />
-          Руководитель
-        </MetaChip>
-      ) : null}
+        {isHead ? (
+          <MetaChip tone="warning">
+            <Crown size={12} />
+          </MetaChip>
+        ) : null}
 
-      {canChangeHead && !isHead ? (
-        <button
-          type="button"
-          onClick={() => void onSetHead(member.employee.id)}
-          aria-label="Назначить руководителем"
-          title="Назначить руководителем"
-          className="app-action-secondary inline-flex h-8 w-8 items-center justify-center rounded-full"
-        >
-          <Crown size={14} />
-        </button>
-      ) : null}
+        {canChangeHead && !isHead ? (
+          <button
+            type="button"
+            onClick={() => void onSetHead(member.employee.id)}
+            aria-label="Назначить руководителем"
+            title="Назначить руководителем"
+            className="app-action-secondary inline-flex h-7 w-7 items-center justify-center rounded-full"
+          >
+            <Crown size={13} />
+          </button>
+        ) : null}
 
-      {canManage && !isHead ? (
-        <button
-          type="button"
-          onClick={() => void onRemoveMember(member.employee.id)}
-          disabled={isRemoving}
-          aria-label="Убрать из отдела"
-          title="Убрать из отдела"
-          className="app-action-danger inline-flex h-8 w-8 items-center justify-center rounded-full disabled:opacity-50"
-        >
-          <Trash2 size={14} />
-        </button>
-      ) : null}
+        {canManage && !isHead ? (
+          <button
+            type="button"
+            onClick={() => void onRemoveMember(member.employee.id)}
+            disabled={isRemoving}
+            aria-label="Убрать из отдела"
+            title="Убрать из отдела"
+            className="app-action-danger inline-flex h-7 w-7 items-center justify-center rounded-full disabled:opacity-50"
+          >
+            <Trash2 size={13} />
+          </button>
+        ) : null}
+      </span>
     </article>
   );
 }
