@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronRight,
   Crown,
+  Link2,
   PencilLine,
   Plus,
   Search,
@@ -45,9 +46,11 @@ type DepartmentMemberModalMode = "add" | "assignRole";
 function MetaChip({
   children,
   tone = "neutral",
+  title,
 }: {
   children: ReactNode;
   tone?: "neutral" | "accent" | "warning";
+  title?: string;
 }) {
   const className =
     tone === "accent"
@@ -58,6 +61,8 @@ function MetaChip({
 
   return (
     <span
+      title={title}
+      aria-label={title}
       className={`${className} inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium`}
     >
       {children}
@@ -142,7 +147,11 @@ function DepartmentMemberRow({
             <Crown size={12} />
           </MetaChip>
         ) : null}
-        {isRoleOnly ? <MetaChip>Роль вне состава</MetaChip> : null}
+        {isRoleOnly ? (
+          <MetaChip title="Роль вне состава">
+            <Link2 size={12} />
+          </MetaChip>
+        ) : null}
       </span>
     );
 
@@ -286,7 +295,11 @@ function DepartmentMemberRow({
           </MetaChip>
         ) : null}
 
-        {isRoleOnly ? <MetaChip>Роль вне состава</MetaChip> : null}
+        {isRoleOnly ? (
+          <MetaChip title="Роль вне состава">
+            <Link2 size={12} />
+          </MetaChip>
+        ) : null}
 
         {canChangeHead && !isHead ? (
           <button
