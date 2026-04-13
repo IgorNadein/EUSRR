@@ -343,9 +343,15 @@ html[data-bs-theme="dark"] .app-input::-webkit-calendar-picker-indicator {
 }
 
 .app-avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid color-mix(in srgb, var(--accent-primary) 18%, var(--border-subtle));
   background: color-mix(in srgb, var(--accent-primary) 18%, var(--surface-secondary));
   color: var(--accent-primary-strong);
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .app-counter {

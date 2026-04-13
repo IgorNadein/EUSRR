@@ -58,7 +58,7 @@ export function MobileLeftDrawer({ isOpen, onClose, children }: LeftNavDrawerPro
             onClick={() => setIsProfileExpanded(!isProfileExpanded)}
             className="flex w-full items-center gap-3 p-4 transition-colors hover:bg-[var(--accent-soft)]"
           >
-            <div className="h-12 w-12 overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white flex items-center justify-center flex-shrink-0">
+            <div className="app-avatar-fallback flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-semibold">
               {user?.avatar ? (
                 <img src={user.avatar} alt={userName} className="h-full w-full object-cover" />
               ) : (

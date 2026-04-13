@@ -520,7 +520,7 @@ export default function MessagesPage() {
                 >
                   <div className="flex items-start gap-3">
                     <div className="relative h-10 w-10">
-                      <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-xs font-semibold text-white">
+                      <div className="app-avatar-fallback flex h-10 w-10 items-center justify-center overflow-hidden rounded-full text-xs font-semibold">
                         {chatAvatar ? (
                           <Image
                             src={resolveMediaUrl(chatAvatar)}

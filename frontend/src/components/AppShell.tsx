@@ -178,7 +178,7 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
             <NotificationCenter />
             <div className="ml-1 relative h-10 w-10" id="user-menu-root">
               <div
-                className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white hover:bg-sky-500 cursor-pointer"
+                className="app-avatar-fallback flex h-10 w-10 cursor-pointer items-center justify-center overflow-hidden rounded-full text-sm font-semibold hover:bg-[var(--accent-soft-strong)]"
                 title={userName}
                 onClick={() => setUserMenuOpen((v) => !v)}
               >

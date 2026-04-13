@@ -147,7 +147,7 @@ export default function ChatMessageItem({
       <div className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
         {!isMine ? (
           <div className="relative mr-2 mt-1 h-8 w-8 shrink-0">
-            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-[10px] font-semibold text-white">
+            <div className="app-avatar-fallback flex h-8 w-8 items-center justify-center overflow-hidden rounded-full text-[10px] font-semibold">
               {message.avatar || message.author?.avatar ? (
                 <Image
                   src={resolveMediaUrl(message.avatar || message.author?.avatar || "")}
