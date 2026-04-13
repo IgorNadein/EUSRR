@@ -76,7 +76,6 @@ function DepartmentMemberRow({
   const isHead = currentHeadId === member.employee.id;
   const isRemoving = pendingKey === `member-remove-${member.employee.id}`;
   const isRoleBusy = pendingKey === `member-role-${member.employee.id}`;
-  const subtitle = member.employee.position?.name || null;
   const managementMode = canAssignRoles || canChangeHead || canManage;
   const roleLabel = member.role?.name || "Без роли";
   const personName = displayUserName(member.employee);
@@ -90,20 +89,15 @@ function DepartmentMemberRow({
 
   if (!managementMode) {
     const personBubble = (
-      <span className="app-badge inline-flex max-w-full items-center gap-2 rounded-full px-2 py-1.5">
+      <span className="app-badge inline-flex max-w-full items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium">
         <RequestAvatar
           alt={personName}
           fallback={fallback}
-          size="lg"
+          size="sm"
           src={member.employee.avatar}
         />
-        <span className="min-w-0">
-          <span className="block truncate text-sm font-medium text-[var(--foreground)]">
-            {personName}
-          </span>
-          {subtitle ? (
-            <span className="app-text-muted block truncate text-xs">{subtitle}</span>
-          ) : null}
+        <span className="truncate text-[var(--foreground)]">
+          {personName}
         </span>
         {member.role ? (
           <span className="app-surface inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-medium text-[var(--muted-foreground)]">
@@ -137,7 +131,7 @@ function DepartmentMemberRow({
       <DepartmentPersonChip
         currentUserId={currentUserId}
         person={member.employee}
-        subtitle={subtitle}
+        subtitle={member.employee.position?.name || null}
       />
 
       <span className="app-badge inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-medium">
