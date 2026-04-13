@@ -24,7 +24,7 @@
 | Зона | Статус | Что уже хорошо | Основные проблемы | Рекомендуемый следующий шаг |
 | --- | --- | --- | --- | --- |
 | `requests` | `mixed` | визуально удачный экран, compose-настроение, participant-only логика, UI вокруг `can_decide`, compose/list/detail/controls/preview разведены по feature components, screen orchestration вынесена в hook, list/swipe flow собраны в feature containers, avatar/preview media contract выровнен через local wrapper | зона полезна как проверка guide, но не должна автоматически становиться полным visual-reference; здесь важнее бережный structural refactor без насильственного редизайна | использовать как ориентир по декомпозиции насыщенного экрана и осторожной нормализации уже хорошего UI, а не как шаблон для жёсткой пересборки dense list-паттернов |
-| `settings` | `mixed` | сильная surface hierarchy, хорошие primary sections, в целом совпадает с app-shell language | встречаются custom radii, page-level файл очень большой, часть hero/media решений выбивается по геометрии | резать controller/view-model слои и точечно сокращать custom geometry без смены общего layout |
+| `settings` | `mixed` | сильная surface hierarchy, хорошие primary sections, в целом совпадает с app-shell language, page-level controller уже вынесен в `useSettingsPage` | встречаются custom radii, view-layer секции всё ещё собраны в очень крупный page-file, часть hero/media решений выбивается по геометрии | продолжать резать settings на feature sections и точечно сокращать custom geometry без смены общего layout |
 | `documents` | `needs refactor` | богатый набор сценариев, detail/upload/comment patterns уже выделены в компоненты | смешение `rounded-md`, `rounded-lg`, `rounded-xl`, заметный gray-legacy в editor/viewer/tags, слишком много modal-heavy page-logic | сделать отдельный pass по карточкам, metadata/upload flows и documents subcomponents, не ограничиваться только page-level |
 | `equipment` | `needs refactor` | понятные формы, hooks уже вынесены, основные списки и модалки покрывают богатый сценарий | большой page-file, смешение app-style и gray/white fragments, detail/comments/forms ещё не сведены к одному contract | после documents пройтись по secondary cards, detail blocks и action forms |
 | `procurement` | `needs refactor` | крупные панели и часть detail blocks уже читаются неплохо, есть shared-like detail content | большой page-file, gray/white legacy в stats/suppliers/forms, смешение operational page и старых local panels | нормализовать page panels, suppliers/stats/forms и только потом решать дальнейшую декомпозицию |
@@ -176,7 +176,7 @@
 
 Что делать:
 
-- у `settings` сначала резать size/structure page, затем geometry
+- у `settings` после controller extraction резать section-level UI и только затем geometry
 - у `departments` поднять богатство patterns до общего уровня app
 - у `auth/legal` выровнять isolated geometry отдельно от app-shell жанра
 
