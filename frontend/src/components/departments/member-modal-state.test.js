@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  getDepartmentMemberModalError,
   getDepartmentMemberModalEmployeeLabel,
   getDepartmentMemberModalHelperText,
   getDepartmentMemberModalItems,
@@ -90,5 +91,26 @@ test("member modal helper texts reflect mode and loading state", () => {
   assert.match(
     getDepartmentMemberModalHelperText("assignRole", false, 1) || "",
     /любому активному сотруднику/i,
+  );
+});
+
+test("member modal maps backend department validation to localized inline error", () => {
+  assert.equal(
+    getDepartmentMemberModalError(
+      "Employee already belongs to another active department: Бухгалтерия.",
+      "add",
+    ),
+    "Сотрудник уже состоит в другом активном отделе: Бухгалтерия.",
+  );
+  assert.equal(
+    getDepartmentMemberModalError("Employee is inactive.", "add"),
+    "Можно выбрать только активного сотрудника.",
+  );
+  assert.equal(
+    getDepartmentMemberModalError(
+      "Employee already belongs to another active department: Бухгалтерия.",
+      "assignRole",
+    ),
+    null,
   );
 });

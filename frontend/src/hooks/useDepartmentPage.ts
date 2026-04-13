@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { getDepartmentMemberModalError } from "@/components/departments/member-modal-state";
 import { useUser } from "@/contexts/UserContext";
 import { apiClient } from "@/lib/api";
 import { loadAllPages } from "@/lib/shared";
@@ -48,6 +49,7 @@ export type DepartmentPageController = {
   employeesDirectoryLoading: boolean;
   loading: boolean;
   memberModalMode: DepartmentMemberModalMode;
+  memberModalError: string | null;
   members: DepartmentMemberLink[];
   pendingKey: SavingKey | null;
   roleDraft: DepartmentRoleDraft;
@@ -148,6 +150,7 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
 
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [memberModalMode, setMemberModalMode] = useState<DepartmentMemberModalMode>("add");
+  const [memberModalError, setMemberModalError] = useState<string | null>(null);
   const [selectedMemberId, setSelectedMemberId] = useState<number | null>(null);
   const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
 
@@ -345,6 +348,7 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
 
   const openAddMember = useCallback(() => {
     setMemberModalMode("add");
+    setMemberModalError(null);
     setSelectedMemberId(null);
     setSelectedRoleId(null);
     setAddMemberOpen(true);
@@ -357,6 +361,7 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
 
   const openAssignRoleModal = useCallback(() => {
     setMemberModalMode("assignRole");
+    setMemberModalError(null);
     setSelectedMemberId(null);
     setSelectedRoleId(null);
     setAddMemberOpen(true);
@@ -368,10 +373,21 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   }, [allEmployees.length, loadEmployeesDirectory]);
 
   const closeAddMember = useCallback(() => {
+    setMemberModalError(null);
     setSelectedMemberId(null);
     setSelectedRoleId(null);
     setMemberModalMode("add");
     setAddMemberOpen(false);
+  }, []);
+
+  const selectMember = useCallback((id: number | null) => {
+    setMemberModalError(null);
+    setSelectedMemberId(id);
+  }, []);
+
+  const selectRole = useCallback((id: number | null) => {
+    setMemberModalError(null);
+    setSelectedRoleId(id);
   }, []);
 
   const submitAddMember = useCallback(async () => {
@@ -403,6 +419,7 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
       }
       await loadCore();
       setAddMemberOpen(false);
+      setMemberModalError(null);
       setSelectedMemberId(null);
       setSelectedRoleId(null);
       setMemberModalMode("add");
@@ -412,14 +429,21 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
           : "Роль назначена сотруднику",
       );
     } catch (submitError) {
-      toast.error(
-        getErrorMessage(
-          submitError,
-          memberModalMode === "add"
-            ? "Не удалось добавить сотрудника"
-            : "Не удалось назначить роль сотруднику",
-        ),
+      const message = getErrorMessage(
+        submitError,
+        memberModalMode === "add"
+          ? "Не удалось добавить сотрудника"
+          : "Не удалось назначить роль сотруднику",
       );
+      const inlineMessage = getDepartmentMemberModalError(
+        message,
+        memberModalMode,
+      );
+      if (inlineMessage) {
+        setMemberModalError(inlineMessage);
+      } else {
+        toast.error(message);
+      }
     } finally {
       setPendingKey(null);
     }
@@ -624,6 +648,7 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     headCandidates,
     loading,
     memberModalMode,
+    memberModalError,
     members,
     pendingKey,
     roleDraft,
@@ -650,8 +675,8 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     setRoleDraft,
     setMemberModalMode,
     setSelectedHeadId,
-    setSelectedMemberId,
-    setSelectedRoleId,
+    setSelectedMemberId: selectMember,
+    setSelectedRoleId: selectRole,
     submitAddMember,
     submitDeleteDepartment,
     submitHeadChange,

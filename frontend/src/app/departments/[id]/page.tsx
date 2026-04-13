@@ -406,6 +406,7 @@ function AddMemberModal({
   isOpen,
   items,
   loading,
+  memberError,
   mode,
   optionsLoading,
   onClose,
@@ -423,6 +424,7 @@ function AddMemberModal({
   isOpen: boolean;
   items: User[];
   loading: boolean;
+  memberError: string | null;
   mode: DepartmentMemberModalMode;
   optionsLoading: boolean;
   onClose: () => void;
@@ -589,6 +591,12 @@ function AddMemberModal({
             >
               Повторить загрузку
             </button>
+          </div>
+        ) : null}
+
+        {!directoryError && memberError ? (
+          <div className="app-feedback-danger rounded-xl p-3 text-sm">
+            <p>{memberError}</p>
           </div>
         ) : null}
 
@@ -978,6 +986,7 @@ export default function DepartmentDetailPage() {
           h.assignableEmployees,
         )}
         loading={h.pendingKey === "member"}
+        memberError={h.memberModalError}
         mode={h.memberModalMode}
         optionsLoading={h.employeesDirectoryLoading}
         onClose={h.closeAddMember}

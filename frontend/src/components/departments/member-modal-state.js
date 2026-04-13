@@ -55,3 +55,31 @@ export function isDepartmentMemberModalSubmitDisabled({
   if (mode === "assignRole" && !selectedRoleId) return true;
   return false;
 }
+
+export function getDepartmentMemberModalError(message, mode) {
+  const normalized = String(message || "").trim();
+  if (!normalized) return null;
+
+  const anotherDepartmentMatch = normalized.match(
+    /Employee already belongs to another active department:\s*(.+?)\.?$/i,
+  );
+  if (anotherDepartmentMatch) {
+    const departmentName = anotherDepartmentMatch[1]?.trim();
+    if (mode === "assignRole") {
+      return null;
+    }
+    return departmentName
+      ? `Сотрудник уже состоит в другом активном отделе: ${departmentName}.`
+      : "Сотрудник уже состоит в другом активном отделе.";
+  }
+
+  if (/Employee is inactive\.?$/i.test(normalized)) {
+    return "Можно выбрать только активного сотрудника.";
+  }
+
+  if (/Employee not found\.?$/i.test(normalized)) {
+    return "Сотрудник не найден.";
+  }
+
+  return null;
+}
