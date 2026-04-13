@@ -53,5 +53,64 @@ export function createEmployeesApi(request: RequestFn) {
             return request(`/api/v1/departments/${qs ? '?' + qs : ''}`);
         },
         getDepartment: (id: number | string) => request(`/api/v1/departments/${id}/`),
+        updateDepartment: (id: number | string, data: { name?: string; description?: string }) =>
+            request(`/api/v1/departments/${id}/`, {
+                method: 'PATCH',
+                body: JSON.stringify(data),
+            }),
+        getDepartmentMembers: (id: number | string) =>
+            request(`/api/v1/departments/${id}/members/`),
+        getDepartmentUserPerms: (id: number | string) =>
+            request(`/api/v1/departments/${id}/user-perms/`),
+        setDepartmentHead: (id: number | string, head_id: number | null) =>
+            request(`/api/v1/departments/${id}/set_head/`, {
+                method: 'POST',
+                body: JSON.stringify({ head_id }),
+            }),
+        addDepartmentMember: (id: number | string, employee_id: number) =>
+            request(`/api/v1/departments/${id}/add_member/`, {
+                method: 'POST',
+                body: JSON.stringify({ employee_id }),
+            }),
+        removeDepartmentMember: (id: number | string, employee_id: number) =>
+            request(`/api/v1/departments/${id}/remove_member/`, {
+                method: 'POST',
+                body: JSON.stringify({ employee_id }),
+            }),
+        setDepartmentMemberRole: (id: number | string, data: { employee_id: number; role_id: number | null }) =>
+            request(`/api/v1/departments/${id}/set_member_role/`, {
+                method: 'POST',
+                body: JSON.stringify(data),
+            }),
+        getMyDepartments: () => request('/api/v1/departments/my-departments/'),
+        getDepartmentRoles: (params?: { department?: number | string; page?: number; limit?: number; ordering?: string }) => {
+            const qp = new URLSearchParams();
+            if (params?.department) qp.append('department', String(params.department));
+            if (params?.page) qp.append('page', params.page.toString());
+            if (params?.limit) qp.append('limit', params.limit.toString());
+            if (params?.ordering) qp.append('ordering', params.ordering);
+            const qs = qp.toString();
+            return request(`/api/v1/department-roles/${qs ? '?' + qs : ''}`);
+        },
+        createDepartmentRole: (data: { department: number; name: string; scoped_permission_codes?: string[] }) =>
+            request('/api/v1/department-roles/', {
+                method: 'POST',
+                body: JSON.stringify(data),
+            }),
+        updateDepartmentRole: (id: number | string, data: { name?: string; scoped_permission_codes?: string[] }) =>
+            request(`/api/v1/department-roles/${id}/`, {
+                method: 'PATCH',
+                body: JSON.stringify(data),
+            }),
+        deleteDepartmentRole: (id: number | string) =>
+            request(`/api/v1/department-roles/${id}/`, { method: 'DELETE' }),
+        getDepartmentRolePermChoices: () =>
+            request('/api/v1/department-roles/perm_choices/'),
+        getDepartmentRoleAssignments: (id: number | string, params?: { active?: boolean }) => {
+            const qp = new URLSearchParams();
+            if (params?.active !== undefined) qp.append('active', String(params.active));
+            const qs = qp.toString();
+            return request(`/api/v1/department-roles/${id}/assignments/${qs ? '?' + qs : ''}`);
+        },
     };
 }

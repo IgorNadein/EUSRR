@@ -221,6 +221,25 @@
 - action timeline
 - page-level profile controllers, которые держат loading/derived state/API orchestration вне page JSX
 
+### Departments
+
+Файлы:
+
+- `departments/DepartmentPersonChip.tsx`
+- `app/departments/[id]/page.tsx`
+- `hooks/useDepartmentPage.ts`
+
+Использовать как референс для:
+
+- detail screen, который должен быть полноценным management workspace, а не бедной карточкой-описанием
+- page-level controller для domain actions вокруг одного объекта: overview, members, head management, roles, permissions
+- richer detail layout, где основной управленческий список сочетается с правой summary/actions колонкой
+- member roster с role assignment и person-chip подачей вместо сырых строк участников
+
+С оговоркой:
+
+- `departments/[id]` должен оставаться привязанным к реальным backend-capabilities; не наращивать UI, если под него нет соответствующих endpoint/actions
+
 ### Messages
 
 Файлы:

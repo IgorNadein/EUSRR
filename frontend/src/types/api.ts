@@ -122,6 +122,48 @@ export interface Department {
   employees_count?: number;
 }
 
+export interface DepartmentMemberRole {
+  id: number;
+  name: string;
+}
+
+export interface DepartmentMemberLink {
+  employee: User;
+  role?: DepartmentMemberRole | null;
+  is_active: boolean;
+}
+
+export interface DepartmentUserPermissions {
+  is_head: boolean;
+  can_manage: boolean;
+  can_change_head: boolean;
+  can_assign_roles: boolean;
+}
+
+export interface DepartmentPermissionChoice {
+  id: number;
+  code: string;
+  name: string;
+}
+
+export interface DepartmentRole {
+  id: number;
+  department: number;
+  name: string;
+  permissions: number[];
+  permissions_verbose: DepartmentPermissionChoice[];
+}
+
+export interface DepartmentRoleAssignment {
+  id: number;
+  employee_id: number;
+  employee_name?: string | null;
+  assigned_at?: string | null;
+  assigned_by_id?: number | null;
+  assigned_by_name?: string | null;
+  is_active: boolean;
+}
+
 export interface Position {
   id: number;
   name: string;
