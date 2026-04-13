@@ -153,24 +153,22 @@ export default function ProfilePage() {
           bottomPanel={<ProfileContactsPanel rows={contactRows} />}
         />
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] xl:items-start">
-          <ProfileSkillsCard
-            inputValue={skillName}
-            onInputChange={onInputSkillName}
-            onSubmit={() => void handleAddSkill()}
-            submitDisabled={!skillName.trim() || skillsSaving}
-            inputDisabled={skillsSaving}
-            availableSkills={availableSkills}
-            skills={profileSkills}
-            error={skillsError}
-            loading={skillsLoading}
-            onRemoveSkill={(skillId) => void handleRemoveSkill(skillId)}
-            removeDisabled={skillsSaving}
-            emptyText="Навыки пока не указаны"
-          />
+        <ProfileSkillsCard
+          inputValue={skillName}
+          onInputChange={onInputSkillName}
+          onSubmit={() => void handleAddSkill()}
+          submitDisabled={!skillName.trim() || skillsSaving}
+          inputDisabled={skillsSaving}
+          availableSkills={availableSkills}
+          skills={profileSkills}
+          error={skillsError}
+          loading={skillsLoading}
+          onRemoveSkill={(skillId) => void handleRemoveSkill(skillId)}
+          removeDisabled={skillsSaving}
+          emptyText="Навыки пока не указаны"
+        />
 
-          <ProfileInfoCard items={infoItems} />
-        </div>
+        <ProfileInfoCard items={infoItems} />
 
         <EmployeeActionsTimeline
           actionLoading={null}
