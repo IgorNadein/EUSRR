@@ -77,86 +77,74 @@ function DepartmentMemberRow({
   const subtitle =
     member.employee.position?.name || member.employee.email || null;
   const managementMode = canAssignRoles || canChangeHead || canManage;
+  const roleLabel = member.role?.name || "Без роли";
 
   return (
-    <article className="app-surface-muted rounded-xl p-4">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <DepartmentPersonChip
-              currentUserId={currentUserId}
-              person={member.employee}
-              subtitle={subtitle}
-            />
-            {isHead ? (
-              <MetaChip tone="warning">
-                <Crown size={12} />
-                Руководитель
-              </MetaChip>
-            ) : null}
-            {!member.is_active ? (
-              <span className="app-feedback-danger inline-flex rounded-full px-2.5 py-1 text-xs font-medium">
-                Неактивное участие
-              </span>
-            ) : null}
-          </div>
+    <article className="flex flex-wrap items-center gap-2">
+      <DepartmentPersonChip
+        currentUserId={currentUserId}
+        person={member.employee}
+        subtitle={subtitle}
+      />
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {member.role ? (
-              <span className="app-badge inline-flex rounded-full px-2.5 py-1 text-xs font-medium">
-                {member.role.name}
-              </span>
-            ) : (
-              <span className="app-surface rounded-full px-2.5 py-1 text-xs text-[var(--muted-foreground)]">
-                Без роли
-              </span>
-            )}
-          </div>
-        </div>
+      <span className="app-badge inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-medium">
+        <span className="truncate">{roleLabel}</span>
+      </span>
 
-        {managementMode ? (
-          <div className="flex w-full flex-col gap-3 lg:w-auto lg:min-w-[260px] lg:items-end">
-            {canAssignRoles ? (
-              <div className="w-full lg:w-64">
-                <SearchableSelectSingle
-                  label="Роль"
-                  items={roleOptions}
-                  selectedId={member.role?.id ?? null}
-                  onSelect={(roleId) =>
-                    void onAssignRole(member.employee.id, roleId)
-                  }
-                  placeholder="Без роли"
-                  disabled={isRoleBusy}
-                />
-              </div>
-            ) : null}
+      {isHead ? (
+        <MetaChip tone="warning">
+          <Crown size={12} />
+          Руководитель
+        </MetaChip>
+      ) : null}
 
-            <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
-              {canChangeHead && !isHead ? (
-                <button
-                  type="button"
-                  onClick={() => void onSetHead(member.employee.id)}
-                  className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
-                >
-                  <Crown size={14} />
-                  Руководитель
-                </button>
-              ) : null}
-              {canManage && !isHead ? (
-                <button
-                  type="button"
-                  onClick={() => void onRemoveMember(member.employee.id)}
-                  disabled={isRemoving}
-                  className="app-action-danger inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-                >
-                  <Trash2 size={14} />
-                  Убрать
-                </button>
-              ) : null}
+      {!member.is_active ? (
+        <span className="app-feedback-danger inline-flex rounded-full px-2.5 py-1 text-xs font-medium">
+          Неактивное участие
+        </span>
+      ) : null}
+
+      {managementMode ? (
+        <>
+          {canAssignRoles ? (
+            <div className="min-w-[220px] flex-1 sm:flex-none sm:w-60">
+              <SearchableSelectSingle
+                label="Роль"
+                items={roleOptions}
+                selectedId={member.role?.id ?? null}
+                onSelect={(roleId) =>
+                  void onAssignRole(member.employee.id, roleId)
+                }
+                placeholder="Без роли"
+                disabled={isRoleBusy}
+              />
             </div>
-          </div>
-        ) : null}
-      </div>
+          ) : null}
+
+          {canChangeHead && !isHead ? (
+            <button
+              type="button"
+              onClick={() => void onSetHead(member.employee.id)}
+              className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
+            >
+              <Crown size={14} />
+              Руководитель
+            </button>
+          ) : null}
+
+          {canManage && !isHead ? (
+            <button
+              type="button"
+              onClick={() => void onRemoveMember(member.employee.id)}
+              disabled={isRemoving}
+              className="app-action-danger inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+            >
+              <Trash2 size={14} />
+              Убрать
+            </button>
+          ) : null}
+        </>
+      ) : null}
     </article>
   );
 }
