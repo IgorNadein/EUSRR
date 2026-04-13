@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
   ArrowLeft,
   Building2,
   Check,
   ChevronDown,
+  ChevronRight,
   Crown,
   PencilLine,
   Plus,
@@ -524,11 +525,14 @@ function RoleEditorModal({
 
 export default function DepartmentDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const departmentId = Number(params?.id);
   const h = useDepartmentPage(departmentId);
   const [managementMode, setManagementMode] = useState(false);
   const [roleMenuOpenForId, setRoleMenuOpenForId] = useState<number | null>(null);
   const roleMenuRef = useRef<HTMLDivElement | null>(null);
+  const [departmentMenuOpen, setDepartmentMenuOpen] = useState(false);
+  const departmentMenuRef = useRef<HTMLDivElement | null>(null);
 
   const activeMembersCount = h.members.filter((member) => member.is_active).length;
   const roleOptions = h.roles.map((role) => ({ id: role.id, name: role.name }));
@@ -561,6 +565,29 @@ export default function DepartmentDetailPage() {
       document.removeEventListener("keydown", handleEscape);
     };
   }, [roleMenuOpenForId]);
+
+  useEffect(() => {
+    if (!departmentMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (departmentMenuRef.current && !departmentMenuRef.current.contains(event.target as Node)) {
+        setDepartmentMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setDepartmentMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [departmentMenuOpen]);
 
   return (
     <AppShell>
@@ -608,49 +635,99 @@ export default function DepartmentDetailPage() {
                     {h.department.description}
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {canUseManagementMode ? (
+                {(canUseManagementMode || h.userPerms.can_manage) ? (
+                  <div ref={departmentMenuOpen ? departmentMenuRef : null} className="relative shrink-0">
                     <button
                       type="button"
-                      onClick={() => {
-                        setRoleMenuOpenForId(null);
-                        setManagementMode((current) => !current);
-                      }}
-                      aria-label={isManagementMode ? "Вернуться к просмотру" : "Открыть управление"}
-                      title={isManagementMode ? "Вернуться к просмотру" : "Открыть управление"}
-                      className={`inline-flex h-10 w-10 items-center justify-center rounded-lg ${
-                        isManagementMode ? "app-action-primary" : "app-action-secondary"
-                      }`}
+                      onClick={() => setDepartmentMenuOpen((current) => !current)}
+                      className="app-action-ghost flex h-8 w-8 items-center justify-center rounded-md"
+                      title="Действия с отделом"
+                      aria-label="Действия с отделом"
+                      aria-expanded={departmentMenuOpen}
+                      aria-haspopup="menu"
                     >
-                      <ChevronDown
-                        size={16}
-                        className={`transition-transform ${isManagementMode ? "rotate-180" : "-rotate-90"}`}
+                      <ChevronRight
+                        size={15}
+                        className={`transition-transform duration-200 ${departmentMenuOpen ? "rotate-90" : ""}`}
                       />
                     </button>
-                  ) : null}
-                  {isManagementMode && h.userPerms.can_manage ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={h.openAddMember}
-                        aria-label="Добавить участника"
-                        title="Добавить участника"
-                        className="app-action-primary inline-flex h-10 w-10 items-center justify-center rounded-lg"
-                      >
-                        <UserPlus size={16} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={h.openDepartmentEditor}
-                        aria-label="Редактировать отдел"
-                        title="Редактировать отдел"
-                        className="app-action-secondary inline-flex h-10 w-10 items-center justify-center rounded-lg"
-                      >
-                        <PencilLine size={16} />
-                      </button>
-                    </>
-                  ) : null}
-                </div>
+
+                    {departmentMenuOpen ? (
+                      <div className="app-menu absolute right-0 top-full z-20 mt-2 w-56 rounded-xl py-1.5">
+                        {h.userPerms.can_manage ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDepartmentMenuOpen(false);
+                              setManagementMode(true);
+                              h.openAddMember();
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                          >
+                            <UserPlus size={14} className="app-text-muted" />
+                            Позвать сотрудников
+                          </button>
+                        ) : null}
+
+                        {h.userPerms.can_manage ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDepartmentMenuOpen(false);
+                              setManagementMode(true);
+                              h.openDepartmentEditor();
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                          >
+                            <PencilLine size={14} className="app-text-muted" />
+                            Редактировать отдел
+                          </button>
+                        ) : null}
+
+                        {canUseManagementMode ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDepartmentMenuOpen(false);
+                              setRoleMenuOpenForId(null);
+                              setManagementMode((current) => !current);
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                          >
+                            <ChevronDown
+                              size={14}
+                              className={`transition-transform ${isManagementMode ? "rotate-180" : "-rotate-90"}`}
+                            />
+                            {isManagementMode ? "Вернуться к просмотру" : "Открыть управление"}
+                          </button>
+                        ) : null}
+
+                        {h.userPerms.can_manage ? (
+                          <>
+                            <div className="app-divider my-1 border-t" />
+                            <button
+                              type="button"
+                              disabled={h.pendingKey === "department-delete"}
+                              onClick={() => {
+                                setDepartmentMenuOpen(false);
+                                void (async () => {
+                                  const deleted = await h.submitDeleteDepartment();
+                                  if (deleted) {
+                                    router.push("/departments");
+                                  }
+                                })();
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--danger-foreground)] transition hover:bg-[var(--danger-soft)] disabled:opacity-50"
+                            >
+                              <Trash2 size={14} className="text-[var(--danger-foreground)]" />
+                              Удалить отдел
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
 
               <div

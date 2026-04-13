@@ -22,6 +22,7 @@ type DepartmentRoleDraft = {
 
 type SavingKey =
   | "department"
+  | "department-delete"
   | "head"
   | "member"
   | "role"
@@ -65,6 +66,7 @@ export type DepartmentPageController = {
   setSelectedHeadId: (id: number | null) => void;
   setSelectedMemberId: (id: number | null) => void;
   submitAddMember: () => Promise<void>;
+  submitDeleteDepartment: () => Promise<boolean>;
   submitHeadChange: () => Promise<void>;
   submitQuickHeadChange: (headId: number) => Promise<void>;
   submitHeadRemoval: () => Promise<void>;
@@ -336,6 +338,23 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     }
   }, [department, loadCore, selectedMemberId]);
 
+  const submitDeleteDepartment = useCallback(async () => {
+    if (!department) return false;
+    if (!window.confirm(`Удалить отдел «${department.name}»?`)) return false;
+
+    try {
+      setPendingKey("department-delete");
+      await apiClient.deleteDepartment(department.id);
+      toast.success("Отдел удалён");
+      return true;
+    } catch (submitError) {
+      toast.error(getErrorMessage(submitError, "Не удалось удалить отдел"));
+      return false;
+    } finally {
+      setPendingKey(null);
+    }
+  }, [department]);
+
   const submitHeadChange = useCallback(async () => {
     if (!department) return;
 
@@ -531,6 +550,7 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     setSelectedHeadId,
     setSelectedMemberId,
     submitAddMember,
+    submitDeleteDepartment,
     submitHeadChange,
     submitQuickHeadChange,
     submitHeadRemoval,

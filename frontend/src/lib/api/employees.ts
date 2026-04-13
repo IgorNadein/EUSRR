@@ -53,6 +53,8 @@ export function createEmployeesApi(request: RequestFn) {
             return request(`/api/v1/departments/${qs ? '?' + qs : ''}`);
         },
         getDepartment: (id: number | string) => request(`/api/v1/departments/${id}/`),
+        deleteDepartment: (id: number | string) =>
+            request(`/api/v1/departments/${id}/`, { method: 'DELETE' }),
         updateDepartment: (id: number | string, data: { name?: string; description?: string }) =>
             request(`/api/v1/departments/${id}/`, {
                 method: 'PATCH',
