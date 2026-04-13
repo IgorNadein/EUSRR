@@ -52,6 +52,28 @@
 - локальные стрелки, паддинги и раскрытия быстро создают вторую дизайн-систему
 - filter-toolbar с сортировкой и раскрытием фильтров тоже не должен бесконечно разрастаться внутри page-level JSX
 
+### Person chips
+
+Если secondary/detail-блок показывает конкретных людей:
+
+- получателей
+- участников
+- согласующих
+- исполнителей
+- авторов
+
+то приоритет у person-chip паттерна: `avatar + name` внутри capsule, а не у сырого текста или локально собранного badge.
+
+Причина:
+
+- человек считывается быстрее по аватару и имени, чем по строке текста
+- однотипные participant-блоки не должны выглядеть по-разному в соседних feature-модулях
+- это снижает визуальный дрейф между `requests`, `equipment`, `procurement`, `documents`, `calendar`
+
+Референс по духу:
+
+- `frontend/src/components/requests/RequestUserBadge.tsx`
+
 ### Compose forms
 
 Compose-паттерн должен восприниматься как рабочее пространство, а не как список независимых инпутов.
@@ -136,6 +158,7 @@ Target state:
 | Searchable dropdown trigger | shared `SearchableSelect*` + `rounded-lg` | compose inline-row может быть крупнее по shell | `ok` |
 | Compose address row | shared select pattern на базе `app-input` | `rounded-2xl` допустим для compose-shell строки | `ok` |
 | Inline comment composer | shared `CommentControls` + icon-only send action | feed/footer variant может добавлять attachment actions перед input | `ok` |
+| Person chip / participant capsule | local feature wrapper вокруг avatar + name capsule | простой текст допустим только если аватар/ссылка не нужны и список не является заметной частью блока | `ok` |
 | Helper / alert / selected block | `app-selected`, `app-feedback-*`, `app-surface-muted` + `rounded-lg`/`rounded-xl` | зависит от веса блока | `needs refactor` |
 | Pills / status chips / avatar | `rounded-full` | нет | `ok` |
 | `rounded-md` у новых карточек и полей | не использовать | только legacy до отдельной переработки | `legacy` |

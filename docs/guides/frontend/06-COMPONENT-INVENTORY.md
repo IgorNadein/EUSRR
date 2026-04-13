@@ -190,6 +190,14 @@
 - разделения page-level orchestration и feature-level compose workspace
 - screen-specific router/menu/deep-link orchestration без засорения page-level JSX
 
+`requests/RequestUserBadge.tsx` использовать как ориентир, когда нужен person-chip паттерн:
+
+- `avatar + name` внутри capsule
+- опциональная ссылка на профиль
+- compact и large варианты внутри одного feature wrapper
+
+Не копировать компонент дословно во все модули, но сохранять приоритет этого паттерна над сырой строкой получателя или локально собранным badge.
+
 С оговоркой:
 
 - `requests` сейчас хороший ориентир по декомпозиции и compose/detail flow, но не должен автоматически становиться visual-template для всех dense lists
