@@ -381,37 +381,50 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 
         via_assignment = False
 
-        if link:
-            # Сотрудник — член отдела: обновляем роль в линке
-            link.role = role
-            link.save(update_fields=["role"])
+        active_assignments = list(
+            RoleAssignment.objects.filter(
+                employee_id=emp_id,
+                role__department=dept,
+                is_active=True,
+            ).select_related("role")
+        )
 
-            # Также создаём/обновляем RoleAssignment для консистентности
+        def deactivate_assignment(assignment: RoleAssignment) -> None:
+            assignment.is_active = False
+            assignment.save(update_fields=["is_active"])
+
+        if link:
+            # Сотрудник — член отдела: сперва приводим RoleAssignment
+            # к единственному актуальному значению, затем обновляем link.role.
+            for assignment in active_assignments:
+                if role is None or assignment.role_id != role.id:
+                    deactivate_assignment(assignment)
+
             if role:
                 RoleAssignment.objects.update_or_create(
                     employee_id=emp_id,
                     role=role,
                     defaults={"is_active": True, "assigned_by": request.user},
                 )
-            else:
-                RoleAssignment.objects.filter(
-                    employee_id=emp_id, role__department=dept, is_active=True
-                ).update(is_active=False)
+
+            link.role = role
+            link.save(update_fields=["role"])
         else:
             # Сотрудник НЕ член отдела: используем только RoleAssignment
             via_assignment = True
 
             if role:
+                for assignment in active_assignments:
+                    if assignment.role_id != role.id:
+                        deactivate_assignment(assignment)
                 RoleAssignment.objects.update_or_create(
                     employee=employee,
                     role=role,
                     defaults={"is_active": True, "assigned_by": request.user},
                 )
             else:
-                active_assignments = RoleAssignment.objects.filter(
-                    employee_id=emp_id, role__department=dept, is_active=True
-                )
-                active_assignments.update(is_active=False)
+                for assignment in active_assignments:
+                    deactivate_assignment(assignment)
 
         return Response(
             {

@@ -377,6 +377,88 @@ class TestDepartmentQueueExecutors:
         )
 
 
+class TestDepartmentRoleQueueExecutors:
+
+    @override_settings(LDAP_ENABLED=True)
+    def test_department_role_retry_reconciles_role_group(
+        self, db
+    ):
+        from employees.models import Department, DepartmentRole, LdapSyncQueue
+        from employees.tasks import process_ldap_queue_item
+
+        with override_settings(LDAP_ENABLED=False):
+            department = Department.objects.create(name="Dept Role Queue")
+            role = DepartmentRole.objects.create(
+                department=department,
+                name="Reviewer",
+            )
+
+        item = LdapSyncQueue.objects.create(
+            operation="department_role_save",
+            model_name="department_role",
+            object_pk=str(role.pk),
+            payload={"role_pk": str(role.pk)},
+        )
+
+        with patch(
+            "employees.ldap.services.department_service.DepartmentService.sync_role_state"
+        ) as mock_sync:
+            process_ldap_queue_item(item.pk)
+
+        item.refresh_from_db()
+        assert item.status == LdapSyncQueue.Status.COMPLETED
+        mock_sync.assert_called_once_with(role)
+
+    @override_settings(LDAP_ENABLED=True)
+    def test_role_assignment_retry_reconciles_ldap_membership(
+        self, db, user_factory
+    ):
+        from employees.models import (
+            Department,
+            DepartmentRole,
+            LdapSyncQueue,
+            RoleAssignment,
+        )
+        from employees.tasks import process_ldap_queue_item
+
+        with override_settings(LDAP_ENABLED=False):
+            employee = user_factory(email="role-sync@example.com")
+            department = Department.objects.create(name="Dept Role Assignment")
+            role = DepartmentRole.objects.create(
+                department=department,
+                name="Operator",
+            )
+            assignment = RoleAssignment.objects.create(
+                employee=employee,
+                role=role,
+                is_active=True,
+            )
+
+        item = LdapSyncQueue.objects.create(
+            operation="role_assignment",
+            model_name="role_assignment",
+            object_pk=str(assignment.pk),
+            payload={
+                "employee_pk": str(employee.pk),
+                "role_pk": str(role.pk),
+                "is_active": True,
+            },
+        )
+
+        with patch(
+            "employees.ldap.services.department_service.DepartmentService.sync_role_assignment_state"
+        ) as mock_sync:
+            process_ldap_queue_item(item.pk)
+
+        item.refresh_from_db()
+        assert item.status == LdapSyncQueue.Status.COMPLETED
+        mock_sync.assert_called_once_with(
+            employee,
+            role,
+            is_active=True,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Сигналы: проверка enqueue при ошибке LDAP
 # ---------------------------------------------------------------------------
