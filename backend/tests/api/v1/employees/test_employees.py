@@ -321,6 +321,19 @@ def test_destroy_requires_admin(api_client: APIClient):
     assert resp.status_code == status.HTTP_204_NO_CONTENT
     assert not Employee.objects.filter(pk=victim.pk).exists()
 
+
+def test_destroy_self_forbidden_for_regular_user(api_client: APIClient):
+    me = make_user("self-delete@example.com")
+    api_client.force_authenticate(user=me)
+    url = reverse("api:v1:employees-detail", args=[me.pk])
+
+    resp = api_client.delete(url)
+    assert resp.status_code in (
+        status.HTTP_403_FORBIDDEN,
+        status.HTTP_401_UNAUTHORIZED,
+    )
+    assert Employee.objects.filter(pk=me.pk).exists()
+
 # ---------- action: me (GET/PATCH) ----------
 
 def test_me_get_returns_current_user(api_client: APIClient):

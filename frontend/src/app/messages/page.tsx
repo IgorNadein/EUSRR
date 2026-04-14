@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/url";
-import { ChatIdentity, getChatAvatar, getChatInitials, getChatTitle } from "@/lib/messages/chatUtils";
+import { ChatIdentity, getChatAvatar, getChatInitials, getChatTitle, isDepartmentCommentsChat } from "@/lib/messages/chatUtils";
 import type { Chat } from "@/types/api";
-import { Search, MessageCircle, Pin, BellOff, Filter, Plus, X, Users, Globe, Radio, Image as ImageIcon, Megaphone, MessageSquare } from "lucide-react";
+import { Search, MessageCircle, Pin, BellOff, Filter, Plus, X, Users, Globe, Radio, Image as ImageIcon, Megaphone, MessageSquare, Building2 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useUser } from "@/contexts/UserContext";
@@ -56,7 +56,9 @@ function getChatTypeIcon(chat: Chat) {
     case 'announcement':
       return <Megaphone size={10} className="app-accent-text" />;
     case 'comments':
-      return <MessageSquare size={10} className="app-accent-text" />;
+      return isDepartmentCommentsChat(chat)
+        ? <Building2 size={10} className="app-accent-text" />
+        : <MessageSquare size={10} className="app-accent-text" />;
     default:
       return null;
   }

@@ -27,6 +27,7 @@ type PageHeaderProps = {
 
 type HeaderProps = {
   mobileNavPlacement: "top" | "bottom";
+  suppressMobileChrome?: boolean;
   onOpenLeftNav: () => void;
   onOpenCalendar: () => void;
 };
@@ -47,7 +48,7 @@ const navItems = [
   // { href: "/finances", label: "Финансы", icon: Wallet },
 ];
 
-function Header({ mobileNavPlacement, onOpenLeftNav, onOpenCalendar }: HeaderProps) {
+function Header({ mobileNavPlacement, suppressMobileChrome = false, onOpenLeftNav, onOpenCalendar }: HeaderProps) {
   const router = useRouter();
   const { user, logout } = useUser();
   const [searchQuery, setSearchQuery] = useState("");
@@ -113,7 +114,7 @@ function Header({ mobileNavPlacement, onOpenLeftNav, onOpenCalendar }: HeaderPro
         isBottomMobileNav
           ? "fixed inset-x-0 bottom-0 border-t lg:sticky lg:top-0 lg:bottom-auto lg:border-b lg:border-t-0"
           : "sticky top-0 border-b"
-      }`}
+      } ${suppressMobileChrome ? "hidden lg:block" : ""} shrink-0`}
     >
       <div className="mx-auto max-w-6xl px-4 sm:px-8">
         <div
@@ -446,9 +447,10 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <div className={`${isMessageDialogPage ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'} app-shell flex flex-col ${mobileNavPlacement === "bottom" ? "pb-[calc(env(safe-area-inset-bottom)+3.75rem)] lg:pb-0" : ""}`}>
+    <div className={`${isMessageDialogPage ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'} app-shell flex flex-col ${mobileNavPlacement === "bottom" && !isMessageDialogPage ? "pb-[calc(env(safe-area-inset-bottom)+3.75rem)] lg:pb-0" : ""}`}>
         <Header
           mobileNavPlacement={mobileNavPlacement}
+          suppressMobileChrome={isMessageDialogPage}
           onOpenLeftNav={() => setIsMobileLeftNavOpen(true)}
           onOpenCalendar={() => setIsMobileCalendarOpen(true)}
         />

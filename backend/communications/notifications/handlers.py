@@ -272,6 +272,27 @@ def _notify_comment(message):
         object_author = getattr(context_obj, 'employee', None)
         object_url = f"/requests?request={context_obj.id}"
         object_type = "заявки"
+        recipient_ids.update(
+            context_obj.recipients.filter(is_active=True).values_list(
+                "id", flat=True
+            )
+        )
+        recipient_ids.update(
+            context_obj.cc_users.filter(is_active=True).values_list(
+                "id", flat=True
+            )
+        )
+        if getattr(context_obj, "approver_id", None):
+            recipient_ids.add(context_obj.approver_id)
+        if getattr(context_obj, "sent_to_all_department", False):
+            from employees.models import EmployeeDepartment
+
+            dept_employee_ids = EmployeeDepartment.objects.filter(
+                department__in=context_obj.departments.all(),
+                is_active=True,
+                employee__is_active=True,
+            ).values_list("employee_id", flat=True)
+            recipient_ids.update(dept_employee_ids)
 
     # 1. Уведомляем автора объекта
     if object_author and object_author.id != author.id:

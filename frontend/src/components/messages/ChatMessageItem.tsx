@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useMemo, useState } from "react";
 import {
   AlertCircle,
   Check,
@@ -13,6 +14,8 @@ import {
   PlayCircle,
 } from "lucide-react";
 
+import { RequestAvatar } from "@/components/requests/RequestAvatar";
+import MessageActionsMenu from "@/components/messages/MessageActionsMenu";
 import { resolveMediaUrl } from "@/lib/url";
 import {
   formatFileSize,
@@ -58,7 +61,7 @@ type ChatMessageItemProps = {
   canReply: boolean;
   brokenMedia: Record<number, boolean>;
   useOriginalImage: Record<number, boolean>;
-  onToggleActions: (messageId: number, anchor: { x: number; y: number }) => void;
+  onToggleActions: (messageId: number) => void;
   onJumpToReply: (messageId: number) => void;
   onOpenMediaPreview: (preview: MediaPreview) => void;
   onAttachmentLoad: (attachmentId: number) => void;
@@ -66,10 +69,24 @@ type ChatMessageItemProps = {
   onUseOriginalImage: (attachmentId: number) => void;
   onReact: (message: Message, emoji: string) => void;
   hasMyReaction: (message: Message, emoji: string) => boolean;
+  recentReactions: string[];
+  onQuickReact: (message: Message, emoji: string) => void;
+  onOpenReactionPicker: (message: Message) => void;
+  onShowAllReaders?: (message: Message) => void;
+  onReply: (message: Message) => void;
+  onEdit: (message: Message) => void;
+  onDelete: (message: Message) => void;
 };
 
 function getMessageAuthorLabel(message: Message): string {
   return message.author_name || message.author?.last_name || message.sender?.last_name || "Сотрудник";
+}
+
+function formatReactionInitials(name: string): string {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
+  return `${parts[0].slice(0, 1)}${parts[1].slice(0, 1)}`.toUpperCase();
 }
 
 function MessageDeliveryStatus({ sendState, isRead }: { sendState?: Message["send_state"]; isRead: boolean }) {
@@ -128,7 +145,15 @@ export default function ChatMessageItem({
   onUseOriginalImage,
   onReact,
   hasMyReaction,
+  recentReactions,
+  onQuickReact,
+  onOpenReactionPicker,
+  onShowAllReaders,
+  onReply,
+  onEdit,
+  onDelete,
 }: ChatMessageItemProps) {
+  const [reactionPopoverEmoji, setReactionPopoverEmoji] = useState<string | null>(null);
   const currentDate = getMessageDate(message);
   const replyPreviewMessage = getReplyPreview(message, repliedMessage);
   const replyToId = getReplyToId(message);
@@ -141,6 +166,29 @@ export default function ChatMessageItem({
   const hasActions = canReply || canManage;
   const isRead = Boolean(message.is_read);
   const sendState = message.send_state;
+  const reactionUsers = useMemo(() => {
+    const summary = message.reactions_summary || {};
+    return Object.fromEntries(
+      Object.entries(summary).map(([emoji, meta]) => {
+        const names = Array.isArray(meta.user_names) ? meta.user_names : [];
+        const userIds = Array.isArray(meta.users) ? meta.users : [];
+        return [
+          emoji,
+          Array.isArray(meta.user_details) && meta.user_details.length > 0
+            ? meta.user_details.map((person, index) => ({
+                id: person.id ?? userIds[index] ?? `${emoji}-${index}-${person.name}`,
+                name: person.name,
+                avatar: person.avatar || null,
+              }))
+            : names.map((name, index) => ({
+                id: userIds[index] ?? `${emoji}-${index}-${name}`,
+                name,
+                avatar: null,
+              })),
+        ];
+      }),
+    ) as Record<string, Array<{ id: number | string; name: string; avatar: string | null }>>;
+  }, [message.reactions_summary]);
 
   return (
     <div data-message-id={message.id} data-message-date={currentDate?.toISOString() || ""} className="mb-3 last:mb-0">
@@ -171,10 +219,7 @@ export default function ChatMessageItem({
                 <button
                   type="button"
                   data-actions-trigger="true"
-                  onClick={(event) => {
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    onToggleActions(message.id, { x: rect.right, y: rect.top });
-                  }}
+                  onClick={() => onToggleActions(message.id)}
                   className={`inline-flex h-6 w-6 items-center justify-center rounded-full border border-transparent bg-transparent text-[var(--muted-foreground)] transition hover:text-sky-600 ${
                     isActionsOpen ? "rotate-90" : ""
                   }`}
@@ -411,22 +456,65 @@ export default function ChatMessageItem({
               <div className="mt-2 flex flex-wrap gap-1">
                 {Object.entries(message.reactions_summary || {}).map(([emoji, meta]) => {
                   const mine = hasMyReaction(message, emoji);
+                  const reactedUsers = reactionUsers[emoji] || [];
+                  const showReactionPopover = reactionPopoverEmoji === emoji && reactedUsers.length > 0;
                   return (
-                    <button
+                    <div
                       key={`${message.id}-${emoji}`}
-                      type="button"
-                      onClick={() => onReact(message, emoji)}
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition ${
-                        mine ? "bg-sky-100 text-sky-700 ring-1 ring-sky-300" : "app-surface-muted text-[var(--foreground)] ring-1 ring-[var(--border-subtle)] hover:bg-[var(--surface-elevated)]"
-                      }`}
-                      title="Реакция"
+                      className="relative"
+                      onMouseEnter={() => setReactionPopoverEmoji(emoji)}
+                      onMouseLeave={() => setReactionPopoverEmoji((current) => (current === emoji ? null : current))}
                     >
-                      <span>{emoji}</span>
-                      <span>{meta.count}</span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => onReact(message, emoji)}
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition ${
+                          mine ? "bg-sky-100 text-sky-700 ring-1 ring-sky-300" : "app-surface-muted text-[var(--foreground)] ring-1 ring-[var(--border-subtle)] hover:bg-[var(--surface-elevated)]"
+                        }`}
+                        title="Реакция"
+                      >
+                        <span>{emoji}</span>
+                        <span>{meta.count}</span>
+                      </button>
+                      {showReactionPopover ? (
+                        <div className={`app-menu absolute top-full z-20 mt-1 w-56 rounded-xl p-2 ${isMine ? "right-0" : "left-0"}`}>
+                          <p className="app-text-muted px-1 pb-1 text-xs font-semibold">Отреагировали</p>
+                          <div className="max-h-56 space-y-1 overflow-y-auto">
+                            {reactedUsers.map((person) => (
+                              <div key={person.id} className="flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-[var(--surface-secondary)]">
+                                <RequestAvatar
+                                  alt={person.name}
+                                  fallback={formatReactionInitials(person.name)}
+                                  size="sm"
+                                  src={person.avatar || undefined}
+                                />
+                                <p className="truncate text-xs text-[var(--foreground)]">{person.name}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
                   );
                 })}
               </div>
+            ) : null}
+
+            {isActionsOpen ? (
+              <MessageActionsMenu
+                currentUserId={currentUserId}
+                message={message}
+                canReply={canReply}
+                canManage={canManage}
+                isMine={isMine}
+                recentReactions={recentReactions}
+                onQuickReact={(emoji) => onQuickReact(message, emoji)}
+                onOpenReactionPicker={() => onOpenReactionPicker(message)}
+                onShowAllReaders={onShowAllReaders ? () => onShowAllReaders(message) : undefined}
+                onReply={() => onReply(message)}
+                onEdit={() => onEdit(message)}
+                onDelete={() => onDelete(message)}
+              />
             ) : null}
           </div>
         </div>

@@ -9,6 +9,9 @@ from employees.models import Department
 from requests_app.enums import RequestStatus
 from requests_app.enums import RequestType
 from requests_app.models import Request
+from requests_app.notifications.signals import (
+    dispatch_pending_new_request_notifications,
+)
 from rest_framework import serializers
 
 from ..employees.serializers import EmployeeBriefSerializer
@@ -470,11 +473,17 @@ class RequestWriteSerializer(serializers.ModelSerializer):
         )
 
         # Устанавливаем связи ManyToMany
-        if departments:
-            request_obj.departments.set(departments)
+        request_obj._suppress_new_request_notifications = True
+        try:
+            if departments:
+                request_obj.departments.set(departments)
 
-        self._set_recipients(request_obj, recipient_ids, is_cc=False)
-        self._set_recipients(request_obj, cc_user_ids, is_cc=True)
+            self._set_recipients(request_obj, recipient_ids, is_cc=False)
+            self._set_recipients(request_obj, cc_user_ids, is_cc=True)
+        finally:
+            request_obj._suppress_new_request_notifications = False
+
+        dispatch_pending_new_request_notifications(request_obj)
 
         # Проверяем что сохранилось
         recipients_count = request_obj.recipients.count()

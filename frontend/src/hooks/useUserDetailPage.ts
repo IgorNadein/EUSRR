@@ -17,7 +17,7 @@ import {
   type UserProfileTextField,
   sortEmployeeActions,
 } from "@/lib/users/userDetailUtils";
-import type { Chat, EmployeeAction, User } from "@/types/api";
+import type { Chat, EmployeeAction, Position, User } from "@/types/api";
 
 type ChatWithMemberIds = Chat & { member_ids?: number[] };
 
@@ -36,9 +36,14 @@ export function useUserDetailPage(userId: number, currentUser: User | null) {
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
+  const [isPositionModalOpen, setIsPositionModalOpen] = useState(false);
   const [editForm, setEditForm] = useState<UserProfileEditForm>(createEmptyEditForm);
   const [actionForm, setActionForm] = useState<EmployeeActionForm>(createEmptyActionForm);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [positionsLoading, setPositionsLoading] = useState(false);
+  const [positionsError, setPositionsError] = useState<string | null>(null);
+  const [positionValue, setPositionValue] = useState("");
 
   const refreshPerson = useCallback(async () => {
     const data = await apiClient.getEmployee(userId) as User;
@@ -211,6 +216,33 @@ export function useUserDetailPage(userId: number, currentUser: User | null) {
     setEditForm((current) => ({ ...current, avatarFile: null, avatarPreview: null }));
   }, []);
 
+  const handleOpenPositionModal = useCallback(async () => {
+    if (!person) return;
+
+    setPositionValue(person.position?.id ? String(person.position.id) : "");
+    setPositionsError(null);
+    setIsPositionModalOpen(true);
+
+    if (positions.length > 0 || positionsLoading) return;
+
+    try {
+      setPositionsLoading(true);
+      const response = await apiClient.getPositions() as Position[];
+      setPositions(response);
+    } catch (loadError) {
+      setPositionsError(
+        getErrorMessage(loadError, "Не удалось загрузить список должностей"),
+      );
+    } finally {
+      setPositionsLoading(false);
+    }
+  }, [person, positions.length, positionsLoading]);
+
+  const handleClosePositionModal = useCallback(() => {
+    setIsPositionModalOpen(false);
+    setPositionsError(null);
+  }, []);
+
   const handleAvatarChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -276,6 +308,26 @@ export function useUserDetailPage(userId: number, currentUser: User | null) {
     }
   }, [editForm, handleCloseEditModal, person, refreshPerson, userId]);
 
+  const handleSavePosition = useCallback(async () => {
+    if (!person || !userId) return;
+
+    setActionLoading("position");
+    setPositionsError(null);
+    try {
+      await apiClient.updateEmployee(userId, {
+        position_id: positionValue ? Number(positionValue) : null,
+      });
+      await refreshPerson();
+      handleClosePositionModal();
+    } catch (saveError) {
+      setPositionsError(
+        getErrorMessage(saveError, "Не удалось изменить должность"),
+      );
+    } finally {
+      setActionLoading(null);
+    }
+  }, [handleClosePositionModal, person, positionValue, refreshPerson, userId]);
+
   const canEdit = Boolean(currentUser && (
     currentUser.auth?.is_staff ||
     currentUser.auth?.is_superuser ||
@@ -310,23 +362,32 @@ export function useUserDetailPage(userId: number, currentUser: User | null) {
     handleAvatarChange,
     handleCloseActionModal,
     handleCloseEditModal,
+    handleClosePositionModal,
     handleCopyToClipboard: copyToClipboard,
     handleDeleteAction,
     handleEditAction,
     handleOpenActionModal,
     handleOpenEditModal,
+    handleOpenPositionModal,
     handleSaveAction,
     handleSaveEdit,
+    handleSavePosition,
     handleStartChat,
     initials,
     isActionModalOpen,
     isEditModalOpen,
+    isPositionModalOpen,
     latestAction,
     loading,
     person,
+    positionValue,
+    positions,
+    positionsError,
+    positionsLoading,
     setActionField,
     setAvatarFailed,
     setEditField,
+    setPositionValue,
     sortedActions,
   };
 }

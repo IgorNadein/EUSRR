@@ -2,9 +2,12 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
+  BriefcaseBusiness,
+  ChevronRight,
+  History,
   Mail,
   MessageCircle,
   Pencil,
@@ -12,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "../../../components/AppShell";
+import ChangeUserPositionModal from "@/components/users/ChangeUserPositionModal";
 import EditUserProfileModal from "@/components/users/EditUserProfileModal";
 import EmployeeActionModal from "@/components/users/EmployeeActionModal";
 import EmployeeActionsTimeline from "@/components/users/EmployeeActionsTimeline";
@@ -61,23 +65,32 @@ export default function UserDetailPage() {
     handleAvatarChange,
     handleCloseActionModal,
     handleCloseEditModal,
+    handleClosePositionModal,
     handleCopyToClipboard,
     handleDeleteAction,
     handleEditAction,
     handleOpenActionModal,
     handleOpenEditModal,
+    handleOpenPositionModal,
     handleSaveAction,
     handleSaveEdit,
+    handleSavePosition,
     handleStartChat,
     initials,
     isActionModalOpen,
     isEditModalOpen,
+    isPositionModalOpen,
     latestAction,
     loading,
     person,
+    positionValue,
+    positions,
+    positionsError,
+    positionsLoading,
     setActionField,
     setAvatarFailed,
     setEditField,
+    setPositionValue,
     sortedActions,
   } = useUserDetailPage(userId, currentUser);
 
@@ -101,6 +114,8 @@ export default function UserDetailPage() {
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [skillsSaving, setSkillsSaving] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(null);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setPersonSkills(person?.skills || []);
@@ -137,6 +152,29 @@ export default function UserDetailPage() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setProfileMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setProfileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [profileMenuOpen]);
 
   const contactRows = useMemo<ProfileContactRow[]>(() => {
     if (!person) return [];
@@ -309,12 +347,80 @@ export default function UserDetailPage() {
             <ProfileHeroCard
               caption="Профиль сотрудника"
               statusBadge={
-                latestAction ? (
-                  <span
-                    className={`app-status-pill ${getEmployeeActionTone(latestAction.action).badgeClass}`}
+                (latestAction || canEdit || canManageActions) ? (
+                  <div
+                    ref={profileMenuOpen ? profileMenuRef : null}
+                    className="relative flex items-center gap-2"
                   >
-                    {latestAction.action_display || latestAction.action}
-                  </span>
+                    {latestAction ? (
+                      <span
+                        className={`app-status-pill ${getEmployeeActionTone(latestAction.action).badgeClass}`}
+                      >
+                        {latestAction.action_display || latestAction.action}
+                      </span>
+                    ) : null}
+                    {(canEdit || canManageActions) ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setProfileMenuOpen((current) => !current)}
+                          className="app-action-ghost flex h-8 w-8 items-center justify-center rounded-md"
+                          aria-label="Действия профиля"
+                          aria-expanded={profileMenuOpen}
+                          title="Действия профиля"
+                          aria-haspopup="menu"
+                        >
+                          <ChevronRight
+                            size={15}
+                            className={`transition-transform duration-200 ${profileMenuOpen ? "rotate-90" : ""}`}
+                          />
+                        </button>
+                        {profileMenuOpen ? (
+                          <div className="app-menu absolute right-0 top-full z-20 mt-2 w-64 rounded-xl py-1.5">
+                            {canEdit ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setProfileMenuOpen(false);
+                                  handleOpenEditModal();
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                              >
+                                <Pencil size={14} className="app-text-muted" />
+                                Редактировать профиль
+                              </button>
+                            ) : null}
+                            {canManageActions ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setProfileMenuOpen(false);
+                                  handleOpenActionModal();
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                              >
+                                <History size={14} className="app-text-muted" />
+                                Добавить кадровое событие
+                              </button>
+                            ) : null}
+                            {canManageActions ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setProfileMenuOpen(false);
+                                  void handleOpenPositionModal();
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                              >
+                                <BriefcaseBusiness size={14} className="app-text-muted" />
+                                Изменить должность
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </div>
                 ) : null
               }
               avatar={
@@ -347,38 +453,29 @@ export default function UserDetailPage() {
                   />
                 ) : undefined
               }
-              headerActions={
-                canEdit ? (
-                  <button
-                    type="button"
-                    onClick={handleOpenEditModal}
-                    className="app-action-secondary inline-flex h-10 w-10 items-center justify-center rounded-xl"
-                    aria-label="Редактировать профиль"
-                    title="Редактировать профиль"
-                  >
-                    <Pencil size={16} />
-                  </button>
-                ) : undefined
-              }
               actionRow={
-                currentUser && currentUser.id !== person.id ? (
+                currentUser && (currentUser.id !== person.id || canEdit) ? (
                   <>
-                    <button
-                      onClick={handleStartChat}
-                      disabled={creatingChat}
-                      className="app-action-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
-                    >
-                      <MessageCircle size={16} />
-                      {creatingChat ? "Загрузка..." : "Написать"}
-                    </button>
-                    {person.phone_number ? (
-                      <a
-                        href={`tel:${formatPhoneForLink(person.phone_number)}`}
-                        className="app-action-secondary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium"
-                      >
-                        <Phone size={16} />
-                        Позвонить
-                      </a>
+                    {currentUser.id !== person.id ? (
+                      <>
+                        <button
+                          onClick={handleStartChat}
+                          disabled={creatingChat}
+                          className="app-action-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+                        >
+                          <MessageCircle size={16} />
+                          {creatingChat ? "Загрузка..." : "Написать"}
+                        </button>
+                        {person.phone_number ? (
+                          <a
+                            href={`tel:${formatPhoneForLink(person.phone_number)}`}
+                            className="app-action-secondary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium"
+                          >
+                            <Phone size={16} />
+                            Позвонить
+                          </a>
+                        ) : null}
+                      </>
                     ) : null}
                   </>
                 ) : undefined
@@ -471,6 +568,19 @@ export default function UserDetailPage() {
         onSave={handleSaveEdit}
         onTextFieldChange={(field, value) => setEditField(field, value)}
         person={person}
+      />
+
+      <ChangeUserPositionModal
+        actionLoading={actionLoading}
+        error={positionsError}
+        isOpen={isPositionModalOpen}
+        onClose={handleClosePositionModal}
+        onPositionChange={setPositionValue}
+        onSave={handleSavePosition}
+        person={person}
+        positionValue={positionValue}
+        positions={positions}
+        positionsLoading={positionsLoading}
       />
 
       <EmployeeActionModal

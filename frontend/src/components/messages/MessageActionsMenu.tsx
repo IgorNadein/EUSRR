@@ -5,11 +5,11 @@ import { CheckCheck, Pencil, Reply, Smile, Trash2 } from "lucide-react";
 import type { Message } from "@/types/api";
 
 type MessageActionsMenuProps = {
-  anchor: { x: number; y: number };
   currentUserId?: number;
   message: Message;
   canReply: boolean;
   canManage: boolean;
+  isMine?: boolean;
   recentReactions: string[];
   onQuickReact: (emoji: string) => void;
   onOpenReactionPicker: () => void;
@@ -20,11 +20,11 @@ type MessageActionsMenuProps = {
 };
 
 export default function MessageActionsMenu({
-  anchor,
   currentUserId,
   message,
   canReply,
   canManage,
+  isMine,
   recentReactions,
   onQuickReact,
   onOpenReactionPicker,
@@ -33,21 +33,18 @@ export default function MessageActionsMenu({
   onEdit,
   onDelete,
 }: MessageActionsMenuProps) {
-  const isMine = Boolean(
+  const resolvedIsMine = Boolean(
+    isMine ?? (
     currentUserId &&
       (message.author_id === currentUserId || message.author?.id === currentUserId || message.sender?.id === currentUserId)
+    )
   );
   const readers = message.read_by || [];
 
   return (
     <div
       data-actions-menu="true"
-      className="app-menu fixed z-[60] min-w-[208px] max-w-[232px] rounded-xl py-1.5"
-      style={{
-        left: anchor.x,
-        top: anchor.y - 8,
-        transform: "translate(-100%, -100%)",
-      }}
+      className={`app-menu absolute top-8 z-[30] min-w-[208px] max-w-[232px] rounded-xl py-1.5 ${resolvedIsMine ? "right-0" : "left-0"}`}
     >
       {canReply ? (
         <div className="app-divider border-b px-2.5 pb-2 pt-1">

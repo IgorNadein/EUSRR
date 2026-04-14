@@ -631,15 +631,7 @@ class MessageListSerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_reactions_summary(self, obj):
         """Суммарная информация о реакциях"""
-        reactions = {}
-        for reaction in obj.reactions.all():
-            emoji = reaction.emoji
-            if emoji not in reactions:
-                reactions[emoji] = {"count": 0, "users": [], "user_names": []}
-            reactions[emoji]["count"] += 1
-            reactions[emoji]["users"].append(reaction.user_id)
-            reactions[emoji]["user_names"].append(reaction.user.get_full_name())
-        return reactions
+        return obj.get_reactions_summary()
 
 
 class MessageDetailSerializer(serializers.ModelSerializer):

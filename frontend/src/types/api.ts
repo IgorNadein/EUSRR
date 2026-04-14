@@ -646,6 +646,11 @@ export interface Message {
     count: number;
     users?: number[];
     user_names?: string[];
+    user_details?: Array<{
+      id: number;
+      name: string;
+      avatar?: string | null;
+    }>;
   }>;
 }
 

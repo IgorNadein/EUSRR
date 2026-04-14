@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 from django.db import models
+from notifications.models import Notification
 from rest_framework.test import APIClient
 
 from requests_app.enums import RequestStatus, RequestType
@@ -182,6 +183,36 @@ def test_create_regular_user_and_admin_forced_to_self(
     )
 
 
+def test_create_request_sends_notification_to_cc_users(
+    auth_client, regular_user: models.Model, make_user
+) -> None:
+    """При создании заявки через API пользователь в копии получает request_new."""
+    recipient = make_user(email="create-cc-recipient@example.com")
+    cc_user = make_user(email="create-cc-user@example.com")
+
+    Notification.objects.all().delete()
+
+    resp = auth_client(regular_user).post(
+        API_BASE,
+        data={
+            "type": RequestType.OTHER,
+            "title": "Заявка с копией",
+            "comment": "Проверка уведомления для копии",
+            "recipient_ids": [recipient.id],
+            "cc_user_ids": [cc_user.id],
+        },
+        format="json",
+    )
+
+    assert resp.status_code == 201
+    cc_notification = Notification.objects.filter(
+        recipient=cc_user,
+        verb="request_new",
+    ).first()
+    assert cc_notification is not None
+    assert cc_notification.data["is_cc"] is True
+
+
 def test_create_draft_allows_minimal_payload(
     auth_client, regular_user: models.Model
 ) -> None:
@@ -336,6 +367,33 @@ def test_admin_can_decide_only_if_explicitly_added_to_recipients(
 
     assert resp.status_code == 200
     assert resp.json()["status"] == RequestStatus.REJECTED
+
+
+def test_cc_user_receives_status_notification(
+    auth_client, make_user, make_request
+) -> None:
+    """Пользователь в копии получает уведомление о решении по заявке."""
+    owner = make_user(email="status-cc-owner@example.com")
+    recipient = make_user(email="status-cc-recipient@example.com")
+    cc_user = make_user(email="status-cc-user@example.com")
+
+    req = make_request(employee=owner, status=RequestStatus.PENDING)
+    req.recipients.add(recipient)
+    req.cc_users.add(cc_user)
+
+    Notification.objects.all().delete()
+
+    resp = auth_client(recipient).post(
+        f"{API_BASE}{req.id}/approve/", data={}, format="json"
+    )
+
+    assert resp.status_code == 200
+    cc_notification = Notification.objects.filter(
+        recipient=cc_user,
+        verb="request_approved",
+    ).first()
+    assert cc_notification is not None
+    assert cc_notification.data["new_status"] == RequestStatus.APPROVED
 
 
 def test_draft_is_visible_only_to_author(
@@ -510,6 +568,36 @@ def test_comments_available_to_participants_only(
         data={"text": "admin"},
         format="json",
     ).status_code == 403
+
+
+def test_cc_user_receives_comment_notification(
+    auth_client, make_user, make_request
+) -> None:
+    """Пользователь в копии получает уведомление о новом комментарии к заявке."""
+    owner = make_user(email="comment-cc-owner@example.com")
+    recipient = make_user(email="comment-cc-recipient@example.com")
+    cc_user = make_user(email="comment-cc-user@example.com")
+
+    req = make_request(employee=owner)
+    req.recipients.add(recipient)
+    req.cc_users.add(cc_user)
+
+    Notification.objects.all().delete()
+
+    resp = auth_client(recipient).post(
+        f"{API_BASE}{req.id}/comments/",
+        data={"text": "Комментарий для проверки уведомлений"},
+        format="json",
+    )
+
+    assert resp.status_code == 201
+    cc_notification = Notification.objects.filter(
+        recipient=cc_user,
+        verb="commented",
+    ).first()
+    assert cc_notification is not None
+    assert cc_notification.data["object_type"] == "Request"
+    assert cc_notification.data["object_id"] == req.id
 
 
 def test_detail_exposes_can_decide_only_for_direct_recipients(

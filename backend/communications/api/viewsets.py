@@ -1493,19 +1493,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         else:
             logger.info(f"[react] Created new reaction, id={reaction.id}")
 
-        # Пересчитываем reactions_summary
-        reactions_summary = {}
-        for r in message.reactions.select_related('user'):
-            if r.emoji not in reactions_summary:
-                reactions_summary[r.emoji] = {
-                    'count': 0,
-                    'users': [],
-                    'user_names': []
-                }
-            reactions_summary[r.emoji]['count'] += 1
-            reactions_summary[r.emoji]['users'].append(r.user_id)
-            reactions_summary[r.emoji]['user_names'].append(
-                r.user.get_full_name())
+        reactions_summary = message.get_reactions_summary()
 
         logger.info(f"[react] reactions_summary: {reactions_summary}")
 
@@ -1558,19 +1546,7 @@ class MessageViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # Пересчитываем reactions_summary
-        reactions_summary = {}
-        for r in message.reactions.select_related('user'):
-            if r.emoji not in reactions_summary:
-                reactions_summary[r.emoji] = {
-                    'count': 0,
-                    'users': [],
-                    'user_names': []
-                }
-            reactions_summary[r.emoji]['count'] += 1
-            reactions_summary[r.emoji]['users'].append(r.user_id)
-            reactions_summary[r.emoji]['user_names'].append(
-                r.user.get_full_name())
+        reactions_summary = message.get_reactions_summary()
 
         logger.info(f"[unreact] reactions_summary: {reactions_summary}")
 

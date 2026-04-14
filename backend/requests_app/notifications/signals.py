@@ -22,6 +22,18 @@ logger = logging.getLogger(__name__)
 _pending_new_requests = set()
 
 
+def dispatch_pending_new_request_notifications(instance: Request) -> None:
+    """Отправляет отложенные уведомления о новой заявке ровно один раз.
+
+    Используется, когда recipients/cc_users выставляются пачкой в serializer
+    и m2m-сигналы нужно временно подавить, чтобы не отправлять уведомление
+    до установки полного списка адресатов.
+    """
+    if instance.id in _pending_new_requests:
+        _pending_new_requests.discard(instance.id)
+        notify_new_request(instance)
+
+
 @receiver(post_save, sender=Request)
 def create_request_notifications(sender, instance, created, **kwargs):
     """
@@ -93,6 +105,8 @@ def notify_on_recipients_changed(sender, instance, action, **kwargs):
     Срабатывает когда recipients устанавливаются через .set(), .add() и т.д.
     """
     try:
+        if getattr(instance, "_suppress_new_request_notifications", False):
+            return
         # Проверяем что это завершение операции установки recipients
         if action == "post_add" and instance.id in _pending_new_requests:
             logger.info(
@@ -120,6 +134,8 @@ def notify_on_cc_users_changed(sender, instance, action, **kwargs):
     также отправляем уведомления.
     """
     try:
+        if getattr(instance, "_suppress_new_request_notifications", False):
+            return
         # Если это завершение добавления cc_users И заявление все еще ожидает
         # уведомлений
         if action == "post_add" and instance.id in _pending_new_requests:

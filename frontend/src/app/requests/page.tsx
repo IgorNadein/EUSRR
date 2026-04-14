@@ -138,10 +138,21 @@ function RequestsPageContent() {
       )}
 
       <RequestDetailModal
+        actionError={h.actionError}
+        busyKey={h.busyKey}
         currentUserId={user?.id}
         departmentNameMap={h.departmentNameMap}
+        isFinal={h.isFinal}
+        onApprove={h.handleApprove}
+        onCancel={h.handleCancel}
         onClose={screen.closeDetailsRequest}
+        onDelete={h.handleDelete}
+        onEdit={(request) => {
+          screen.closeDetailsRequest();
+          h.openEdit(request);
+        }}
         onPreviewAttachment={h.setAttachmentPreview}
+        onReject={h.handleReject}
         request={h.detailsRequest}
       />
 

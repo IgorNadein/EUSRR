@@ -24,6 +24,7 @@ export function createEmployeesApi(request: RequestFn) {
             return request(`/api/v1/employees/${qs ? '?' + qs : ''}`);
         },
         getEmployee: (id: number | string) => request(`/api/v1/employees/${id}/`),
+        getPositions: () => request('/api/v1/positions/'),
         addEmployeeSkill: (
             id: number | string,
             data: { skill_id?: number; name?: string },

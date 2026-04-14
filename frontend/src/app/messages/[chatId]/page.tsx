@@ -8,7 +8,6 @@ import ChatDialogHeader from "@/components/messages/ChatDialogHeader";
 import ChatMediaPreviewModal from "@/components/messages/ChatMediaPreviewModal";
 import ChatMessageItem, { MediaPreview } from "@/components/messages/ChatMessageItem";
 import ChatSearchPanel from "@/components/messages/ChatSearchPanel";
-import MessageActionsMenu from "@/components/messages/MessageActionsMenu";
 import MessageReadersModal from "@/components/messages/MessageReadersModal";
 import MessageComposer from "@/components/messages/MessageComposer";
 import ReactionPickerModal from "@/components/messages/ReactionPickerModal";
@@ -29,8 +28,6 @@ import ScrollableMessageList, { ScrollableMessageListInner } from "@/components/
 /* ─── types ─── */
 
 type ReplyTarget = { id: number; author: string; preview: string };
-type MessageActionsAnchor = { x: number; y: number };
-
 /* ─── constants ─── */
 
 const RECENT_REACTIONS_KEY = "eusrr_recent_reactions";
@@ -152,7 +149,6 @@ function MessageDialogPageContent() {
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [expandedReplyActionForId, setExpandedReplyActionForId] = useState<number | null>(null);
-  const [actionsMenuAnchor, setActionsMenuAnchor] = useState<{ x: number; y: number } | null>(null);
   const [isReadersModalOpen, setIsReadersModalOpen] = useState(false);
   const [reactionPickerForMessageId, setReactionPickerForMessageId] = useState<number | null>(null);
   const [showComposerEmojiPicker, setShowComposerEmojiPicker] = useState(false);
@@ -210,11 +206,6 @@ function MessageDialogPageContent() {
 
   /* ── action menu derived ── */
   const selectedActionMessage = expandedReplyActionForId ? messagesById.get(expandedReplyActionForId) || null : null;
-  const selectedActionCanManage = Boolean(
-    selectedActionMessage && user?.id && !selectedActionMessage.is_deleted &&
-    (selectedActionMessage.author_id === user.id || selectedActionMessage.author?.id === user.id || selectedActionMessage.sender?.id === user.id),
-  );
-  const selectedActionCanReply = Boolean(selectedActionMessage && !selectedActionMessage.is_deleted);
   const selectedActionRecentReactions = useMemo(() => uniqueEmoji(recentReactions).slice(0, MAX_RECENT_REACTIONS), [recentReactions]);
   const selectedActionReaders = selectedActionMessage?.read_by || [];
   const sendingComposer = Boolean(editingMessageId && sending);
@@ -257,6 +248,8 @@ function MessageDialogPageContent() {
         : await apiClient.reactToMessage(message.id, emoji);
       pushRecentReaction(emoji);
       updateMessageReactionsSummary(message.id, response.reactions_summary);
+      setExpandedReplyActionForId(null);
+      setReactionPickerForMessageId(null);
     } catch (e) {
       console.error("Ошибка реакции:", e);
     }
@@ -589,7 +582,6 @@ function MessageDialogPageContent() {
     setReplyTo({ id: message.id, author, preview: getMessagePreviewText(message) });
     setExpandedReplyActionForId(null);
     setIsReadersModalOpen(false);
-    setActionsMenuAnchor(null);
     requestAnimationFrame(focusMessageInput);
   };
 
@@ -615,19 +607,17 @@ function MessageDialogPageContent() {
       if (editingMessageId === message.id) { setEditingMessageId(null); setMessageText(""); }
       setExpandedReplyActionForId(null);
       setIsReadersModalOpen(false);
-      setActionsMenuAnchor(null);
     } catch (e) {
       console.error("Ошибка удаления сообщения:", e);
     }
   };
 
-  const handleToggleMessageActions = useCallback((messageId: number, anchor: MessageActionsAnchor) => {
+  const handleToggleMessageActions = useCallback((messageId: number) => {
     setExpandedReplyActionForId(prev => {
-      if (prev === messageId) { setIsReadersModalOpen(false); setActionsMenuAnchor(null); return null; }
+      if (prev === messageId) { setIsReadersModalOpen(false); return null; }
       setIsReadersModalOpen(false);
       setReactionPickerForMessageId(null);
       setShowComposerEmojiPicker(false);
-      setActionsMenuAnchor(anchor);
       return messageId;
     });
   }, []);
@@ -694,7 +684,6 @@ function MessageDialogPageContent() {
   const openSearchPanel = useCallback(() => {
     setIsSearchOpen(true);
     setExpandedReplyActionForId(null);
-    setActionsMenuAnchor(null);
     setReactionPickerForMessageId(null);
     setShowComposerEmojiPicker(false);
     scroll.setIsDateNavigatorOpen(false);
@@ -845,7 +834,6 @@ function MessageDialogPageContent() {
     if (jumped) {
       highlightFoundMessage(result.message_id);
       setExpandedReplyActionForId(null);
-      setActionsMenuAnchor(null);
       setReactionPickerForMessageId(null);
       setIsReadersModalOpen(false);
     }
@@ -860,7 +848,6 @@ function MessageDialogPageContent() {
     if (jumped) {
       highlightFoundMessage(messageId);
       setExpandedReplyActionForId(null);
-      setActionsMenuAnchor(null);
       setReactionPickerForMessageId(null);
       setIsReadersModalOpen(false);
     }
@@ -909,7 +896,6 @@ function MessageDialogPageContent() {
       if (!t) return;
       if (t.closest("[data-actions-menu='true'],[data-actions-trigger='true'],[data-reaction-picker='true'],.reaction-picker-modal,[data-composer-emoji='true'],[data-date-navigator='true'],[data-date-trigger='true']")) return;
       setExpandedReplyActionForId(null);
-      setActionsMenuAnchor(null);
       setReactionPickerForMessageId(null);
       setShowComposerEmojiPicker(false);
       scroll.setIsDateNavigatorOpen(false);
@@ -923,7 +909,6 @@ function MessageDialogPageContent() {
       if (e.key === "Escape") {
         setMediaPreview(null);
         setExpandedReplyActionForId(null);
-        setActionsMenuAnchor(null);
         setReactionPickerForMessageId(null);
         setShowComposerEmojiPicker(false);
         scroll.setIsDateNavigatorOpen(false);
@@ -1056,7 +1041,7 @@ function MessageDialogPageContent() {
                   autoScrollToBottom={!cm.hasMoreNewer && !cm.historyNavigationMode}
                   autoScrollToBottomOnMount={!cm.hasMoreNewer && !cm.historyNavigationMode}
                   scrollBehavior="smooth"
-                  className="min-h-0 flex-1 bg-[var(--surface-secondary)] p-3"
+                  className="min-h-0 flex-1 bg-transparent p-3 lg:bg-[var(--surface-secondary)]"
                 >
                   {cm.messagesLoading ? (
                     <p className="app-text-muted text-center text-sm">Загрузка сообщений...</p>
@@ -1102,6 +1087,13 @@ function MessageDialogPageContent() {
                               onUseOriginalImage={handleUseOriginalImage}
                               onReact={handleReact}
                               hasMyReaction={hasMyReaction}
+                              recentReactions={selectedActionRecentReactions}
+                              onQuickReact={handleReact}
+                              onOpenReactionPicker={(msg) => setReactionPickerForMessageId(msg.id)}
+                              onShowAllReaders={() => setIsReadersModalOpen(true)}
+                              onReply={handleReplyToMessage}
+                              onEdit={handleStartEditMessage}
+                              onDelete={handleDeleteMessage}
                             />
                           </React.Fragment>
                         );
@@ -1131,7 +1123,7 @@ function MessageDialogPageContent() {
                 )}
 
                 {/* Composer area */}
-                <div className="app-divider app-header shrink-0 border-t px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.25rem)] lg:px-0 lg:pb-0">
+                <div className="app-divider shrink-0 border-t bg-transparent px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.25rem)] lg:app-header lg:px-0 lg:pb-0">
                   {isTyping && (
                     <div className="app-text-muted mb-2 flex items-center gap-2 text-xs italic">
                       <div className="flex gap-1">
@@ -1162,7 +1154,6 @@ function MessageDialogPageContent() {
                     onToggleEmojiPicker={() => {
                       setShowComposerEmojiPicker(prev => !prev);
                       setExpandedReplyActionForId(null);
-                      setActionsMenuAnchor(null);
                       setReactionPickerForMessageId(null);
                     }}
                     onSelectEmoji={(emoji) => { appendEmojiToComposer(emoji); setShowComposerEmojiPicker(false); }}
@@ -1190,23 +1181,6 @@ function MessageDialogPageContent() {
 
       {mediaPreview ? <ChatMediaPreviewModal preview={mediaPreview} onClose={() => setMediaPreview(null)} /> : null}
 
-      {expandedReplyActionForId && actionsMenuAnchor && selectedActionMessage ? (
-        <MessageActionsMenu
-          anchor={actionsMenuAnchor}
-          currentUserId={user?.id}
-          message={selectedActionMessage}
-          canReply={selectedActionCanReply}
-          canManage={selectedActionCanManage}
-          recentReactions={selectedActionRecentReactions}
-          onQuickReact={(emoji) => { handleReact(selectedActionMessage, emoji); setExpandedReplyActionForId(null); setIsReadersModalOpen(false); setActionsMenuAnchor(null); }}
-          onOpenReactionPicker={() => setReactionPickerForMessageId(selectedActionMessage.id)}
-          onShowAllReaders={() => setIsReadersModalOpen(true)}
-          onReply={() => handleReplyToMessage(selectedActionMessage)}
-          onEdit={() => handleStartEditMessage(selectedActionMessage)}
-          onDelete={() => handleDeleteMessage(selectedActionMessage)}
-        />
-      ) : null}
-
       {selectedActionMessage ? (
         <MessageReadersModal isOpen={isReadersModalOpen} onClose={() => setIsReadersModalOpen(false)} readers={selectedActionReaders} />
       ) : null}
@@ -1219,7 +1193,6 @@ function MessageDialogPageContent() {
             if (msg) void handleReact(msg, emoji);
             setReactionPickerForMessageId(null);
             setExpandedReplyActionForId(null);
-            setActionsMenuAnchor(null);
           }}
         />
       ) : null}

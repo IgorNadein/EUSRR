@@ -546,8 +546,13 @@ class Message(models.Model):
         Получить сводку по реакциям для этого сообщения
         Возвращает словарь вида:
         {
-            '👍': {'count': 3, 'users': [1, 2, 3], 'user_names': ['User1', ...]},
-            '❤️': {'count': 1, 'users': [4], 'user_names': ['User4']}
+            '👍': {
+                'count': 3,
+                'users': [1, 2, 3],
+                'user_names': ['User1', ...],
+                'user_details': [{'id': 1, 'name': 'User1', 'avatar': '/media/...'}]
+            },
+            '❤️': {'count': 1, 'users': [4], 'user_names': ['User4'], 'user_details': [...]}
         }
         """
         # Используем related_name='reactions' из MessageReaction
@@ -557,11 +562,26 @@ class Message(models.Model):
         for reaction in reactions_qs:
             emoji = reaction.emoji
             if emoji not in summary:
-                summary[emoji] = {"count": 0, "users": [], "user_names": []}
+                summary[emoji] = {
+                    "count": 0,
+                    "users": [],
+                    "user_names": [],
+                    "user_details": [],
+                }
+            user_name = reaction.user.get_full_name() or reaction.user.username
             summary[emoji]["count"] += 1
             summary[emoji]["users"].append(reaction.user_id)
-            summary[emoji]["user_names"].append(
-                reaction.user.get_full_name() or reaction.user.username
+            summary[emoji]["user_names"].append(user_name)
+            summary[emoji]["user_details"].append(
+                {
+                    "id": reaction.user_id,
+                    "name": user_name,
+                    "avatar": (
+                        reaction.user.avatar.url
+                        if getattr(reaction.user, "avatar", None)
+                        else None
+                    ),
+                }
             )
 
         return summary

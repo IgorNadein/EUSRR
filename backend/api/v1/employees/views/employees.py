@@ -65,7 +65,9 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == "create":
             return [IsAuthenticated(), AdminOrActionOrModelPerms()]
-        if self.action in {"update", "partial_update", "destroy"}:
+        if self.action == "destroy":
+            return [IsAuthenticated(), AdminOrActionOrModelPerms()]
+        if self.action in {"update", "partial_update"}:
             return [
                 IsAuthenticated(),
                 (IsSelfOrStaff | AdminOrActionOrModelPerms)(),

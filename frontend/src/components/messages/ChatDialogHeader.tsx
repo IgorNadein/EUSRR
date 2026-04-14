@@ -83,7 +83,7 @@ export default function ChatDialogHeader({
   const subtitle = getChatSubtitle(chat);
 
   return (
-    <header className="app-divider app-header relative z-30 flex shrink-0 items-center gap-3 border-b px-4 pb-3 pt-3 lg:px-0 lg:pt-0">
+    <header className="app-divider relative z-30 flex shrink-0 items-center gap-3 border-b bg-transparent px-4 pb-3 pt-3 lg:app-header lg:px-0 lg:pt-0">
       <Link
         href="/messages"
         aria-label="К списку чатов"

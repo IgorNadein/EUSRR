@@ -275,7 +275,12 @@ class TestReactionWebSocketEvents:
             '👍': {
                 'count': 1,
                 'users': [user2.id],
-                'user_names': [user2.get_full_name()]
+                'user_names': [user2.get_full_name()],
+                'user_details': [{
+                    'id': user2.id,
+                    'name': user2.get_full_name(),
+                    'avatar': None,
+                }],
             }
         }
         
@@ -298,6 +303,7 @@ class TestReactionWebSocketEvents:
         assert response1["emoji"] == '👍'
         assert response1["user_id"] == user2.id
         assert '👍' in response1["reactions_summary"]
+        assert response1["reactions_summary"]["👍"]["user_details"][0]["id"] == user2.id
         
         # User2 тоже должен получить
         response2 = await comm2.receive_json_from(timeout=5)

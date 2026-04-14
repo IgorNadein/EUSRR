@@ -7,28 +7,47 @@ import {
 } from "@/hooks/useRequestsPage";
 import { formatDate, formatDateTime } from "@/lib/shared";
 import type { Request } from "@/types/api";
-import { Paperclip } from "lucide-react";
+import { Ban, Paperclip, Pencil, ThumbsDown, ThumbsUp, Trash2 } from "lucide-react";
+import { getRequestActionState } from "./requestActions";
 import { RequestUserBadge } from "./RequestUserBadge";
 
 type RequestDetailModalProps = {
+  actionError?: string | null;
+  busyKey: string | null;
   currentUserId?: number | null;
   departmentNameMap: Map<number, string>;
+  isFinal: (status?: string) => boolean;
+  onApprove: (requestId: number) => void | Promise<void>;
+  onCancel: (requestId: number) => void | Promise<void>;
   onClose: () => void;
+  onDelete: (requestId: number) => void | Promise<void>;
+  onEdit: (request: Request) => void;
   onPreviewAttachment: (preview: RequestAttachmentPreview) => void;
+  onReject: (requestId: number) => void | Promise<void>;
   request: Request | null;
 };
 
 export function RequestDetailModal({
+  actionError,
+  busyKey,
   currentUserId,
   departmentNameMap,
+  isFinal,
+  onApprove,
+  onCancel,
   onClose,
+  onDelete,
+  onEdit,
   onPreviewAttachment,
+  onReject,
   request,
 }: RequestDetailModalProps) {
   if (!request) return null;
 
   const author = request.employee || request.created_by;
   const approver = request.approver || request.assigned_to;
+  const actionState = getRequestActionState(request, currentUserId, isFinal);
+  const { canCancel, canDelete, canEdit, canProcess } = actionState;
   const status = statusMeta[String(request.status || "").toLowerCase()] ?? defaultStatusMeta;
   const typeLabel = requestTypeLabels[String(request.type || request.request_type || "").toLowerCase()]
     || String(request.type || request.request_type || "Другое");
@@ -43,6 +62,73 @@ export function RequestDetailModal({
       onClose={onClose}
       title="Полная информация по заявлению"
       size="lg"
+      footer={(
+        <div className="space-y-3">
+          {actionError ? (
+            <div className="app-feedback-danger rounded-xl px-3 py-2 text-sm">
+              {actionError}
+            </div>
+          ) : null}
+          {(canProcess || canCancel || canEdit || canDelete) ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {canProcess ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void onApprove(request.id)}
+                    disabled={busyKey === `approve-${request.id}`}
+                    className="app-feedback-success inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-60"
+                  >
+                    <ThumbsUp size={16} />
+                    Одобрить
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void onReject(request.id)}
+                    disabled={busyKey === `reject-${request.id}`}
+                    className="app-action-danger inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-60"
+                  >
+                    <ThumbsDown size={16} />
+                    Отклонить
+                  </button>
+                </>
+              ) : null}
+              {canCancel ? (
+                <button
+                  type="button"
+                  onClick={() => void onCancel(request.id)}
+                  disabled={busyKey === `cancel-${request.id}`}
+                  className="app-action-secondary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-60"
+                >
+                  <Ban size={16} />
+                  Отменить
+                </button>
+              ) : null}
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => onEdit(request)}
+                  className="app-action-secondary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium"
+                >
+                  <Pencil size={16} />
+                  Редактировать
+                </button>
+              ) : null}
+              {canDelete ? (
+                <button
+                  type="button"
+                  onClick={() => void onDelete(request.id)}
+                  disabled={busyKey === `delete-${request.id}`}
+                  className="app-action-danger inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-60"
+                >
+                  <Trash2 size={16} />
+                  Удалить
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      )}
     >
       <div className="space-y-5 text-sm text-[var(--foreground)]">
         <div className="app-surface-muted rounded-xl p-4">

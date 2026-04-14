@@ -21,6 +21,7 @@ import {
 import type { Ref } from "react";
 import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
 import { RequestAvatar } from "./RequestAvatar";
+import { getRequestActionState } from "./requestActions";
 import { RequestUserBadge } from "./RequestUserBadge";
 
 type RequestListItemProps = {
@@ -85,19 +86,13 @@ export function RequestListItem({
   const requestAuthor = request.employee || request.created_by;
   const authorName = displayUserName(requestAuthor);
   const authorFallback = (requestAuthor?.first_name?.[0] || requestAuthor?.last_name?.[0] || "?").toUpperCase();
-  const statusKey = String(request.status || "").toLowerCase();
+  const actionState = getRequestActionState(request, currentUserId, isFinal);
+  const { canCancel, canComment, canDelete, canEdit, canProcess, hasSecondaryActions, statusKey } = actionState;
   const typeKey = String(request.type || request.request_type || "").toLowerCase();
   const status = statusMeta[statusKey] ?? defaultStatusMeta;
   const authorLink = requestAuthor ? userProfileLink(requestAuthor, currentUserId) : null;
   const typeLabel = requestTypeLabels[typeKey] || String(request.type || request.request_type || "Другое");
   const title = request.display_title || request.title || "Без заголовка";
-  const canProcess = Boolean(statusKey === "pending" && request.can_decide);
-  const isAuthor = Boolean(requestAuthor?.id && currentUserId && requestAuthor.id === currentUserId);
-  const canCancel = Boolean(isAuthor && !isFinal(statusKey));
-  const canEdit = Boolean(isAuthor && !isFinal(statusKey));
-  const canDelete = Boolean(isAuthor && !isFinal(statusKey));
-  const hasSecondaryActions = canCancel || canEdit || canDelete;
-  const canComment = statusKey !== "draft";
   const departmentLabels = (request.departments || [])
     .map((id) => departmentNameMap.get(Number(id)) || `Отдел #${id}`)
     .join(", ");

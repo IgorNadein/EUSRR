@@ -221,21 +221,7 @@ def serialize_message(m) -> dict:
             pass
 
     # Реакции - сериализуем из связанной модели MessageReaction
-    reactions_summary = {}
-    for reaction in m.reactions.select_related("user"):
-        emoji = reaction.emoji
-        if emoji not in reactions_summary:
-            reactions_summary[emoji] = {
-                "count": 0,
-                "users": [],
-                "user_names": [],
-            }
-        reactions_summary[emoji]["count"] += 1
-        reactions_summary[emoji]["users"].append(reaction.user_id)
-        reactions_summary[emoji]["user_names"].append(
-            reaction.user.get_full_name() or reaction.user.username
-        )
-    data["reactions_summary"] = reactions_summary
+    data["reactions_summary"] = m.get_reactions_summary()
 
     # Вложения - всегда включаем поле attachments
     attachments = []
