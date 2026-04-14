@@ -971,7 +971,7 @@ function MessageDialogPageContent() {
           <p className="text-sm">{cm.error}</p>
         </div>
       ) : (
-        <div className="min-h-0 h-full lg:sticky lg:top-22 lg:h-[calc(100dvh-7.5rem)]">
+        <div className="min-h-0 h-full">
         <section className="flex h-full min-h-0 flex-col overflow-hidden lg:rounded-xl lg:border lg:border-[var(--border-subtle)] lg:bg-[var(--surface-primary)] lg:p-4 lg:shadow-[var(--shadow-card)]">
           {cm.chat ? (
             <>

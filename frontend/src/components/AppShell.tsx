@@ -112,8 +112,8 @@ function Header({ mobileNavPlacement, suppressMobileChrome = false, onOpenLeftNa
     <header
       className={`app-header z-[40] backdrop-blur ${
         isBottomMobileNav
-          ? "fixed inset-x-0 bottom-0 border-t lg:sticky lg:top-0 lg:bottom-auto lg:border-b lg:border-t-0"
-          : "sticky top-0 border-b"
+          ? "fixed inset-x-0 bottom-0 border-t lg:fixed lg:inset-x-0 lg:top-0 lg:bottom-auto lg:border-b lg:border-t-0"
+          : "fixed inset-x-0 top-0 border-b"
       } ${suppressMobileChrome ? "hidden lg:block" : ""} shrink-0`}
     >
       <div className="mx-auto max-w-6xl px-4 sm:px-8">
@@ -447,7 +447,7 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <div className={`${isMessageDialogPage ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'} app-shell flex flex-col ${mobileNavPlacement === "bottom" && !isMessageDialogPage ? "pb-[calc(env(safe-area-inset-bottom)+3.75rem)] lg:pb-0" : ""}`}>
+    <div className={`${isMessageDialogPage ? 'h-[100dvh] overflow-hidden lg:pt-14' : 'min-h-screen pt-10 lg:pt-14'} app-shell flex flex-col ${mobileNavPlacement === "bottom" && !isMessageDialogPage ? "pb-[calc(env(safe-area-inset-bottom)+3.75rem)] lg:pb-0" : ""}`}>
         <Header
           mobileNavPlacement={mobileNavPlacement}
           suppressMobileChrome={isMessageDialogPage}
