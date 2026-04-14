@@ -51,6 +51,7 @@ export interface User {
   created_at?: string;
   updated_at?: string;
   last_login?: string;
+  last_activity_at?: string;
   date_joined?: string;
   auth?: {
     id?: number;
@@ -120,6 +121,52 @@ export interface Department {
   parent?: number;
   head?: User;
   employees_count?: number;
+  role_only_count?: number;
+}
+
+export interface DepartmentMemberRole {
+  id: number;
+  name: string;
+}
+
+export interface DepartmentMemberLink {
+  employee: User;
+  role?: DepartmentMemberRole | null;
+  is_active: boolean;
+  via_assignment?: boolean;
+}
+
+export interface DepartmentUserPermissions {
+  is_head: boolean;
+  can_manage: boolean;
+  can_change_head: boolean;
+  can_assign_roles: boolean;
+  can_publish_posts: boolean;
+  can_manage_feed: boolean;
+}
+
+export interface DepartmentPermissionChoice {
+  id: number;
+  code: string;
+  name: string;
+}
+
+export interface DepartmentRole {
+  id: number;
+  department: number;
+  name: string;
+  permissions: number[];
+  permissions_verbose: DepartmentPermissionChoice[];
+}
+
+export interface DepartmentRoleAssignment {
+  id: number;
+  employee_id: number;
+  employee_name?: string | null;
+  assigned_at?: string | null;
+  assigned_by_id?: number | null;
+  assigned_by_name?: string | null;
+  is_active: boolean;
 }
 
 export interface Position {
@@ -136,6 +183,7 @@ export interface Post {
   type?: 'company' | 'department' | 'employee';
   department?: number | null;
   department_id?: number | null;
+  department_name?: string | null;
   content?: string;
   body?: string;
   title?: string;
@@ -144,8 +192,11 @@ export interface Post {
   attachment_url?: string | null;
   tags?: string[];
   created_at: string;
+  created_at_display?: string;
   updated_at: string;
   pinned?: boolean;
+  pinned_global?: boolean;
+  pinned_department?: boolean;
   likes_count: number;
   comments_count: number;
   is_liked?: boolean;
@@ -298,6 +349,7 @@ export interface Request {
   recipient_count?: number;
   cc_count?: number;
   is_recipient?: boolean;
+  can_decide?: boolean;
   comments_count?: number;
   is_final?: boolean;
   attachment?: string | null;
@@ -596,6 +648,11 @@ export interface Message {
     count: number;
     users?: number[];
     user_names?: string[];
+    user_details?: Array<{
+      id: number;
+      name: string;
+      avatar?: string | null;
+    }>;
   }>;
 }
 

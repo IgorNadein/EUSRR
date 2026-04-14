@@ -1,8 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowDown,
+  ArrowUp,
   Bell,
   Check,
   Clock3,
@@ -18,113 +19,41 @@ import {
   Sun,
   UserRound,
 } from "lucide-react";
-import { toast } from "sonner";
 
-import { AppShell, PageHeader } from "@/components/AppShell";
-import { useTheme } from "@/contexts/ThemeContext";
-import { useUser } from "@/contexts/UserContext";
-import { useWebPush } from "@/hooks/useWebPush";
-import { apiClient } from "@/lib/api";
-import type { ThemePreference } from "@/lib/theme";
-import { resolveMediaUrl } from "@/lib/url";
-import type { AuthSession } from "@/types/api";
+import { AppShell } from "@/components/AppShell";
+import { useMobileNavPlacement } from "@/contexts/MobileNavPlacementContext";
+import {
+  formatSessionDateTime,
+  getSessionDeviceKind,
+  getSessionDeviceName,
+  type NotificationPreferences,
+  useSettingsPage,
+} from "@/hooks/useSettingsPage";
 import { getVerbName } from "@/lib/verbTranslations";
 
-type NotificationPreferences = {
-  web_enabled: boolean;
-  email_enabled: boolean;
-  email_frequency: "instant" | "daily" | "weekly" | "never";
-  push_enabled: boolean;
-  dnd_enabled: boolean;
-  dnd_start_time: string | null;
-  dnd_end_time: string | null;
-  disabled_verbs: string[];
-};
+const themeIcons = {
+  Sun,
+  Moon,
+  Monitor,
+} as const;
 
-type VerbType = {
-  verb: string;
-  name: string;
-  total: number;
-  unread: number;
-};
-
-const themeCards: Array<{
-  value: ThemePreference;
-  title: string;
-  description: string;
-  icon: typeof Sun;
-}> = [
+const mobileNavCards = [
   {
-    value: "light",
-    title: "Светлая",
-    description: "Светлые поверхности и нейтральный фон.",
-    icon: Sun,
+    value: "top",
+    title: "Сверху",
+    description: "Мобильная панель навигации закреплена в верхней части экрана.",
+    Icon: ArrowUp,
   },
   {
-    value: "dark",
-    title: "Темная",
-    description: "Темные поверхности без browser force-dark.",
-    icon: Moon,
+    value: "bottom",
+    title: "Снизу",
+    description: "Панель закреплена снизу, как в современных мобильных интерфейсах.",
+    Icon: ArrowDown,
   },
-  {
-    value: "auto",
-    title: "Авто",
-    description: "Следует системной теме устройства.",
-    icon: Monitor,
-  },
-];
-
-const defaultPreferences: NotificationPreferences = {
-  web_enabled: true,
-  email_enabled: false,
-  email_frequency: "instant",
-  push_enabled: false,
-  dnd_enabled: false,
-  dnd_start_time: null,
-  dnd_end_time: null,
-  disabled_verbs: [],
-};
-
-function preferencesSignature(value: NotificationPreferences | null) {
-  if (!value) return "";
-  return JSON.stringify({
-    ...value,
-    disabled_verbs: [...value.disabled_verbs].sort(),
-    dnd_start_time: value.dnd_start_time || null,
-    dnd_end_time: value.dnd_end_time || null,
-  });
-}
-
-function initials(firstName?: string, lastName?: string) {
-  return `${lastName?.[0] || ""}${firstName?.[0] || ""}`.trim() || "П";
-}
-
-function formatSessionDateTime(value?: string | null) {
-  if (!value) return "—";
-
-  try {
-    return new Intl.DateTimeFormat("ru-RU", {
-      day: "2-digit",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(value));
-  } catch {
-    return value;
-  }
-}
+] as const;
 
 function getSessionDeviceIcon(deviceName?: string | null) {
-  const normalized = (deviceName || "").toLowerCase();
-  return /iphone|android|mobile|ipad|phone/.test(normalized) ? Smartphone : Monitor;
-}
-
-function getSessionDeviceName(session: AuthSession) {
-  return session.device_name?.trim() || "Неизвестное устройство";
-}
-
-function isApiNotFoundError(error: unknown) {
-  return error instanceof Error && error.message.includes("API Error: 404");
+  return getSessionDeviceKind(deviceName) === "mobile" ? Smartphone : Monitor;
 }
 
 function Toggle({
@@ -196,422 +125,59 @@ function SectionCard({
 }
 
 export default function SettingsPage() {
-  const { user, loading, refreshUser, logout } = useUser();
-  const { theme, resolvedTheme, setTheme } = useTheme();
-  const avatarInputRef = useRef<HTMLInputElement | null>(null);
-
-  const [profileForm, setProfileForm] = useState({
-    first_name: "",
-    last_name: "",
-    patronymic: "",
-    birth_date: "",
-  });
-  const [contactsForm, setContactsForm] = useState({
-    email: "",
-    phone_number: "",
-    telegram: "",
-    whatsapp: "",
-    wechat: "",
-  });
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [savingContacts, setSavingContacts] = useState(false);
-
-  const [preferences, setPreferences] = useState<NotificationPreferences>(defaultPreferences);
-  const [savedPreferences, setSavedPreferences] = useState<NotificationPreferences | null>(null);
-  const [verbTypes, setVerbTypes] = useState<VerbType[]>([]);
-  const [preferencesLoading, setPreferencesLoading] = useState(true);
-  const [savingPreferences, setSavingPreferences] = useState(false);
-  const [sessions, setSessions] = useState<AuthSession[]>([]);
-  const [sessionsLoading, setSessionsLoading] = useState(true);
-  const [sessionsUnavailable, setSessionsUnavailable] = useState(false);
-  const [sessionActionKey, setSessionActionKey] = useState<string | null>(null);
-  const [passwordForm, setPasswordForm] = useState({
-    current_password: "",
-    new_password: "",
-    new_password_confirm: "",
-  });
-  const [changingPassword, setChangingPassword] = useState(false);
-  const [showPasswordFields, setShowPasswordFields] = useState({
-    current: false,
-    next: false,
-    confirm: false,
-  });
+  const { mobileNavPlacement, setMobileNavPlacement } = useMobileNavPlacement();
   const {
-    isSupported,
+    activeVerbCount,
+    avatarInputRef,
+    changingPassword,
+    contactsDirty,
+    contactsForm,
+    currentSession,
+    fullName,
     isSubscribed,
+    isSupported,
+    loading,
+    notificationDirty,
+    otherSessions,
+    passwordForm,
     permission,
-    isLoading: pushLoading,
-    subscribe,
-    unsubscribe,
-  } = useWebPush();
-
-  useEffect(() => {
-    if (!user) return;
-    setProfileForm({
-      first_name: user.first_name || "",
-      last_name: user.last_name || "",
-      patronymic: user.patronymic || "",
-      birth_date: user.birth_date || "",
-    });
-    setContactsForm({
-      email: user.email || "",
-      phone_number: user.phone_number || "",
-      telegram: user.telegram || "",
-      whatsapp: user.whatsapp || "",
-      wechat: user.wechat || "",
-    });
-  }, [user]);
-
-  useEffect(() => {
-    const section = new URLSearchParams(window.location.search).get("section");
-    if (!section) return;
-    const element = document.getElementById(section);
-    if (element) {
-      requestAnimationFrame(() => {
-        element.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadNotificationSettings() {
-      try {
-        setPreferencesLoading(true);
-        const [prefsResponse, verbsResponse] = await Promise.all([
-          apiClient.getNotificationPreferences(),
-          apiClient.getVerbTypes(),
-        ]);
-
-        if (!mounted) return;
-
-        const normalized: NotificationPreferences = {
-          ...defaultPreferences,
-          ...prefsResponse,
-          email_frequency:
-            prefsResponse.email_frequency === "disabled"
-              ? "never"
-              : prefsResponse.email_frequency,
-        };
-
-        setPreferences(normalized);
-        setSavedPreferences(normalized);
-        setVerbTypes(verbsResponse.verb_types || []);
-      } catch (error) {
-        console.error("Failed to load notification settings", error);
-        toast.error("Не удалось загрузить настройки уведомлений");
-      } finally {
-        if (mounted) {
-          setPreferencesLoading(false);
-        }
-      }
-    }
-
-    void loadNotificationSettings();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!savedPreferences || pushLoading) return;
-    if (!isSupported) return;
-
-    setPreferences((prev) =>
-      prev.push_enabled === isSubscribed ? prev : { ...prev, push_enabled: isSubscribed },
-    );
-    setSavedPreferences((prev) =>
-      prev && prev.push_enabled === isSubscribed ? prev : prev ? { ...prev, push_enabled: isSubscribed } : prev,
-    );
-  }, [isSubscribed, isSupported, pushLoading, savedPreferences]);
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadSessions() {
-      try {
-        setSessionsLoading(true);
-        setSessionsUnavailable(false);
-        const response = await apiClient.getAuthSessions();
-        if (!mounted) return;
-        setSessions(response);
-      } catch (error) {
-        if (isApiNotFoundError(error)) {
-          console.warn("Auth sessions endpoint is unavailable in the running backend process");
-          if (mounted) {
-            setSessionsUnavailable(true);
-            setSessions([]);
-          }
-          return;
-        }
-
-        console.error("Failed to load sessions", error);
-        if (mounted) {
-          toast.error("Не удалось загрузить активные сессии");
-        }
-      } finally {
-        if (mounted) {
-          setSessionsLoading(false);
-        }
-      }
-    }
-
-    void loadSessions();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const fullName = useMemo(() => {
-    if (!user) return "Пользователь";
-    return `${user.last_name || ""} ${user.first_name || ""} ${user.patronymic || ""}`.trim() || "Пользователь";
-  }, [user]);
-
-  const profileDirty = useMemo(() => {
-    if (!user) return false;
-    return (
-      profileForm.first_name !== (user.first_name || "") ||
-      profileForm.last_name !== (user.last_name || "") ||
-      profileForm.patronymic !== (user.patronymic || "") ||
-      profileForm.birth_date !== (user.birth_date || "") ||
-      Boolean(avatarFile)
-    );
-  }, [avatarFile, profileForm, user]);
-
-  const contactsDirty = useMemo(() => {
-    if (!user) return false;
-    return (
-      contactsForm.email !== (user.email || "") ||
-      contactsForm.phone_number !== (user.phone_number || "") ||
-      contactsForm.telegram !== (user.telegram || "") ||
-      contactsForm.whatsapp !== (user.whatsapp || "") ||
-      contactsForm.wechat !== (user.wechat || "")
-    );
-  }, [contactsForm, user]);
-
-  const notificationDirty = useMemo(() => {
-    return preferencesSignature(preferences) !== preferencesSignature(savedPreferences);
-  }, [preferences, savedPreferences]);
-
-  const unreadVerbCount = useMemo(
-    () => verbTypes.reduce((sum, item) => sum + item.unread, 0),
-    [verbTypes],
-  );
-
-  const activeVerbCount = useMemo(
-    () => verbTypes.filter((item) => !preferences.disabled_verbs.includes(item.verb)).length,
-    [preferences.disabled_verbs, verbTypes],
-  );
-
-  const summaryAvatar = avatarPreview || (user?.avatar ? resolveMediaUrl(user.avatar) : null);
-  const currentSession = useMemo(
-    () => sessions.find((session) => session.is_current) || null,
-    [sessions],
-  );
-  const otherSessions = useMemo(
-    () => sessions.filter((session) => !session.is_current),
-    [sessions],
-  );
-
-  const handleAvatarChange = (file: File | null) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast.error("Можно загрузить только изображение");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Максимальный размер файла 5 МБ");
-      return;
-    }
-
-    setAvatarFile(file);
-    const reader = new FileReader();
-    reader.onload = () => {
-      setAvatarPreview(typeof reader.result === "string" ? reader.result : null);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handlePushToggle = async (enabled: boolean) => {
-    setPreferences((prev) => ({ ...prev, push_enabled: enabled }));
-
-    if (enabled && !isSubscribed) {
-      await subscribe();
-    } else if (!enabled && isSubscribed) {
-      await unsubscribe();
-    }
-  };
-
-  const handleDndToggle = (enabled: boolean) => {
-    if (enabled) {
-      setPreferences((prev) => ({
-        ...prev,
-        dnd_enabled: true,
-        dnd_start_time: prev.dnd_start_time || "00:00",
-        dnd_end_time: prev.dnd_end_time || "23:59",
-      }));
-      return;
-    }
-
-    setPreferences((prev) => ({ ...prev, dnd_enabled: false }));
-  };
-
-  const saveProfile = async () => {
-    if (!profileDirty) return;
-    try {
-      setSavingProfile(true);
-      await apiClient.updateCurrentUserProfile({
-        first_name: profileForm.first_name.trim(),
-        last_name: profileForm.last_name.trim(),
-        patronymic: profileForm.patronymic.trim(),
-        birth_date: profileForm.birth_date.trim() || null,
-        avatar: avatarFile || undefined,
-      });
-      await refreshUser();
-      setAvatarFile(null);
-      setAvatarPreview(null);
-      toast.success("Профиль обновлен");
-    } catch (error) {
-      console.error(error);
-      toast.error("Не удалось сохранить профиль");
-    } finally {
-      setSavingProfile(false);
-    }
-  };
-
-  const saveContacts = async () => {
-    if (!contactsDirty) return;
-    try {
-      setSavingContacts(true);
-      await apiClient.updateCurrentUserProfile({
-        email: contactsForm.email.trim(),
-        phone_number: contactsForm.phone_number.trim(),
-        telegram: contactsForm.telegram.trim(),
-        whatsapp: contactsForm.whatsapp.trim(),
-        wechat: contactsForm.wechat.trim(),
-      });
-      await refreshUser();
-      toast.success("Контакты обновлены");
-    } catch (error) {
-      console.error(error);
-      toast.error("Не удалось сохранить контакты");
-    } finally {
-      setSavingContacts(false);
-    }
-  };
-
-  const savePreferences = async () => {
-    if (!notificationDirty) return;
-    try {
-      setSavingPreferences(true);
-
-      if (preferences.push_enabled !== isSubscribed) {
-        if (preferences.push_enabled) {
-          const success = await subscribe();
-          if (!success) {
-            throw new Error("Push subscribe failed");
-          }
-        } else {
-          const success = await unsubscribe();
-          if (!success && isSubscribed) {
-            throw new Error("Push unsubscribe failed");
-          }
-        }
-      }
-
-      await apiClient.updateNotificationPreferences({
-        ...preferences,
-        dnd_start_time: preferences.dnd_start_time || undefined,
-        dnd_end_time: preferences.dnd_end_time || undefined,
-      });
-
-      setSavedPreferences(preferences);
-      toast.success("Настройки уведомлений сохранены");
-    } catch (error) {
-      console.error(error);
-      toast.error("Не удалось сохранить настройки уведомлений");
-    } finally {
-      setSavingPreferences(false);
-    }
-  };
-
-  const handleSessionLogout = async (session: AuthSession) => {
-    const isCurrent = session.is_current;
-    const busyKey = `delete:${session.session_id}`;
-
-    try {
-      setSessionActionKey(busyKey);
-      await apiClient.deleteAuthSession(session.session_id);
-
-      if (isCurrent) {
-        toast.success("Текущая сессия завершена");
-        logout();
-        return;
-      }
-
-      setSessions((prev) => prev.filter((item) => item.session_id !== session.session_id));
-      toast.success("Сессия завершена");
-    } catch (error) {
-      console.error(error);
-      toast.error("Не удалось завершить сессию");
-    } finally {
-      setSessionActionKey(null);
-    }
-  };
-
-  const handleLogoutOthers = async () => {
-    try {
-      setSessionActionKey("logout-others");
-      const response = await apiClient.logoutOtherSessions();
-      setSessions((prev) => prev.filter((session) => session.is_current));
-      toast.success(
-        response.revoked > 0
-          ? `Завершено сессий: ${response.revoked}`
-          : "Других активных сессий нет",
-      );
-    } catch (error) {
-      console.error(error);
-      toast.error("Не удалось завершить остальные сессии");
-    } finally {
-      setSessionActionKey(null);
-    }
-  };
-
-  const handleChangePassword = async () => {
-    if (!passwordForm.current_password || !passwordForm.new_password || !passwordForm.new_password_confirm) {
-      toast.error("Заполните все поля пароля");
-      return;
-    }
-    if (passwordForm.new_password !== passwordForm.new_password_confirm) {
-      toast.error("Подтверждение пароля не совпадает");
-      return;
-    }
-
-    try {
-      setChangingPassword(true);
-      await apiClient.changePassword(passwordForm);
-      setPasswordForm({
-        current_password: "",
-        new_password: "",
-        new_password_confirm: "",
-      });
-      toast.success("Пароль обновлен");
-    } catch (error) {
-      console.error(error);
-      toast.error(
-        error instanceof Error && error.message.includes("current_password")
-          ? "Текущий пароль указан неверно"
-          : "Не удалось изменить пароль",
-      );
-    } finally {
-      setChangingPassword(false);
-    }
-  };
+    preferences,
+    preferencesLoading,
+    profileDirty,
+    profileForm,
+    pushLoading,
+    resolvedTheme,
+    savingContacts,
+    savingPreferences,
+    savingProfile,
+    sessionActionKey,
+    sessionsLoading,
+    sessionsUnavailable,
+    showPasswordFields,
+    summaryAvatar,
+    theme,
+    unreadVerbCount,
+    user,
+    verbTypes,
+    handleAvatarChange,
+    handleChangePassword,
+    handleDndToggle,
+    handleLogoutOthers,
+    handlePushToggle,
+    handleSessionLogout,
+    logout,
+    saveContacts,
+    savePreferences,
+    saveProfile,
+    setContactsForm,
+    setPasswordForm,
+    setPreferences,
+    setProfileForm,
+    setShowPasswordFields,
+    setTheme,
+    settingsInitials,
+    settingsThemeCards,
+  } = useSettingsPage();
 
   if (loading || !user) {
     return (
@@ -680,7 +246,7 @@ export default function SettingsPage() {
                       <Image src={summaryAvatar} alt={fullName} fill className="object-cover" unoptimized />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center bg-[var(--accent-primary)] text-4xl font-semibold text-white">
-                        {initials(user.first_name, user.last_name)}
+                        {settingsInitials(user.first_name, user.last_name)}
                       </div>
                     )}
                   </div>
@@ -750,8 +316,9 @@ export default function SettingsPage() {
               description="Тема текущего фронта и примененный visual mode."
             >
               <div className="grid gap-3 md:grid-cols-3">
-                {themeCards.map(({ value, title, description, icon: Icon }) => {
+                {settingsThemeCards.map(({ value, title, description, iconName }) => {
                   const active = theme === value;
+                  const Icon = themeIcons[iconName];
 
                   return (
                     <button
@@ -788,6 +355,48 @@ export default function SettingsPage() {
                   Предпочтение: <strong className="text-[var(--foreground)]">{theme}</strong>. Примененная тема:{" "}
                   <strong className="text-[var(--foreground)]">{resolvedTheme}</strong>.
                 </p>
+              </div>
+
+              <div className="app-surface-muted mt-4 rounded-2xl p-4">
+                <div className="mb-4">
+                  <p className="text-sm font-medium text-[var(--foreground)]">Положение мобильной панели</p>
+                  <p className="app-text-muted mt-1 text-sm">
+                    Настраивает расположение мобильной панели навигации на этом устройстве.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  {mobileNavCards.map(({ value, title, description, Icon }) => {
+                    const active = mobileNavPlacement === value;
+
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setMobileNavPlacement(value)}
+                        className={`rounded-2xl p-4 text-left transition ${
+                          active ? "app-selected" : "app-surface hover:bg-[var(--surface-tertiary)]"
+                        }`}
+                      >
+                        <div className="mb-4 flex items-start justify-between gap-3">
+                          <span
+                            className={`inline-flex h-11 w-11 items-center justify-center rounded-2xl ${
+                              active ? "app-action-primary text-white" : "bg-[var(--surface-elevated)] text-[var(--muted-foreground)]"
+                            }`}
+                          >
+                            <Icon size={20} />
+                          </span>
+                          <span className={`app-badge inline-flex h-6 min-w-6 justify-center px-2 text-xs font-semibold ${active ? "app-badge-accent" : ""}`}>
+                            {active ? <Check size={14} /> : value}
+                          </span>
+                        </div>
+
+                        <p className="text-sm font-semibold text-[var(--foreground)]">{title}</p>
+                        <p className="app-text-muted mt-1 text-sm">{description}</p>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </SectionCard>
 

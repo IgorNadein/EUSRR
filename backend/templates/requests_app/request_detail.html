@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static req_tags %}
 
 {% block title %}Заявление #{{ request_obj.id }}{% endblock %}
 
@@ -92,7 +92,7 @@
             </div>
 
             {# Кнопки действий #}
-            {% if can_process and request_obj.status == 'pending' %}
+            {% if request_obj|can_decide_request:request.user and request_obj.status == 'pending' %}
             <div class="req-detail-actions">
               <button type="button" class="btn btn-success btn-sm"
                       data-bs-toggle="modal"

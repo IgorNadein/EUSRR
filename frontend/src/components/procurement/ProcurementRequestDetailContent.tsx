@@ -1,11 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { Check, CircleDot, X } from "lucide-react";
+import { RequestAvatar } from "@/components/requests/RequestAvatar";
 
-import { formatDate, formatMoney } from "@/lib/shared";
+import { formatDate, formatMoney, userProfileLink } from "@/lib/shared";
 import type { ProcurementRequest, User } from "@/types/api";
 
 interface ProcurementRequestDetailContentProps {
+  currentUserId?: number | null;
   request: ProcurementRequest;
   displayUserName: (
     person?: User | number | null,
@@ -26,7 +29,16 @@ const approvalIconByStatus = (status?: string) => {
   return <CircleDot size={13} className="text-amber-500" />;
 };
 
+const initialsFromName = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("") || "?";
+
 export function ProcurementRequestDetailContent({
+  currentUserId,
   request,
   displayUserName,
   footer,
@@ -97,23 +109,54 @@ export function ProcurementRequestDetailContent({
         <div className="app-surface rounded-xl p-4">
           <p className="mb-3 text-sm font-semibold text-[var(--foreground)]">Согласования</p>
           <div className="space-y-2">
-            {request.approvals.map((approval) => (
-              <div
-                key={approval.id}
-                className="app-surface-muted flex items-center gap-2 rounded-lg px-3 py-2 text-xs"
-              >
-                {approvalIconByStatus(approval.status)}
-                <span className="font-medium text-[var(--foreground)]">
-                  {displayUserName(approval.approver, approval.approver_name)}
-                </span>
-                <span className="app-text-muted">({approval.step_label || `Этап ${approval.priority}`})</span>
-                {approval.comment ? (
-                  <span className="app-text-wrap app-text-muted ml-auto max-w-full italic">
-                    «{approval.comment}»
+            {request.approvals.map((approval) => {
+              const approver =
+                typeof approval.approver === "object" && approval.approver
+                  ? approval.approver
+                  : null;
+              const approverName = displayUserName(approval.approver, approval.approver_name);
+              const approverLink = approver ? userProfileLink(approver, currentUserId) : "";
+
+              return (
+              <div key={approval.id} className="rounded-lg px-1 py-1 text-xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  {approvalIconByStatus(approval.status)}
+                  {approverLink ? (
+                    <Link
+                      href={approverLink}
+                      className="app-badge inline-flex max-w-full items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium hover:bg-[var(--surface-tertiary)]"
+                    >
+                      <RequestAvatar
+                        alt={approverName}
+                        fallback={initialsFromName(approverName)}
+                        size="sm"
+                        src={approver?.avatar}
+                      />
+                      <span className="truncate">{approverName}</span>
+                    </Link>
+                  ) : (
+                    <span className="app-badge inline-flex max-w-full items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium">
+                      <RequestAvatar
+                        alt={approverName}
+                        fallback={initialsFromName(approverName)}
+                        size="sm"
+                        src={approver?.avatar}
+                      />
+                      <span className="truncate">{approverName}</span>
+                    </span>
+                  )}
+                  <span className="app-text-muted">
+                    ({approval.step_label || `Этап ${approval.priority}`})
                   </span>
+                </div>
+                {approval.comment ? (
+                  <p className="app-text-wrap app-text-muted mt-2 pl-6 italic">
+                    «{approval.comment}»
+                  </p>
                 ) : null}
               </div>
-            ))}
+            );
+            })}
           </div>
         </div>
       ) : null}

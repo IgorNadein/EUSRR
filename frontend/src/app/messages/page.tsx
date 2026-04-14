@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/url";
-import { ChatIdentity, getChatAvatar, getChatInitials, getChatTitle } from "@/lib/messages/chatUtils";
+import { ChatIdentity, getChatAvatar, getChatInitials, getChatTitle, isDepartmentCommentsChat } from "@/lib/messages/chatUtils";
 import type { Chat } from "@/types/api";
-import { Search, MessageCircle, Pin, BellOff, Filter, Plus, X, Users, Globe, Radio, Image as ImageIcon, Megaphone, MessageSquare } from "lucide-react";
+import { Search, MessageCircle, Pin, BellOff, Filter, Plus, X, Users, Globe, Radio, Image as ImageIcon, Megaphone, MessageSquare, Building2 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useUser } from "@/contexts/UserContext";
@@ -35,6 +35,7 @@ const chatTypeOptions = [
   { key: "all", label: "Все" },
   { key: "global", label: "Глобальный" },
   { key: "channel", label: "Каналы" },
+  { key: "comments", label: "Отделы" },
   { key: "private", label: "Личные" },
   { key: "group", label: "Группы" },
   { key: "announcement", label: "Объявления" },
@@ -44,18 +45,20 @@ function getChatTypeIcon(chat: Chat) {
   const chatType = chat.chat_type || chat.type;
   switch (chatType) {
     case 'global':
-      return <Globe size={10} className="text-white" />;
+      return <Globe size={10} className="app-accent-text" />;
     case 'channel':
-      return <Radio size={10} className="text-white" />;
+      return <Radio size={10} className="app-accent-text" />;
     case 'group':
-      return <Users size={10} className="text-white" />;
+      return <Users size={10} className="app-accent-text" />;
     case 'private':
     case 'direct':
-      return <MessageCircle size={10} className="text-white" />;
+      return <MessageCircle size={10} className="app-accent-text" />;
     case 'announcement':
-      return <Megaphone size={10} className="text-white" />;
+      return <Megaphone size={10} className="app-accent-text" />;
     case 'comments':
-      return <MessageSquare size={10} className="text-white" />;
+      return isDepartmentCommentsChat(chat)
+        ? <Building2 size={10} className="app-accent-text" />
+        : <MessageSquare size={10} className="app-accent-text" />;
     default:
       return null;
   }
@@ -278,6 +281,7 @@ export default function MessagesPage() {
       all: { total: chats.length, unread: 0 },
       global: { total: 0, unread: 0 },
       channel: { total: 0, unread: 0 },
+      comments: { total: 0, unread: 0 },
       private: { total: 0, unread: 0 },
       group: { total: 0, unread: 0 },
       announcement: { total: 0, unread: 0 },
@@ -420,7 +424,7 @@ export default function MessagesPage() {
             >
               <Filter size={16} />
               {(filterUnread !== 'all' || filterPinned !== 'all') && (
-                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-bold text-white">
+                <span className="app-badge app-badge-accent absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border px-1 text-[10px] font-bold">
                   {[filterUnread !== 'all', filterPinned !== 'all'].filter(Boolean).length}
                 </span>
               )}
@@ -520,7 +524,7 @@ export default function MessagesPage() {
                 >
                   <div className="flex items-start gap-3">
                     <div className="relative h-10 w-10">
-                      <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-xs font-semibold text-white">
+                      <div className="app-avatar-fallback flex h-10 w-10 items-center justify-center overflow-hidden rounded-full text-xs font-semibold">
                         {chatAvatar ? (
                           <Image
                             src={resolveMediaUrl(chatAvatar)}
@@ -535,12 +539,12 @@ export default function MessagesPage() {
                         )}
                       </div>
                       {/* Иконка типа чата */}
-                      <span className="absolute -bottom-0.5 -left-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-sky-600 ring-2 ring-white">
+                      <span className="app-badge app-badge-accent absolute -bottom-0.5 -left-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full border-2 border-[var(--surface-primary)]">
                         {getChatTypeIcon(chat)}
                       </span>
                       {/* Счетчик непрочитанных */}
                       {(chat.unread_count ?? 0) > 0 ? (
-                        <span className="absolute -top-1 -right-1 z-10 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white ring-2 ring-white">
+                        <span className="app-counter-danger absolute -top-1 -right-1 z-10 flex h-5 min-w-[20px] items-center justify-center border-2 border-[var(--surface-primary)] px-1.5 text-[10px] font-bold">
                           {chat.unread_count! > 99 ? '99+' : chat.unread_count}
                         </span>
                       ) : null}

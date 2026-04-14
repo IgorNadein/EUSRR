@@ -2,8 +2,10 @@
 import pytest
 from django.urls import reverse
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 from rest_framework.test import APIClient
 from rest_framework import status
+from unittest.mock import patch
 
 from employees.models import (
     Department,
@@ -258,6 +260,29 @@ def test_create_with_scoped_permission_codes_and_update_name(api_client: APIClie
         format="json",
     )
     assert resp.status_code == 201
+
+
+@pytest.mark.django_db
+@override_settings(LDAP_ENABLED=True)
+def test_create_role_triggers_ldap_sync(api_client: APIClient):
+    with override_settings(LDAP_ENABLED=False):
+        d = Department.objects.create(name="Dept LDAP")
+        staff = make_user("staff-ldap@example.com", staff=True)
+
+    api_client.force_authenticate(user=staff)
+    url = reverse("api:v1:department-roles-list")
+
+    with patch(
+        "employees.signals.ldap.role.DepartmentService.sync_role_state"
+    ) as mock_sync:
+        resp = api_client.post(
+            url,
+            {"department": d.id, "name": "Worker LDAP"},
+            format="json",
+        )
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    mock_sync.assert_called_once()
     rid = resp.json()["id"]
 
     # update имени (PATCH)

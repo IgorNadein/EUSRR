@@ -20,6 +20,32 @@ from .config import (
 Employee = get_user_model()
 
 
+def _department_post_recipients(department):
+    """Получатели новостей отдела: физический состав + role-only сотрудники."""
+    if department is None:
+        return []
+
+    recipients: dict[int, Employee] = {}
+
+    for employee in department.active_employees:
+        if getattr(employee, "is_active", False):
+            recipients[employee.id] = employee
+
+    role_only_qs = (
+        Employee.objects.filter(
+            is_active=True,
+            role_assignments__role__department=department,
+            role_assignments__is_active=True,
+        )
+        .distinct()
+        .order_by("id")
+    )
+    for employee in role_only_qs:
+        recipients[employee.id] = employee
+
+    return list(recipients.values())
+
+
 def notify_new_post(post):
     """
     Отправляет уведомления о новой публикации.
@@ -114,8 +140,8 @@ def get_post_recipients(post):
         return list(Employee.objects.filter(is_active=True))
 
     elif post.type == TYPE_DEPARTMENT and post.department:
-        # Новость отдела - сотрудникам отдела
-        return list(post.department.employees.filter(is_active=True))
+        # Новость отдела — физическому составу + role-only участникам
+        return _department_post_recipients(post.department)
 
     elif post.type == TYPE_EMPLOYEE:
         # Личная публикация - подписчикам

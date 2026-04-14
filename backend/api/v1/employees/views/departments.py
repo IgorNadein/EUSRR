@@ -27,7 +27,11 @@ from employees.models import (
     EmployeeDepartment,
     RoleAssignment,
 )
-from employees.utils import _build_links_for_dept, _validate_head_active
+from employees.utils import (
+    _build_links_for_dept,
+    _other_active_department_link,
+    _validate_head_active,
+)
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -36,6 +40,7 @@ from rest_framework.response import Response
 from ...permissions import (
     AdminOrActionOrModelPerms,
     AdminOrDeptAllowed,
+    can_publish_department_posts,
     has_dept_perm,
 )
 from ..serializers import (
@@ -105,6 +110,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             return [AdminOrActionOrModelPerms()]
         if self.action in {
             "members",
+            "discussion_chat",
             "user_perms",
             "list",
             "retrieve",
@@ -124,9 +130,21 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         active_links = EmployeeDepartment.objects.filter(
             department_id=OuterRef("pk"), is_active=True
         )
+        active_role_assignments = RoleAssignment.objects.filter(
+            role__department_id=OuterRef("pk"),
+            is_active=True,
+        ).exclude(
+            employee__departments_links__department_id=OuterRef("pk"),
+            employee__departments_links__is_active=True,
+        )
 
         active_count_subq = (
             active_links.values("department_id")
+            .annotate(c=Count("employee_id", distinct=True))
+            .values("c")[:1]
+        )
+        role_only_count_subq = (
+            active_role_assignments.values("role__department_id")
             .annotate(c=Count("employee_id", distinct=True))
             .values("c")[:1]
         )
@@ -134,6 +152,10 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         qs = qs.annotate(
             active_count=Coalesce(
                 Subquery(active_count_subq, output_field=IntegerField()),
+                Value(0),
+            ),
+            role_only_count=Coalesce(
+                Subquery(role_only_count_subq, output_field=IntegerField()),
                 Value(0),
             ),
             head_in_active=Exists(
@@ -376,42 +398,57 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 
         # Проверяем, является ли сотрудник членом отдела
         link = EmployeeDepartment.objects.filter(
-            employee_id=emp_id, department_id=dept.id
+            employee_id=emp_id,
+            department_id=dept.id,
+            is_active=True,
         ).first()
 
         via_assignment = False
 
-        if link:
-            # Сотрудник — член отдела: обновляем роль в линке
-            link.role = role
-            link.save(update_fields=["role"])
+        active_assignments = list(
+            RoleAssignment.objects.filter(
+                employee_id=emp_id,
+                role__department=dept,
+                is_active=True,
+            ).select_related("role")
+        )
 
-            # Также создаём/обновляем RoleAssignment для консистентности
+        def deactivate_assignment(assignment: RoleAssignment) -> None:
+            assignment.is_active = False
+            assignment.save(update_fields=["is_active"])
+
+        if link:
+            # Сотрудник — член отдела: сперва приводим RoleAssignment
+            # к единственному актуальному значению, затем обновляем link.role.
+            for assignment in active_assignments:
+                if role is None or assignment.role_id != role.id:
+                    deactivate_assignment(assignment)
+
             if role:
                 RoleAssignment.objects.update_or_create(
                     employee_id=emp_id,
                     role=role,
                     defaults={"is_active": True, "assigned_by": request.user},
                 )
-            else:
-                RoleAssignment.objects.filter(
-                    employee_id=emp_id, role__department=dept, is_active=True
-                ).update(is_active=False)
+
+            link.role = role
+            link.save(update_fields=["role"])
         else:
             # Сотрудник НЕ член отдела: используем только RoleAssignment
             via_assignment = True
 
             if role:
+                for assignment in active_assignments:
+                    if assignment.role_id != role.id:
+                        deactivate_assignment(assignment)
                 RoleAssignment.objects.update_or_create(
                     employee=employee,
                     role=role,
                     defaults={"is_active": True, "assigned_by": request.user},
                 )
             else:
-                active_assignments = RoleAssignment.objects.filter(
-                    employee_id=emp_id, role__department=dept, is_active=True
-                )
-                active_assignments.update(is_active=False)
+                for assignment in active_assignments:
+                    deactivate_assignment(assignment)
 
         return Response(
             {
@@ -430,6 +467,39 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         links = _build_links_for_dept(dept, EmployeeBriefSerializer)
         return Response({"count": len(links), "results": links}, status=200)
 
+    @action(detail=True, methods=["get"], url_path="discussion-chat")
+    def discussion_chat(self, request, pk=None):
+        """Возвращает comments-chat отдела для входа из detail page."""
+        from communications.comments_helpers import get_or_create_comments_chat
+
+        dept = self.get_object()
+        chat = get_or_create_comments_chat(
+            dept,
+            created_by=None,
+            name=dept.name,
+        )
+        next_flags = dict(chat.flags or {})
+        if next_flags.get("show_in_messages") is not True:
+            next_flags["show_in_messages"] = True
+
+        if (
+            chat.created_by_id is not None
+            or chat.name != dept.name
+            or chat.flags != next_flags
+        ):
+            chat.created_by = None
+            chat.name = dept.name
+            chat.flags = next_flags
+            chat.save(update_fields=["created_by", "name", "flags"])
+        return Response(
+            {
+                "chat_id": chat.id,
+                "chat_type": chat.type,
+                "name": chat.name,
+            },
+            status=status.HTTP_200_OK,
+        )
+
     @action(detail=True, methods=["get"], url_path="user-perms")
     def user_perms(self, request, pk=None):
         """GET /api/v1/departments/{id}/user-perms/.
@@ -447,6 +517,12 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             "can_assign_roles": has_dept_perm(
                 request.user, dept.id, DeptPerm.ASSIGN_ROLE
             ),
+            "can_publish_posts": can_publish_department_posts(
+                request.user, dept.id
+            ),
+            "can_manage_feed": has_dept_perm(
+                request.user, dept.id, DeptPerm.MANAGE_FEED
+            ),
         }
         return Response(data, status=200)
 
@@ -460,7 +536,30 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         emp_id = payload.validated_data["employee_id"]
 
         employee_model = Department._meta.get_field("head").remote_field.model
-        get_object_or_404(employee_model, id=emp_id)
+        employee = get_object_or_404(employee_model, id=emp_id)
+
+        if getattr(employee, "is_active", True) is False:
+            return Response(
+                {"employee_id": ["Employee is inactive."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        other_active_link = _other_active_department_link(
+            emp_id,
+            exclude_department_id=dept.id,
+        )
+        if other_active_link is not None:
+            return Response(
+                {
+                    "employee_id": [
+                        (
+                            "Employee already belongs to another active "
+                            f"department: {other_active_link.department.name}."
+                        )
+                    ]
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         link, created = EmployeeDepartment.objects.get_or_create(
             employee_id=emp_id,

@@ -196,11 +196,11 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                                                     e.stopPropagation();
                                                     deleteNotification(notification.id);
                                                 }}
-                                                className="flex-shrink-0 rounded p-1.5 opacity-0 transition-all group-hover:opacity-100 hover:bg-[var(--danger-soft)]"
+                                                className="app-action-ghost flex-shrink-0 rounded p-1.5 transition-colors hover:bg-transparent"
                                                 aria-label="Удалить"
                                                 title="Удалить уведомление"
                                             >
-                                                <Trash2 className="h-3.5 w-3.5 text-[var(--muted-foreground)] hover:text-red-500" />
+                                                <Trash2 className="h-3.5 w-3.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--danger-foreground)]" />
                                             </button>
                                         </div>
                                     </li>

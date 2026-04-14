@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "@/lib/api";
 import { canManageRequests, canManageSupplier } from "@/lib/permissions";
 import { displayUserName, extractNextPage, loadAllPages } from "@/lib/shared";
@@ -143,6 +143,7 @@ export function useProcurementPage(user: User | null) {
 
   const [scope, setScope] = useState<ScopeTab>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [statusFilter, setStatusFilter] = useState("");
   const [urgencyFilter, setUrgencyFilter] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("");
@@ -161,6 +162,7 @@ export function useProcurementPage(user: User | null) {
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
   const [detailsCache, setDetailsCache] = useState<Record<number, ProcurementRequest>>({});
   const detailsCacheRef = useRef<Record<number, ProcurementRequest>>({});
+  const hasLoadedOnceRef = useRef(false);
 
   useEffect(() => {
     detailsCacheRef.current = detailsCache;
@@ -213,10 +215,10 @@ export function useProcurementPage(user: User | null) {
       if (urgencyFilter) params.urgency = urgencyFilter;
       if (departmentFilter) params.department = departmentFilter;
       if (periodFilter) params.period = periodFilter;
-      if (searchQuery.trim()) params.search = searchQuery.trim();
+      if (deferredSearchQuery.trim()) params.search = deferredSearchQuery.trim();
       return params;
     },
-    [departmentFilter, periodFilter, scope, searchQuery, statusFilter, urgencyFilter],
+    [deferredSearchQuery, departmentFilter, periodFilter, scope, statusFilter, urgencyFilter],
   );
 
   const buildScopeCountParams = useCallback(
@@ -230,15 +232,17 @@ export function useProcurementPage(user: User | null) {
       if (urgencyFilter) params.urgency = urgencyFilter;
       if (departmentFilter) params.department = departmentFilter;
       if (periodFilter) params.period = periodFilter;
-      if (searchQuery.trim()) params.search = searchQuery.trim();
+      if (deferredSearchQuery.trim()) params.search = deferredSearchQuery.trim();
       return params;
     },
-    [departmentFilter, periodFilter, searchQuery, statusFilter, urgencyFilter],
+    [deferredSearchQuery, departmentFilter, periodFilter, statusFilter, urgencyFilter],
   );
 
   const loadPage1 = useCallback(async () => {
     try {
-      setLoading(true);
+      if (!hasLoadedOnceRef.current) {
+        setLoading(true);
+      }
       setError(null);
 
       const response: unknown = scope === "pending_approvals"
@@ -252,6 +256,7 @@ export function useProcurementPage(user: User | null) {
       setError("Не удалось загрузить заявки на закупку");
     } finally {
       setLoading(false);
+      hasLoadedOnceRef.current = true;
     }
   }, [buildParams, scope]);
 

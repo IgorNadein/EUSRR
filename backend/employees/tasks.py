@@ -255,6 +255,76 @@ def _execute_position_delete(payload: dict) -> None:
     svc.delete_position_group(pos_stub)
 
 
+def _execute_department_role_save(payload: dict) -> None:
+    """Повторяет синхронизацию роли отдела → LDAP."""
+    from employees.ldap import DepartmentService
+    from employees.models import DepartmentRole
+
+    role_pk = _require_payload_value(payload, "role_pk")
+    role = DepartmentRole.objects.filter(pk=role_pk).select_related(
+        "department"
+    ).first()
+    if role is None:
+        logger.info(
+            "DepartmentRole %s no longer exists, skipping queued role sync",
+            role_pk,
+        )
+        return
+
+    DepartmentService().sync_role_state(role)
+
+
+def _execute_department_role_delete(payload: dict) -> None:
+    """Повторяет удаление LDAP-следов роли отдела."""
+    from employees.ldap import DepartmentService
+    from employees.models import Department
+
+    department_pk = _require_payload_value(payload, "department_pk")
+    dept = Department.objects.filter(pk=department_pk).first()
+    if dept is None:
+        logger.info(
+            "Department %s no longer exists, skipping queued role delete sync",
+            department_pk,
+        )
+        return
+
+    DepartmentService().sync_role_delete(
+        dept,
+        role_group_dn=payload.get("role_group_dn"),
+    )
+
+
+def _execute_role_assignment(payload: dict) -> None:
+    """Повторяет синхронизацию назначения роли → LDAP."""
+    from employees.ldap import DepartmentService
+    from employees.models import DepartmentRole, Employee
+
+    employee_pk = _require_payload_value(payload, "employee_pk")
+    role_pk = _require_payload_value(payload, "role_pk")
+
+    employee = Employee.objects.filter(pk=employee_pk).first()
+    if employee is None:
+        logger.info(
+            "Employee %s no longer exists, skipping queued role assignment sync",
+            employee_pk,
+        )
+        return
+
+    role = DepartmentRole.objects.filter(pk=role_pk).first()
+    if role is None:
+        logger.info(
+            "DepartmentRole %s no longer exists, skipping queued role assignment sync",
+            role_pk,
+        )
+        return
+
+    DepartmentService().sync_role_assignment_state(
+        employee,
+        role,
+        is_active=bool(payload.get("is_active")),
+    )
+
+
 # Реестр: operation → callable
 _EXECUTORS = {
     "employee_save": _execute_employee_save,
@@ -267,6 +337,9 @@ _EXECUTORS = {
     "group_members": _execute_group_members,
     "position_save": _execute_position_save,
     "position_delete": _execute_position_delete,
+    "department_role_save": _execute_department_role_save,
+    "department_role_delete": _execute_department_role_delete,
+    "role_assignment": _execute_role_assignment,
 }
 
 

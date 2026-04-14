@@ -82,9 +82,21 @@ class Post(models.Model):
         ),
     )
     title = models.CharField("Заголовок", max_length=200)
-    body = models.TextField("Текст")
+    body = models.TextField("Текст", blank=True)
     created_at = models.DateTimeField("Создано", auto_now_add=True)
-    pinned = models.BooleanField("Закреплено", default=False)
+    pinned = models.BooleanField(
+        "Закреплено (legacy)",
+        default=False,
+        editable=False,
+    )
+    pinned_global = models.BooleanField(
+        "Закреплено в общей ленте",
+        default=False,
+    )
+    pinned_department = models.BooleanField(
+        "Закреплено в ленте отдела",
+        default=False,
+    )
     type = models.CharField(
         "Тип публикации", max_length=20, choices=TYPE_CHOICES
     )
@@ -105,10 +117,17 @@ class Post(models.Model):
     class Meta:
         verbose_name = "Публикация"
         verbose_name_plural = "Публикации"
-        ordering = ["-pinned", "-created_at"]
+        ordering = ["-pinned_global", "-created_at"]
         indexes = [
             models.Index(fields=["type", "created_at"]),
-            models.Index(fields=["pinned", "created_at"]),
+            models.Index(
+                fields=["pinned_global", "created_at"],
+                name="feed_post_pin_global_idx",
+            ),
+            models.Index(
+                fields=["pinned_department", "created_at"],
+                name="feed_post_pin_department_idx",
+            ),
             models.Index(fields=["created_at"]),
             models.Index(fields=["department", "-created_at"]),
             models.Index(fields=["author", "-created_at"]),

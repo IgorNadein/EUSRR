@@ -1,9 +1,10 @@
 "use client";
 
-import { Building2, CalendarDays, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Monitor, Search, ShoppingCart, Users, Wallet } from "lucide-react";
+import { Building2, CalendarDays, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Monitor, Search, ShoppingCart, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, startTransition, useEffect, useRef, useState, useMemo } from "react";
+import { useMobileNavPlacement } from "@/contexts/MobileNavPlacementContext";
 import { useUser } from "@/contexts/UserContext";
 import { useNotifications } from "@/hooks/useApi";
 import { getVerbCategory } from "@/lib/verbTranslations";
@@ -25,6 +26,8 @@ type PageHeaderProps = {
 };
 
 type HeaderProps = {
+  mobileNavPlacement: "top" | "bottom";
+  suppressMobileChrome?: boolean;
   onOpenLeftNav: () => void;
   onOpenCalendar: () => void;
 };
@@ -45,7 +48,7 @@ const navItems = [
   // { href: "/finances", label: "Финансы", icon: Wallet },
 ];
 
-function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
+function Header({ mobileNavPlacement, suppressMobileChrome = false, onOpenLeftNav, onOpenCalendar }: HeaderProps) {
   const router = useRouter();
   const { user, logout } = useUser();
   const [searchQuery, setSearchQuery] = useState("");
@@ -97,6 +100,8 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
     ? `${user.last_name} ${user.first_name}`.trim()
     : 'Гость';
 
+  const isBottomMobileNav = mobileNavPlacement === "bottom";
+
   const submitSearch = () => {
     const query = searchQuery.trim();
     if (!query) return;
@@ -104,9 +109,19 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
   };
 
   return (
-    <header className="app-header sticky top-0 z-[40] border-b backdrop-blur">
+    <header
+      className={`app-header z-[40] backdrop-blur ${
+        isBottomMobileNav
+          ? "fixed inset-x-0 bottom-0 border-t lg:fixed lg:inset-x-0 lg:top-0 lg:bottom-auto lg:border-b lg:border-t-0"
+          : "fixed inset-x-0 top-0 border-b"
+      } ${suppressMobileChrome ? "hidden lg:block" : ""} shrink-0`}
+    >
       <div className="mx-auto max-w-6xl px-4 sm:px-8">
-        <div className="flex h-10 lg:h-14 items-center justify-between gap-3">
+        <div
+          className={`flex h-10 items-center justify-between gap-3 lg:h-14 ${
+            isBottomMobileNav ? "pb-[max(env(safe-area-inset-bottom),0px)]" : ""
+          }`}
+        >
           <button
             type="button"
             onClick={onOpenLeftNav}
@@ -135,7 +150,9 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
             <img
               src="/logo.png"
               alt="Логотип"
-              className="mt-3 h-10 w-auto rounded bg-transparent pb-0.5 lg:mt-0 lg:h-11 lg:pb-0"
+              className={`h-10 w-auto rounded bg-transparent pb-0.5 lg:h-11 lg:pb-0 ${
+                isBottomMobileNav ? "mt-0" : "mt-3 lg:mt-0"
+              }`}
             />
           </Link>
 
@@ -178,7 +195,7 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
             <NotificationCenter />
             <div className="ml-1 relative h-10 w-10" id="user-menu-root">
               <div
-                className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white hover:bg-sky-500 cursor-pointer"
+                className="app-avatar-fallback flex h-10 w-10 cursor-pointer items-center justify-center overflow-hidden rounded-full text-sm font-semibold hover:bg-[var(--accent-soft-strong)]"
                 title={userName}
                 onClick={() => setUserMenuOpen((v) => !v)}
               >
@@ -214,9 +231,9 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
         <div
           className={`overflow-hidden transition-all duration-300 lg:hidden ${
             isSearchOpen ? "max-h-20 pb-3" : "max-h-0"
-          }`}
+          } ${isBottomMobileNav ? "absolute inset-x-0 bottom-full px-4 sm:px-8" : ""}`}
         >
-          <div className="relative">
+          <div className={`relative ${isBottomMobileNav ? "mx-auto max-w-6xl" : ""}`}>
             <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 app-text-muted" />
             <input
               ref={searchInputRef}
@@ -243,10 +260,12 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
         <div
           className={`notification-panel-mobile overflow-hidden transition-all duration-300 lg:hidden ${
             isNotificationsOpen ? "max-h-[70vh] pb-3" : "max-h-0"
-          }`}
+          } ${isBottomMobileNav ? "absolute inset-x-0 bottom-full px-4 sm:px-8" : ""}`}
         >
           {isNotificationsOpen && (
-            <NotificationPanel onClose={() => setIsNotificationsOpen(false)} />
+            <div className={isBottomMobileNav ? "mx-auto max-w-6xl" : ""}>
+              <NotificationPanel onClose={() => setIsNotificationsOpen(false)} />
+            </div>
           )}
         </div>
 
@@ -320,10 +339,16 @@ function LeftNavContent({ onNavigate }: LeftNavContentProps) {
   );
 }
 
-function LeftNav() {
+function LeftNav({ fixedDesktop = false }: { fixedDesktop?: boolean }) {
   return (
-    <aside className="hidden w-64 flex-shrink-0 lg:block lg:sticky lg:self-start lg:top-22 lg:max-h-[calc(100vh-5.5rem)] lg:overflow-y-auto">
-      <div className="space-y-4 lg:pb-2">
+    <aside className="hidden w-64 flex-shrink-0 lg:block">
+      <div
+        className={`space-y-4 lg:overflow-y-auto ${
+          fixedDesktop
+            ? "lg:fixed lg:top-0 lg:bottom-0 lg:w-64 lg:pt-[5.5rem] lg:pb-8"
+            : "lg:sticky lg:top-8 lg:max-h-[calc(100dvh-7.5rem)] lg:pb-2"
+        }`}
+      >
         <LeftNavContent />
       </div>
     </aside>
@@ -349,6 +374,7 @@ export function PageHeader({ title, subtitle, badge, eyebrow  }: PageHeaderProps
 
 export function AppShell({ children }: AppShellProps) {
   const { user, loading } = useUser();
+  const { mobileNavPlacement } = useMobileNavPlacement();
   const router = useRouter();
   const pathname = usePathname();
   const isMessageDialogPage = pathname.startsWith('/messages/') && 
@@ -427,10 +453,15 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <div className={`${isMessageDialogPage ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'} app-shell flex flex-col`}>
-        <Header onOpenLeftNav={() => setIsMobileLeftNavOpen(true)} onOpenCalendar={() => setIsMobileCalendarOpen(true)} />
+    <div className={`${isMessageDialogPage ? 'h-[100dvh] overflow-hidden lg:pt-14' : 'min-h-screen pt-10 lg:pt-14'} app-shell flex flex-col ${mobileNavPlacement === "bottom" && !isMessageDialogPage ? "pb-[calc(env(safe-area-inset-bottom)+3.75rem)] lg:pb-0" : ""}`}>
+        <Header
+          mobileNavPlacement={mobileNavPlacement}
+          suppressMobileChrome={isMessageDialogPage}
+          onOpenLeftNav={() => setIsMobileLeftNavOpen(true)}
+          onOpenCalendar={() => setIsMobileCalendarOpen(true)}
+        />
         <div className={`mx-auto flex w-full flex-1 min-h-0 max-w-6xl ${isMessageDialogPage ? 'gap-0 px-0 py-0 lg:gap-6 lg:px-8 lg:py-8' : 'gap-6 px-4 py-4 sm:px-8 lg:py-8'}`}>
-          <LeftNav />
+          <LeftNav fixedDesktop />
           <main className={`flex-1 min-w-0 min-h-0 space-y-6 ${isMessageDialogPage ? 'overflow-visible' : ''}`}>{children}</main>
           <CalendarSidebar
             onOpenCalendarModal={cal.handleOpenCalendarModal}
@@ -440,6 +471,7 @@ export function AppShell({ children }: AppShellProps) {
             setEventsRefreshTrigger={cal.handleSetEventsRefreshTrigger}
             setSidebarEvents={cal.handleSetSidebarEvents}
             onCalendarChange={cal.handleCalendarChange}
+            fixedDesktop
           />
         </div>
 

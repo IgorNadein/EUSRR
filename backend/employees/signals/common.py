@@ -3,20 +3,18 @@
 
 Обработчики:
 - Создание кадровых событий (EmployeeAction)
-- Создание главных чатов отделов
 - Автоматизация из заявок (requests_app)
 """
 
 import logging
 from datetime import datetime
 
-from django.contrib.contenttypes.models import ContentType
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
 
 from employees.constants import ACTION_HIRED
-from employees.models import Employee, EmployeeAction, Department
+from employees.models import Employee, EmployeeAction
 
 logger = logging.getLogger(__name__)
 
@@ -50,43 +48,6 @@ def create_hired_action(sender, instance: Employee, created, **kwargs):
             date=instance.created_at or timezone.now(),
             comment="Автоматически: принят при регистрации",
         )
-
-
-@receiver(post_save, sender=Department)
-def create_main_department_chat(sender, instance, created, **kwargs):
-    """
-    Создает главный чат для нового отдела (EUSRR-specific logic).
-
-    Использует GenericFK (context_object) и flags['is_primary'].
-    """
-    if not created:
-        return
-
-    try:
-        from communications.models import Chat
-
-        dept_ct = ContentType.objects.get_for_model(Department)
-
-        # Проверка: существует ли уже чат для этого отдела
-        existing = Chat.objects.filter(
-            type="channel",
-            context_content_type=dept_ct,
-            context_object_id=instance.id,
-            flags__is_primary=True
-        ).exists()
-
-        if not existing:
-            Chat.objects.create(
-                type="channel",
-                context_content_type=dept_ct,
-                context_object_id=instance.id,
-                flags={'is_primary': True},
-                is_main=True,
-                name=f"Основной чат {instance.name}"
-            )
-    except ImportError:
-        # communications app не установлен - пропускаем
-        pass
 
 
 # ============================================================

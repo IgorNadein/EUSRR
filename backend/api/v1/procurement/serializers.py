@@ -17,6 +17,7 @@ from procurement.models import (
     ProcurementRequest,
     Supplier,
 )
+from ..employees.serializers import EmployeeBriefSerializer
 
 
 class ProcurementItemSerializer(serializers.ModelSerializer):
@@ -62,6 +63,7 @@ class ProcurementItemCreateSerializer(serializers.ModelSerializer):
 class ApprovalSerializer(serializers.ModelSerializer):
     """Сериализатор для согласований."""
 
+    approver = EmployeeBriefSerializer(read_only=True)
     approver_name = serializers.CharField(
         source="approver.get_full_name", read_only=True
     )

@@ -12,37 +12,38 @@ export type RequestFormState = {
   date_from: string;
   date_to: string;
   comment: string;
-  department_ids: number[];
   recipient_ids: number[];
   cc_user_ids: number[];
-  sent_to_all_department: boolean;
   attachment: File | null;
 };
 
-export const emptyForm: RequestFormState = {
+export type RequestAttachmentPreview = {
+  url: string;
+  name: string;
+};
+
+export const createEmptyForm = (): RequestFormState => ({
   type: "",
   title: "",
   date_from: "",
   date_to: "",
   comment: "",
-  department_ids: [],
   recipient_ids: [],
   cc_user_ids: [],
-  sent_to_all_department: false,
   attachment: null,
-};
+});
 
 export const statusMeta: Record<string, { label: string; className: string }> = {
-  draft:       { label: "Черновик",          className: "bg-slate-100 text-slate-700 ring-slate-200" },
-  pending:     { label: "На рассмотрении",   className: "bg-amber-50 text-amber-700 ring-amber-100" },
-  approved:    { label: "Одобрено",          className: "bg-emerald-50 text-emerald-700 ring-emerald-100" },
-  rejected:    { label: "Отклонено",         className: "bg-rose-50 text-rose-700 ring-rose-100" },
-  cancelled:   { label: "Отменено",          className: "bg-gray-100 text-gray-700 ring-gray-200" },
-  in_progress: { label: "В работе",          className: "bg-sky-50 text-sky-700 ring-sky-100" },
-  completed:   { label: "Завершено",         className: "bg-violet-50 text-violet-700 ring-violet-100" },
+  draft:       { label: "Черновик",          className: "app-badge" },
+  pending:     { label: "На рассмотрении",   className: "app-feedback-warning" },
+  approved:    { label: "Одобрено",          className: "app-feedback-success" },
+  rejected:    { label: "Отклонено",         className: "app-feedback-danger" },
+  cancelled:   { label: "Отменено",          className: "app-badge" },
+  in_progress: { label: "В работе",          className: "app-selected" },
+  completed:   { label: "Завершено",         className: "app-badge-accent" },
 };
 
-export const defaultStatusMeta = { label: "Неизвестный статус", className: "bg-gray-50 text-gray-700 ring-gray-200" };
+export const defaultStatusMeta = { label: "Неизвестный статус", className: "app-badge" };
 
 export const requestTypeLabels: Record<string, string> = {
   vacation: "Отпуск",
@@ -61,6 +62,45 @@ export const orderingOptions = [
   { value: "-date_from",  label: "По периоду ↓" },
 ];
 
+export function getRequestDateMode(type: string): "range" | "single" | "optional" {
+  switch (String(type || "").toLowerCase()) {
+    case "vacation":
+    case "sick_leave":
+      return "range";
+    case "transfer":
+    case "dismissal":
+      return "single";
+    default:
+      return "optional";
+  }
+}
+
+function getRequestSubmitError(form: RequestFormState): string | null {
+  if (form.recipient_ids.length === 0) {
+    return "Укажите хотя бы одного получателя.";
+  }
+
+  if (!form.type) {
+    return "Выберите тип заявления.";
+  }
+
+  const dateMode = getRequestDateMode(form.type);
+  if (dateMode === "range") {
+    if (!form.date_from || !form.date_to) {
+      return "Укажите обе даты периода.";
+    }
+    if (form.date_to < form.date_from) {
+      return "Дата окончания не может быть раньше даты начала.";
+    }
+  }
+
+  if (dateMode === "single" && !form.date_from) {
+    return "Укажите дату начала.";
+  }
+
+  return null;
+}
+
 /* ── hook ── */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function useRequestsPage(_userId: number | null | undefined) {
@@ -75,8 +115,8 @@ export function useRequestsPage(_userId: number | null | undefined) {
 
   /* form */
   const [createOpen, setCreateOpen] = useState(false);
-  const [editingRequestId, setEditingRequestId] = useState<number | null>(null);
-  const [form, setForm] = useState<RequestFormState>(emptyForm);
+  const [editingRequest, setEditingRequest] = useState<Request | null>(null);
+  const [form, setForm] = useState<RequestFormState>(createEmptyForm);
 
   /* filters */
   const [search, setSearch] = useState("");
@@ -93,7 +133,7 @@ export function useRequestsPage(_userId: number | null | undefined) {
   const [swipeMode, setSwipeMode] = useState(false);
 
   /* UI */
-  const [attachmentPreview, setAttachmentPreview] = useState<{ url: string; name: string } | null>(null);
+  const [attachmentPreview, setAttachmentPreview] = useState<RequestAttachmentPreview | null>(null);
   const [detailsRequest, setDetailsRequest] = useState<Request | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -195,11 +235,40 @@ export function useRequestsPage(_userId: number | null | undefined) {
     });
   }, [ordering, requests, search]);
 
+  const pendingDecisionRequests = useMemo(
+    () => filteredRequests.filter((request) => String(request.status || "").toLowerCase() === "pending" && request.can_decide),
+    [filteredRequests],
+  );
+  const pendingDecisionCount = pendingDecisionRequests.length;
+  const activeFiltersCount = useMemo(
+    () => [
+      view,
+      typeFilter,
+      statusFilter,
+      employeeFilter,
+      createdFromFilter,
+      createdToFilter,
+      periodFromFilter,
+      periodToFilter,
+    ].filter(Boolean).length,
+    [
+      view,
+      typeFilter,
+      statusFilter,
+      employeeFilter,
+      createdFromFilter,
+      createdToFilter,
+      periodFromFilter,
+      periodToFilter,
+    ],
+  );
+  const hasActiveFilters = activeFiltersCount > 0;
+
   /* ── form ── */
-  const resetForm = () => setForm(emptyForm);
+  const resetForm = () => setForm(createEmptyForm());
 
   const openEdit = (req: Request) => {
-    setEditingRequestId(req.id);
+    setEditingRequest(req);
     setCreateOpen(false);
     setActionError(null);
     setActionSuccess(null);
@@ -209,63 +278,76 @@ export function useRequestsPage(_userId: number | null | undefined) {
       date_from: req.date_from || "",
       date_to: req.date_to || "",
       comment: req.comment || req.description || "",
-      department_ids: (req.departments || []).map(Number).filter((n) => Number.isFinite(n)),
       recipient_ids: (req.recipients || []).map((u: User) => u.id).filter(Boolean),
       cc_user_ids: (req.cc_users || []).map((u: User) => u.id).filter(Boolean),
-      sent_to_all_department: Boolean(req.sent_to_all_department),
       attachment: null,
     });
   };
 
   const openCreate = () => {
-    setEditingRequestId(null);
+    setEditingRequest(null);
     resetForm();
     setActionError(null);
     setActionSuccess(null);
     setCreateOpen(true);
   };
 
+  const openSwipeMode = () => setSwipeMode(true);
+
   const closeModal = () => {
     setCreateOpen(false);
-    setEditingRequestId(null);
+    setEditingRequest(null);
     resetForm();
     setActionError(null);
   };
 
+  const clearFilters = () => {
+    setView("");
+    setTypeFilter("");
+    setStatusFilter("");
+    setEmployeeFilter("");
+    setCreatedFromFilter("");
+    setCreatedToFilter("");
+    setPeriodFromFilter("");
+    setPeriodToFilter("");
+  };
+
+  const toggleFilters = () => setFiltersOpen((value) => !value);
+
   /* ── CRUD ── */
-  const handleCreateOrUpdate = async (mode: "create" | "edit", saveAs: "draft" | "submitted") => {
+  const handleCreateOrUpdate = async (mode: "create" | "edit", saveAs: "draft" | "submit") => {
     try {
       setBusyKey(`${mode}-${saveAs}`);
       setActionError(null);
       setActionSuccess(null);
 
-      if (saveAs === "submitted" && !form.sent_to_all_department && form.department_ids.length === 0 && form.recipient_ids.length === 0) {
-        setActionError("Укажите получателей или отделы.");
-        return;
+      if (saveAs === "submit") {
+        const submitError = getRequestSubmitError(form);
+        if (submitError) {
+          setActionError(submitError);
+          return;
+        }
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload: Record<string, any> = {
-        type: form.type,
+      const payload: Record<string, string | File | number[] | null> = {
         title: form.title,
         date_from: form.date_from || null,
         date_to: form.date_to || null,
         comment: form.comment,
-        sent_to_all_department: form.sent_to_all_department,
       };
-      if (form.department_ids.length > 0) payload.department_ids = form.department_ids;
+      if (form.type) payload.type = form.type;
       if (form.recipient_ids.length > 0) payload.recipient_ids = form.recipient_ids;
       if (form.cc_user_ids.length > 0) payload.cc_user_ids = form.cc_user_ids;
       if (form.attachment) payload.attachment = form.attachment;
 
       if (mode === "create") {
         await apiClient.createRequest(payload, saveAs);
-        setActionSuccess(saveAs === "draft" ? "Черновик сохранён." : "Заявление создано.");
+        setActionSuccess(saveAs === "draft" ? "Черновик сохранён." : "Заявление отправлено.");
         setCreateOpen(false);
-      } else if (editingRequestId) {
-        await apiClient.updateRequest(editingRequestId, payload, saveAs);
-        setActionSuccess("Заявление обновлено.");
-        setEditingRequestId(null);
+      } else if (editingRequest) {
+        await apiClient.updateRequest(editingRequest.id, payload, saveAs);
+        setActionSuccess(saveAs === "draft" ? "Черновик обновлён." : "Заявление отправлено.");
+        setEditingRequest(null);
       }
 
       resetForm();
@@ -275,12 +357,22 @@ export function useRequestsPage(_userId: number | null | undefined) {
     } catch (e: unknown) {
       const raw = String((e as Error)?.message || "Не удалось сохранить заявление");
       let readable = raw;
-      try { const parsed = JSON.parse(raw); readable = Object.values(parsed).flat().join(". "); } catch { /* keep raw */ }
+      try {
+        const parsed = JSON.parse(raw) as Record<string, string[] | string>;
+        readable = Object.values(parsed).flat().join(". ");
+      } catch {
+        /* keep raw */
+      }
       setActionError(readable);
     } finally {
       setBusyKey(null);
     }
   };
+
+  const applyUpdatedRequest = useCallback((updated: Request) => {
+    setRequests((prev) => prev.map((request) => (request.id === updated.id ? { ...request, ...updated } : request)));
+    setDetailsRequest((prev) => (prev?.id === updated.id ? { ...prev, ...updated } : prev));
+  }, []);
 
   const handleLoadMore = useCallback(async () => {
     if (!nextPage || loadingMore) return;
@@ -302,19 +394,19 @@ export function useRequestsPage(_userId: number | null | undefined) {
   }, [nextPage, loadingMore, buildRequestParams]);
 
   const handleApprove = async (id: number) => {
-    try { setBusyKey(`approve-${id}`); setActionError(null); await apiClient.approveRequest(id); setRequests((p) => p.map((r) => (r.id === id ? { ...r, status: "approved" } : r))); }
+    try { setBusyKey(`approve-${id}`); setActionError(null); const updated = await apiClient.approveRequest(id); applyUpdatedRequest(updated); }
     catch (e: unknown) { setActionError(String((e as Error)?.message || "Не удалось одобрить")); }
     finally { setBusyKey(null); }
   };
 
   const handleReject = async (id: number) => {
-    try { setBusyKey(`reject-${id}`); setActionError(null); await apiClient.rejectRequest(id); setRequests((p) => p.map((r) => (r.id === id ? { ...r, status: "rejected" } : r))); }
+    try { setBusyKey(`reject-${id}`); setActionError(null); const updated = await apiClient.rejectRequest(id); applyUpdatedRequest(updated); }
     catch (e: unknown) { setActionError(String((e as Error)?.message || "Не удалось отклонить")); }
     finally { setBusyKey(null); }
   };
 
   const handleCancel = async (id: number) => {
-    try { setBusyKey(`cancel-${id}`); setActionError(null); await apiClient.cancelRequest(id); setRequests((p) => p.map((r) => (r.id === id ? { ...r, status: "cancelled" } : r))); }
+    try { setBusyKey(`cancel-${id}`); setActionError(null); const updated = await apiClient.cancelRequest(id); applyUpdatedRequest(updated); }
     catch (e: unknown) { setActionError(String((e as Error)?.message || "Не удалось отменить")); }
     finally { setBusyKey(null); }
   };
@@ -323,7 +415,13 @@ export function useRequestsPage(_userId: number | null | undefined) {
     if (!window.confirm("Удалить заявление? Это действие нельзя отменить.")) {
       return;
     }
-    try { setBusyKey(`delete-${id}`); setActionError(null); await apiClient.deleteRequest(id); setRequests((p) => p.filter((r) => r.id !== id)); }
+    try {
+      setBusyKey(`delete-${id}`);
+      setActionError(null);
+      await apiClient.deleteRequest(id);
+      setRequests((p) => p.filter((r) => r.id !== id));
+      setDetailsRequest((prev) => (prev?.id === id ? null : prev));
+    }
     catch (e: unknown) { setActionError(String((e as Error)?.message || "Не удалось удалить")); }
     finally { setBusyKey(null); }
   };
@@ -361,6 +459,10 @@ export function useRequestsPage(_userId: number | null | undefined) {
     finally { setBusyKey(null); }
   };
 
+  const setCommentDraft = useCallback((requestId: number, value: string) => {
+    setCommentDrafts((prev) => ({ ...prev, [requestId]: value }));
+  }, []);
+
   const isFinal = (status?: string) => ["approved", "rejected", "cancelled"].includes(String(status || "").toLowerCase());
 
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -378,6 +480,7 @@ export function useRequestsPage(_userId: number | null | undefined) {
   return {
     /* data */
     requests: filteredRequests,
+    pendingDecisionRequests,
     employees,
     departments,
     departmentNameMap,
@@ -385,15 +488,16 @@ export function useRequestsPage(_userId: number | null | undefined) {
     expandedRows,
     expandedComments,
     commentDrafts,
-    setCommentDrafts,
+    setCommentDraft,
 
     /* form */
     form,
     setForm,
     createOpen,
-    editingRequestId,
-    modalMode: (editingRequestId ? "edit" : "create") as "create" | "edit",
-    isModalOpen: createOpen || editingRequestId !== null,
+    editingRequest,
+    editingRequestId: editingRequest?.id ?? null,
+    modalMode: (editingRequest ? "edit" : "create") as "create" | "edit",
+    isModalOpen: createOpen || editingRequest !== null,
     openCreate,
     openEdit,
     closeModal,
@@ -412,6 +516,12 @@ export function useRequestsPage(_userId: number | null | undefined) {
     filtersOpen, setFiltersOpen,
     ordering, setOrdering,
     swipeMode, setSwipeMode,
+    activeFiltersCount,
+    hasActiveFilters,
+    pendingDecisionCount,
+    clearFilters,
+    toggleFilters,
+    openSwipeMode,
 
     /* UI */
     attachmentPreview, setAttachmentPreview,
@@ -427,3 +537,5 @@ export function useRequestsPage(_userId: number | null | undefined) {
     isFinal,
   };
 }
+
+export type RequestsPageController = ReturnType<typeof useRequestsPage>;

@@ -518,6 +518,8 @@ class TestMessageViewSet:
 
     def test_react_to_message(self, auth_client, private_chat, user1):
         """Добавление реакции на сообщение"""
+        user1.avatar = "avatars/reaction-user1.jpg"
+        user1.save(update_fields=["avatar"])
         message = Message.objects.create(
             chat=private_chat, author=user1, content="React to this"
         )
@@ -529,6 +531,13 @@ class TestMessageViewSet:
         assert response.status_code == status.HTTP_200_OK
         assert response.data["ok"] is True
         assert "👍" in response.data["reactions_summary"]
+        assert response.data["reactions_summary"]["👍"]["user_details"] == [
+            {
+                "id": user1.id,
+                "name": user1.get_full_name(),
+                "avatar": user1.avatar.url,
+            }
+        ]
 
     def test_unreact_to_message(self, auth_client, private_chat, user1):
         """Удаление реакции с сообщения"""

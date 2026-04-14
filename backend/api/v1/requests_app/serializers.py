@@ -7,7 +7,11 @@ from django.contrib.auth import get_user_model
 from django.db import models
 from employees.models import Department
 from requests_app.enums import RequestStatus
+from requests_app.enums import RequestType
 from requests_app.models import Request
+from requests_app.notifications.signals import (
+    dispatch_pending_new_request_notifications,
+)
 from rest_framework import serializers
 
 from ..employees.serializers import EmployeeBriefSerializer
@@ -89,6 +93,7 @@ class RequestReadSerializer(serializers.ModelSerializer):
     recipient_count = serializers.SerializerMethodField()
     cc_count = serializers.SerializerMethodField()
     is_recipient = serializers.SerializerMethodField()
+    can_decide = serializers.SerializerMethodField()
     # Используем аннотированное поле из queryset
     comments_count = serializers.IntegerField(read_only=True, allow_null=True)
 
@@ -120,6 +125,7 @@ class RequestReadSerializer(serializers.ModelSerializer):
             "recipient_count",
             "cc_count",
             "is_recipient",
+            "can_decide",
             "comments_count",
         )
         read_only_fields = (
@@ -137,6 +143,7 @@ class RequestReadSerializer(serializers.ModelSerializer):
             "recipient_count",
             "cc_count",
             "is_recipient",
+            "can_decide",
             "comments_count",
         )
 
@@ -174,6 +181,17 @@ class RequestReadSerializer(serializers.ModelSerializer):
             return False
         return obj.is_recipient(user)
 
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_decide(self, obj):
+        """Может ли текущий пользователь принять решение по заявке."""
+        request = self.context.get("request")
+        if not request or not hasattr(request, "user"):
+            return False
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        return obj.recipients.filter(id=user.id).exists()
+
 
 class RequestWriteSerializer(serializers.ModelSerializer):
     """Сериализатор записи заявки.
@@ -194,6 +212,9 @@ class RequestWriteSerializer(serializers.ModelSerializer):
     # Важно: снять обязательность, чтобы отсутствие полей не роняло валидацию
     employee = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(), required=False, allow_null=True
+    )
+    type = serializers.ChoiceField(
+        choices=RequestType, required=False, allow_blank=True
     )
     status = serializers.ChoiceField(
         choices=RequestStatus, required=False, allow_null=True
@@ -250,19 +271,26 @@ class RequestWriteSerializer(serializers.ModelSerializer):
         ]
 
     def _is_power(self) -> bool:
-        """Определяет, имеет ли пользователь расширенные права.
+        """В обычном UI/API нет привилегированных режимов редактирования."""
+        return False
 
-        На создание и изменение.
+    def _save_as_mode(self) -> str:
+        """Режим сохранения из query params: draft / submit / ''."""
+        request = self.context.get("request")
+        if not request:
+            return ""
+        return (request.query_params.get("save_as") or "").strip().lower()
 
-        Returns:
-            bool: True для staff или имеющих модельные права; иначе False.
-        """
-        user = self.context["request"].user
-        return bool(
-            getattr(user, "is_staff", False)
-            or user.has_perm("requests_app.add_request")
-            or user.has_perm("requests_app.change_request")
-            or user.has_perm("requests_app.can_process_requests")
+    def _is_draft_mode(self) -> bool:
+        """Черновик допускает неполные данные до явной отправки."""
+        save_as = self._save_as_mode()
+        if save_as == "draft":
+            return True
+        if save_as == "submit":
+            return False
+        return (
+            self.instance is not None
+            and getattr(self.instance, "status", None) == RequestStatus.DRAFT
         )
 
     def to_internal_value(self, data: Mapping[str, Any]) -> dict[str, Any]:
@@ -299,11 +327,17 @@ class RequestWriteSerializer(serializers.ModelSerializer):
         return super().to_internal_value(data)
 
     def validate(self, attrs):
-        """Валидация получателей и отделов"""
+        """Валидация получателей и отделов."""
+        if self._is_draft_mode():
+            return attrs
+
         sent_to_all = attrs.get(
             "sent_to_all_department",
             getattr(self.instance, "sent_to_all_department", False),
         )
+        type_ = attrs.get("type", getattr(self.instance, "type", ""))
+        date_from = attrs.get("date_from", getattr(self.instance, "date_from", None))
+        date_to = attrs.get("date_to", getattr(self.instance, "date_to", None))
 
         recipient_ids = attrs.get("recipient_ids")
         if recipient_ids is None:
@@ -320,6 +354,11 @@ class RequestWriteSerializer(serializers.ModelSerializer):
                 departments = list(self.instance.departments.all())
             else:
                 departments = []
+
+        if not type_:
+            raise serializers.ValidationError(
+                {"type": "Укажите тип заявления"}
+            )
 
         # Если sent_to_all_department=True, должны быть указаны отделы
         if sent_to_all and not departments:
@@ -343,6 +382,24 @@ class RequestWriteSerializer(serializers.ModelSerializer):
             if employee_id in recipient_ids:
                 raise serializers.ValidationError(
                     {"recipient_ids": "Автор не может быть получателем"}
+                )
+
+        if type_ in (RequestType.VACATION, RequestType.SICK_LEAVE):
+            if not (date_from and date_to):
+                raise serializers.ValidationError(
+                    {
+                        "date_from": "Требуются обе даты.",
+                        "date_to": "Требуются обе даты.",
+                    }
+                )
+            if date_to < date_from:
+                raise serializers.ValidationError(
+                    {"date_to": "Дата окончания раньше даты начала."}
+                )
+        elif type_ in (RequestType.TRANSFER, RequestType.DISMISSAL):
+            if not date_from:
+                raise serializers.ValidationError(
+                    {"date_from": "Требуется дата начала."}
                 )
 
         return attrs
@@ -398,14 +455,10 @@ class RequestWriteSerializer(serializers.ModelSerializer):
             f"cc_user_ids={cc_user_ids}"
         )
 
-        if not self._is_power():
-            # обычный пользователь: запрещённые поля убираем/переписываем
-            validated_data.pop("status", None)
-            validated_data.pop("approver", None)
-            validated_data["employee"] = user
-        else:
-            # staff/менеджер: если employee не указан — ставим текущего
-            validated_data.setdefault("employee", user)
+        validated_data.pop("approver", None)
+        validated_data["employee"] = user
+        if self._is_draft_mode() and not validated_data.get("type"):
+            validated_data["type"] = ""
 
         if not validated_data.get("employee"):
             raise serializers.ValidationError(
@@ -420,11 +473,17 @@ class RequestWriteSerializer(serializers.ModelSerializer):
         )
 
         # Устанавливаем связи ManyToMany
-        if departments:
-            request_obj.departments.set(departments)
+        request_obj._suppress_new_request_notifications = True
+        try:
+            if departments:
+                request_obj.departments.set(departments)
 
-        self._set_recipients(request_obj, recipient_ids, is_cc=False)
-        self._set_recipients(request_obj, cc_user_ids, is_cc=True)
+            self._set_recipients(request_obj, recipient_ids, is_cc=False)
+            self._set_recipients(request_obj, cc_user_ids, is_cc=True)
+        finally:
+            request_obj._suppress_new_request_notifications = False
+
+        dispatch_pending_new_request_notifications(request_obj)
 
         # Проверяем что сохранилось
         recipients_count = request_obj.recipients.count()

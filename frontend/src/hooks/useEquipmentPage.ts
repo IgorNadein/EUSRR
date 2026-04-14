@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "@/lib/api";
 import { canManageEquipment, canManageEquipmentCategories } from "@/lib/permissions";
 import { displayUserName as sharedDisplayUserName, extractNextPage, formatDate, formatMoney, loadAllPages } from "@/lib/shared";
@@ -154,6 +154,7 @@ export function useEquipmentPage(user: User | null) {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [nextPage, setNextPage] = useState<number | null>(null);
+  const hasLoadedOnceRef = useRef(false);
 
   const isCreateMode = createOpen && editingId === null;
 
@@ -407,7 +408,9 @@ export function useEquipmentPage(user: User | null) {
 
     void (async () => {
       try {
-        setLoading(true);
+        if (!hasLoadedOnceRef.current) {
+          setLoading(true);
+        }
         setError(null);
         const response = await fetchEquipmentPage(1);
         if (cancelled) return;
@@ -420,6 +423,7 @@ export function useEquipmentPage(user: User | null) {
       } finally {
         if (!cancelled) {
           setLoading(false);
+          hasLoadedOnceRef.current = true;
         }
       }
     })();

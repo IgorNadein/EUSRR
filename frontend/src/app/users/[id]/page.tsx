@@ -2,9 +2,12 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
+  BriefcaseBusiness,
+  ChevronRight,
+  History,
   Mail,
   MessageCircle,
   Pencil,
@@ -12,12 +15,14 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "../../../components/AppShell";
+import ChangeUserPositionModal from "@/components/users/ChangeUserPositionModal";
 import EditUserProfileModal from "@/components/users/EditUserProfileModal";
 import EmployeeActionModal from "@/components/users/EmployeeActionModal";
 import EmployeeActionsTimeline from "@/components/users/EmployeeActionsTimeline";
 import {
   ProfileContactsPanel,
   ProfileDepartmentBadge,
+  ProfileDepartmentsCard,
   ProfileHeroCard,
   ProfileInfoCard,
   ProfileSkillsCard,
@@ -27,13 +32,13 @@ import {
 import { useUser } from "@/contexts/UserContext";
 import { useUserDetailPage } from "@/hooks/useUserDetailPage";
 import { apiClient } from "@/lib/api";
-import { resolveMediaUrl } from "@/lib/url";
 import {
   formatBirthdayWithYear,
   formatProfileDate,
   formatProfileDateTime,
   formatPhoneForLink,
   getEmployeeActionTone,
+  getProfileDepartmentSummary,
   getWorkDuration,
   normalizeTelegramLink,
   normalizeWhatsAppLink,
@@ -62,23 +67,32 @@ export default function UserDetailPage() {
     handleAvatarChange,
     handleCloseActionModal,
     handleCloseEditModal,
+    handleClosePositionModal,
     handleCopyToClipboard,
     handleDeleteAction,
     handleEditAction,
     handleOpenActionModal,
     handleOpenEditModal,
+    handleOpenPositionModal,
     handleSaveAction,
     handleSaveEdit,
+    handleSavePosition,
     handleStartChat,
     initials,
     isActionModalOpen,
     isEditModalOpen,
+    isPositionModalOpen,
     latestAction,
     loading,
     person,
+    positionValue,
+    positions,
+    positionsError,
+    positionsLoading,
     setActionField,
     setAvatarFailed,
     setEditField,
+    setPositionValue,
     sortedActions,
   } = useUserDetailPage(userId, currentUser);
 
@@ -88,8 +102,8 @@ export default function UserDetailPage() {
     }
   }, [currentUser?.id, router, userId]);
 
-  const primaryDepartment = useMemo(
-    () => person?.departments?.[0] || null,
+  const departmentSummary = useMemo(
+    () => getProfileDepartmentSummary(person?.departments),
     [person?.departments],
   );
   const [availableSkills, setAvailableSkills] = useState<
@@ -102,6 +116,8 @@ export default function UserDetailPage() {
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [skillsSaving, setSkillsSaving] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(null);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setPersonSkills(person?.skills || []);
@@ -120,10 +136,10 @@ export default function UserDetailPage() {
         }>;
         if (!mounted) return;
         setAvailableSkills(response);
-      } catch (error: any) {
+      } catch (error: unknown) {
         if (!mounted) return;
         setSkillsError(
-          String(error?.message || "Не удалось загрузить список навыков"),
+          String((error as Error)?.message || "Не удалось загрузить список навыков"),
         );
       } finally {
         if (mounted) {
@@ -138,6 +154,29 @@ export default function UserDetailPage() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setProfileMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setProfileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [profileMenuOpen]);
 
   const contactRows = useMemo<ProfileContactRow[]>(() => {
     if (!person) return [];
@@ -221,10 +260,12 @@ export default function UserDetailPage() {
       value: formatProfileDate(person?.created_at),
     },
     {
-      label: "Последний вход",
-      value: formatProfileDateTime(person?.last_login),
+      label: "Последняя активность",
+      value: formatProfileDateTime(
+        person?.last_activity_at || person?.last_login,
+      ),
     },
-  ]), [person?.created_at, person?.date_joined, person?.last_login]);
+  ]), [person?.created_at, person?.date_joined, person?.last_activity_at, person?.last_login]);
 
   const handleAddSkill = async (forcedSkill?: { id: number; name: string }) => {
     if (!person || skillsSaving) return;
@@ -265,9 +306,9 @@ export default function UserDetailPage() {
       }
 
       setSkillName("");
-    } catch (error: any) {
+    } catch (error: unknown) {
       setSkillsError(
-        String(error?.message || "Не удалось добавить навык"),
+        String((error as Error)?.message || "Не удалось добавить навык"),
       );
     } finally {
       setSkillsSaving(false);
@@ -297,12 +338,12 @@ export default function UserDetailPage() {
         </div>
 
         {loading ? (
-          <section className="app-surface rounded-[24px] p-8 text-center">
+          <section className="app-surface rounded-2xl p-8 text-center">
             <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-[var(--border-subtle)] border-t-[var(--accent-primary)]" />
             <p className="app-text-muted text-sm">Загрузка сотрудника...</p>
           </section>
         ) : error ? (
-          <section className="app-surface rounded-[24px] p-6 text-center">
+          <section className="app-surface rounded-2xl p-6 text-center">
             <p className="text-sm text-red-400">{error}</p>
           </section>
         ) : person ? (
@@ -310,16 +351,86 @@ export default function UserDetailPage() {
             <ProfileHeroCard
               caption="Профиль сотрудника"
               statusBadge={
-                latestAction ? (
-                  <span
-                    className={`app-status-pill ${getEmployeeActionTone(latestAction.action).badgeClass}`}
+                (latestAction || canEdit || canManageActions) ? (
+                  <div
+                    ref={profileMenuOpen ? profileMenuRef : null}
+                    className="relative flex items-center gap-2"
                   >
-                    {latestAction.action_display || latestAction.action}
-                  </span>
+                    {latestAction ? (
+                      <span
+                        className={`app-status-pill ${getEmployeeActionTone(latestAction.action).badgeClass}`}
+                      >
+                        {latestAction.action_display || latestAction.action}
+                      </span>
+                    ) : null}
+                    {(canEdit || canManageActions) ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setProfileMenuOpen((current) => !current)}
+                          className="app-action-ghost flex h-8 w-8 items-center justify-center rounded-md"
+                          aria-label="Действия профиля"
+                          aria-expanded={profileMenuOpen}
+                          title="Действия профиля"
+                          aria-haspopup="menu"
+                        >
+                          <ChevronRight
+                            size={15}
+                            className={`transition-transform duration-200 ${profileMenuOpen ? "rotate-90" : ""}`}
+                          />
+                        </button>
+                        {profileMenuOpen ? (
+                          <div className="app-menu absolute right-0 top-full z-20 mt-2 w-64 rounded-xl py-1.5">
+                            {canEdit ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setProfileMenuOpen(false);
+                                  handleOpenEditModal();
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                              >
+                                <Pencil size={14} className="app-text-muted" />
+                                Редактировать профиль
+                              </button>
+                            ) : null}
+                            {canManageActions ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setProfileMenuOpen(false);
+                                  handleOpenActionModal();
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                              >
+                                <History size={14} className="app-text-muted" />
+                                Добавить кадровое событие
+                              </button>
+                            ) : null}
+                            {canManageActions ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setProfileMenuOpen(false);
+                                  void handleOpenPositionModal();
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                              >
+                                <BriefcaseBusiness size={14} className="app-text-muted" />
+                                Изменить должность
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </div>
                 ) : null
               }
               avatar={
-                <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full app-avatar-frame">
+                <div
+                  className={`flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full text-2xl font-semibold ${avatarUrl && !avatarFailed ? "app-avatar-frame" : "app-avatar-fallback"}`}
+                >
                   {avatarUrl && !avatarFailed ? (
                     <Image
                       src={avatarUrl}
@@ -331,9 +442,7 @@ export default function UserDetailPage() {
                       unoptimized
                     />
                   ) : (
-                    <div className="app-avatar-fallback flex h-full w-full items-center justify-center text-2xl font-semibold">
-                      {initials}
-                    </div>
+                    initials
                   )}
                 </div>
               }
@@ -341,45 +450,36 @@ export default function UserDetailPage() {
               secondaryLine={formatBirthdayWithYear(person.birth_date) || "Не указана"}
               roleText={person.position?.name || "Должность не указана"}
               departmentBadge={
-                primaryDepartment ? (
+                departmentSummary ? (
                   <ProfileDepartmentBadge
-                    label={primaryDepartment.name}
-                    href={`/departments/${primaryDepartment.id}`}
+                    label={departmentSummary.label}
+                    href={departmentSummary.href}
                   />
                 ) : undefined
               }
-              headerActions={
-                canEdit ? (
-                  <button
-                    type="button"
-                    onClick={handleOpenEditModal}
-                    className="app-action-secondary inline-flex h-10 w-10 items-center justify-center rounded-xl"
-                    aria-label="Редактировать профиль"
-                    title="Редактировать профиль"
-                  >
-                    <Pencil size={16} />
-                  </button>
-                ) : undefined
-              }
               actionRow={
-                currentUser && currentUser.id !== person.id ? (
+                currentUser && (currentUser.id !== person.id || canEdit) ? (
                   <>
-                    <button
-                      onClick={handleStartChat}
-                      disabled={creatingChat}
-                      className="app-action-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
-                    >
-                      <MessageCircle size={16} />
-                      {creatingChat ? "Загрузка..." : "Написать"}
-                    </button>
-                    {person.phone_number ? (
-                      <a
-                        href={`tel:${formatPhoneForLink(person.phone_number)}`}
-                        className="app-action-secondary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium"
-                      >
-                        <Phone size={16} />
-                        Позвонить
-                      </a>
+                    {currentUser.id !== person.id ? (
+                      <>
+                        <button
+                          onClick={handleStartChat}
+                          disabled={creatingChat}
+                          className="app-action-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+                        >
+                          <MessageCircle size={16} />
+                          {creatingChat ? "Загрузка..." : "Написать"}
+                        </button>
+                        {person.phone_number ? (
+                          <a
+                            href={`tel:${formatPhoneForLink(person.phone_number)}`}
+                            className="app-action-secondary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium"
+                          >
+                            <Phone size={16} />
+                            Позвонить
+                          </a>
+                        ) : null}
+                      </>
                     ) : null}
                   </>
                 ) : undefined
@@ -408,40 +508,7 @@ export default function UserDetailPage() {
             <ProfileInfoCard items={infoItems} />
 
             {person.departments?.length ? (
-              <section className="app-surface rounded-[24px] p-5">
-                <div className="mb-4">
-                  <h2 className="app-card-caption">Отделы</h2>
-                </div>
-                <div className="app-surface-muted rounded-2xl p-4">
-                  <div className="space-y-3">
-                    {person.departments.map((department) => (
-                      <Link
-                        key={department.id}
-                        href={`/departments/${department.id}`}
-                        className="app-surface block rounded-2xl px-4 py-3 transition hover:border-[var(--accent-primary)]"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-[var(--foreground)]">
-                              {department.name}
-                            </p>
-                            {department.role_name ? (
-                              <p className="app-text-muted mt-1 text-sm">
-                                {department.role_name}
-                              </p>
-                            ) : null}
-                          </div>
-                          {department.is_head ? (
-                            <span className="app-pill-active inline-flex rounded-full px-3 py-1 text-xs font-medium">
-                              Руководитель
-                            </span>
-                          ) : null}
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              </section>
+              <ProfileDepartmentsCard departments={person.departments} />
             ) : null}
 
             <EmployeeActionsTimeline
@@ -472,6 +539,19 @@ export default function UserDetailPage() {
         onSave={handleSaveEdit}
         onTextFieldChange={(field, value) => setEditField(field, value)}
         person={person}
+      />
+
+      <ChangeUserPositionModal
+        actionLoading={actionLoading}
+        error={positionsError}
+        isOpen={isPositionModalOpen}
+        onClose={handleClosePositionModal}
+        onPositionChange={setPositionValue}
+        onSave={handleSavePosition}
+        person={person}
+        positionValue={positionValue}
+        positions={positions}
+        positionsLoading={positionsLoading}
       />
 
       <EmployeeActionModal

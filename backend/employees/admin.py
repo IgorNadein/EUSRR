@@ -1805,6 +1805,7 @@ class DepartmentRoleAdmin(admin.ModelAdmin):
     search_fields = ("name", "department__name", "ldap_group_dn")
     autocomplete_fields = ("department",)
     filter_horizontal = ("scoped_permissions",)
+    actions = ["sync_to_ldap"]
 
     fieldsets = (
         (None, {"fields": ("department", "name")}),
@@ -1817,6 +1818,48 @@ class DepartmentRoleAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+    @admin.action(
+        description=(
+            "🔄 Пересинхронизировать выбранные роли в LDAP "
+            "(ROLE_* и вложение в DEP_*)"
+        )
+    )
+    def sync_to_ldap(self, request, queryset):
+        """Приводит LDAP-состояние выбранных ролей к текущему состоянию БД."""
+        from employees.ldap.services.department_service import (
+            DepartmentService,
+        )
+
+        service = DepartmentService()
+        success_count = 0
+        error_count = 0
+
+        for role in queryset.select_related("department"):
+            try:
+                service.sync_role_state(role)
+                success_count += 1
+            except Exception as e:
+                error_count += 1
+                self.message_user(
+                    request,
+                    f"Ошибка синхронизации роли "
+                    f"«{role.name}» ({role.department.name}): {e}",
+                    level=messages.ERROR,
+                )
+
+        if success_count:
+            self.message_user(
+                request,
+                f"Успешно пересинхронизировано ролей: {success_count}",
+                level=messages.SUCCESS,
+            )
+        if error_count:
+            self.message_user(
+                request,
+                f"Ошибок синхронизации ролей: {error_count}",
+                level=messages.WARNING,
+            )
 
 
 @admin.register(EmployeeDepartment)

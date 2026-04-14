@@ -57,6 +57,7 @@ from employees.models import (
     DepartmentPermission,
     DepartmentRole,
     EmployeeDepartment,
+    RoleAssignment,
 )
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -200,6 +201,57 @@ def test_employees_count_not_double_count_head_if_in_links(api_client: APIClient
     assert resp.status_code == 200
     data = resp.json()
     assert data["employees_count"] == 3
+
+
+def test_role_only_count_counts_only_active_role_assignees_without_membership(
+    api_client: APIClient,
+):
+    user = make_user("u-role-only@example.com")
+    api_client.force_authenticate(user=user)
+
+    dept = Department.objects.create(name="Dept")
+    role = make_role(dept, "Auditor")
+
+    role_only_1 = make_user("role-only-1@example.com")
+    role_only_2 = make_user("role-only-2@example.com")
+    member_with_role = make_user("member-with-role@example.com")
+    inactive_member_with_role = make_user("inactive-member-with-role@example.com")
+
+    EmployeeDepartment.objects.create(
+        employee=member_with_role,
+        department=dept,
+        is_active=True,
+    )
+    EmployeeDepartment.objects.create(
+        employee=inactive_member_with_role,
+        department=dept,
+        is_active=False,
+    )
+
+    RoleAssignment.objects.create(employee=role_only_1, role=role, is_active=True)
+    RoleAssignment.objects.create(employee=role_only_2, role=role, is_active=True)
+    RoleAssignment.objects.create(
+        employee=member_with_role,
+        role=role,
+        is_active=True,
+    )
+    RoleAssignment.objects.create(
+        employee=inactive_member_with_role,
+        role=role,
+        is_active=True,
+    )
+    RoleAssignment.objects.create(
+        employee=make_user("inactive-role-only@example.com"),
+        role=role,
+        is_active=False,
+    )
+
+    url = reverse("api:v1:departments-detail", args=[dept.pk])
+    resp = api_client.get(url)
+
+    assert resp.status_code == status.HTTP_200_OK
+    data = resp.json()
+    assert data["role_only_count"] == 3
 
 # ---------- tests: create/destroy ----------
 
@@ -514,6 +566,58 @@ def test_set_head_requires_perm(api_client: APIClient):
         == status.HTTP_403_FORBIDDEN
     )
 
+
+def test_set_head_rejects_employee_from_another_active_department(
+    api_client: APIClient,
+):
+    d1 = Department.objects.create(name="Dept 1")
+    d2 = Department.objects.create(name="Dept 2")
+
+    manager = make_user("head-manager@example.com")
+    api_client.force_authenticate(user=manager)
+    r_change = make_role(d1, "head-assigner", ["change_department_head"])
+    EmployeeDepartment.objects.create(
+        employee=manager,
+        department=d1,
+        is_active=True,
+        role=r_change,
+    )
+
+    candidate = make_user("foreign-head@example.com")
+    EmployeeDepartment.objects.create(
+        employee=candidate,
+        department=d2,
+        is_active=True,
+    )
+
+    url = reverse("api:v1:departments-set-head", args=[d1.pk])
+    resp = api_client.post(url, {"head_id": candidate.id}, format="json")
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert "another active department" in resp.json()["head_id"][0]
+
+
+def test_set_head_makes_head_active_department_member(api_client: APIClient):
+    d = Department.objects.create(name="Dept Head Link")
+
+    manager = make_user("head-manager-2@example.com")
+    api_client.force_authenticate(user=manager)
+    r_change = make_role(d, "head-assigner", ["change_department_head"])
+    EmployeeDepartment.objects.create(
+        employee=manager,
+        department=d,
+        is_active=True,
+        role=r_change,
+    )
+
+    candidate = make_user("new-head@example.com")
+
+    url = reverse("api:v1:departments-set-head", args=[d.pk])
+    resp = api_client.post(url, {"head_id": candidate.id}, format="json")
+    assert resp.status_code == status.HTTP_200_OK
+
+    link = EmployeeDepartment.objects.get(employee=candidate, department=d)
+    assert link.is_active is True
+
 # ---------- tests: action set_member_role ----------
 
 def test_set_member_role_happy_path(api_client: APIClient):
@@ -592,3 +696,32 @@ def test_set_member_role_missing_employee_id(api_client: APIClient):
     url = reverse("api:v1:departments-set-member-role", args=[d.pk])
     resp = api_client.post(url, {"role_id": None}, format="json")
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
+def test_add_member_rejects_employee_from_another_active_department(
+    api_client: APIClient,
+):
+    d1 = Department.objects.create(name="Target Dept")
+    d2 = Department.objects.create(name="Other Dept")
+
+    manager = make_user("dept-manager@example.com")
+    api_client.force_authenticate(user=manager)
+    r_manage = make_role(d1, "manager", ["manage_department"])
+    EmployeeDepartment.objects.create(
+        employee=manager,
+        department=d1,
+        is_active=True,
+        role=r_manage,
+    )
+
+    employee = make_user("busy-member@example.com")
+    EmployeeDepartment.objects.create(
+        employee=employee,
+        department=d2,
+        is_active=True,
+    )
+
+    url = reverse("api:v1:departments-add-member", args=[d1.pk])
+    resp = api_client.post(url, {"employee_id": employee.id}, format="json")
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert "another active department" in resp.json()["employee_id"][0]

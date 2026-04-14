@@ -5,11 +5,7 @@ from typing import Any, Dict, Iterable, Optional, Tuple
 
 from django.contrib.auth.models import AbstractBaseUser
 from employees.models import Department, EmployeeDepartment, RoleAssignment
-from rest_framework.permissions import (
-    SAFE_METHODS,
-    BasePermission,
-    DjangoModelPermissions,
-)
+from rest_framework.permissions import SAFE_METHODS, BasePermission, DjangoModelPermissions
 from rest_framework.request import Request
 
 MANAGE_PERM = "manage_department"
@@ -139,6 +135,39 @@ def has_dept_perm(
         return False
 
     return link.role.scoped_permissions.filter(code=code).exists()
+
+
+def can_publish_department_posts(
+    user: AbstractBaseUser, department_id: int
+) -> bool:
+    """Возвращает True, если пользователь может публиковать новости отдела.
+
+    Упрощённый продуктовый контракт:
+      - staff/superuser → всегда True
+      - руководитель отдела → True
+      - любой активный физический участник отдела → True
+      - любой сотрудник с активной ролью в отделе → True
+    """
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+        return True
+
+    if Department.objects.filter(id=department_id, head_id=user.id).exists():
+        return True
+
+    if EmployeeDepartment.objects.filter(
+        employee_id=user.id,
+        department_id=department_id,
+        is_active=True,
+    ).exists():
+        return True
+
+    return RoleAssignment.objects.filter(
+        employee_id=user.id,
+        role__department_id=department_id,
+        is_active=True,
+    ).exists()
 
 
 class AdminOrDeptAllowed(BasePermission):

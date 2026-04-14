@@ -43,6 +43,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
     avatar = Base64ImageField(required=False, allow_null=True)
     actions = EmployeeActionSerializer(many=True, read_only=True)
     username = serializers.CharField(read_only=True, allow_blank=True)
+    last_activity_at = serializers.SerializerMethodField()
 
     skills = SkillSerializer(many=True, read_only=True)
     skills_ids = serializers.PrimaryKeyRelatedField(
@@ -89,6 +90,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "last_login",
+            "last_activity_at",
             "date_joined",
             "auth",
         )
@@ -99,6 +101,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "last_login",
+            "last_activity_at",
             "date_joined",
             "auth",
         )
@@ -208,6 +211,10 @@ class EmployeeSerializer(serializers.ModelSerializer):
             fields.pop("username", None)
 
         return fields
+
+    @extend_schema_field(OpenApiTypes.DATETIME)
+    def get_last_activity_at(self, obj):
+        return getattr(obj, "last_activity_at", None)
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_auth(self, obj):

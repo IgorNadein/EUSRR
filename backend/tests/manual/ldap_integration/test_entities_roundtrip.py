@@ -347,3 +347,51 @@ def test_department_role_service_roundtrip_syncs_live_ldap(
     service.delete_role(updated_role)
     assert not DepartmentRole.objects.filter(pk=updated_role.pk).exists()
     assert not LdapOrganizationalUnitGroup.objects.filter(dn=updated_role.ldap_group_dn).exists()
+
+
+def test_department_role_api_roundtrip_syncs_live_ldap_and_dep_group(
+    ensure_live_ldap,
+    superuser_client,
+    create_ldap_user,
+    ldap_cleanup,
+    unique_name,
+):
+    employee = create_ldap_user(first_name="ApiRole", last_name="Member")
+    department = _bootstrap_department_for_role_tests(unique_name("qa-role-api"))
+    ldap_cleanup(_department_dn(department))
+
+    create_role_response = superuser_client.post(
+        "/api/v1/department-roles/",
+        {"department": department.pk, "name": "Operator API"},
+        format="json",
+    )
+    assert create_role_response.status_code == 201, create_role_response.content
+
+    role = DepartmentRole.objects.get(pk=create_role_response.json()["id"])
+    ldap_cleanup(role.ldap_group_dn)
+
+    dept_group = LdapOrganizationalUnitGroup.objects.get(dn=department.ldap_group_dn)
+    dept_group_members = {_norm_dn(dn) for dn in list(dept_group.member or [])}
+    assert _norm_dn(role.ldap_group_dn) in dept_group_members
+
+    assign_response = superuser_client.post(
+        f"/api/v1/department-roles/{role.pk}/assign/",
+        {"employee_id": employee.pk},
+        format="json",
+    )
+    assert assign_response.status_code == 201, assign_response.content
+
+    role_group = LdapOrganizationalUnitGroup.objects.get(dn=role.ldap_group_dn)
+    role_member_dns = {_norm_dn(dn) for dn in list(role_group.member or [])}
+    assert _norm_dn(_employee_dn(employee)) in role_member_dns
+
+    revoke_response = superuser_client.post(
+        f"/api/v1/department-roles/{role.pk}/revoke/",
+        {"employee_id": employee.pk},
+        format="json",
+    )
+    assert revoke_response.status_code == 204, revoke_response.content
+
+    role_group = LdapOrganizationalUnitGroup.objects.get(dn=role.ldap_group_dn)
+    revoked_member_dns = {_norm_dn(dn) for dn in list(role_group.member or [])}
+    assert _norm_dn(_employee_dn(employee)) not in revoked_member_dns

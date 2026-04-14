@@ -89,6 +89,11 @@ export function getChatTitle(chat: Chat, currentUserId?: number, currentUser?: C
   return rawName || "Диалог";
 }
 
+export function isDepartmentCommentsChat(chat: Chat): boolean {
+  const chatKind = chat.chat_type || chat.type;
+  return chatKind === "comments" && Boolean(chat.flags?.show_in_messages);
+}
+
 export function getChatAvatar(chat: Chat, currentUserId?: number): string {
   const chatKind = chat.chat_type || chat.type;
   if (chatKind === "direct" || chatKind === "private" || (chat.name || "").trim().toLowerCase() === "диалог") {

@@ -75,7 +75,7 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         return qs
 
     def create(self, request, *args, **kwargs):
-        """Создание роли. Синхронизация LDAP требует реализации сигналов."""
+        """Создание роли."""
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
 
@@ -104,7 +104,7 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         )
 
     def update(self, request, *args, **kwargs):
-        """Обновление роли. Синхронизация LDAP требует реализации сигналов."""
+        """Обновление роли."""
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
         ser = self.get_serializer(instance, data=request.data, partial=partial)
@@ -118,7 +118,7 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         return self.update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
-        """Удаление роли. Синхронизация LDAP требует реализации сигналов."""
+        """Удаление роли."""
         instance = self.get_object()
         instance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -204,10 +204,7 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def assign(self, request, pk=None):
-        """Назначает роль сотруднику.
-
-        Синхронизация LDAP требует реализации сигналов.
-        """
+        """Назначает роль сотруднику."""
         role = self.get_object()
         employee_id = request.data.get("employee_id")
 
@@ -244,10 +241,7 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def revoke(self, request, pk=None):
-        """Отзывает роль у сотрудника.
-
-        Синхронизация LDAP требует реализации сигналов.
-        """
+        """Отзывает роль у сотрудника."""
         role = self.get_object()
         employee_id = request.data.get("employee_id")
 
@@ -259,7 +253,11 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         except Employee.DoesNotExist:
             return Response({"detail": "Сотрудник не найден."}, status=404)
 
-        RoleAssignment.objects.filter(employee=employee, role=role).update(
-            is_active=False
-        )
+        for assignment in RoleAssignment.objects.filter(
+            employee=employee,
+            role=role,
+            is_active=True,
+        ):
+            assignment.is_active = False
+            assignment.save(update_fields=["is_active"])
         return Response(status=204)

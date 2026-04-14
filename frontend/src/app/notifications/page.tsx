@@ -437,11 +437,11 @@ export default function NotificationsPage() {
                       e.stopPropagation();
                       deleteNotification(notification.id);
                     }}
-                    className="app-action-danger flex-shrink-0 rounded-lg p-2 opacity-0 transition-all group-hover:opacity-100"
+                    className="app-action-danger flex-shrink-0 rounded-lg p-2 transition-all"
                     aria-label="Удалить"
                     title="Удалить уведомление"
                   >
-                    <Trash2 size={18} className="app-text-muted hover:text-red-600" />
+                    <Trash2 size={18} />
                   </button>
                 </div>
               </article>

@@ -9,11 +9,30 @@ from employees.models import (
     DepartmentPermission,
     DeptPerm,
     EmployeeDepartment,
+    RoleAssignment,
 )
 from phonenumbers import PhoneNumberFormat
 
 
 Employee = get_user_model()
+
+
+def _other_active_department_link(
+    employee_id: int,
+    *,
+    exclude_department_id: int | None = None,
+) -> EmployeeDepartment | None:
+    qs = (
+        EmployeeDepartment.objects.filter(
+            employee_id=employee_id,
+            is_active=True,
+        )
+        .select_related("department")
+        .order_by("id")
+    )
+    if exclude_department_id is not None:
+        qs = qs.exclude(department_id=exclude_department_id)
+    return qs.first()
 
 
 def _to_bool(val: str | None) -> bool | None:
@@ -85,6 +104,20 @@ def _validate_head_active(
     # Требование верификации email — опционально
     if require_email_verified and getattr(emp, "email_verified", True) is False:
         return False, {"head_id": ["Employee is inactive."]}
+
+    other_active_link = _other_active_department_link(
+        employee_id,
+        exclude_department_id=dept.id,
+    )
+    if other_active_link is not None:
+        return False, {
+            "head_id": [
+                (
+                    "Employee already belongs to another active department: "
+                    f"{other_active_link.department.name}."
+                )
+            ]
+        }
 
     return True, None
 
@@ -183,8 +216,9 @@ def _build_links_for_dept(dept: Department, serializer) -> list[dict]:
             "is_active": bool}, ...]
     """
     links: list[dict] = []
+    seen_employee_ids: set[int] = set()
     qs = (
-        EmployeeDepartment.objects.filter(department_id=dept.id)
+        EmployeeDepartment.objects.filter(department_id=dept.id, is_active=True)
         .select_related("employee", "role")
         .order_by(
             "employee__last_name",
@@ -195,6 +229,7 @@ def _build_links_for_dept(dept: Department, serializer) -> list[dict]:
     )
     for link in qs:
         emp_data = serializer(link.employee).data  # содержит display_name
+        seen_employee_ids.add(link.employee_id)
         role = (
             {"id": link.role_id, "name": link.role.name}
             if link.role_id
@@ -205,6 +240,65 @@ def _build_links_for_dept(dept: Department, serializer) -> list[dict]:
                 "employee": emp_data,
                 "role": role,
                 "is_active": bool(link.is_active),
+                "via_assignment": False,
+            }
+        )
+
+    assignment_qs = (
+        RoleAssignment.objects.filter(
+            role__department_id=dept.id,
+            is_active=True,
+        )
+        .select_related("employee", "role")
+        .order_by(
+            "employee__last_name",
+            "employee__first_name",
+            "employee__patronymic",
+            "employee_id",
+            "role__name",
+        )
+    )
+
+    grouped_assignments: dict[int, dict[str, object]] = {}
+    for assignment in assignment_qs:
+        if assignment.employee_id in seen_employee_ids:
+            continue
+
+        bucket = grouped_assignments.get(assignment.employee_id)
+        if bucket is None:
+            bucket = {
+                "employee": serializer(assignment.employee).data,
+                "role_ids": [],
+                "role_names": [],
+            }
+            grouped_assignments[assignment.employee_id] = bucket
+
+        role_ids = bucket["role_ids"]
+        role_names = bucket["role_names"]
+        assert isinstance(role_ids, list)
+        assert isinstance(role_names, list)
+        role_ids.append(assignment.role_id)
+        role_names.append(assignment.role.name)
+
+    for employee_id, bucket in grouped_assignments.items():
+        seen_employee_ids.add(employee_id)
+        role_ids = bucket["role_ids"]
+        role_names = bucket["role_names"]
+        assert isinstance(role_ids, list)
+        assert isinstance(role_names, list)
+        links.append(
+            {
+                "employee": bucket["employee"],
+                "role": (
+                    {
+                        "id": role_ids[0] if role_ids else None,
+                        "name": ", ".join(role_names) if role_names else "",
+                    }
+                    if role_names
+                    else None
+                ),
+                "is_active": True,
+                "via_assignment": True,
             }
         )
 
@@ -214,7 +308,13 @@ def _build_links_for_dept(dept: Department, serializer) -> list[dict]:
     ):
         head_data = serializer(dept.head).data
         links.insert(
-            0, {"employee": head_data, "role": None, "is_active": True}
+            0,
+            {
+                "employee": head_data,
+                "role": None,
+                "is_active": True,
+                "via_assignment": False,
+            },
         )
 
     return links
@@ -241,6 +341,12 @@ def resolve_chat_participants_for_department(context_object, **kwargs):
         return Employee.objects.none()
 
     department = context_object
+    chat = kwargs.get("chat")
+
+    # Основной discussion/comments chat отдела доступен всем активным
+    # сотрудникам сайта, а не только физическому составу отдела.
+    if getattr(chat, "type", None) == "comments":
+        return Employee.objects.filter(is_active=True)
 
     # Получаем активных сотрудников отдела
     employee_ids = EmployeeDepartment.objects.filter(

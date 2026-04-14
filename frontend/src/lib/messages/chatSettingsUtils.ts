@@ -1,4 +1,5 @@
 import type { Chat, ChatMembership, User } from "@/types/api";
+import { isDepartmentCommentsChat } from "@/lib/messages/chatUtils";
 
 export type MemberSearchResult = Pick<User, "id" | "first_name" | "last_name" | "email" | "avatar"> & {
   name?: string;
@@ -21,7 +22,7 @@ export function getChatTypeLabel(chat: Chat): string {
     case "announcement":
       return "Канал объявлений";
     case "comments":
-      return "Комментарии";
+      return isDepartmentCommentsChat(chat) ? "Чат отдела" : "Комментарии";
     default:
       return "Диалог";
   }

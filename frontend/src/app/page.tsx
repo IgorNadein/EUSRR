@@ -1,11 +1,17 @@
 "use client";
 
-import { ChevronRight, Heart, ImageIcon, MessageSquare, Paperclip, Pencil, Pin, Plus, Send, Trash2, X } from "lucide-react";
+import Link from "next/link";
+import { ChevronRight, Pencil, Pin, Plus, Trash2 } from "lucide-react";
 import { AppShell } from "../components/AppShell";
+import { FeedPostCard } from "@/components/feed/FeedPostCard";
 import { Modal } from "@/components/ui";
+import { PostCommentsModal } from "@/components/feed/PostCommentsModal";
+import { RequestAvatar } from "@/components/requests/RequestAvatar";
+import { useNotifications } from "@/contexts/NotificationsContext";
 import { apiClient } from "@/lib/api";
+import { userProfileLink } from "@/lib/shared";
 import { resolveMediaUrl } from "@/lib/url";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Comment, Post } from "@/types/api";
 import { useUser } from "@/contexts/UserContext";
@@ -17,6 +23,8 @@ type LikeUser = {
   full_name?: string;
   avatar?: string | null;
 };
+
+type PostSourceFilter = "all" | "company" | `department:${number}`;
 
 export default function Home() {
   return (
@@ -39,6 +47,7 @@ function HomePageFallback() {
 
 function HomePageContent() {
   const { user } = useUser();
+  const { notifications } = useNotifications();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -46,22 +55,10 @@ function HomePageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [likeBusyId, setLikeBusyId] = useState<number | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<PostSourceFilter>("all");
 
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [activePost, setActivePost] = useState<Post | null>(null);
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [commentsLoading, setCommentsLoading] = useState(false);
-  const [commentsError, setCommentsError] = useState<string | null>(null);
-  const [newComment, setNewComment] = useState("");
-  const [commentSending, setCommentSending] = useState(false);
-  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
-  const [editingCommentText, setEditingCommentText] = useState("");
-  const [commentImage, setCommentImage] = useState<File | null>(null);
-  const [commentAttachment, setCommentAttachment] = useState<File | null>(null);
-  const commentImageRef = useRef<HTMLInputElement | null>(null);
-  const commentAttachmentRef = useRef<HTMLInputElement | null>(null);
-  const [commentActionId, setCommentActionId] = useState<number | null>(null);
-  const commentsBottomRef = useRef<HTMLDivElement | null>(null);
   const [createPostOpen, setCreatePostOpen] = useState(false);
   const [createType, setCreateType] = useState<"company" | "department">("company");
   const [createDepartmentId, setCreateDepartmentId] = useState<string>("");
@@ -113,6 +110,7 @@ function HomePageContent() {
 
   const closeCommentsModal = () => {
     setCommentsOpen(false);
+    setActivePost(null);
     clearPostParam();
   };
 
@@ -144,10 +142,11 @@ function HomePageContent() {
     hasPermission("publish_department_post") ||
     hasPermission("feed.create_post") ||
     hasPermission("create_post") ||
-    hasPermission("employees.manage_feed")
+    hasPermission("employees.manage_feed") ||
+    ((user?.departments?.length || 0) > 0)
   );
-  const canCreatePost = canCreateCompanyPost || canCreateDepartmentPost || ((user?.departments?.length || 0) > 0);
-  const userDepartments = user?.departments || [];
+  const canCreatePost = canCreateCompanyPost || canCreateDepartmentPost;
+  const userDepartments = useMemo(() => user?.departments || [], [user?.departments]);
   const canManageAnyPost = Boolean(
     auth?.is_staff ||
     auth?.is_superuser ||
@@ -164,12 +163,12 @@ function HomePageContent() {
     hasPermission("pin_post")
   );
 
-  const sortPostsPinnedFirst = (items: Post[]) => [...items].sort((left, right) => {
+  const sortPostsPinnedFirst = useCallback((items: Post[]) => [...items].sort((left, right) => {
     const leftPinned = left.pinned ? 1 : 0;
     const rightPinned = right.pinned ? 1 : 0;
     if (leftPinned !== rightPinned) return rightPinned - leftPinned;
     return new Date(right.created_at).getTime() - new Date(left.created_at).getTime();
-  });
+  }), []);
 
   const canEditPost = (post: Post) => {
     if (canManageAnyPost) return true;
@@ -190,25 +189,140 @@ function HomePageContent() {
     return canDeleteAnyComments;
   };
 
-  const scrollCommentsToBottom = (smooth = true) => {
-    requestAnimationFrame(() => {
-      commentsBottomRef.current?.scrollIntoView({
-        behavior: smooth ? "smooth" : "auto",
-        block: "end",
-      });
-    });
-  };
+  const renderPostOrigin = useCallback((post: Post) => {
+    if (post.type === "department") {
+      return (
+        <Link
+          href={post.department_id ? `/departments/${post.department_id}` : "/departments"}
+          className="app-badge inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
+        >
+          {post.department_name ? `${post.department_name}` : "Отдел"}
+        </Link>
+      );
+    }
 
-  const refreshPosts = async () => {
+    return (
+      <span className="app-badge app-badge-accent inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium">
+        Компания
+      </span>
+    );
+  }, []);
+
+  const refreshPosts = useCallback(async () => {
     const response = await apiClient.getPosts();
     setPosts(sortPostsPinnedFirst(response.results));
-  };
+  }, [sortPostsPinnedFirst]);
+
+  const postSourceCounts = useMemo(() => {
+    const departmentCounts = new Map<number, { id: number; name: string; total: number }>();
+    let companyCount = 0;
+
+    for (const post of posts) {
+      if (post.type === "department" && post.department_id) {
+        const current = departmentCounts.get(post.department_id);
+        if (current) {
+          current.total += 1;
+        } else {
+          departmentCounts.set(post.department_id, {
+            id: post.department_id,
+            name: post.department_name || "Отдел",
+            total: 1,
+          });
+        }
+      } else {
+        companyCount += 1;
+      }
+    }
+
+    const departments = Array.from(departmentCounts.values()).sort((left, right) => {
+      if (right.total !== left.total) return right.total - left.total;
+      return left.name.localeCompare(right.name, "ru");
+    });
+
+    return {
+      all: posts.length,
+      company: companyCount,
+      departments,
+    };
+  }, [posts]);
+
+  const postSourceUnreadCounts = useMemo(() => {
+    const departmentUnread = new Map<number, number>();
+    let companyUnread = 0;
+
+    for (const notification of notifications) {
+      if ((notification.verb || "") !== "feed_new_post") continue;
+
+      const rawData = notification.data;
+      const data = rawData && typeof rawData === "object"
+        ? rawData as Record<string, unknown>
+        : null;
+
+      const postType = typeof data?.post_type === "string" ? data.post_type : "";
+      const departmentId =
+        typeof data?.department_id === "number"
+          ? data.department_id
+          : typeof data?.department_id === "string" && data.department_id.trim()
+            ? Number(data.department_id)
+            : null;
+
+      if (postType === "department" && Number.isFinite(departmentId) && departmentId !== null) {
+        departmentUnread.set(departmentId, (departmentUnread.get(departmentId) || 0) + 1);
+      } else {
+        companyUnread += 1;
+      }
+    }
+
+    const departmentEntries = Array.from(departmentUnread.entries()).map(([id, unread]) => ({
+      id,
+      unread,
+    }));
+
+    return {
+      all: companyUnread + departmentEntries.reduce((sum, entry) => sum + entry.unread, 0),
+      company: companyUnread,
+      departments: departmentEntries,
+    };
+  }, [notifications]);
+
+  const postSourceOptions = useMemo(() => {
+    const unreadByDepartment = new Map(
+      postSourceUnreadCounts.departments.map((entry) => [entry.id, entry.unread]),
+    );
+
+    const options: Array<{ key: PostSourceFilter; label: string; total: number; unread: number }> = [
+      { key: "all", label: "Все", total: postSourceCounts.all, unread: postSourceUnreadCounts.all },
+      { key: "company", label: "Компания", total: postSourceCounts.company, unread: postSourceUnreadCounts.company },
+    ];
+
+    for (const department of postSourceCounts.departments) {
+      options.push({
+        key: `department:${department.id}`,
+        label: department.name,
+        total: department.total,
+        unread: unreadByDepartment.get(department.id) || 0,
+      });
+    }
+
+    return options.filter(({ key, total }) => key === "all" || total > 0);
+  }, [postSourceCounts, postSourceUnreadCounts]);
+
+  const filteredPosts = useMemo(() => {
+    if (sourceFilter === "company") {
+      return posts.filter((post) => post.type !== "department");
+    }
+    if (sourceFilter.startsWith("department:")) {
+      const departmentId = Number(sourceFilter.split(":")[1]);
+      return posts.filter((post) => post.department_id === departmentId);
+    }
+    return posts;
+  }, [posts, sourceFilter]);
 
   useEffect(() => {
     async function loadPosts() {
       try {
         await refreshPosts();
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Ошибка загрузки ленты:', err);
         setError('Не удалось загрузить ленту');
       } finally {
@@ -216,25 +330,7 @@ function HomePageContent() {
       }
     }
     loadPosts();
-  }, []);
-
-  useEffect(() => {
-    if (!commentsOpen && !createPostOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        closeCommentsModal();
-      }
-    };
-
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      document.body.style.overflow = previous;
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [commentsOpen, createPostOpen]);
+  }, [refreshPosts]);
 
   useEffect(() => {
     if (postMenuOpenId === null) return;
@@ -266,11 +362,6 @@ function HomePageContent() {
     if (!userDepartments.length) return;
     setCreateDepartmentId(String(userDepartments[0].id));
   }, [createType, createDepartmentId, userDepartments]);
-
-  useEffect(() => {
-    if (!commentsOpen || commentsLoading) return;
-    scrollCommentsToBottom(false);
-  }, [commentsOpen, commentsLoading, comments.length]);
 
   const handleLikeToggle = async (post: Post) => {
     if (likeBusyId === post.id) return;
@@ -327,11 +418,20 @@ function HomePageContent() {
 
     try {
       const response = currentlyPinned
-        ? await apiClient.unpinPost(post.id)
-        : await apiClient.pinPost(post.id);
+        ? await apiClient.unpinPost(post.id, "global")
+        : await apiClient.pinPost(post.id, "global");
 
       setPosts((prev) => sortPostsPinnedFirst(
-        prev.map((item) => item.id === post.id ? { ...item, pinned: Boolean(response?.pinned) } : item)
+        prev.map((item) =>
+          item.id === post.id
+            ? {
+                ...item,
+                pinned: Boolean(response?.pinned),
+                pinned_global: Boolean(response?.pinned_global),
+                pinned_department: Boolean(response?.pinned_department),
+              }
+            : item
+        )
       ));
     } catch (err) {
       console.error("Ошибка закрепления публикации:", err);
@@ -340,26 +440,6 @@ function HomePageContent() {
       ));
     } finally {
       setPostActionId(null);
-    }
-  };
-
-  const loadComments = async (postId: number) => {
-    setCommentsLoading(true);
-    setCommentsError(null);
-    try {
-      const response = await apiClient.getComments({ post: postId });
-      const items = Array.isArray(response)
-        ? response
-        : Array.isArray(response?.results)
-          ? response.results
-          : [];
-      setComments(items);
-    } catch (err) {
-      console.error("Ошибка загрузки комментариев:", err);
-      setCommentsError("Не удалось загрузить комментарии");
-      setComments([]);
-    } finally {
-      setCommentsLoading(false);
     }
   };
 
@@ -376,8 +456,8 @@ function HomePageContent() {
     try {
       const response = await apiClient.getPostLikers(postId);
       setLikesUsersMap((prev) => ({ ...prev, [postId]: response.results || [] }));
-    } catch (err: any) {
-      const message = String(err?.message || "");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "";
       if (
         message.includes("404") ||
         message.includes("NetworkError") ||
@@ -391,13 +471,30 @@ function HomePageContent() {
     }
   };
 
-  const openComments = async (post: Post) => {
+  const openComments = (post: Post) => {
     setActivePost(post);
     setCommentsOpen(true);
-    setNewComment("");
-    setEditingCommentId(null);
-    setEditingCommentText("");
-    await loadComments(post.id);
+  };
+
+  const applyCommentCountDelta = (postId: number, delta: number) => {
+    setPosts((prev) =>
+      prev.map((item) =>
+        item.id === postId
+          ? {
+              ...item,
+              comments_count: Math.max(0, (item.comments_count || 0) + delta),
+            }
+          : item
+      )
+    );
+    setActivePost((prev) =>
+      prev && prev.id === postId
+        ? {
+            ...prev,
+            comments_count: Math.max(0, (prev.comments_count || 0) + delta),
+          }
+        : prev
+    );
   };
 
   useEffect(() => {
@@ -407,100 +504,8 @@ function HomePageContent() {
     const targetPost = posts.find((post) => post.id === linkedPostId);
     if (!targetPost) return;
 
-    void openComments(targetPost);
+    openComments(targetPost);
   }, [activePost?.id, commentsOpen, linkedPostId, posts]);
-
-  const handleCreateComment = async () => {
-    if (!activePost) return;
-    const text = newComment.trim();
-    if (!text && !commentImage && !commentAttachment) return;
-
-    setCommentSending(true);
-    try {
-      const created = await apiClient.createComment(
-        activePost.id,
-        text || " ",
-        commentImage || undefined,
-        commentAttachment || undefined
-      );
-      setComments((prev) => [...prev, created]);
-      setNewComment("");
-      setCommentImage(null);
-      setCommentAttachment(null);
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === activePost.id
-            ? { ...p, comments_count: (p.comments_count || 0) + 1 }
-            : p
-        )
-      );
-      setActivePost((prev) =>
-        prev ? { ...prev, comments_count: (prev.comments_count || 0) + 1 } : prev
-      );
-      scrollCommentsToBottom();
-    } catch (err) {
-      console.error("Ошибка отправки комментария:", err);
-    } finally {
-      setCommentSending(false);
-    }
-  };
-
-  const startEditComment = (comment: Comment) => {
-    setEditingCommentId(comment.id);
-    setEditingCommentText((comment.text || comment.content || "").trim());
-  };
-
-  const cancelEditComment = () => {
-    setEditingCommentId(null);
-    setEditingCommentText("");
-  };
-
-  const saveEditComment = async (commentId: number) => {
-    const text = editingCommentText.trim();
-    if (!text) return;
-
-    setCommentActionId(commentId);
-    try {
-      const updated = await apiClient.updateComment(commentId, text);
-      setComments((prev) => prev.map((c) => (c.id === commentId ? { ...c, ...updated } : c)));
-      cancelEditComment();
-    } catch (err) {
-      console.error("Ошибка редактирования комментария:", err);
-    } finally {
-      setCommentActionId(null);
-    }
-  };
-
-  const removeComment = async (comment: Comment) => {
-    if (!activePost) return;
-
-    setCommentActionId(comment.id);
-    try {
-      await apiClient.deleteComment(comment.id);
-      setComments((prev) => prev.filter((c) => c.id !== comment.id));
-
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === activePost.id
-            ? { ...p, comments_count: Math.max(0, (p.comments_count || 0) - 1) }
-            : p
-        )
-      );
-      setActivePost((prev) =>
-        prev
-          ? { ...prev, comments_count: Math.max(0, (prev.comments_count || 0) - 1) }
-          : prev
-      );
-
-      if (editingCommentId === comment.id) {
-        cancelEditComment();
-      }
-    } catch (err) {
-      console.error("Ошибка удаления комментария:", err);
-    } finally {
-      setCommentActionId(null);
-    }
-  };
 
   const openCreatePostModal = () => {
     setCreateError(null);
@@ -579,8 +584,8 @@ function HomePageContent() {
 
       setCreatePostOpen(false);
       setEditingPostId(null);
-    } catch (err: any) {
-      const message = String(err?.message || "Не удалось сохранить публикацию");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Не удалось сохранить публикацию";
       setCreateError(message);
     } finally {
       setCreateSubmitting(false);
@@ -624,21 +629,53 @@ function HomePageContent() {
   return (
     <AppShell>
       <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          {postSourceOptions.map(({ key, label, total, unread }) => {
+              const active = sourceFilter === key;
+
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSourceFilter(key)}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                    active ? "app-pill-active" : "app-pill"
+                  }`}
+                >
+                  <span>{label}</span>
+                  <span
+                    className={`app-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold ${
+                      active ? "app-pill-count-active" : "app-pill-count"
+                    }`}
+                  >
+                    <span>{total}</span>
+                    {unread > 0 ? (
+                      <>
+                        <span className="app-text-muted">•</span>
+                        <span className="app-accent-text">{unread}</span>
+                      </>
+                    ) : null}
+                  </span>
+                </button>
+              );
+            })}
+        </div>
+
         {posts.length === 0 ? (
           <div className="app-surface-muted rounded-2xl p-8 text-center">
             <p className="app-text-muted text-sm">Пока нет постов в ленте</p>
           </div>
+        ) : filteredPosts.length === 0 ? (
+          <div className="app-surface-muted rounded-2xl p-8 text-center">
+            <p className="text-sm font-medium text-[var(--foreground)]">
+              Публикации не найдены
+            </p>
+            <p className="app-text-muted mt-2 text-sm">
+              В выбранном источнике пока нет публикаций.
+            </p>
+          </div>
         ) : (
-          posts.map((post) => {
-            const authorName = post.author
-              ? `${post.author.last_name} ${post.author.first_name}`.trim()
-              : 'Аноним';
-            const authorInitials = post.author
-              ? `${post.author.last_name?.[0] || ''}${post.author.first_name?.[0] || ''}`
-              : 'А';
-
-            const postText = (post.body || post.content || "").trim();
-
+          filteredPosts.map((post) => {
             // Форматируем дату
             const postDate = new Date(post.created_at);
             const now = new Date();
@@ -651,36 +688,18 @@ function HomePageContent() {
                 : `${Math.floor(diffHours / 24)} дн. назад`;
 
             return (
-              <article id={`post-${post.id}`} key={post.id} className="app-surface rounded-2xl p-5">
-                <header className="mb-3 flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="relative h-10 w-10">
-                      <div className="app-avatar-fallback flex h-10 w-10 items-center justify-center overflow-hidden rounded-full text-sm font-semibold">
-                        {post.author?.avatar ? (
-                          <img src={resolveMediaUrl(post.author.avatar)} alt={authorName} className="h-full w-full object-cover" />
-                        ) : (
-                          authorInitials
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-[var(--foreground)]">{authorName}</p>
-                      <div className="app-text-muted flex items-center gap-1.5 text-xs">
-                        <span>{timeAgo}</span>
-                        {post.pinned ? (
-                          <span
-                            className="app-accent-text inline-flex items-center justify-center"
-                            title="Закрепленная публикация"
-                            aria-label="Закрепленная публикация"
-                          >
-                            <Pin size={12} className="shrink-0 fill-current" />
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-
-                  {(canEditPost(post) || canDeletePost(post)) ? (
+              <FeedPostCard
+                key={post.id}
+                authorHref={post.author ? userProfileLink(post.author, user?.id) : null}
+                post={post}
+                authorSubtitle={
+                  <>
+                    <span>{timeAgo}</span>
+                    {renderPostOrigin(post)}
+                  </>
+                }
+                headerActions={(
+                  (canEditPost(post) || canDeletePost(post)) ? (
                     <div
                       ref={postMenuOpenId === post.id ? postMenuRef : null}
                       className="relative shrink-0"
@@ -710,7 +729,7 @@ function HomePageContent() {
                               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)] disabled:opacity-50"
                             >
                               <Pin size={14} className={post.pinned ? "fill-current app-accent-text" : ""} />
-                              {post.pinned ? "Открепить" : "Закрепить"}
+                              {post.pinned ? "Открепить в общей ленте" : "Закрепить в общей ленте"}
                             </button>
                           ) : null}
                           {canEditPost(post) ? (
@@ -726,7 +745,6 @@ function HomePageContent() {
                               Редактировать
                             </button>
                           ) : null}
-
                           {canDeletePost(post) ? (
                             <button
                               type="button"
@@ -744,96 +762,50 @@ function HomePageContent() {
                         </div>
                       ) : null}
                     </div>
-                  ) : null}
-                </header>
-                {post.title ? (
-                  <h3 className="app-text-wrap mb-1 text-base font-semibold text-[var(--foreground)]">{post.title}</h3>
-                ) : null}
-                {postText ? (
-                  <p className="app-text-wrap whitespace-pre-line text-sm leading-6 text-[var(--foreground)]">{postText}</p>
-                ) : null}
-                {post.image && (
-                  <div className="mt-3 overflow-hidden rounded-lg">
-                    <img src={withImageCacheBuster(resolveMediaUrl(post.image), post.id)} alt="" className="w-full" />
-                  </div>
+                  ) : null
                 )}
-                {(post.attachment || post.attachment_url) && (
-                  <div className="mt-3">
-                    <a
-                      href={resolveMediaUrl(post.attachment || post.attachment_url)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
-                    >
-                      📎 Вложение
-                    </a>
-                  </div>
-                )}
-                <div className="app-text-muted mt-4 flex items-center gap-4 text-sm">
-                  <div
-                    className="relative"
-                    onMouseEnter={() => openLikesPopover(post.id, post.likes_count || 0)}
-                    onMouseLeave={() => setLikesPopoverPostId((prev) => (prev === post.id ? null : prev))}
-                  >
-                    <button
-                      type="button"
-                      disabled={likeBusyId === post.id}
-                      onClick={() => handleLikeToggle(post)}
-                      className={`flex items-center gap-2 rounded-lg px-3 py-2 transition ${
-                        post.is_liked
-                          ? "app-action-ghost text-[var(--accent-primary)]"
-                          : "app-action-ghost"
-                      }`}
-                    >
-                      <Heart
-                        size={16}
-                        className={post.is_liked ? "fill-[var(--accent-primary)] text-[var(--accent-primary)]" : "app-text-muted"}
-                      />
-                      {post.likes_count || 0}
-                    </button>
-
-                    {likesPopoverPostId === post.id ? (
-                      <div className="app-menu absolute left-0 top-full z-20 mt-1 w-64 rounded-xl p-2">
-                        <p className="app-text-muted px-1 pb-1 text-xs font-semibold">Лайкнули</p>
-                        {likesLoadingPostId === post.id ? (
-                          <p className="app-text-muted px-1 py-1 text-xs">Загрузка...</p>
-                        ) : likesUsersEndpointUnavailable ? (
-                          <p className="app-text-muted px-1 py-1 text-xs">Список лайкнувших временно недоступен</p>
-                        ) : (likesUsersMap[post.id] || []).length === 0 ? (
-                          <p className="app-text-muted px-1 py-1 text-xs">Пока нет лайков</p>
-                        ) : (
-                          <div className="max-h-56 space-y-1 overflow-y-auto">
-                            {(likesUsersMap[post.id] || []).map((u) => {
-                              const name = formatUserName(u);
-                              const initials = formatInitials(u.first_name, u.last_name);
-
-                              return (
-                                <div key={u.id} className="flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-[var(--surface-secondary)]">
-                                  <div className="app-avatar-fallback flex h-6 w-6 items-center justify-center overflow-hidden rounded-full text-[10px] font-semibold">
-                                    {u.avatar ? (
-                                      <img src={resolveMediaUrl(u.avatar)} alt={name} className="h-full w-full object-cover" />
-                                    ) : (
-                                      initials
-                                    )}
-                                  </div>
-                                  <p className="truncate text-xs text-[var(--foreground)]">{name}</p>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
+                imageSrc={withImageCacheBuster(resolveMediaUrl(post.image), post.id)}
+                isLikeActive={Boolean(post.is_liked)}
+                likeDisabled={likeBusyId === post.id}
+                likesPopover={likesPopoverPostId === post.id ? (
+                  <div className="app-menu absolute left-0 top-full z-20 mt-1 w-64 rounded-xl p-2">
+                    <p className="app-text-muted px-1 pb-1 text-xs font-semibold">Лайкнули</p>
+                    {likesLoadingPostId === post.id ? (
+                      <p className="app-text-muted px-1 py-1 text-xs">Загрузка...</p>
+                    ) : likesUsersEndpointUnavailable ? (
+                      <p className="app-text-muted px-1 py-1 text-xs">Список лайкнувших временно недоступен</p>
+                    ) : (likesUsersMap[post.id] || []).length === 0 ? (
+                      <p className="app-text-muted px-1 py-1 text-xs">Пока нет лайков</p>
+                    ) : (
+                      <div className="max-h-56 space-y-1 overflow-y-auto">
+                        {(likesUsersMap[post.id] || []).map((u) => {
+                          const name = formatUserName(u);
+                          const initials = formatInitials(u.first_name, u.last_name);
+                          return (
+                            <div key={u.id} className="flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-[var(--surface-secondary)]">
+                              <RequestAvatar
+                                alt={name}
+                                fallback={initials}
+                                size="sm"
+                                src={u.avatar}
+                              />
+                              <p className="truncate text-xs text-[var(--foreground)]">{name}</p>
+                            </div>
+                          );
+                        })}
                       </div>
-                    ) : null}
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => openComments(post)}
-                    className="app-action-ghost flex items-center gap-2 rounded-lg px-3 py-2"
-                  >
-                    <MessageSquare size={16} className="app-text-muted" /> {post.comments_count || 0}
-                  </button>
-                </div>
-              </article>
+                ) : null}
+                likesWrapperProps={{
+                  onMouseEnter: () => openLikesPopover(post.id, post.likes_count || 0),
+                  onMouseLeave: () => setLikesPopoverPostId((prev) => (prev === post.id ? null : prev)),
+                }}
+                onLikeToggle={handleLikeToggle}
+                onOpenComments={openComments}
+                pinMarkerTitle="Закреплено в общей ленте"
+                pinnedStyle="inline"
+              />
             );
           })
         )}
@@ -954,196 +926,15 @@ function HomePageContent() {
         </div>
       </Modal>
 
-      <Modal
-        isOpen={commentsOpen && !!activePost}
+      <PostCommentsModal
+        canDeleteComment={canDeleteComment}
+        canEditComment={canEditComment}
+        currentUserId={user?.id}
+        isOpen={commentsOpen}
         onClose={closeCommentsModal}
-        title="Комментарии"
-        size="lg"
-        noPadding
-        footer={
-          <div>
-            {(commentImage || commentAttachment) && (
-              <div className="mb-2 flex flex-wrap gap-2">
-                {commentImage && (
-                  <div className="app-badge app-badge-accent flex items-center gap-1.5 rounded-md px-2 py-1 text-xs">
-                    <ImageIcon size={12} />
-                    <span className="max-w-[120px] truncate">{commentImage.name}</span>
-                    <button type="button" onClick={() => setCommentImage(null)} className="app-accent-text ml-0.5 hover:text-[var(--accent-primary)]"><X size={12} /></button>
-                  </div>
-                )}
-                {commentAttachment && (
-                  <div className="app-badge flex items-center gap-1.5 rounded-md px-2 py-1 text-xs">
-                    <Paperclip size={12} />
-                    <span className="max-w-[120px] truncate">{commentAttachment.name}</span>
-                    <button type="button" onClick={() => setCommentAttachment(null)} className="app-text-muted ml-0.5 hover:text-[var(--foreground)]"><X size={12} /></button>
-                  </div>
-                )}
-              </div>
-            )}
-            <div className="flex items-center gap-2">
-              <input ref={commentImageRef} type="file" accept="image/*" className="hidden" onChange={(e) => { setCommentImage(e.target.files?.[0] || null); e.target.value = ""; }} />
-              <input ref={commentAttachmentRef} type="file" className="hidden" onChange={(e) => { setCommentAttachment(e.target.files?.[0] || null); e.target.value = ""; }} />
-              <button
-                type="button"
-                onClick={() => commentImageRef.current?.click()}
-                className="app-action-ghost flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
-                title="Прикрепить изображение"
-              >
-                <ImageIcon size={18} />
-              </button>
-              <button
-                type="button"
-                onClick={() => commentAttachmentRef.current?.click()}
-                className="app-action-ghost flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
-                title="Прикрепить файл"
-              >
-                <Paperclip size={18} />
-              </button>
-              <input
-                type="text"
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleCreateComment();
-                  }
-                }}
-                placeholder="Напишите комментарий..."
-                className="app-input h-10 flex-1 rounded-lg px-3 text-sm"
-              />
-              <button
-                type="button"
-                disabled={commentSending || (!newComment.trim() && !commentImage && !commentAttachment)}
-                onClick={handleCreateComment}
-                className="app-action-primary flex h-10 w-10 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Send size={16} />
-              </button>
-            </div>
-          </div>
-        }
-      >
-        {activePost && (
-          <>
-            <p className="app-text-muted px-4 pb-2 pt-1 text-[10px] sm:text-xs">Публикация #{activePost.id}</p>
-            <div className="flex-1 overflow-y-auto px-4 py-3">
-              {commentsLoading ? (
-                <p className="app-text-muted text-sm">Загрузка комментариев...</p>
-              ) : commentsError ? (
-                <p className="app-feedback-danger rounded-lg px-3 py-2 text-sm">{commentsError}</p>
-              ) : comments.length === 0 ? (
-                <p className="app-text-muted text-sm">Комментариев пока нет</p>
-              ) : (
-                <div className="space-y-3">
-                  {comments.map((comment) => {
-                    const commentText = (comment.text || comment.content || "").trim();
-                    const authorName = comment.author
-                      ? `${comment.author.last_name || ""} ${comment.author.first_name || ""}`.trim() || "Пользователь"
-                      : "Пользователь";
-                    const authorInitials = comment.author
-                      ? `${comment.author.last_name?.[0] || ""}${comment.author.first_name?.[0] || ""}` || "П"
-                      : "П";
-
-                    return (
-                      <div key={comment.id} className="app-surface-muted rounded-xl px-3 py-2.5">
-                        <div className="flex items-start gap-2.5">
-                          <div className="app-avatar-fallback flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[11px] font-semibold">
-                            {comment.author?.avatar ? (
-                              <img src={resolveMediaUrl(comment.author.avatar)} alt={authorName} className="h-full w-full object-cover" />
-                            ) : (
-                              authorInitials
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-start justify-between gap-2">
-                              <p className="text-xs font-semibold text-[var(--foreground)]">{authorName}</p>
-                              <div className="flex items-center gap-1">
-                                {canEditComment(comment) ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => startEditComment(comment)}
-                                    className="app-action-ghost flex h-6 w-6 items-center justify-center rounded-md"
-                                    title="Редактировать"
-                                  >
-                                    <Pencil size={13} />
-                                  </button>
-                                ) : null}
-
-                                {canDeleteComment(comment) ? (
-                                  <button
-                                    type="button"
-                                    disabled={commentActionId === comment.id}
-                                    onClick={() => removeComment(comment)}
-                                    className="app-action-danger flex h-6 w-6 items-center justify-center rounded-md disabled:opacity-50"
-                                    title="Удалить"
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
-                                ) : null}
-                              </div>
-                            </div>
-
-                            {editingCommentId === comment.id ? (
-                              <div className="mt-1 space-y-2">
-                                <textarea
-                                  value={editingCommentText}
-                                  onChange={(e) => setEditingCommentText(e.target.value)}
-                                  className="app-input min-h-20 w-full rounded-lg px-2.5 py-2 text-sm"
-                                />
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    disabled={commentActionId === comment.id || !editingCommentText.trim()}
-                                    onClick={() => saveEditComment(comment.id)}
-                                    className="app-action-primary rounded-md px-2.5 py-1.5 text-xs font-medium disabled:opacity-50"
-                                  >
-                                    Сохранить
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={commentActionId === comment.id}
-                                    onClick={cancelEditComment}
-                                    className="app-action-secondary rounded-md px-2.5 py-1.5 text-xs font-medium"
-                                  >
-                                    Отмена
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <>
-                                {commentText && <p className="app-text-wrap mt-1 text-sm leading-6 text-[var(--foreground)]">{commentText}</p>}
-                                {comment.image && (
-                                  <div className="mt-2 overflow-hidden rounded-lg">
-                                    <img src={resolveMediaUrl(comment.image)} alt="" className="max-h-60 rounded-lg" />
-                                  </div>
-                                )}
-                                {comment.attachment && (
-                                  <div className="mt-2">
-                                    <a
-                                      href={resolveMediaUrl(comment.attachment)}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="app-action-secondary inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs"
-                                    >
-                                      📎 Вложение
-                                    </a>
-                                  </div>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div ref={commentsBottomRef} />
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </Modal>
+        onCommentCountChange={applyCommentCountDelta}
+        post={activePost}
+      />
     </AppShell>
   );
 }

@@ -890,6 +890,46 @@ class DepartmentService(BaseService):
         except Exception as e:
             raise DirectoryDbError(str(e)) from e
 
+    def sync_role_state(self, role: DepartmentRole) -> None:
+        """Приводит LDAP-состояние роли к текущему состоянию БД."""
+        self._ensure_runtime_services()
+        self._ensure_role_group(role)
+
+        try:
+            dept_dn = self._get_department_dn(role.department)
+        except DirectoryServiceError:
+            dept_dn = None
+        self._reconcile_department_group(role.department, dept_dn)
+
+    def sync_role_delete(
+        self, department: Department, role_group_dn: str | None = None
+    ) -> None:
+        """Удаляет LDAP-группу роли и пересобирает группу отдела."""
+        self._ensure_runtime_services()
+
+        if role_group_dn:
+            try:
+                self._load_ou_group(role_group_dn).delete()
+            except Exception:
+                pass
+
+        try:
+            dept_dn = self._get_department_dn(department)
+        except DirectoryServiceError:
+            dept_dn = None
+        self._reconcile_department_group(department, dept_dn)
+
+    def sync_role_assignment_state(
+        self,
+        employee: Employee,
+        role: DepartmentRole,
+        *,
+        is_active: bool,
+    ) -> None:
+        """Синхронизирует LDAP-членство сотрудника в группе роли."""
+        self._ensure_runtime_services()
+        self._sync_role_membership(employee, role, add=is_active)
+
     def set_member_role(
         self, dept: Department, employee: Employee, role
     ) -> None:
@@ -1520,20 +1560,33 @@ class DepartmentService(BaseService):
                 department_id=dept.id, is_active=True
             ).values_list("employee_id", flat=True)
         )
-        if not active_emp_ids:
+        role_group_dns = [
+            item
+            for item in DepartmentRole.objects.filter(
+                department_id=dept.id,
+            )
+            .exclude(ldap_group_dn="")
+            .values_list("ldap_group_dn", flat=True)
+            if item
+        ]
+        if not active_emp_ids and not role_group_dns:
             group.member = []
             group.save()
             return group_dn
 
-        dn_map = dict(
-            LdapSyncState.objects.filter(
-                model="employee",
-                object_pk__in=[str(i) for i in active_emp_ids],
-            ).values_list("object_pk", "ldap_dn")
-        )
-        member_dns = [dn for dn in dn_map.values() if dn]
+        member_dns: List[str] = []
+        if active_emp_ids:
+            dn_map = dict(
+                LdapSyncState.objects.filter(
+                    model="employee",
+                    object_pk__in=[str(i) for i in active_emp_ids],
+                ).values_list("object_pk", "ldap_dn")
+            )
+            member_dns.extend(dn for dn in dn_map.values() if dn)
+        member_dns.extend(role_group_dns)
 
-        group.member = member_dns
+        deduped_member_dns = list(dict.fromkeys(member_dns))
+        group.member = deduped_member_dns
         group.save()
         return group_dn
 

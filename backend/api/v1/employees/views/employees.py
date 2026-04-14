@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 
 from common.emails import send_templated_mail
-from django.db.models import Exists, OuterRef, Prefetch, Q, Subquery
+from django.db.models import Exists, Max, OuterRef, Prefetch, Q, Subquery
 from django.utils.crypto import get_random_string
 from employees.constants import ACTION_DISMISSED
 from employees.models import (
@@ -62,10 +62,21 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     ordering_fields = ["last_name", "first_name", "created_at", "id"]
     ordering = ["last_name", "first_name"]
 
+    @staticmethod
+    def _with_last_activity(queryset):
+        return queryset.annotate(
+            last_activity_at=Max(
+                "auth_sessions__last_seen_at",
+                filter=Q(auth_sessions__revoked_at__isnull=True),
+            )
+        )
+
     def get_permissions(self):
         if self.action == "create":
             return [IsAuthenticated(), AdminOrActionOrModelPerms()]
-        if self.action in {"update", "partial_update", "destroy"}:
+        if self.action == "destroy":
+            return [IsAuthenticated(), AdminOrActionOrModelPerms()]
+        if self.action in {"update", "partial_update"}:
             return [
                 IsAuthenticated(),
                 (IsSelfOrStaff | AdminOrActionOrModelPerms)(),
@@ -94,7 +105,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             ),
         ]
 
-        qs = (
+        qs = self._with_last_activity(
             Employee.objects.select_related("position")
             .prefetch_related(*prefetches)
             .annotate(last_action_code=last_action_code_sq)
@@ -261,7 +272,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
         if request.method == "GET":
             instance = (
-                Employee.objects.select_related("position")
+                self._with_last_activity(Employee.objects.select_related("position"))
                 .prefetch_related(
                     "skills",
                     Prefetch(

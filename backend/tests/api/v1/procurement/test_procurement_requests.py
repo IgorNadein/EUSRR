@@ -993,6 +993,8 @@ class TestProcurementRequestWorkflow:
 
         assert response.status_code == status.HTTP_200_OK
         approvals = sorted(response.data['approvals'], key=lambda item: item['priority'])
+        assert isinstance(approvals[0]["approver"], dict)
+        assert "avatar" in approvals[0]["approver"]
         assert approvals[1]['step_name'] == 'Финансовый контроль'
         assert approvals[1]['step_label'] == 'Финансовый контроль'
 

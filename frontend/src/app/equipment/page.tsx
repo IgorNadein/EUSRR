@@ -6,8 +6,9 @@ import { useUser } from "@/contexts/UserContext";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, ArrowRightLeft, ArrowUpDown, Check, ChevronDown, ChevronRight, Copy, Download, ExternalLink, Filter, MessageSquare, Monitor, Pencil, Plus, QrCode, Search, Shield, Trash2, Wrench, X } from "lucide-react";
+import { Archive, ArrowRightLeft, ArrowUpDown, Check, ChevronDown, ChevronRight, Copy, Download, ExternalLink, Filter, MessageSquare, Monitor, Pencil, Plus, QrCode, Search, Shield, Trash2, Wrench } from "lucide-react";
 import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
+import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
 import { formatDate, formatMoney } from "@/lib/shared";
 import { useEquipmentPage } from "@/hooks/useEquipmentPage";
 import { Modal } from "@/components/ui";
@@ -549,7 +550,7 @@ function EquipmentPageContent() {
 
           {/* Filters panel */}
           {filtersOpen && (
-            <div className="app-surface-muted mb-3 flex flex-col gap-2 rounded-xl p-3">
+            <div className="app-surface-muted mb-4 flex flex-col gap-2 rounded-xl p-3">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="app-select rounded-lg px-3 py-2 text-sm">
                   <option value="">Все статусы</option>
@@ -591,7 +592,7 @@ function EquipmentPageContent() {
           )}
 
           {/* Items list */}
-          <div className="space-y-2">
+          <div className="space-y-3">
             {filteredItems.length === 0 ? (
               <div className="app-surface-muted rounded-xl p-8 text-center">
                 <Monitor size={22} className="app-text-muted mx-auto mb-2" />
@@ -759,7 +760,11 @@ function EquipmentPageContent() {
                                         <span className="font-medium">{displayUserName(c.author)}</span>
                                         <div className="flex items-center gap-2">
                                           <span className="app-text-muted">{formatDate(c.created_at)}</span>
-                                          {canDel && <button type="button" onClick={() => handleDeleteComment(item.id, c.id)} className="app-action-danger rounded-md px-1.5 py-0.5">удалить</button>}
+                                          {canDel ? (
+                                            <CommentDeleteButton
+                                              onClick={() => handleDeleteComment(item.id, c.id)}
+                                            />
+                                          ) : null}
                                         </div>
                                       </div>
                                       <p className="app-text-wrap">{c.text}</p>
@@ -768,9 +773,13 @@ function EquipmentPageContent() {
                                 })
                               )}
                             </div>
-                            <div className="mt-2 flex items-center gap-2">
-                              <input value={commentDrafts[item.id] || ""} onChange={(e) => setCommentDrafts((p) => ({ ...p, [item.id]: e.target.value }))} placeholder="Добавить комментарий" className="app-input flex-1 rounded-lg px-3 py-2 text-xs" />
-                              <button type="button" onClick={() => handleAddComment(item.id)} disabled={busyKey === `comment-${item.id}`} className="app-action-primary rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-60">Отправить</button>
+                            <div className="mt-2">
+                              <CommentComposer
+                                value={commentDrafts[item.id] || ""}
+                                onChange={(value) => setCommentDrafts((p) => ({ ...p, [item.id]: value }))}
+                                onSubmit={() => handleAddComment(item.id)}
+                                disabled={busyKey === `comment-${item.id}`}
+                              />
                             </div>
                           </div>
                         )}

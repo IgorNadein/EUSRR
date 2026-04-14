@@ -2,8 +2,10 @@
 Тесты для новых endpoints назначения ролей: assign, revoke, assignments.
 """
 import pytest
+from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from employees.models import (
@@ -165,8 +167,60 @@ class TestRoleAssignmentEndpoints:
         api_client.force_authenticate(user)
         url = f"/api/v1/department-roles/{role.id}/assign/"
         resp = api_client.post(url, {"employee_id": other_user.id})
-        
+
         assert resp.status_code == status.HTTP_201_CREATED
+
+    @override_settings(LDAP_ENABLED=True)
+    def test_assign_and_revoke_trigger_ldap_sync(self, api_client: APIClient):
+        with override_settings(LDAP_ENABLED=False):
+            admin = make_user("admin-ldap@test.com", is_staff=True)
+            dept = make_dept("IT LDAP")
+            role = make_role(dept, "Developer LDAP", [])
+            user = make_user("worker-ldap@test.com")
+
+        api_client.force_authenticate(admin)
+        url_assign = f"/api/v1/department-roles/{role.id}/assign/"
+        url_revoke = f"/api/v1/department-roles/{role.id}/revoke/"
+
+        with patch(
+            "employees.signals.ldap.role.DepartmentService.sync_role_assignment_state"
+        ) as mock_sync:
+            assign_resp = api_client.post(url_assign, {"employee_id": user.id})
+            revoke_resp = api_client.post(url_revoke, {"employee_id": user.id})
+
+        assert assign_resp.status_code == status.HTTP_201_CREATED
+        assert revoke_resp.status_code == status.HTTP_204_NO_CONTENT
+        assert mock_sync.call_count >= 2
+        first_call = mock_sync.call_args_list[0]
+        second_call = mock_sync.call_args_list[1]
+        assert first_call.kwargs["is_active"] is True
+        assert second_call.kwargs["is_active"] is False
+
+    def test_department_members_include_role_only_employees(self, api_client: APIClient):
+        """members endpoint показывает сотрудников с ролью в отделе даже без membership."""
+        admin = make_user("admin-members@test.com", is_staff=True)
+        dept = make_dept("IT")
+        role = make_role(dept, "Developer", [])
+        role_only_user = make_user("role-only@test.com")
+
+        RoleAssignment.objects.create(
+            employee=role_only_user,
+            role=role,
+            is_active=True,
+        )
+
+        api_client.force_authenticate(admin)
+        resp = api_client.get(f"/api/v1/departments/{dept.id}/members/")
+
+        assert resp.status_code == status.HTTP_200_OK
+        role_only_link = next(
+            item
+            for item in resp.data["results"]
+            if item["employee"]["id"] == role_only_user.id
+        )
+        assert role_only_link["via_assignment"] is True
+        assert role_only_link["is_active"] is True
+        assert role_only_link["role"]["name"] == "Developer"
 
 @pytest.mark.django_db
 class TestRoleAssignmentPermissions:
