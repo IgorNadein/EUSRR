@@ -1108,7 +1108,7 @@ function MessageDialogPageContent() {
                     <button
                       type="button"
                       onClick={() => void handleReturnToNewMessages()}
-                      className="app-action-primary relative inline-flex h-10 w-10 items-center justify-center rounded-full p-0 leading-none shadow-[var(--shadow-card)] active:scale-[0.98]"
+                      className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--surface-primary)] p-0 leading-none text-[var(--muted-foreground)] shadow-[0_10px_30px_rgba(15,23,42,0.22)] transition hover:bg-[var(--surface-secondary)] hover:text-[var(--foreground)] active:scale-[0.98]"
                       title="Вернуться к новым сообщениям"
                       aria-label={displayedUnreadCount > 0 ? `Вернуться к новым сообщениям (${displayedUnreadCount > 99 ? "99+" : displayedUnreadCount})` : "Вернуться к новым сообщениям"}
                     >

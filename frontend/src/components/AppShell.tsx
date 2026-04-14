@@ -339,10 +339,14 @@ function LeftNavContent({ onNavigate }: LeftNavContentProps) {
   );
 }
 
-function LeftNav() {
+function LeftNav({ fixedDesktop = false }: { fixedDesktop?: boolean }) {
   return (
-    <aside className="hidden w-64 flex-shrink-0 lg:block lg:sticky lg:self-start lg:top-8 lg:max-h-[calc(100vh-7.5rem)] lg:overflow-y-auto">
-      <div className="space-y-4 lg:pb-2">
+    <aside className="hidden w-64 flex-shrink-0 lg:block">
+      <div
+        className={`space-y-4 lg:max-h-[calc(100vh-7.5rem)] lg:overflow-y-auto lg:pb-2 ${
+          fixedDesktop ? "lg:fixed lg:top-[5.5rem] lg:w-64" : "lg:sticky lg:top-8"
+        }`}
+      >
         <LeftNavContent />
       </div>
     </aside>
@@ -455,7 +459,7 @@ export function AppShell({ children }: AppShellProps) {
           onOpenCalendar={() => setIsMobileCalendarOpen(true)}
         />
         <div className={`mx-auto flex w-full flex-1 min-h-0 max-w-6xl ${isMessageDialogPage ? 'gap-0 px-0 py-0 lg:gap-6 lg:px-8 lg:py-8' : 'gap-6 px-4 py-4 sm:px-8 lg:py-8'}`}>
-          <LeftNav />
+          <LeftNav fixedDesktop={!isMessageDialogPage} />
           <main className={`flex-1 min-w-0 min-h-0 space-y-6 ${isMessageDialogPage ? 'overflow-visible' : ''}`}>{children}</main>
           <CalendarSidebar
             onOpenCalendarModal={cal.handleOpenCalendarModal}
