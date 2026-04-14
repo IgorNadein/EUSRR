@@ -147,15 +147,17 @@ export function MobileCalendarDrawer({
           </button>
         </div>
         {isOpen && (
-          <CalendarCard
-            onOpenCalendarModal={onOpenCalendarModal}
-            onOpenEventModal={onOpenEventModal}
-            onOpenParticipantsModal={onOpenParticipantsModal}
-            eventsRefreshTrigger={eventsRefreshTrigger}
-            setEventsRefreshTrigger={setEventsRefreshTrigger}
-            setSidebarEvents={setSidebarEvents}
-            onCalendarChange={onCalendarChange}
-          />
+          <div className="space-y-4 pb-4">
+            <CalendarCard
+              onOpenCalendarModal={onOpenCalendarModal}
+              onOpenEventModal={onOpenEventModal}
+              onOpenParticipantsModal={onOpenParticipantsModal}
+              eventsRefreshTrigger={eventsRefreshTrigger}
+              setEventsRefreshTrigger={setEventsRefreshTrigger}
+              setSidebarEvents={setSidebarEvents}
+              onCalendarChange={onCalendarChange}
+            />
+          </div>
         )}
       </div>
     </div>
