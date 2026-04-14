@@ -469,6 +469,7 @@ export function AppShell({ children }: AppShellProps) {
             setEventsRefreshTrigger={cal.handleSetEventsRefreshTrigger}
             setSidebarEvents={cal.handleSetSidebarEvents}
             onCalendarChange={cal.handleCalendarChange}
+            fixedDesktop={!isMessageDialogPage}
           />
         </div>
 
