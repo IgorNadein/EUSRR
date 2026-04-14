@@ -461,7 +461,7 @@ export function AppShell({ children }: AppShellProps) {
           onOpenCalendar={() => setIsMobileCalendarOpen(true)}
         />
         <div className={`mx-auto flex w-full flex-1 min-h-0 max-w-6xl ${isMessageDialogPage ? 'gap-0 px-0 py-0 lg:gap-6 lg:px-8 lg:py-8' : 'gap-6 px-4 py-4 sm:px-8 lg:py-8'}`}>
-          <LeftNav fixedDesktop={!isMessageDialogPage} />
+          <LeftNav fixedDesktop />
           <main className={`flex-1 min-w-0 min-h-0 space-y-6 ${isMessageDialogPage ? 'overflow-visible' : ''}`}>{children}</main>
           <CalendarSidebar
             onOpenCalendarModal={cal.handleOpenCalendarModal}
@@ -471,7 +471,7 @@ export function AppShell({ children }: AppShellProps) {
             setEventsRefreshTrigger={cal.handleSetEventsRefreshTrigger}
             setSidebarEvents={cal.handleSetSidebarEvents}
             onCalendarChange={cal.handleCalendarChange}
-            fixedDesktop={!isMessageDialogPage}
+            fixedDesktop
           />
         </div>
 
