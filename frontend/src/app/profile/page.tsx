@@ -8,6 +8,7 @@ import EmployeeActionsTimeline from "@/components/users/EmployeeActionsTimeline"
 import {
   ProfileContactsPanel,
   ProfileDepartmentBadge,
+  ProfileDepartmentsCard,
   ProfileHeroCard,
   ProfileInfoCard,
   ProfileSkillsCard,
@@ -169,6 +170,10 @@ export default function ProfilePage() {
         />
 
         <ProfileInfoCard items={infoItems} />
+
+        {user.departments?.length ? (
+          <ProfileDepartmentsCard departments={user.departments} />
+        ) : null}
 
         <EmployeeActionsTimeline
           actionLoading={null}

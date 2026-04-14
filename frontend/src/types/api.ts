@@ -51,6 +51,7 @@ export interface User {
   created_at?: string;
   updated_at?: string;
   last_login?: string;
+  last_activity_at?: string;
   date_joined?: string;
   auth?: {
     id?: number;

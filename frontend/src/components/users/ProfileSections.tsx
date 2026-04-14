@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Plus, X } from "lucide-react";
-import type { Skill } from "@/types/api";
+import { Crown, Link2, Plus, X } from "lucide-react";
+import type { EmployeeDepartment, Skill } from "@/types/api";
 
 export type ProfileContactRow = {
   key: string;
@@ -175,9 +175,9 @@ export function ProfileInfoCard({
               key={item.label}
               className={[
                 "px-4 py-3.5",
-                index % 2 === 1 ? "border-t border-[var(--border-subtle)] md:border-l md:border-t-0" : "",
-                index >= 2 ? "border-t border-[var(--border-subtle)]" : "",
-                index >= 2 && index % 2 === 1 ? "md:border-l" : "",
+                index > 0 ? "border-t border-[var(--border-subtle)]" : "",
+                index % 2 === 1 ? "md:border-l" : "",
+                index === 1 ? "md:border-t-0" : "",
               ].join(" ").trim()}
             >
               <p className="text-sm font-semibold text-[var(--foreground)]">
@@ -317,5 +317,59 @@ export function ProfileDepartmentBadge({
     <span className="app-pill inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium">
       {label}
     </span>
+  );
+}
+
+export function ProfileDepartmentsCard({
+  title = "Отделы",
+  departments,
+}: {
+  title?: string;
+  departments: EmployeeDepartment[];
+}) {
+  if (!departments.length) {
+    return null;
+  }
+
+  return (
+    <section className="app-surface rounded-2xl p-5">
+      <SectionTitle title={title} />
+      <div className="app-surface-muted rounded-2xl p-4">
+        <div className="flex flex-wrap gap-2">
+          {departments.map((department) => (
+            <Link
+              key={department.id}
+              href={`/departments/${department.id}`}
+              className="app-badge inline-flex max-w-full items-center gap-2 rounded-full px-2 py-1.5 text-[var(--foreground)] transition hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
+            >
+              <span className="truncate px-1 text-sm font-medium">
+                {department.name}
+              </span>
+              {department.role_name ? (
+                <span className="app-surface inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-medium text-[var(--muted-foreground)]">
+                  <span className="truncate">{department.role_name}</span>
+                </span>
+              ) : null}
+              {department.is_head ? (
+                <span
+                  className="inline-flex items-center justify-center rounded-full border border-[color:color-mix(in_srgb,#f59e0b_42%,var(--border-subtle))] bg-[color:color-mix(in_srgb,#f59e0b_14%,transparent)] px-2.5 py-1 text-[#f59e0b]"
+                  title="Руководитель отдела"
+                >
+                  <Crown size={12} />
+                </span>
+              ) : null}
+              {department.via_assignment ? (
+                <span
+                  className="app-surface inline-flex items-center justify-center rounded-full px-2.5 py-1"
+                  title="Роль в отделе без прямого членства"
+                >
+                  <Link2 size={12} />
+                </span>
+              ) : null}
+            </Link>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }

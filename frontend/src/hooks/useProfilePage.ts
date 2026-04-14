@@ -409,11 +409,13 @@ export function useProfilePage(): ProfilePageController {
         value: formatProfileDate(user?.created_at),
       },
       {
-        label: "Последний вход",
-        value: formatProfileDateTime(user?.last_login),
+        label: "Последняя активность",
+        value: formatProfileDateTime(
+          user?.last_activity_at || user?.last_login,
+        ),
       },
     ],
-    [user?.created_at, user?.date_joined, user?.last_login],
+    [user?.created_at, user?.date_joined, user?.last_activity_at, user?.last_login],
   );
 
   const onInputSkillName = useCallback((value: string) => {

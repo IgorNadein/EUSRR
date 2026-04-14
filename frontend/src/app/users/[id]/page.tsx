@@ -22,6 +22,7 @@ import EmployeeActionsTimeline from "@/components/users/EmployeeActionsTimeline"
 import {
   ProfileContactsPanel,
   ProfileDepartmentBadge,
+  ProfileDepartmentsCard,
   ProfileHeroCard,
   ProfileInfoCard,
   ProfileSkillsCard,
@@ -258,10 +259,12 @@ export default function UserDetailPage() {
       value: formatProfileDate(person?.created_at),
     },
     {
-      label: "Последний вход",
-      value: formatProfileDateTime(person?.last_login),
+      label: "Последняя активность",
+      value: formatProfileDateTime(
+        person?.last_activity_at || person?.last_login,
+      ),
     },
-  ]), [person?.created_at, person?.date_joined, person?.last_login]);
+  ]), [person?.created_at, person?.date_joined, person?.last_activity_at, person?.last_login]);
 
   const handleAddSkill = async (forcedSkill?: { id: number; name: string }) => {
     if (!person || skillsSaving) return;
@@ -504,40 +507,7 @@ export default function UserDetailPage() {
             <ProfileInfoCard items={infoItems} />
 
             {person.departments?.length ? (
-              <section className="app-surface rounded-2xl p-5">
-                <div className="mb-4">
-                  <h2 className="app-card-caption">Отделы</h2>
-                </div>
-                <div className="app-surface-muted rounded-2xl p-4">
-                  <div className="space-y-3">
-                    {person.departments.map((department) => (
-                      <Link
-                        key={department.id}
-                        href={`/departments/${department.id}`}
-                        className="app-surface block rounded-2xl px-4 py-3 transition hover:border-[var(--accent-primary)]"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-[var(--foreground)]">
-                              {department.name}
-                            </p>
-                            {department.role_name ? (
-                              <p className="app-text-muted mt-1 text-sm">
-                                {department.role_name}
-                              </p>
-                            ) : null}
-                          </div>
-                          {department.is_head ? (
-                            <span className="app-pill-active inline-flex rounded-full px-3 py-1 text-xs font-medium">
-                              Руководитель
-                            </span>
-                          ) : null}
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              </section>
+              <ProfileDepartmentsCard departments={person.departments} />
             ) : null}
 
             <EmployeeActionsTimeline

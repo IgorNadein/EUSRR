@@ -3,8 +3,12 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.utils.dateparse import parse_datetime
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
+
+from api.auth.models import UserAuthSession
 
 User = get_user_model()
 
@@ -51,6 +55,41 @@ def test_employees_me_returns_cached_username():
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["username"] == "cached.login"
+
+
+@pytest.mark.django_db
+def test_employees_me_returns_last_activity_from_active_sessions():
+    client = APIClient()
+    user = make_user(username="cached.login", is_ldap_managed=True)
+    client.force_authenticate(user=user)
+
+    older = timezone.now() - timezone.timedelta(hours=3)
+    newer = timezone.now() - timezone.timedelta(minutes=7)
+
+    older_session = UserAuthSession.objects.create(
+        user=user,
+        device_name="Firefox on Linux",
+    )
+    UserAuthSession.objects.filter(pk=older_session.pk).update(last_seen_at=older)
+
+    newer_session = UserAuthSession.objects.create(
+        user=user,
+        device_name="Chrome on Linux",
+    )
+    UserAuthSession.objects.filter(pk=newer_session.pk).update(last_seen_at=newer)
+
+    revoked = UserAuthSession.objects.create(
+        user=user,
+        device_name="Safari on macOS",
+    )
+    UserAuthSession.objects.filter(pk=revoked.pk).update(last_seen_at=timezone.now())
+    revoked.revoke(commit=True)
+
+    response = client.get("/api/v1/employees/me/")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["last_activity_at"] is not None
+    assert parse_datetime(response.json()["last_activity_at"]) == newer
 
 
 @pytest.mark.django_db
