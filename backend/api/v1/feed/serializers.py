@@ -43,6 +43,11 @@ class PostLikerSerializer(AuthorMiniSerializer):
 class PostListSerializer(serializers.ModelSerializer):
     author_id = serializers.IntegerField(read_only=True)
     author = AuthorMiniSerializer(read_only=True)
+    department_name = serializers.CharField(
+        source="department.name",
+        read_only=True,
+        allow_null=True,
+    )
 
     # удoбные представления дат
     created_at_display = serializers.DateTimeField(
@@ -71,6 +76,7 @@ class PostListSerializer(serializers.ModelSerializer):
             "type",
             "department",
             "department_id",
+            "department_name",
             "title",
             "body",
             "image",
@@ -97,6 +103,7 @@ class PostListSerializer(serializers.ModelSerializer):
             "author_id",
             "author",
             "department_id",
+            "department_name",
             "is_liked",
         )
 

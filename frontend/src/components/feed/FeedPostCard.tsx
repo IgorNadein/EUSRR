@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { Heart, MessageSquare, Paperclip, Pin } from "lucide-react";
 
@@ -9,6 +10,7 @@ import { resolveMediaUrl } from "@/lib/url";
 import type { Post } from "@/types/api";
 
 type FeedPostCardProps = {
+  authorHref?: string | null;
   post: Post;
   authorSubtitle: ReactNode;
   attachmentButtonClassName?: string;
@@ -47,6 +49,7 @@ function formatAuthorFallback(post: Post) {
 }
 
 export function FeedPostCard({
+  authorHref,
   post,
   authorSubtitle,
   attachmentButtonClassName,
@@ -88,9 +91,18 @@ export function FeedPostCard({
             src={post.author?.avatar}
           />
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-[var(--foreground)]">
-              {authorName}
-            </p>
+            {authorHref ? (
+              <Link
+                href={authorHref}
+                className="block truncate text-sm font-semibold text-[var(--foreground)] transition hover:text-[var(--accent-primary-strong)]"
+              >
+                {authorName}
+              </Link>
+            ) : (
+              <p className="truncate text-sm font-semibold text-[var(--foreground)]">
+                {authorName}
+              </p>
+            )}
             <div className="app-text-muted flex items-center gap-1.5 text-xs">
               {authorSubtitle}
               {pinnedStyle === "inline" && post.pinned ? (

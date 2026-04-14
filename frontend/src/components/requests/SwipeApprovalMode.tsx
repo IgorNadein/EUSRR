@@ -1,29 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { defaultStatusMeta, requestTypeLabels, statusMeta } from "@/hooks/useRequestsPage";
 import type { Request, User } from "@/types/api";
-import { Check, ChevronUp, Flame, ThumbsDown, ThumbsUp, Undo2, X } from "lucide-react";
+import { Check, ChevronUp, Flame, ThumbsDown, ThumbsUp, Undo2 } from "lucide-react";
 
 /* ── helpers ── */
-
-const statusMeta: Record<string, { label: string; cls: string }> = {
-  draft: { label: "Черновик", cls: "bg-slate-100 text-slate-700" },
-  pending: { label: "На рассмотрении", cls: "bg-amber-50 text-amber-700" },
-  approved: { label: "Одобрено", cls: "bg-emerald-50 text-emerald-700" },
-  rejected: { label: "Отклонено", cls: "bg-rose-50 text-rose-700" },
-  cancelled: { label: "Отменено", cls: "bg-gray-100 text-gray-600" },
-  in_progress: { label: "В работе", cls: "bg-sky-50 text-sky-700" },
-  completed: { label: "Завершено", cls: "bg-violet-50 text-violet-700" },
-};
-
-const typeLabels: Record<string, string> = {
-  vacation: "Отпуск",
-  sick_leave: "Больничный",
-  day_off: "Отгул",
-  transfer: "Перевод",
-  dismissal: "Увольнение",
-  other: "Другое",
-};
 
 function fmt(d?: string | null) {
   if (!d) return "—";
@@ -34,7 +16,8 @@ function fmt(d?: string | null) {
 function userName(p?: User | null) {
   if (!p) return "—";
   const full = `${p.last_name || ""} ${p.first_name || ""}`.trim();
-  return full || (p as any)?.full_name || p.email || "Пользователь";
+  const fullName = "full_name" in p && typeof p.full_name === "string" ? p.full_name : "";
+  return full || fullName || p.email || "Пользователь";
 }
 
 /* ── types ── */
@@ -59,7 +42,7 @@ const SWIPE_THRESHOLD = 80; // px
 
 export default function SwipeApprovalMode({ requests, onApprove, onReject, onClose }: Props) {
   const [queue, setQueue] = useState<Request[]>([]);
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [, setHistory] = useState<HistoryEntry[]>([]);
   const [stats, setStats] = useState({ approved: 0, rejected: 0, skipped: 0 });
   const [busy, setBusy] = useState(false);
   const [undoToast, setUndoToast] = useState<HistoryEntry | null>(null);
@@ -199,9 +182,9 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
 
   const renderCard = (req: Request) => {
     const st = String(req.status).toLowerCase();
-    const sMeta = statusMeta[st] ?? { label: st, cls: "app-badge" };
+    const sMeta = statusMeta[st] ?? defaultStatusMeta;
     const typeKey = String(req.type || req.request_type || "").toLowerCase();
-    const typeLabel = typeLabels[typeKey] || typeKey || "Другое";
+    const typeLabel = requestTypeLabels[typeKey] || typeKey || "Другое";
     const author = req.employee || req.created_by;
     const summaryText = req.comment || req.description;
 
@@ -209,7 +192,7 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
       <>
         {/* header */}
         <div className="mb-3 flex items-center justify-between">
-          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${sMeta.cls}`}>
+          <span className={`app-status-pill ${sMeta.className}`}>
             {sMeta.label}
           </span>
           <span className="app-text-muted text-xs">#{req.id}</span>

@@ -322,6 +322,12 @@ html[data-bs-theme="dark"] .app-input::-webkit-calendar-picker-indicator {
   color: var(--accent-primary-strong);
 }
 
+.app-badge-danger {
+  border-color: color-mix(in srgb, #ef4444 24%, var(--border-subtle));
+  background: var(--danger-soft);
+  color: #dc2626;
+}
+
 .app-status-pill {
   display: inline-flex;
   align-items: center;
@@ -360,6 +366,15 @@ html[data-bs-theme="dark"] .app-input::-webkit-calendar-picker-indicator {
   justify-content: center;
   border-radius: 9999px;
   background: var(--accent-primary);
+  color: #ffffff;
+}
+
+.app-counter-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: #ef4444;
   color: #ffffff;
 }
 

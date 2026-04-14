@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import {
+  ArrowDown,
+  ArrowUp,
   Bell,
   Check,
   Clock3,
@@ -19,6 +21,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
+import { useMobileNavPlacement } from "@/contexts/MobileNavPlacementContext";
 import {
   formatSessionDateTime,
   getSessionDeviceKind,
@@ -33,6 +36,21 @@ const themeIcons = {
   Moon,
   Monitor,
 } as const;
+
+const mobileNavCards = [
+  {
+    value: "top",
+    title: "Сверху",
+    description: "Мобильная панель навигации закреплена в верхней части экрана.",
+    Icon: ArrowUp,
+  },
+  {
+    value: "bottom",
+    title: "Снизу",
+    description: "Панель закреплена снизу, как в современных мобильных интерфейсах.",
+    Icon: ArrowDown,
+  },
+] as const;
 
 function getSessionDeviceIcon(deviceName?: string | null) {
   return getSessionDeviceKind(deviceName) === "mobile" ? Smartphone : Monitor;
@@ -107,6 +125,7 @@ function SectionCard({
 }
 
 export default function SettingsPage() {
+  const { mobileNavPlacement, setMobileNavPlacement } = useMobileNavPlacement();
   const {
     activeVerbCount,
     avatarInputRef,
@@ -336,6 +355,48 @@ export default function SettingsPage() {
                   Предпочтение: <strong className="text-[var(--foreground)]">{theme}</strong>. Примененная тема:{" "}
                   <strong className="text-[var(--foreground)]">{resolvedTheme}</strong>.
                 </p>
+              </div>
+
+              <div className="app-surface-muted mt-4 rounded-2xl p-4">
+                <div className="mb-4">
+                  <p className="text-sm font-medium text-[var(--foreground)]">Положение мобильной панели</p>
+                  <p className="app-text-muted mt-1 text-sm">
+                    Настраивает расположение мобильной панели навигации на этом устройстве.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  {mobileNavCards.map(({ value, title, description, Icon }) => {
+                    const active = mobileNavPlacement === value;
+
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setMobileNavPlacement(value)}
+                        className={`rounded-2xl p-4 text-left transition ${
+                          active ? "app-selected" : "app-surface hover:bg-[var(--surface-tertiary)]"
+                        }`}
+                      >
+                        <div className="mb-4 flex items-start justify-between gap-3">
+                          <span
+                            className={`inline-flex h-11 w-11 items-center justify-center rounded-2xl ${
+                              active ? "app-action-primary text-white" : "bg-[var(--surface-elevated)] text-[var(--muted-foreground)]"
+                            }`}
+                          >
+                            <Icon size={20} />
+                          </span>
+                          <span className={`app-badge inline-flex h-6 min-w-6 justify-center px-2 text-xs font-semibold ${active ? "app-badge-accent" : ""}`}>
+                            {active ? <Check size={14} /> : value}
+                          </span>
+                        </div>
+
+                        <p className="text-sm font-semibold text-[var(--foreground)]">{title}</p>
+                        <p className="app-text-muted mt-1 text-sm">{description}</p>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </SectionCard>
 

@@ -45,18 +45,18 @@ function getChatTypeIcon(chat: Chat) {
   const chatType = chat.chat_type || chat.type;
   switch (chatType) {
     case 'global':
-      return <Globe size={10} className="text-white" />;
+      return <Globe size={10} className="app-accent-text" />;
     case 'channel':
-      return <Radio size={10} className="text-white" />;
+      return <Radio size={10} className="app-accent-text" />;
     case 'group':
-      return <Users size={10} className="text-white" />;
+      return <Users size={10} className="app-accent-text" />;
     case 'private':
     case 'direct':
-      return <MessageCircle size={10} className="text-white" />;
+      return <MessageCircle size={10} className="app-accent-text" />;
     case 'announcement':
-      return <Megaphone size={10} className="text-white" />;
+      return <Megaphone size={10} className="app-accent-text" />;
     case 'comments':
-      return <MessageSquare size={10} className="text-white" />;
+      return <MessageSquare size={10} className="app-accent-text" />;
     default:
       return null;
   }
@@ -422,7 +422,7 @@ export default function MessagesPage() {
             >
               <Filter size={16} />
               {(filterUnread !== 'all' || filterPinned !== 'all') && (
-                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-bold text-white">
+                <span className="app-badge app-badge-accent absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border px-1 text-[10px] font-bold">
                   {[filterUnread !== 'all', filterPinned !== 'all'].filter(Boolean).length}
                 </span>
               )}
@@ -537,12 +537,12 @@ export default function MessagesPage() {
                         )}
                       </div>
                       {/* Иконка типа чата */}
-                      <span className="absolute -bottom-0.5 -left-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-sky-600 ring-2 ring-white">
+                      <span className="app-badge app-badge-accent absolute -bottom-0.5 -left-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full border-2 border-[var(--surface-primary)]">
                         {getChatTypeIcon(chat)}
                       </span>
                       {/* Счетчик непрочитанных */}
                       {(chat.unread_count ?? 0) > 0 ? (
-                        <span className="absolute -top-1 -right-1 z-10 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white ring-2 ring-white">
+                        <span className="app-counter-danger absolute -top-1 -right-1 z-10 flex h-5 min-w-[20px] items-center justify-center border-2 border-[var(--surface-primary)] px-1.5 text-[10px] font-bold">
                           {chat.unread_count! > 99 ? '99+' : chat.unread_count}
                         </span>
                       ) : null}

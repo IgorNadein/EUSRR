@@ -181,6 +181,7 @@ export interface Post {
   type?: 'company' | 'department' | 'employee';
   department?: number | null;
   department_id?: number | null;
+  department_name?: string | null;
   content?: string;
   body?: string;
   title?: string;

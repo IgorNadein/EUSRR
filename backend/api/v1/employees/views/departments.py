@@ -40,6 +40,7 @@ from rest_framework.response import Response
 from ...permissions import (
     AdminOrActionOrModelPerms,
     AdminOrDeptAllowed,
+    can_publish_department_posts,
     has_dept_perm,
 )
 from ..serializers import (
@@ -500,8 +501,8 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             "can_assign_roles": has_dept_perm(
                 request.user, dept.id, DeptPerm.ASSIGN_ROLE
             ),
-            "can_publish_posts": has_dept_perm(
-                request.user, dept.id, DeptPerm.CREATE_POST
+            "can_publish_posts": can_publish_department_posts(
+                request.user, dept.id
             ),
             "can_manage_feed": has_dept_perm(
                 request.user, dept.id, DeptPerm.MANAGE_FEED

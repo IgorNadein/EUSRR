@@ -11,7 +11,7 @@ import {
   ChevronRight,
   Crown,
   Link2,
-  MessageCircle,
+  MessageSquare,
   PencilLine,
   Plus,
   Search,
@@ -996,7 +996,7 @@ export default function DepartmentDetailPage() {
                       disabled={openingDepartmentChat}
                       className="app-action-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
                     >
-                      <MessageCircle size={16} />
+                      <MessageSquare size={16} />
                       Перейти в чат отдела
                     </button>
                   </div>

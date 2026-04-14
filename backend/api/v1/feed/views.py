@@ -30,6 +30,7 @@ from rest_framework.response import Response
 from ..permissions import (
     AdminOrActionOrModelPerms,
     AdminOrDeptAllowed,
+    can_publish_department_posts,
 )
 from .serializers import PostListSerializer, PostLikerSerializer, PostSerializer
 
@@ -57,8 +58,9 @@ class PostViewSet(viewsets.ModelViewSet):
       - create:
                     * type=company    → AdminOrActionOrModelPerms
                         + required_perm_code="feed.publish_company_post"
-                    * type=department → AdminOrDeptAllowed
-                        с кодом DeptPerm.CREATE_POST|publish_department_post
+                    * type=department → staff/superuser, руководитель отдела,
+                        активный участник отдела или любой сотрудник
+                        с активной ролью в этом отделе
       - update/partial_update/destroy:
           * company         → как для company-create
           * department      → как для department-create
@@ -102,6 +104,23 @@ class PostViewSet(viewsets.ModelViewSet):
                         return True  # пропускаем к валидации сериализатора
             return super().has_permission(request, view)
 
+    class DepartmentPostCreatePerm(IsAuthenticated):
+        """Упрощённое право на создание новости отдела."""
+
+        def has_permission(self, request, view) -> bool:
+            if not super().has_permission(request, view):
+                return False
+
+            dept_id = _to_id(
+                request.data.get("department")
+                or request.data.get("department_id")
+            )
+            if dept_id is None:
+                # Даём сериализатору вернуть 400 по отсутствующему отделу.
+                return True
+
+            return can_publish_department_posts(request.user, dept_id)
+
     def get_permissions(self) -> List[Any]:
         """Возвращает DRF-пермишены под текущий action.
 
@@ -118,13 +137,9 @@ class PostViewSet(viewsets.ModelViewSet):
             t = (self.request.data.get("type") or "").strip()
             if t == TYPE_COMPANY:
                 return [IsAuthenticated(), AdminOrActionOrModelPerms()]
-            # department → департаментное право на создание
-            dept_code = getattr(
-                DeptPerm, "CREATE_POST", "publish_department_post"
-            )
-            perm = self.PostDeptPerm()
-            perm.required_code = DeptPerm.CREATE_POST
-            return [IsAuthenticated(), perm]
+            if t == TYPE_DEPARTMENT:
+                return [self.DepartmentPostCreatePerm()]
+            return [IsAuthenticated()]
 
         # --- UPDATE/PATCH/DELETE: определяем тип поста из БД,
         # но без get_object() ---

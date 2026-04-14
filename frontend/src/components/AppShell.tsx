@@ -1,9 +1,10 @@
 "use client";
 
-import { Building2, CalendarDays, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Monitor, Search, ShoppingCart, Users, Wallet } from "lucide-react";
+import { Building2, CalendarDays, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Monitor, Search, ShoppingCart, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, startTransition, useEffect, useRef, useState, useMemo } from "react";
+import { useMobileNavPlacement } from "@/contexts/MobileNavPlacementContext";
 import { useUser } from "@/contexts/UserContext";
 import { useNotifications } from "@/hooks/useApi";
 import { getVerbCategory } from "@/lib/verbTranslations";
@@ -25,6 +26,7 @@ type PageHeaderProps = {
 };
 
 type HeaderProps = {
+  mobileNavPlacement: "top" | "bottom";
   onOpenLeftNav: () => void;
   onOpenCalendar: () => void;
 };
@@ -45,7 +47,7 @@ const navItems = [
   // { href: "/finances", label: "Финансы", icon: Wallet },
 ];
 
-function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
+function Header({ mobileNavPlacement, onOpenLeftNav, onOpenCalendar }: HeaderProps) {
   const router = useRouter();
   const { user, logout } = useUser();
   const [searchQuery, setSearchQuery] = useState("");
@@ -97,6 +99,8 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
     ? `${user.last_name} ${user.first_name}`.trim()
     : 'Гость';
 
+  const isBottomMobileNav = mobileNavPlacement === "bottom";
+
   const submitSearch = () => {
     const query = searchQuery.trim();
     if (!query) return;
@@ -104,9 +108,19 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
   };
 
   return (
-    <header className="app-header sticky top-0 z-[40] border-b backdrop-blur">
+    <header
+      className={`app-header z-[40] backdrop-blur ${
+        isBottomMobileNav
+          ? "fixed inset-x-0 bottom-0 border-t lg:sticky lg:top-0 lg:bottom-auto lg:border-b lg:border-t-0"
+          : "sticky top-0 border-b"
+      }`}
+    >
       <div className="mx-auto max-w-6xl px-4 sm:px-8">
-        <div className="flex h-10 lg:h-14 items-center justify-between gap-3">
+        <div
+          className={`flex h-10 items-center justify-between gap-3 lg:h-14 ${
+            isBottomMobileNav ? "pb-[max(env(safe-area-inset-bottom),0px)]" : ""
+          }`}
+        >
           <button
             type="button"
             onClick={onOpenLeftNav}
@@ -135,7 +149,9 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
             <img
               src="/logo.png"
               alt="Логотип"
-              className="mt-3 h-10 w-auto rounded bg-transparent pb-0.5 lg:mt-0 lg:h-11 lg:pb-0"
+              className={`h-10 w-auto rounded bg-transparent pb-0.5 lg:h-11 lg:pb-0 ${
+                isBottomMobileNav ? "mt-0" : "mt-3 lg:mt-0"
+              }`}
             />
           </Link>
 
@@ -214,9 +230,9 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
         <div
           className={`overflow-hidden transition-all duration-300 lg:hidden ${
             isSearchOpen ? "max-h-20 pb-3" : "max-h-0"
-          }`}
+          } ${isBottomMobileNav ? "absolute inset-x-0 bottom-full px-4 sm:px-8" : ""}`}
         >
-          <div className="relative">
+          <div className={`relative ${isBottomMobileNav ? "mx-auto max-w-6xl" : ""}`}>
             <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 app-text-muted" />
             <input
               ref={searchInputRef}
@@ -243,10 +259,12 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
         <div
           className={`notification-panel-mobile overflow-hidden transition-all duration-300 lg:hidden ${
             isNotificationsOpen ? "max-h-[70vh] pb-3" : "max-h-0"
-          }`}
+          } ${isBottomMobileNav ? "absolute inset-x-0 bottom-full px-4 sm:px-8" : ""}`}
         >
           {isNotificationsOpen && (
-            <NotificationPanel onClose={() => setIsNotificationsOpen(false)} />
+            <div className={isBottomMobileNav ? "mx-auto max-w-6xl" : ""}>
+              <NotificationPanel onClose={() => setIsNotificationsOpen(false)} />
+            </div>
           )}
         </div>
 
@@ -349,6 +367,7 @@ export function PageHeader({ title, subtitle, badge, eyebrow  }: PageHeaderProps
 
 export function AppShell({ children }: AppShellProps) {
   const { user, loading } = useUser();
+  const { mobileNavPlacement } = useMobileNavPlacement();
   const router = useRouter();
   const pathname = usePathname();
   const isMessageDialogPage = pathname.startsWith('/messages/') && 
@@ -427,8 +446,12 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <div className={`${isMessageDialogPage ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'} app-shell flex flex-col`}>
-        <Header onOpenLeftNav={() => setIsMobileLeftNavOpen(true)} onOpenCalendar={() => setIsMobileCalendarOpen(true)} />
+    <div className={`${isMessageDialogPage ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'} app-shell flex flex-col ${mobileNavPlacement === "bottom" ? "pb-[calc(env(safe-area-inset-bottom)+3.75rem)] lg:pb-0" : ""}`}>
+        <Header
+          mobileNavPlacement={mobileNavPlacement}
+          onOpenLeftNav={() => setIsMobileLeftNavOpen(true)}
+          onOpenCalendar={() => setIsMobileCalendarOpen(true)}
+        />
         <div className={`mx-auto flex w-full flex-1 min-h-0 max-w-6xl ${isMessageDialogPage ? 'gap-0 px-0 py-0 lg:gap-6 lg:px-8 lg:py-8' : 'gap-6 px-4 py-4 sm:px-8 lg:py-8'}`}>
           <LeftNav />
           <main className={`flex-1 min-w-0 min-h-0 space-y-6 ${isMessageDialogPage ? 'overflow-visible' : ''}`}>{children}</main>

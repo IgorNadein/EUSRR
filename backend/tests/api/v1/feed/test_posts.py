@@ -173,6 +173,30 @@ def test_department_post_requires_publish_permission(
     assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
+def test_active_department_member_can_create_department_post(
+    auth_client_factory,
+    make_user,
+    department_factory,
+):
+    user = make_user("member-publisher@example.com")
+    department = department_factory(name="Operations")
+    EmployeeDepartment.objects.create(
+        employee=user,
+        department=department,
+        is_active=True,
+    )
+
+    client = auth_client_factory(user)
+    response = client.post(
+        API_POSTS_URL,
+        _department_post_payload(department.id),
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert Post.objects.filter(id=response.data["id"], department=department).exists()
+
+
 def test_role_assignment_can_create_department_post(
     auth_client_factory,
     make_user,
@@ -181,6 +205,34 @@ def test_role_assignment_can_create_department_post(
     user = make_user("publisher@example.com")
     department = department_factory(name="Accounting")
     _grant_department_post_role(user, department)
+
+    client = auth_client_factory(user)
+    response = client.post(
+        API_POSTS_URL,
+        _department_post_payload(department.id),
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert Post.objects.filter(id=response.data["id"], department=department).exists()
+
+
+def test_any_role_assignment_can_create_department_post(
+    auth_client_factory,
+    make_user,
+    department_factory,
+):
+    user = make_user("roleonly-publisher@example.com")
+    department = department_factory(name="Support")
+    role = DepartmentRole.objects.create(
+        department=department,
+        name="Observer",
+    )
+    RoleAssignment.objects.create(
+        employee=user,
+        role=role,
+        is_active=True,
+    )
 
     client = auth_client_factory(user)
     response = client.post(

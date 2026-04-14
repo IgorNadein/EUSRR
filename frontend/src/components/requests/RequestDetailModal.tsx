@@ -51,7 +51,7 @@ export function RequestDetailModal({
               <span className="app-badge app-badge-accent px-2.5 py-1 text-xs font-medium">
                 {typeLabel}
               </span>
-              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs ring-1 ${status.className}`}>
+              <span className={`app-status-pill ${status.className}`}>
                 {status.label}
               </span>
             </div>

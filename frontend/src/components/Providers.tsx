@@ -3,6 +3,7 @@
 import { UserProvider } from "@/contexts/UserContext";
 import { CalendarProvider } from "@/contexts/CalendarContext";
 import { NotificationsProvider } from "@/contexts/NotificationsContext";
+import { MobileNavPlacementProvider } from "@/contexts/MobileNavPlacementContext";
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
 import { ReactNode } from "react";
 import { Toaster } from "sonner";
@@ -16,14 +17,16 @@ function AppToaster() {
 export function Providers({ children }: { children: ReactNode }) {
     return (
         <ThemeProvider>
-            <UserProvider>
-                <NotificationsProvider>
-                    <CalendarProvider>
-                        <AppToaster />
-                        {children}
-                    </CalendarProvider>
-                </NotificationsProvider>
-            </UserProvider>
+            <MobileNavPlacementProvider>
+                <UserProvider>
+                    <NotificationsProvider>
+                        <CalendarProvider>
+                            <AppToaster />
+                            {children}
+                        </CalendarProvider>
+                    </NotificationsProvider>
+                </UserProvider>
+            </MobileNavPlacementProvider>
         </ThemeProvider>
     );
 }

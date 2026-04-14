@@ -19,6 +19,7 @@ import { RequestAvatar } from "@/components/requests/RequestAvatar";
 import { Modal } from "@/components/ui/Modal";
 import { useUser } from "@/contexts/UserContext";
 import { apiClient } from "@/lib/api";
+import { userProfileLink } from "@/lib/shared";
 import type { PaginatedResponse, Post } from "@/types/api";
 
 type DepartmentFeedSectionProps = {
@@ -456,6 +457,7 @@ export function DepartmentFeedSection({
           return (
             <FeedPostCard
               key={post.id}
+              authorHref={post.author ? userProfileLink(post.author, currentUserId) : null}
               post={post}
               authorSubtitle={
                 <span>
@@ -577,6 +579,7 @@ export function DepartmentFeedSection({
     canDeletePost,
     canEditPost,
     canPinPost,
+    currentUserId,
     error,
     formatInitials,
     formatUserName,

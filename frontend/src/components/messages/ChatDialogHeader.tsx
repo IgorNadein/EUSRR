@@ -6,7 +6,7 @@ import Image from "next/image";
 import { ArrowLeft, Bell, BellOff, MoreHorizontal, Pin, Search } from "lucide-react";
 
 import type { Chat } from "@/types/api";
-import { getChatAvatar, getChatInitials, getChatTitle } from "@/lib/messages/chatUtils";
+import { getChatAvatar, getChatInitials, getChatTitle, isDepartmentCommentsChat } from "@/lib/messages/chatUtils";
 import { resolveMediaUrl } from "@/lib/url";
 
 type ChatDialogHeaderProps = {
@@ -33,7 +33,7 @@ function getChatSubtitle(chat: Chat): string {
     case "global":
       return "Глобальный чат";
     case "comments":
-      return "Комментарии";
+      return isDepartmentCommentsChat(chat) ? "Чат отдела" : "Комментарии";
     default:
       return "Диалог";
   }

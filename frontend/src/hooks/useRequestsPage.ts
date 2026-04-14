@@ -34,16 +34,16 @@ export const createEmptyForm = (): RequestFormState => ({
 });
 
 export const statusMeta: Record<string, { label: string; className: string }> = {
-  draft:       { label: "Черновик",          className: "bg-slate-100 text-slate-700 ring-slate-200" },
-  pending:     { label: "На рассмотрении",   className: "bg-amber-50 text-amber-700 ring-amber-100" },
-  approved:    { label: "Одобрено",          className: "bg-emerald-50 text-emerald-700 ring-emerald-100" },
-  rejected:    { label: "Отклонено",         className: "bg-rose-50 text-rose-700 ring-rose-100" },
-  cancelled:   { label: "Отменено",          className: "bg-gray-100 text-gray-700 ring-gray-200" },
-  in_progress: { label: "В работе",          className: "bg-sky-50 text-sky-700 ring-sky-100" },
-  completed:   { label: "Завершено",         className: "bg-violet-50 text-violet-700 ring-violet-100" },
+  draft:       { label: "Черновик",          className: "app-badge" },
+  pending:     { label: "На рассмотрении",   className: "app-feedback-warning" },
+  approved:    { label: "Одобрено",          className: "app-feedback-success" },
+  rejected:    { label: "Отклонено",         className: "app-feedback-danger" },
+  cancelled:   { label: "Отменено",          className: "app-badge" },
+  in_progress: { label: "В работе",          className: "app-selected" },
+  completed:   { label: "Завершено",         className: "app-badge-accent" },
 };
 
-export const defaultStatusMeta = { label: "Неизвестный статус", className: "bg-gray-50 text-gray-700 ring-gray-200" };
+export const defaultStatusMeta = { label: "Неизвестный статус", className: "app-badge" };
 
 export const requestTypeLabels: Record<string, string> = {
   vacation: "Отпуск",

@@ -9,6 +9,7 @@ from employees.models import (
     Department,
     DepartmentPermission,
     DepartmentRole,
+    EmployeeDepartment,
     RoleAssignment,
 )
 from tests.conftest import _unique_phone
@@ -69,6 +70,43 @@ def test_department_user_perms_resolves_role_based_feed_rights(api_client: APICl
         defaults={"name": "Публиковать новости на странице отдела"},
     )
     role.scoped_permissions.add(publish_perm)
+    RoleAssignment.objects.create(employee=employee, role=role, is_active=True)
+
+    api_client.force_authenticate(user=employee)
+    url = reverse("api:v1:departments-user-perms", args=[dept.id])
+    resp = api_client.get(url)
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["can_publish_posts"] is True
+    assert resp.json()["can_manage_feed"] is False
+
+
+@pytest.mark.django_db
+def test_department_user_perms_allows_active_member_to_publish(api_client: APIClient):
+    employee = make_user()
+    dept = Department.objects.create(name="Склад")
+    EmployeeDepartment.objects.create(
+        employee=employee,
+        department=dept,
+        is_active=True,
+    )
+
+    api_client.force_authenticate(user=employee)
+    url = reverse("api:v1:departments-user-perms", args=[dept.id])
+    resp = api_client.get(url)
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["can_publish_posts"] is True
+    assert resp.json()["can_manage_feed"] is False
+
+
+@pytest.mark.django_db
+def test_department_user_perms_allows_role_only_to_publish_without_scoped_perm(
+    api_client: APIClient,
+):
+    employee = make_user()
+    dept = Department.objects.create(name="Логистика")
+    role = DepartmentRole.objects.create(department=dept, name="Наблюдатель")
     RoleAssignment.objects.create(employee=employee, role=role, is_active=True)
 
     api_client.force_authenticate(user=employee)

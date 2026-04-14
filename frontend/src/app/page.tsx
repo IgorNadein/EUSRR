@@ -1,12 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { ChevronRight, Pencil, Pin, Plus, Trash2 } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { FeedPostCard } from "@/components/feed/FeedPostCard";
 import { Modal } from "@/components/ui";
 import { PostCommentsModal } from "@/components/feed/PostCommentsModal";
 import { RequestAvatar } from "@/components/requests/RequestAvatar";
+import { useNotifications } from "@/contexts/NotificationsContext";
 import { apiClient } from "@/lib/api";
+import { userProfileLink } from "@/lib/shared";
 import { resolveMediaUrl } from "@/lib/url";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -20,6 +23,8 @@ type LikeUser = {
   full_name?: string;
   avatar?: string | null;
 };
+
+type PostSourceFilter = "all" | "company" | `department:${number}`;
 
 export default function Home() {
   return (
@@ -42,6 +47,7 @@ function HomePageFallback() {
 
 function HomePageContent() {
   const { user } = useUser();
+  const { notifications } = useNotifications();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -49,6 +55,7 @@ function HomePageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [likeBusyId, setLikeBusyId] = useState<number | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<PostSourceFilter>("all");
 
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [activePost, setActivePost] = useState<Post | null>(null);
@@ -135,9 +142,10 @@ function HomePageContent() {
     hasPermission("publish_department_post") ||
     hasPermission("feed.create_post") ||
     hasPermission("create_post") ||
-    hasPermission("employees.manage_feed")
+    hasPermission("employees.manage_feed") ||
+    ((user?.departments?.length || 0) > 0)
   );
-  const canCreatePost = canCreateCompanyPost || canCreateDepartmentPost || ((user?.departments?.length || 0) > 0);
+  const canCreatePost = canCreateCompanyPost || canCreateDepartmentPost;
   const userDepartments = useMemo(() => user?.departments || [], [user?.departments]);
   const canManageAnyPost = Boolean(
     auth?.is_staff ||
@@ -181,10 +189,134 @@ function HomePageContent() {
     return canDeleteAnyComments;
   };
 
+  const renderPostOrigin = useCallback((post: Post) => {
+    if (post.type === "department") {
+      return (
+        <Link
+          href={post.department_id ? `/departments/${post.department_id}` : "/departments"}
+          className="app-badge inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
+        >
+          {post.department_name ? `${post.department_name}` : "Отдел"}
+        </Link>
+      );
+    }
+
+    return (
+      <span className="app-badge app-badge-accent inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium">
+        Компания
+      </span>
+    );
+  }, []);
+
   const refreshPosts = useCallback(async () => {
     const response = await apiClient.getPosts();
     setPosts(sortPostsPinnedFirst(response.results));
   }, [sortPostsPinnedFirst]);
+
+  const postSourceCounts = useMemo(() => {
+    const departmentCounts = new Map<number, { id: number; name: string; total: number }>();
+    let companyCount = 0;
+
+    for (const post of posts) {
+      if (post.type === "department" && post.department_id) {
+        const current = departmentCounts.get(post.department_id);
+        if (current) {
+          current.total += 1;
+        } else {
+          departmentCounts.set(post.department_id, {
+            id: post.department_id,
+            name: post.department_name || "Отдел",
+            total: 1,
+          });
+        }
+      } else {
+        companyCount += 1;
+      }
+    }
+
+    const departments = Array.from(departmentCounts.values()).sort((left, right) => {
+      if (right.total !== left.total) return right.total - left.total;
+      return left.name.localeCompare(right.name, "ru");
+    });
+
+    return {
+      all: posts.length,
+      company: companyCount,
+      departments,
+    };
+  }, [posts]);
+
+  const postSourceUnreadCounts = useMemo(() => {
+    const departmentUnread = new Map<number, number>();
+    let companyUnread = 0;
+
+    for (const notification of notifications) {
+      if ((notification.verb || "") !== "feed_new_post") continue;
+
+      const rawData = notification.data;
+      const data = rawData && typeof rawData === "object"
+        ? rawData as Record<string, unknown>
+        : null;
+
+      const postType = typeof data?.post_type === "string" ? data.post_type : "";
+      const departmentId =
+        typeof data?.department_id === "number"
+          ? data.department_id
+          : typeof data?.department_id === "string" && data.department_id.trim()
+            ? Number(data.department_id)
+            : null;
+
+      if (postType === "department" && Number.isFinite(departmentId) && departmentId !== null) {
+        departmentUnread.set(departmentId, (departmentUnread.get(departmentId) || 0) + 1);
+      } else {
+        companyUnread += 1;
+      }
+    }
+
+    const departmentEntries = Array.from(departmentUnread.entries()).map(([id, unread]) => ({
+      id,
+      unread,
+    }));
+
+    return {
+      all: companyUnread + departmentEntries.reduce((sum, entry) => sum + entry.unread, 0),
+      company: companyUnread,
+      departments: departmentEntries,
+    };
+  }, [notifications]);
+
+  const postSourceOptions = useMemo(() => {
+    const unreadByDepartment = new Map(
+      postSourceUnreadCounts.departments.map((entry) => [entry.id, entry.unread]),
+    );
+
+    const options: Array<{ key: PostSourceFilter; label: string; total: number; unread: number }> = [
+      { key: "all", label: "Все", total: postSourceCounts.all, unread: postSourceUnreadCounts.all },
+      { key: "company", label: "Компания", total: postSourceCounts.company, unread: postSourceUnreadCounts.company },
+    ];
+
+    for (const department of postSourceCounts.departments) {
+      options.push({
+        key: `department:${department.id}`,
+        label: department.name,
+        total: department.total,
+        unread: unreadByDepartment.get(department.id) || 0,
+      });
+    }
+
+    return options.filter(({ key, total }) => key === "all" || total > 0);
+  }, [postSourceCounts, postSourceUnreadCounts]);
+
+  const filteredPosts = useMemo(() => {
+    if (sourceFilter === "company") {
+      return posts.filter((post) => post.type !== "department");
+    }
+    if (sourceFilter.startsWith("department:")) {
+      const departmentId = Number(sourceFilter.split(":")[1]);
+      return posts.filter((post) => post.department_id === departmentId);
+    }
+    return posts;
+  }, [posts, sourceFilter]);
 
   useEffect(() => {
     async function loadPosts() {
@@ -497,12 +629,53 @@ function HomePageContent() {
   return (
     <AppShell>
       <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          {postSourceOptions.map(({ key, label, total, unread }) => {
+              const active = sourceFilter === key;
+
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSourceFilter(key)}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                    active ? "app-pill-active" : "app-pill"
+                  }`}
+                >
+                  <span>{label}</span>
+                  <span
+                    className={`app-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold ${
+                      active ? "app-pill-count-active" : "app-pill-count"
+                    }`}
+                  >
+                    <span>{total}</span>
+                    {unread > 0 ? (
+                      <>
+                        <span className="app-text-muted">•</span>
+                        <span className="app-accent-text">{unread}</span>
+                      </>
+                    ) : null}
+                  </span>
+                </button>
+              );
+            })}
+        </div>
+
         {posts.length === 0 ? (
           <div className="app-surface-muted rounded-2xl p-8 text-center">
             <p className="app-text-muted text-sm">Пока нет постов в ленте</p>
           </div>
+        ) : filteredPosts.length === 0 ? (
+          <div className="app-surface-muted rounded-2xl p-8 text-center">
+            <p className="text-sm font-medium text-[var(--foreground)]">
+              Публикации не найдены
+            </p>
+            <p className="app-text-muted mt-2 text-sm">
+              В выбранном источнике пока нет публикаций.
+            </p>
+          </div>
         ) : (
-          posts.map((post) => {
+          filteredPosts.map((post) => {
             // Форматируем дату
             const postDate = new Date(post.created_at);
             const now = new Date();
@@ -517,8 +690,14 @@ function HomePageContent() {
             return (
               <FeedPostCard
                 key={post.id}
+                authorHref={post.author ? userProfileLink(post.author, user?.id) : null}
                 post={post}
-                authorSubtitle={<span>{timeAgo}</span>}
+                authorSubtitle={
+                  <>
+                    <span>{timeAgo}</span>
+                    {renderPostOrigin(post)}
+                  </>
+                }
                 headerActions={(
                   (canEditPost(post) || canDeletePost(post)) ? (
                     <div
