@@ -6,12 +6,12 @@ import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } 
 import {
   ArrowLeft,
   BadgePlus,
-  Building2,
   Check,
   ChevronDown,
   ChevronRight,
   Crown,
   Link2,
+  MessageCircle,
   PencilLine,
   Plus,
   Search,
@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
+import { DepartmentFeedSection } from "@/components/departments/DepartmentFeedSection";
 import {
   DEPARTMENT_MEMBERS_EMPTY_STATE_CLASSNAME,
   getDepartmentMembersListClassName,
@@ -38,8 +39,10 @@ import { RequestAvatar } from "@/components/requests/RequestAvatar";
 import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
 import { Modal } from "@/components/ui/Modal";
 import { useDepartmentPage } from "@/hooks/useDepartmentPage";
+import { apiClient } from "@/lib/api";
 import { displayUserName, userProfileLink } from "@/lib/shared";
 import type { DepartmentMemberLink, User } from "@/types/api";
+import { toast } from "sonner";
 
 type DepartmentMemberModalMode = "add" | "assignRole";
 
@@ -409,7 +412,7 @@ function DepartmentMembersEmptyState() {
         Участники не найдены
       </p>
       <p className="app-text-muted mt-2 text-sm">
-        Измени поисковый запрос.
+        В этом отделе пока нет состава.
       </p>
     </div>
   );
@@ -734,10 +737,12 @@ export default function DepartmentDetailPage() {
   const departmentId = Number(params?.id);
   const h = useDepartmentPage(departmentId);
   const [managementMode, setManagementMode] = useState(false);
+  const [membersExpanded, setMembersExpanded] = useState(false);
   const [roleMenuOpenForId, setRoleMenuOpenForId] = useState<number | null>(null);
   const roleMenuRef = useRef<HTMLDivElement | null>(null);
   const [departmentMenuOpen, setDepartmentMenuOpen] = useState(false);
   const departmentMenuRef = useRef<HTMLDivElement | null>(null);
+  const [openingDepartmentChat, setOpeningDepartmentChat] = useState(false);
 
   const activeMembersCount = h.members.filter((member) => member.is_active).length;
   const roleOptions = h.roles.map((role) => ({ id: role.id, name: role.name }));
@@ -747,6 +752,12 @@ export default function DepartmentDetailPage() {
     h.userPerms.can_assign_roles;
 
   const isManagementMode = canUseManagementMode && managementMode;
+
+  useEffect(() => {
+    if (isManagementMode) {
+      setMembersExpanded(true);
+    }
+  }, [isManagementMode]);
 
   useEffect(() => {
     if (roleMenuOpenForId === null) return;
@@ -794,6 +805,22 @@ export default function DepartmentDetailPage() {
     };
   }, [departmentMenuOpen]);
 
+  const openDepartmentChat = async () => {
+    if (!h.department) return;
+
+    try {
+      setOpeningDepartmentChat(true);
+      const response = await apiClient.getDepartmentDiscussionChat(h.department.id) as {
+        chat_id: number;
+      };
+      router.push(`/messages/${response.chat_id}`);
+    } catch {
+      toast.error("Не удалось открыть чат отдела");
+    } finally {
+      setOpeningDepartmentChat(false);
+    }
+  };
+
   return (
     <AppShell>
       <div className="space-y-6">
@@ -817,178 +844,232 @@ export default function DepartmentDetailPage() {
         ) : h.department ? (
           <>
             <section className="app-surface rounded-2xl p-5">
-              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0">
-                  <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <MetaChip tone="accent">
-                      <Building2 size={12} />
-                      Отдел
-                    </MetaChip>
-                    <MetaChip>
-                      <Users size={12} />
-                      {activeMembersCount} участников
-                    </MetaChip>
-                    <MetaChip>{h.roles.length} ролей</MetaChip>
-                    {isManagementMode ? (
-                      <MetaChip tone="warning">Режим управления</MetaChip>
-                    ) : null}
+              <div className="mb-4">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="app-card-caption mb-2">Отдел</p>
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <MetaChip>
+                        <Users size={12} />
+                        {activeMembersCount} участников
+                      </MetaChip>
+                      <MetaChip>{h.roles.length} ролей</MetaChip>
+                      {isManagementMode ? (
+                        <MetaChip tone="warning">Режим управления</MetaChip>
+                      ) : null}
+                    </div>
                   </div>
+                  {(canUseManagementMode || h.userPerms.can_manage) ? (
+                    <div
+                      ref={departmentMenuOpen ? departmentMenuRef : null}
+                      className="relative shrink-0"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setDepartmentMenuOpen((current) => !current)}
+                        className="app-action-ghost flex h-8 w-8 items-center justify-center rounded-md"
+                        title="Действия с отделом"
+                        aria-label="Действия с отделом"
+                        aria-expanded={departmentMenuOpen}
+                        aria-haspopup="menu"
+                      >
+                        <ChevronRight
+                          size={15}
+                          className={`transition-transform duration-200 ${departmentMenuOpen ? "rotate-90" : ""}`}
+                        />
+                      </button>
+
+                      {departmentMenuOpen ? (
+                        <div className="app-menu absolute right-0 top-full z-20 mt-2 w-56 rounded-xl py-1.5">
+                          {h.userPerms.can_manage ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDepartmentMenuOpen(false);
+                            h.openAddMember();
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                            >
+                            <UserPlus size={14} className="app-text-muted" />
+                            Добавить участников
+                          </button>
+                        ) : null}
+
+                          {h.userPerms.can_assign_roles ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDepartmentMenuOpen(false);
+                                h.openAssignRoleModal();
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                            >
+                              <UserRoundCog size={14} className="app-text-muted" />
+                              Выдать роль
+                            </button>
+                          ) : null}
+
+                          {h.userPerms.can_assign_roles ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDepartmentMenuOpen(false);
+                                h.openCreateRole();
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                            >
+                              <BadgePlus size={14} className="app-text-muted" />
+                              Создать роль
+                            </button>
+                          ) : null}
+
+                          {h.userPerms.can_manage ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDepartmentMenuOpen(false);
+                                h.openDepartmentEditor();
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                            >
+                              <PencilLine size={14} className="app-text-muted" />
+                              Редактировать отдел
+                            </button>
+                          ) : null}
+
+                          {canUseManagementMode ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDepartmentMenuOpen(false);
+                                setRoleMenuOpenForId(null);
+                                setManagementMode((current) => !current);
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                            >
+                              <ChevronDown
+                                size={14}
+                                className={`transition-transform ${isManagementMode ? "rotate-180" : "-rotate-90"}`}
+                              />
+                              {isManagementMode ? "Вернуться к просмотру" : "Открыть управление"}
+                            </button>
+                          ) : null}
+
+                          {h.userPerms.can_manage ? (
+                            <>
+                              <div className="app-divider my-1 border-t" />
+                              <button
+                                type="button"
+                                disabled={h.pendingKey === "department-delete"}
+                                onClick={() => {
+                                  setDepartmentMenuOpen(false);
+                                  void (async () => {
+                                    const deleted = await h.submitDeleteDepartment();
+                                    if (deleted) {
+                                      router.push("/departments");
+                                    }
+                                  })();
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--danger-foreground)] transition hover:bg-[var(--danger-soft)] disabled:opacity-50"
+                              >
+                                <Trash2 size={14} className="text-[var(--danger-foreground)]" />
+                                Удалить отдел
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="min-w-0">
                   <h1 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">
                     {h.department.name}
                   </h1>
                   <p className="app-text-muted mt-2 text-sm">
                     {h.department.description}
                   </p>
-                </div>
-                {(canUseManagementMode || h.userPerms.can_manage) ? (
-                  <div ref={departmentMenuOpen ? departmentMenuRef : null} className="relative shrink-0">
+                  <div className="mt-4">
                     <button
                       type="button"
-                      onClick={() => setDepartmentMenuOpen((current) => !current)}
-                      className="app-action-ghost flex h-8 w-8 items-center justify-center rounded-md"
-                      title="Действия с отделом"
-                      aria-label="Действия с отделом"
-                      aria-expanded={departmentMenuOpen}
-                      aria-haspopup="menu"
+                      onClick={() => void openDepartmentChat()}
+                      disabled={openingDepartmentChat}
+                      className="app-action-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
                     >
-                      <ChevronRight
+                      <MessageCircle size={16} />
+                      Перейти в чат отдела
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <section className="app-surface-muted rounded-2xl p-4 sm:p-5">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
+                      Сотрудники отдела
+                    </p>
+                    <p className="app-text-muted mt-1 text-sm">
+                      Состав отдела и назначенные роли.
+                    </p>
+                  </div>
+                  {h.filteredMembers.length ? (
+                    <button
+                      type="button"
+                      onClick={() => setMembersExpanded((current) => !current)}
+                      className="app-action-secondary inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                      aria-label={membersExpanded ? "Свернуть список сотрудников" : "Развернуть список сотрудников"}
+                      aria-expanded={membersExpanded}
+                    >
+                      <ChevronDown
                         size={15}
-                        className={`transition-transform duration-200 ${departmentMenuOpen ? "rotate-90" : ""}`}
+                        className={`transition-transform duration-200 ${membersExpanded ? "rotate-180" : ""}`}
                       />
                     </button>
+                  ) : null}
+                </div>
 
-                    {departmentMenuOpen ? (
-                      <div className="app-menu absolute right-0 top-full z-20 mt-2 w-56 rounded-xl py-1.5">
-                        {h.userPerms.can_manage ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDepartmentMenuOpen(false);
-                          h.openAddMember();
-                            }}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
-                          >
-                          <UserPlus size={14} className="app-text-muted" />
-                          Добавить участников
-                        </button>
-                      ) : null}
-
-                        {h.userPerms.can_assign_roles ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDepartmentMenuOpen(false);
-                              h.openAssignRoleModal();
-                            }}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
-                          >
-                            <UserRoundCog size={14} className="app-text-muted" />
-                            Выдать роль
-                          </button>
-                        ) : null}
-
-                        {h.userPerms.can_assign_roles ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDepartmentMenuOpen(false);
-                              h.openCreateRole();
-                            }}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
-                          >
-                            <BadgePlus size={14} className="app-text-muted" />
-                            Создать роль
-                          </button>
-                        ) : null}
-
-                        {h.userPerms.can_manage ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDepartmentMenuOpen(false);
-                              h.openDepartmentEditor();
-                            }}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
-                          >
-                            <PencilLine size={14} className="app-text-muted" />
-                            Редактировать отдел
-                          </button>
-                        ) : null}
-
-                        {canUseManagementMode ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDepartmentMenuOpen(false);
-                              setRoleMenuOpenForId(null);
-                              setManagementMode((current) => !current);
-                            }}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
-                          >
-                            <ChevronDown
-                              size={14}
-                              className={`transition-transform ${isManagementMode ? "rotate-180" : "-rotate-90"}`}
-                            />
-                            {isManagementMode ? "Вернуться к просмотру" : "Открыть управление"}
-                          </button>
-                        ) : null}
-
-                        {h.userPerms.can_manage ? (
-                          <>
-                            <div className="app-divider my-1 border-t" />
-                            <button
-                              type="button"
-                              disabled={h.pendingKey === "department-delete"}
-                              onClick={() => {
-                                setDepartmentMenuOpen(false);
-                                void (async () => {
-                                  const deleted = await h.submitDeleteDepartment();
-                                  if (deleted) {
-                                    router.push("/departments");
-                                  }
-                                })();
-                              }}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--danger-foreground)] transition hover:bg-[var(--danger-soft)] disabled:opacity-50"
-                            >
-                              <Trash2 size={14} className="text-[var(--danger-foreground)]" />
-                              Удалить отдел
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    ) : null}
+                {membersExpanded || !h.filteredMembers.length ? (
+                  <div className={getDepartmentMembersListClassName(isManagementMode)}>
+                    {h.filteredMembers.length ? (
+                      h.filteredMembers.map((member) => (
+                        <DepartmentMemberRow
+                          key={`${member.employee.id}-${member.is_active ? "active" : "inactive"}`}
+                          canAssignRoles={isManagementMode && h.userPerms.can_assign_roles}
+                          canChangeHead={isManagementMode && h.userPerms.can_change_head}
+                          canManage={isManagementMode && h.userPerms.can_manage}
+                          currentHeadId={h.department?.head?.id}
+                          currentUserId={h.currentUserId}
+                          member={member}
+                          pendingKey={h.pendingKey}
+                          roleOptions={roleOptions}
+                          onAssignRole={h.submitMemberRole}
+                          onCreateRole={h.openCreateRole}
+                          onRemoveMember={h.submitRemoveMember}
+                          onSetHead={h.submitQuickHeadChange}
+                          onToggleRoleMenu={setRoleMenuOpenForId}
+                          roleMenuOpenForId={roleMenuOpenForId}
+                          roleMenuRef={roleMenuRef}
+                        />
+                      ))
+                    ) : (
+                      <DepartmentMembersEmptyState />
+                    )}
                   </div>
                 ) : null}
-              </div>
-
-              <div className={getDepartmentMembersListClassName(isManagementMode)}>
-                {h.filteredMembers.length ? (
-                  h.filteredMembers.map((member) => (
-                    <DepartmentMemberRow
-                      key={`${member.employee.id}-${member.is_active ? "active" : "inactive"}`}
-                      canAssignRoles={isManagementMode && h.userPerms.can_assign_roles}
-                      canChangeHead={isManagementMode && h.userPerms.can_change_head}
-                      canManage={isManagementMode && h.userPerms.can_manage}
-                      currentHeadId={h.department?.head?.id}
-                      currentUserId={h.currentUserId}
-                      member={member}
-                      pendingKey={h.pendingKey}
-                      roleOptions={roleOptions}
-                      onAssignRole={h.submitMemberRole}
-                      onCreateRole={h.openCreateRole}
-                      onRemoveMember={h.submitRemoveMember}
-                      onSetHead={h.submitQuickHeadChange}
-                      onToggleRoleMenu={setRoleMenuOpenForId}
-                      roleMenuOpenForId={roleMenuOpenForId}
-                      roleMenuRef={roleMenuRef}
-                    />
-                  ))
-                ) : (
-                  <DepartmentMembersEmptyState />
-                )}
-              </div>
-
+              </section>
             </section>
+
+            <DepartmentFeedSection
+              canCreatePosts={
+                h.userPerms.can_publish_posts || h.userPerms.can_manage_feed
+              }
+              canManageFeed={h.userPerms.can_manage_feed}
+              currentUserId={h.currentUserId}
+              departmentId={h.department.id}
+              departmentName={h.department.name}
+            />
+
           </>
         ) : null}
       </div>

@@ -174,8 +174,9 @@ class ChatViewSet(viewsets.ModelViewSet):
         ОПТИМИЗИРОВАНО: Используем денормализованное поле unread_count из ChatReadState
         вместо подзапросов COUNT(*). Это убирает N+1 проблему и ускоряет в ~100x.
 
-        ФИЛЬТРАЦИЯ: Чаты типа 'comments' исключены из списка (list action),
-        но доступны по прямой ссылке (retrieve action).
+        ФИЛЬТРАЦИЯ: Чаты типа 'comments' по умолчанию исключены из списка,
+        кроме явно помеченных object-chats (`flags.show_in_messages=true`).
+        По прямой ссылке retrieve доступны все comments-чаты.
         """
         user = self.request.user
 
@@ -184,6 +185,7 @@ class ChatViewSet(viewsets.ModelViewSet):
             | Q(participants=user)
             | Q(include_all_users=True)
             | Q(created_by=user)  # Создатель всегда видит свои чаты
+            | Q(type="comments")
         ).select_related(
             'created_by', 'context_content_type'
         ).prefetch_related(
@@ -215,10 +217,12 @@ class ChatViewSet(viewsets.ModelViewSet):
             ),
         ).distinct()
 
-        # Исключаем чаты-комментарии из общего списка
-        # Они доступны только через прямой запрос (retrieve) или через контекст поста
+        # В список попадают только явно выставленные comments-чаты.
+        # Остальные object-comment threads доступны по прямому retrieve.
         if self.action == 'list':
-            queryset = queryset.exclude(type='comments')
+            queryset = queryset.exclude(
+                Q(type='comments') & ~Q(flags__show_in_messages=True)
+            )
 
         return queryset.order_by('-created_at')
 

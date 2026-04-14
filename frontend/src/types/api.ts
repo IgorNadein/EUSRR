@@ -139,6 +139,8 @@ export interface DepartmentUserPermissions {
   can_manage: boolean;
   can_change_head: boolean;
   can_assign_roles: boolean;
+  can_publish_posts: boolean;
+  can_manage_feed: boolean;
 }
 
 export interface DepartmentPermissionChoice {
@@ -187,8 +189,11 @@ export interface Post {
   attachment_url?: string | null;
   tags?: string[];
   created_at: string;
+  created_at_display?: string;
   updated_at: string;
   pinned?: boolean;
+  pinned_global?: boolean;
+  pinned_department?: boolean;
   likes_count: number;
   comments_count: number;
   is_liked?: boolean;

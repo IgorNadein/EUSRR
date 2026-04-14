@@ -109,6 +109,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             return [AdminOrActionOrModelPerms()]
         if self.action in {
             "members",
+            "discussion_chat",
             "user_perms",
             "list",
             "retrieve",
@@ -449,6 +450,39 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         links = _build_links_for_dept(dept, EmployeeBriefSerializer)
         return Response({"count": len(links), "results": links}, status=200)
 
+    @action(detail=True, methods=["get"], url_path="discussion-chat")
+    def discussion_chat(self, request, pk=None):
+        """Возвращает comments-chat отдела для входа из detail page."""
+        from communications.comments_helpers import get_or_create_comments_chat
+
+        dept = self.get_object()
+        chat = get_or_create_comments_chat(
+            dept,
+            created_by=None,
+            name=dept.name,
+        )
+        next_flags = dict(chat.flags or {})
+        if next_flags.get("show_in_messages") is not True:
+            next_flags["show_in_messages"] = True
+
+        if (
+            chat.created_by_id is not None
+            or chat.name != dept.name
+            or chat.flags != next_flags
+        ):
+            chat.created_by = None
+            chat.name = dept.name
+            chat.flags = next_flags
+            chat.save(update_fields=["created_by", "name", "flags"])
+        return Response(
+            {
+                "chat_id": chat.id,
+                "chat_type": chat.type,
+                "name": chat.name,
+            },
+            status=status.HTTP_200_OK,
+        )
+
     @action(detail=True, methods=["get"], url_path="user-perms")
     def user_perms(self, request, pk=None):
         """GET /api/v1/departments/{id}/user-perms/.
@@ -465,6 +499,12 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             ),
             "can_assign_roles": has_dept_perm(
                 request.user, dept.id, DeptPerm.ASSIGN_ROLE
+            ),
+            "can_publish_posts": has_dept_perm(
+                request.user, dept.id, DeptPerm.CREATE_POST
+            ),
+            "can_manage_feed": has_dept_perm(
+                request.user, dept.id, DeptPerm.MANAGE_FEED
             ),
         }
         return Response(data, status=200)

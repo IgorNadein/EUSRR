@@ -66,13 +66,18 @@ class PostViewSet(viewsets.ModelViewSet):
     """
 
     queryset = Post.objects.select_related("author", "department").order_by(
-        "-pinned", "-created_at"
+        "-pinned_global", "-created_at"
     )
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["title", "body"]
-    ordering_fields = ["created_at", "pinned", "likes_count"]
-    ordering = ["-pinned", "-created_at"]
+    ordering_fields = [
+        "created_at",
+        "pinned_global",
+        "pinned_department",
+        "likes_count",
+    ]
+    ordering = ["-pinned_global", "-created_at"]
 
     class PostDeptPerm(AdminOrDeptAllowed):
         """Департаментные права для операций над постами отдела.
@@ -153,6 +158,30 @@ class PostViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         return PostListSerializer if self.action == "list" else PostSerializer
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["pin_scope"] = self._resolve_pin_scope()
+        return context
+
+    def _resolve_pin_scope(self, post: Post | None = None) -> str:
+        request_data = self.request.data if self.request.method not in {"GET", "HEAD"} else {}
+        scope = (
+            self.request.query_params.get("pin_scope")
+            or self.request.query_params.get("scope")
+            or request_data.get("scope")
+            or ""
+        ).strip()
+        if scope in {"global", "department"}:
+            return scope
+
+        post_type = (self.request.query_params.get("type") or "").strip()
+        department_id = _to_id(self.request.query_params.get("department"))
+        if post_type == TYPE_DEPARTMENT and department_id is not None:
+            return "department"
+        if post is not None and getattr(post, "type", None) == TYPE_DEPARTMENT:
+            return "department"
+        return "global"
+
     def get_queryset(self):
         qs = super().get_queryset()
         user = self.request.user
@@ -197,11 +226,20 @@ class PostViewSet(viewsets.ModelViewSet):
         author_id = _to_id(qp.get("author"))
         if author_id is not None:
             qs = qs.filter(author_id=author_id)
+        pin_scope = self._resolve_pin_scope()
+        pinned_field = (
+            "pinned_department" if pin_scope == "department" else "pinned_global"
+        )
         pinned = qp.get("pinned")
         if pinned in ("true", "1"):
-            qs = qs.filter(pinned=True)
+            qs = qs.filter(**{pinned_field: True})
         elif pinned in ("false", "0"):
-            qs = qs.filter(pinned=False)
+            qs = qs.filter(**{pinned_field: False})
+
+        if pin_scope == "department" and dept_id is not None:
+            qs = qs.order_by("-pinned_department", "-created_at")
+        else:
+            qs = qs.order_by("-pinned_global", "-created_at")
 
         return qs
 
@@ -231,17 +269,67 @@ class PostViewSet(viewsets.ModelViewSet):
     def pin(self, request, pk=None):
         """Пинует пост (только staff/superuser)."""
         post = self.get_object()
-        if not post.pinned:
-            Post.objects.filter(pk=post.pk).update(pinned=True)
-        return Response({"pinned": True})
+        scope = self._resolve_pin_scope(post=post)
+        if scope == "department":
+            if post.type != TYPE_DEPARTMENT or post.department_id is None:
+                return Response(
+                    {"detail": "Закрепление в ленте отдела доступно только для публикаций отдела."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not post.pinned_department:
+                Post.objects.filter(pk=post.pk).update(pinned_department=True)
+            return Response(
+                {
+                    "scope": "department",
+                    "pinned": True,
+                    "pinned_global": bool(post.pinned_global),
+                    "pinned_department": True,
+                }
+            )
+
+        if not post.pinned_global:
+            Post.objects.filter(pk=post.pk).update(pinned_global=True)
+        return Response(
+            {
+                "scope": "global",
+                "pinned": True,
+                "pinned_global": True,
+                "pinned_department": bool(post.pinned_department),
+            }
+        )
 
     @action(detail=True, methods=["post"], permission_classes=[IsAdminUser])
     def unpin(self, request, pk=None):
         """Снимает пин (только staff/superuser)."""
         post = self.get_object()
-        if post.pinned:
-            Post.objects.filter(pk=post.pk).update(pinned=False)
-        return Response({"pinned": False})
+        scope = self._resolve_pin_scope(post=post)
+        if scope == "department":
+            if post.type != TYPE_DEPARTMENT or post.department_id is None:
+                return Response(
+                    {"detail": "Закрепление в ленте отдела доступно только для публикаций отдела."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if post.pinned_department:
+                Post.objects.filter(pk=post.pk).update(pinned_department=False)
+            return Response(
+                {
+                    "scope": "department",
+                    "pinned": False,
+                    "pinned_global": bool(post.pinned_global),
+                    "pinned_department": False,
+                }
+            )
+
+        if post.pinned_global:
+            Post.objects.filter(pk=post.pk).update(pinned_global=False)
+        return Response(
+            {
+                "scope": "global",
+                "pinned": False,
+                "pinned_global": False,
+                "pinned_department": bool(post.pinned_department),
+            }
+        )
 
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
     def like(self, request, pk=None):

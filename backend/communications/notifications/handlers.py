@@ -232,7 +232,7 @@ def _notify_comment(message):
         # Нет привязанного объекта - обычная обработка
         return
 
-    recipients_set = set()
+    recipient_ids = set()
     context_obj = chat.context_object
 
     # Определяем автора объекта в зависимости от типа
@@ -251,6 +251,23 @@ def _notify_comment(message):
         object_author = getattr(context_obj, 'uploaded_by', None)
         object_url = f"/documents?document={context_obj.id}"
         object_type = "документа"
+    elif model_name == 'Department':
+        from employees.models import EmployeeDepartment, RoleAssignment
+
+        object_url = ActionURLs.chat_detail(chat.id)
+        object_type = "отдела"
+
+        member_ids = EmployeeDepartment.objects.filter(
+            department_id=context_obj.id,
+            is_active=True,
+        ).values_list("employee_id", flat=True)
+        recipient_ids.update(member_ids)
+
+        role_only_ids = RoleAssignment.objects.filter(
+            role__department_id=context_obj.id,
+            is_active=True,
+        ).values_list("employee_id", flat=True)
+        recipient_ids.update(role_only_ids)
     elif hasattr(context_obj, 'employee'):  # Request
         object_author = getattr(context_obj, 'employee', None)
         object_url = f"/requests?request={context_obj.id}"
@@ -258,7 +275,7 @@ def _notify_comment(message):
 
     # 1. Уведомляем автора объекта
     if object_author and object_author.id != author.id:
-        recipients_set.add(object_author)
+        recipient_ids.add(object_author.id)
 
     # 2. Уведомляем всех, кто участвовал в обсуждении
     from ..models import Message
@@ -270,16 +287,18 @@ def _notify_comment(message):
     ).values_list('author_id', flat=True).distinct()
 
     if previous_commenters:
-        from django.contrib.auth import get_user_model
-        User = get_user_model()
-        recipients_set.update(
-            User.objects.filter(id__in=previous_commenters, is_active=True)
-        )
+        recipient_ids.update(previous_commenters)
+
+    recipient_ids.discard(author.id)
+    if not recipient_ids:
+        return
+
+    recipients = User.objects.filter(id__in=recipient_ids, is_active=True)
 
     # Отправляем уведомления
     author_name = author.get_full_name() or author.username
 
-    for recipient in recipients_set:
+    for recipient in recipients:
         _send_notification(
             sender=author,
             recipient=recipient,

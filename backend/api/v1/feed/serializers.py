@@ -49,6 +49,9 @@ class PostListSerializer(serializers.ModelSerializer):
         source="created_at", format="%d.%m.%Y %H:%M", read_only=True
     )
 
+    pinned = serializers.SerializerMethodField()
+    pinned_global = serializers.BooleanField(read_only=True, default=False)
+    pinned_department = serializers.BooleanField(read_only=True, default=False)
     # ожидания фронта
     is_liked = serializers.BooleanField(read_only=True, default=False)
     comments_count = serializers.IntegerField(
@@ -75,6 +78,8 @@ class PostListSerializer(serializers.ModelSerializer):
             "created_at",
             "created_at_display",
             "pinned",
+            "pinned_global",
+            "pinned_department",
             "likes_count",
             "comments_count",
             "author_id",
@@ -85,6 +90,8 @@ class PostListSerializer(serializers.ModelSerializer):
             "created_at",
             "created_at_display",
             "pinned",
+            "pinned_global",
+            "pinned_department",
             "likes_count",
             "comments_count",
             "author_id",
@@ -105,10 +112,20 @@ class PostListSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         return build_media_url(obj.attachment, request)
 
+    @extend_schema_field(serializers.BooleanField())
+    def get_pinned(self, obj):
+        scope = self.context.get("pin_scope") or "global"
+        if scope == "department":
+            return bool(getattr(obj, "pinned_department", False))
+        return bool(getattr(obj, "pinned_global", False))
+
 
 class PostSerializer(PostListSerializer):
     """Сериализатор для деталей поста"""
 
+    body = serializers.CharField(required=False, allow_blank=True)
+    image = serializers.ImageField(required=False, allow_null=True, write_only=True)
+    attachment = serializers.FileField(required=False, allow_null=True, write_only=True)
     user_has_liked = serializers.SerializerMethodField()
 
     class Meta(PostListSerializer.Meta):
@@ -121,6 +138,13 @@ class PostSerializer(PostListSerializer):
         if request and request.user and request.user.is_authenticated:
             return PostLike.objects.filter(post=obj, user=request.user).exists()
         return False
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        data["image"] = build_media_url(instance.image, request)
+        data["attachment"] = build_media_url(instance.attachment, request)
+        return data
 
     def validate(self, attrs):
         # значения с учётом partial

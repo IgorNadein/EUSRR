@@ -6,8 +6,11 @@
 import pytest
 from channels.layers import get_channel_layer
 from channels.testing import WebsocketCommunicator
+from channels.db import database_sync_to_async
+from django.contrib.contenttypes.models import ContentType
 
 from communications.models import Chat, ChatMembership, Message
+from employees.models import Department
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -134,8 +137,53 @@ class TestRealtimeIntegration:
         
         # Должны получить обновление списка (list_update)
         update = await communicator.receive_json_from(timeout=5)
-        
+
         assert update["type"] == "list_update"
         assert update["chat_id"] == test_chat.id
         
+        await communicator.disconnect()
+
+    async def test_visible_department_comments_chat_updates_list_for_active_user(
+        self, ws_communicator, user
+    ):
+        """
+        Видимый comments-chat отдела должен попадать в realtime-подписки
+        и присылать list_update для страницы списка чатов.
+        """
+        department = await database_sync_to_async(Department.objects.create)(
+            name="Finance",
+        )
+        department_ct = await database_sync_to_async(ContentType.objects.get_for_model)(Department)
+        comments_chat = await database_sync_to_async(Chat.objects.create)(
+            type="comments",
+            name=department.name,
+            flags={"show_in_messages": True},
+            context_content_type=department_ct,
+            context_object_id=department.id,
+        )
+
+        communicator = await ws_communicator(user=user)
+
+        connected, _ = await communicator.connect()
+        assert connected
+
+        channel_layer = get_channel_layer()
+        await channel_layer.group_send(
+            f"chat_{comments_chat.id}",
+            {
+                "type": "chat_message",
+                "chat_id": comments_chat.id,
+                "payload": {
+                    "id": 1,
+                    "content": "Department chat message",
+                    "author_id": user.id,
+                },
+            },
+        )
+
+        update = await communicator.receive_json_from(timeout=5)
+
+        assert update["type"] == "list_update"
+        assert update["chat_id"] == comments_chat.id
+
         await communicator.disconnect()

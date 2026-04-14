@@ -95,6 +95,8 @@ const EMPTY_USER_PERMS: DepartmentUserPermissions = {
   can_manage: false,
   can_change_head: false,
   can_assign_roles: false,
+  can_publish_posts: false,
+  can_manage_feed: false,
 };
 
 const getErrorMessage = extractDepartmentApiErrorMessage;

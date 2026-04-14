@@ -10,6 +10,7 @@ type CommentComposerProps = {
   onSubmit: () => void | Promise<void>;
   placeholder?: string;
   rows?: number;
+  submitDisabled?: boolean;
   value: string;
 };
 
@@ -21,9 +22,11 @@ export function CommentComposer({
   onSubmit,
   placeholder = "Добавить комментарий",
   rows = 2,
+  submitDisabled,
   value,
 }: CommentComposerProps) {
-  const submitDisabled = disabled || !value.trim();
+  const resolvedSubmitDisabled =
+    submitDisabled ?? (disabled || !value.trim());
 
   if (multiline) {
     return (
@@ -48,7 +51,7 @@ export function CommentComposer({
           <button
             type="button"
             onClick={() => void onSubmit()}
-            disabled={submitDisabled}
+            disabled={resolvedSubmitDisabled}
             className="app-action-primary inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
             title="Отправить комментарий"
             aria-label="Отправить комментарий"
@@ -71,7 +74,7 @@ export function CommentComposer({
       <button
         type="button"
         onClick={() => void onSubmit()}
-        disabled={submitDisabled}
+        disabled={resolvedSubmitDisabled}
         className="app-action-primary inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
         title="Отправить комментарий"
         aria-label="Отправить комментарий"

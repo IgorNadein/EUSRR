@@ -62,6 +62,8 @@ export function createEmployeesApi(request: RequestFn) {
             }),
         getDepartmentMembers: (id: number | string) =>
             request(`/api/v1/departments/${id}/members/`),
+        getDepartmentDiscussionChat: (id: number | string) =>
+            request(`/api/v1/departments/${id}/discussion-chat/`),
         getDepartmentUserPerms: (id: number | string) =>
             request(`/api/v1/departments/${id}/user-perms/`),
         setDepartmentHead: (id: number | string, head_id: number | null) =>

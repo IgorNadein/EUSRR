@@ -341,6 +341,12 @@ def resolve_chat_participants_for_department(context_object, **kwargs):
         return Employee.objects.none()
 
     department = context_object
+    chat = kwargs.get("chat")
+
+    # Основной discussion/comments chat отдела доступен всем активным
+    # сотрудникам сайта, а не только физическому составу отдела.
+    if getattr(chat, "type", None) == "comments":
+        return Employee.objects.filter(is_active=True)
 
     # Получаем активных сотрудников отдела
     employee_ids = EmployeeDepartment.objects.filter(

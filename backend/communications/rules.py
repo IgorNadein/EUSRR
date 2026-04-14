@@ -35,6 +35,15 @@ def is_chat_member(user, chat):
     if chat.type == "global":
         return True
 
+    if chat.type == "comments" and chat.context_object_id:
+        try:
+            return chat.get_participants().filter(pk=user.pk).exists()
+        except Exception:
+            logger.exception(
+                "[is_chat_member] failed to resolve comments chat participants"
+            )
+            return False
+
     return (
         ChatMembership.objects.filter(
             chat=chat, user=user, is_active=True
@@ -172,6 +181,15 @@ def has_send_messages_permission(user, chat):
     # Для личных/глобальных чатов без ChatMembership - разрешено всем
     if chat.type in ["private", "global"]:
         return True
+
+    if chat.type == "comments" and chat.context_object_id:
+        try:
+            return chat.get_participants().filter(pk=user.pk).exists()
+        except Exception:
+            logger.exception(
+                "[has_send_messages_permission] failed to resolve comments chat participants"
+            )
+            return False
 
     # Для чатов с ChatMembership проверяем флаг can_send_messages
     if hasattr(chat, "memberships"):

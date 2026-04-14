@@ -10,7 +10,8 @@ class PostAdmin(admin.ModelAdmin):
         "author",
         "department",
         "created_at",
-        "pinned",
+        "pinned_global",
+        "pinned_department",
     ]
-    list_filter = ["type", "department", "pinned"]
+    list_filter = ["type", "department", "pinned_global", "pinned_department"]
     search_fields = ["title", "body", "author__last_name"]

@@ -233,13 +233,14 @@
 
 - detail screen, который должен уметь переключаться между `showcase` и `management` без смены route и без ощущения двух разных страниц
 - page-level controller для domain actions вокруг одного объекта: overview, members и inline management actions
+- entry-point с detail page в уже существующий object-chat, когда объекту нужен access к реальной message history без локального duplicate UI
 - richer detail layout, где есть сильный header и один основной roster/workspace-блок, без раздувания служебных summary-panels и вторичных management-panels
 - member roster с role assignment и person-chip подачей вместо сырых строк участников
 - role management на уровне названий ролей и назначений участникам, встроенный в roster, без фронтового permission-editor
 
 С оговоркой:
 
-- `departments/[id]` должен оставаться привязанным к реальным backend-capabilities; не наращивать UI, если под него нет соответствующих endpoint/actions
+- `departments/[id]` должен оставаться привязанным к реальным backend-capabilities; если у отдела уже есть живой object-chat, не дублировать его локальной discussion-панелью на странице
 
 ### Messages
 

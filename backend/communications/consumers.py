@@ -18,6 +18,7 @@ from django.utils import timezone
 
 from .models import Chat, ChatMembership, ChatReadState, Message, MessageReaction
 from .serialization import serialize_message
+from .utils import user_can_access_chat
 
 logger = logging.getLogger(__name__)
 
@@ -597,6 +598,7 @@ class ChatConsumerMixin:
                 Q(type="global")
                 | Q(id__in=membership_chat_ids)
                 | Q(include_all_users=True)
+                | Q(type="comments", flags__show_in_messages=True)
             )
             .values_list("id", flat=True)
             .distinct()
@@ -625,6 +627,9 @@ class ChatConsumerMixin:
     @database_sync_to_async
     def _user_can_access(self, chat, user):
         """Проверка доступа пользователя к чату"""
+        if chat.type == "comments":
+            return user_can_access_chat(chat, user)
+
         if chat.type == "global":
             return True
 
