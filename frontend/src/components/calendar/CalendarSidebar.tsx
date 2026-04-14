@@ -2,6 +2,7 @@
 
 import { memo } from "react";
 import { CalendarCard } from "@/components/calendar/CalendarCard";
+import { DesktopStickyRail } from "@/components/layout/DesktopStickyRail";
 import type { CalendarEvent } from "@/services/calendarService";
 
 interface CalendarSidebarProps {
@@ -15,23 +16,19 @@ interface CalendarSidebarProps {
   setEventsRefreshTrigger: (value: number | ((prev: number) => number)) => void;
   setSidebarEvents: (events: CalendarEvent[]) => void;
   onCalendarChange: (calendarId: number | null) => void;
-  fixedDesktop?: boolean;
+  pinnedDesktop?: boolean;
 }
 
 /**
  * Обертка для календаря в правом сайдбаре (десктоп)
  */
 export const CalendarSidebar = memo(function CalendarSidebar(props: CalendarSidebarProps) {
-  const { fixedDesktop = false, ...calendarProps } = props;
+  const { pinnedDesktop = true, ...calendarProps } = props;
   return (
-    <aside className="hidden w-72 flex-shrink-0 space-y-4 lg:block">
-      <div
-        className={`space-y-4 lg:max-h-[calc(100vh-7.5rem)] lg:overflow-y-auto lg:pb-2 ${
-          fixedDesktop ? "lg:fixed lg:top-[5.5rem] lg:w-72" : "lg:sticky lg:top-8"
-        }`}
-      >
+    <DesktopStickyRail widthClass="w-72" pinned={pinnedDesktop}>
+      <div className="space-y-4">
         <CalendarCard {...calendarProps} />
       </div>
-    </aside>
+    </DesktopStickyRail>
   );
 });
