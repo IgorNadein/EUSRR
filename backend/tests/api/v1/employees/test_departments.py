@@ -57,6 +57,7 @@ from employees.models import (
     DepartmentPermission,
     DepartmentRole,
     EmployeeDepartment,
+    RoleAssignment,
 )
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -200,6 +201,57 @@ def test_employees_count_not_double_count_head_if_in_links(api_client: APIClient
     assert resp.status_code == 200
     data = resp.json()
     assert data["employees_count"] == 3
+
+
+def test_role_only_count_counts_only_active_role_assignees_without_membership(
+    api_client: APIClient,
+):
+    user = make_user("u-role-only@example.com")
+    api_client.force_authenticate(user=user)
+
+    dept = Department.objects.create(name="Dept")
+    role = make_role(dept, "Auditor")
+
+    role_only_1 = make_user("role-only-1@example.com")
+    role_only_2 = make_user("role-only-2@example.com")
+    member_with_role = make_user("member-with-role@example.com")
+    inactive_member_with_role = make_user("inactive-member-with-role@example.com")
+
+    EmployeeDepartment.objects.create(
+        employee=member_with_role,
+        department=dept,
+        is_active=True,
+    )
+    EmployeeDepartment.objects.create(
+        employee=inactive_member_with_role,
+        department=dept,
+        is_active=False,
+    )
+
+    RoleAssignment.objects.create(employee=role_only_1, role=role, is_active=True)
+    RoleAssignment.objects.create(employee=role_only_2, role=role, is_active=True)
+    RoleAssignment.objects.create(
+        employee=member_with_role,
+        role=role,
+        is_active=True,
+    )
+    RoleAssignment.objects.create(
+        employee=inactive_member_with_role,
+        role=role,
+        is_active=True,
+    )
+    RoleAssignment.objects.create(
+        employee=make_user("inactive-role-only@example.com"),
+        role=role,
+        is_active=False,
+    )
+
+    url = reverse("api:v1:departments-detail", args=[dept.pk])
+    resp = api_client.get(url)
+
+    assert resp.status_code == status.HTTP_200_OK
+    data = resp.json()
+    assert data["role_only_count"] == 3
 
 # ---------- tests: create/destroy ----------
 

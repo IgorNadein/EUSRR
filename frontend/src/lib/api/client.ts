@@ -182,6 +182,15 @@ export class ApiClientBase {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async updateCurrentUserProfile(data: Record<string, any>): Promise<any> {
+        const hasFile = Object.values(data).some((value) => value instanceof File);
+
+        if (!hasFile) {
+            return this.request('/api/v1/employees/me/', {
+                method: 'PATCH',
+                body: JSON.stringify(data),
+            });
+        }
+
         const formData = new FormData();
         Object.keys(data).forEach((key) => {
             if (Array.isArray(data[key])) {

@@ -13,13 +13,14 @@ export function createEmployeesApi(request: RequestFn) {
             request('/api/v1/directory/me/login/'),
         refreshDirectoryLogin: () =>
             request('/api/v1/directory/me/login/refresh/', { method: 'POST' }),
-        getEmployees: (params?: { search?: string; department?: string; page?: number; limit?: number; is_active?: boolean }) => {
+        getEmployees: (params?: { search?: string; department?: string; page?: number; limit?: number; is_active?: boolean; ordering?: string }) => {
             const qp = new URLSearchParams();
             if (params?.search) qp.append('search', params.search);
             if (params?.department) qp.append('department', params.department);
             if (params?.page) qp.append('page', params.page.toString());
             if (params?.limit) qp.append('limit', params.limit.toString());
             if (params?.is_active !== undefined) qp.append('active', params.is_active.toString());
+            if (params?.ordering) qp.append('ordering', params.ordering);
             const qs = qp.toString();
             return request(`/api/v1/employees/${qs ? '?' + qs : ''}`);
         },

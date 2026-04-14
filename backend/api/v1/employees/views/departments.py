@@ -130,9 +130,21 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         active_links = EmployeeDepartment.objects.filter(
             department_id=OuterRef("pk"), is_active=True
         )
+        active_role_assignments = RoleAssignment.objects.filter(
+            role__department_id=OuterRef("pk"),
+            is_active=True,
+        ).exclude(
+            employee__departments_links__department_id=OuterRef("pk"),
+            employee__departments_links__is_active=True,
+        )
 
         active_count_subq = (
             active_links.values("department_id")
+            .annotate(c=Count("employee_id", distinct=True))
+            .values("c")[:1]
+        )
+        role_only_count_subq = (
+            active_role_assignments.values("role__department_id")
             .annotate(c=Count("employee_id", distinct=True))
             .values("c")[:1]
         )
@@ -140,6 +152,10 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         qs = qs.annotate(
             active_count=Coalesce(
                 Subquery(active_count_subq, output_field=IntegerField()),
+                Value(0),
+            ),
+            role_only_count=Coalesce(
+                Subquery(role_only_count_subq, output_field=IntegerField()),
                 Value(0),
             ),
             head_in_active=Exists(

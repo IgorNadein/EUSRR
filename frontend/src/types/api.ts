@@ -121,6 +121,7 @@ export interface Department {
   parent?: number;
   head?: User;
   employees_count?: number;
+  role_only_count?: number;
 }
 
 export interface DepartmentMemberRole {

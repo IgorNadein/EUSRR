@@ -143,16 +143,10 @@ export default function EmployeesPage() {
   }, [hasMore, loading, loadingMore, page]);
 
   const filteredEmployees = useMemo(() => {
-    const sorted = [...employees].sort((left, right) => {
-      const leftName = `${left.last_name || ""} ${left.first_name || ""}`.trim();
-      const rightName = `${right.last_name || ""} ${right.first_name || ""}`.trim();
-      return leftName.localeCompare(rightName, "ru");
-    });
-
     const query = search.trim().toLowerCase();
-    if (!query) return sorted;
+    if (!query) return employees;
 
-    return sorted.filter((employee) => {
+    return employees.filter((employee) => {
       const fullName =
         `${employee.last_name || ""} ${employee.first_name || ""} ${employee.patronymic || ""}`.trim().toLowerCase();
       const position = (employee.position?.name || "").toLowerCase();

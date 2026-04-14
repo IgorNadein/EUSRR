@@ -78,6 +78,8 @@ export default function DepartmentsPage() {
                 const headName = department.head
                   ? `${department.head.last_name} ${department.head.first_name}`.trim()
                   : "Не назначен";
+                const directMembersCount = department.employees_count ?? 0;
+                const roleOnlyCount = department.role_only_count ?? 0;
 
                 return (
                   <Link key={department.id} href={`/departments/${department.id}`} className="app-surface-muted block rounded-xl p-4 transition hover:bg-[var(--surface-elevated)]">
@@ -87,9 +89,14 @@ export default function DepartmentsPage() {
                         <p className="app-text-muted mt-1 text-xs">Руководитель: {headName}</p>
                         <p className="app-text-muted mt-2 text-sm">{department.description || "Описание не заполнено"}</p>
                       </div>
-                      <div className="app-selected app-accent-text inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs">
+                      <div
+                        className="app-selected app-accent-text inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs"
+                        title="Участники отдела • Только роли без членства"
+                      >
                         <Users size={12} />
-                        {department.employees_count ?? 0}
+                        <span>{directMembersCount}</span>
+                        <span className="opacity-60">•</span>
+                        <span>{roleOnlyCount}</span>
                       </div>
                     </div>
                   </Link>

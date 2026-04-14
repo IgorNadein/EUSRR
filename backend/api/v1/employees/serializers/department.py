@@ -19,6 +19,7 @@ class DepartmentSerializer(serializers.ModelSerializer):
         allow_null=True,
     )
     employees_count = serializers.IntegerField(read_only=True)
+    role_only_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Department
@@ -29,6 +30,7 @@ class DepartmentSerializer(serializers.ModelSerializer):
             "head",
             "head_id",
             "employees_count",
+            "role_only_count",
         )
 
 
