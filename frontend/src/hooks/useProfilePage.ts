@@ -7,12 +7,14 @@ import { apiClient } from "@/lib/api";
 import {
   formatProfileDate,
   formatProfileDateTime,
+  getProfileDepartmentSummary,
   getLatestEmployeeAction,
   getUserFullName,
   getWorkDuration,
   normalizeTelegramLink,
   normalizeWhatsAppLink,
   sortEmployeeActions,
+  type ProfileDepartmentSummary,
 } from "@/lib/users/userDetailUtils";
 import type { DirectoryLoginResult, EmployeeAction } from "@/types/api";
 
@@ -45,11 +47,6 @@ export type ProfileContactEntry = {
 export type ProfileInfoEntry = {
   label: string;
   value: string;
-};
-
-export type ProfileDepartmentSummary = {
-  label: string;
-  href?: string;
 };
 
 export type ProfilePageController = {
@@ -286,18 +283,7 @@ export function useProfilePage(): ProfilePageController {
   );
 
   const departmentSummary = useMemo<ProfileDepartmentSummary | null>(() => {
-    if (!user?.departments?.length) return null;
-
-    return {
-      label:
-        user.departments.length === 1
-          ? user.departments[0].name
-          : `${user.departments.length} отделов`,
-      href:
-        user.departments.length === 1
-          ? `/departments/${user.departments[0].id}`
-          : undefined,
-    };
+    return getProfileDepartmentSummary(user?.departments);
   }, [user?.departments]);
 
   const contactEntries = useMemo<ProfileContactEntry[]>(() => {

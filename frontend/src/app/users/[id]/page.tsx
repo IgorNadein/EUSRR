@@ -38,6 +38,7 @@ import {
   formatProfileDateTime,
   formatPhoneForLink,
   getEmployeeActionTone,
+  getProfileDepartmentSummary,
   getWorkDuration,
   normalizeTelegramLink,
   normalizeWhatsAppLink,
@@ -101,8 +102,8 @@ export default function UserDetailPage() {
     }
   }, [currentUser?.id, router, userId]);
 
-  const primaryDepartment = useMemo(
-    () => person?.departments?.[0] || null,
+  const departmentSummary = useMemo(
+    () => getProfileDepartmentSummary(person?.departments),
     [person?.departments],
   );
   const [availableSkills, setAvailableSkills] = useState<
@@ -449,10 +450,10 @@ export default function UserDetailPage() {
               secondaryLine={formatBirthdayWithYear(person.birth_date) || "Не указана"}
               roleText={person.position?.name || "Должность не указана"}
               departmentBadge={
-                primaryDepartment ? (
+                departmentSummary ? (
                   <ProfileDepartmentBadge
-                    label={primaryDepartment.name}
-                    href={`/departments/${primaryDepartment.id}`}
+                    label={departmentSummary.label}
+                    href={departmentSummary.href}
                   />
                 ) : undefined
               }

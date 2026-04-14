@@ -1,4 +1,9 @@
-import type { EmployeeAction, User } from "@/types/api";
+import type { EmployeeAction, EmployeeDepartment, User } from "@/types/api";
+
+export type ProfileDepartmentSummary = {
+  label: string;
+  href?: string;
+};
 
 export type UserProfileTextField =
   | "firstName"
@@ -70,6 +75,34 @@ export function getUserFullName(person: User | null): string {
 
 export function getUserInitials(person: User | null): string {
   return `${person?.last_name?.[0] || ""}${person?.first_name?.[0] || ""}` || "П";
+}
+
+function pluralizeDepartments(count: number): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+
+  if (mod10 === 1 && mod100 !== 11) return "отдел";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return "отдела";
+  }
+  return "отделов";
+}
+
+export function getProfileDepartmentSummary(
+  departments?: EmployeeDepartment[] | null,
+): ProfileDepartmentSummary | null {
+  if (!departments?.length) return null;
+
+  if (departments.length === 1) {
+    return {
+      label: departments[0].name,
+      href: `/departments/${departments[0].id}`,
+    };
+  }
+
+  return {
+    label: `${departments.length} ${pluralizeDepartments(departments.length)}`,
+  };
 }
 
 export function getLatestEmployeeAction(actions?: EmployeeAction[] | null): EmployeeAction | null {
