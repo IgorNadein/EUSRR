@@ -341,7 +341,7 @@ function LeftNavContent({ onNavigate }: LeftNavContentProps) {
 
 function LeftNav() {
   return (
-    <aside className="hidden w-64 flex-shrink-0 lg:block lg:sticky lg:self-start lg:top-22 lg:max-h-[calc(100vh-5.5rem)] lg:overflow-y-auto">
+    <aside className="hidden w-64 flex-shrink-0 lg:block lg:sticky lg:self-start lg:top-8 lg:max-h-[calc(100vh-7.5rem)] lg:overflow-y-auto">
       <div className="space-y-4 lg:pb-2">
         <LeftNavContent />
       </div>
