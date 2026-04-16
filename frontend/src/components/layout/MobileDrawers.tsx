@@ -104,7 +104,14 @@ interface CalendarDrawerProps {
   onClose: () => void;
   onOpenCalendarModal: (calendar?: { id?: number; name: string }) => void;
   onOpenEventModal: (event: Partial<CalendarEvent> & { id?: number }, date?: Date) => void;
-  onOpenParticipantsModal: (calendar: { id: number; name: string; user_role?: string }) => void;
+  onOpenParticipantsModal: (calendar: {
+    id: number;
+    name: string;
+    user_role?: string;
+    can_manage_participants?: boolean;
+    type?: string | null;
+    context_type?: string | null;
+  }) => void;
   eventsRefreshTrigger: number;
   setEventsRefreshTrigger: (value: number | ((prev: number) => number)) => void;
   setSidebarEvents: (events: CalendarEvent[]) => void;

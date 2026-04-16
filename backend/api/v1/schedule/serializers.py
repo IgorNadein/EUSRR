@@ -16,12 +16,23 @@ from schedule.models import (
 )
 from django.contrib.contenttypes.models import ContentType
 
+from scheduling.services import (
+    get_calendar_binding,
+    user_can_create_event,
+    user_can_delete_event,
+    user_can_edit_calendar,
+    user_can_edit_event,
+    user_can_manage_participants,
+)
+
 
 class RelatedUserSummarySerializer(serializers.Serializer):
     id = serializers.IntegerField()
     username = serializers.CharField()
     first_name = serializers.CharField(required=False, allow_blank=True)
     last_name = serializers.CharField(required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+    avatar = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     full_name = serializers.CharField(required=False)
     role = serializers.CharField(required=False)
 
@@ -54,6 +65,13 @@ class CalendarRelationSerializer(serializers.ModelSerializer):
     def get_user(self, obj):
         """Информация о связанном пользователе."""
         if obj.content_object:
+            avatar = getattr(obj.content_object, "avatar", None)
+            avatar_url = None
+            if avatar:
+                try:
+                    avatar_url = avatar.url
+                except Exception:
+                    avatar_url = str(avatar)
             return {
                 "id": obj.content_object.id,
                 "username": getattr(
@@ -61,6 +79,8 @@ class CalendarRelationSerializer(serializers.ModelSerializer):
                 ),
                 "first_name": getattr(obj.content_object, "first_name", ""),
                 "last_name": getattr(obj.content_object, "last_name", ""),
+                "email": getattr(obj.content_object, "email", ""),
+                "avatar": avatar_url,
             }
         return None
 
@@ -101,6 +121,13 @@ class CalendarSerializer(serializers.ModelSerializer):
     owner = serializers.SerializerMethodField()
     participants = serializers.SerializerMethodField()
     user_role = serializers.SerializerMethodField()
+    type = serializers.SerializerMethodField()
+    context_type = serializers.SerializerMethodField()
+    context_object_id = serializers.SerializerMethodField()
+    flags = serializers.SerializerMethodField()
+    can_create_events = serializers.SerializerMethodField()
+    can_edit_calendar = serializers.SerializerMethodField()
+    can_manage_participants = serializers.SerializerMethodField()
 
     class Meta:
         model = Calendar
@@ -110,9 +137,16 @@ class CalendarSerializer(serializers.ModelSerializer):
             "title",
             "slug",
             "events_count",
+            "type",
+            "context_type",
+            "context_object_id",
+            "flags",
             "owner",
             "participants",
             "user_role",
+            "can_create_events",
+            "can_edit_calendar",
+            "can_manage_participants",
         ]
         read_only_fields = ["id", "owner", "participants", "user_role"]
         extra_kwargs = {
@@ -124,6 +158,28 @@ class CalendarSerializer(serializers.ModelSerializer):
     def get_events_count(self, obj):
         """Количество событий в календаре."""
         return obj.event_set.count()
+
+    @extend_schema_field(serializers.CharField())
+    def get_type(self, obj):
+        binding = get_calendar_binding(obj)
+        return binding.type if binding else "default"
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_context_type(self, obj):
+        binding = get_calendar_binding(obj)
+        if not binding or not binding.context_content_type_id:
+            return None
+        return binding.context_content_type.model
+
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_context_object_id(self, obj):
+        binding = get_calendar_binding(obj)
+        return binding.context_object_id if binding else None
+
+    @extend_schema_field(serializers.JSONField())
+    def get_flags(self, obj):
+        binding = get_calendar_binding(obj)
+        return binding.flags if binding else {}
 
     @extend_schema_field(RelatedUserSummarySerializer(allow_null=True))
     def get_owner(self, obj):
@@ -198,6 +254,24 @@ class CalendarSerializer(serializers.ModelSerializer):
         ).first()
 
         return relation.distinction if relation else None
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_create_events(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return user_can_create_event(user, obj) if user else False
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_edit_calendar(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return user_can_edit_calendar(user, obj) if user else False
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_manage_participants(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return user_can_manage_participants(user, obj) if user else False
 
     def create(self, validated_data):
         """Создать календарь с автогенерацией slug из name/title."""
@@ -397,6 +471,8 @@ class EventSerializer(serializers.ModelSerializer):
         source="rule.description", read_only=True, allow_null=True
     )
     rule_data = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
+    can_delete = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
@@ -416,6 +492,8 @@ class EventSerializer(serializers.ModelSerializer):
             "creator",
             "created_on",
             "updated_on",
+            "can_edit",
+            "can_delete",
         ]
         read_only_fields = ["id", "created_on", "updated_on"]
 
@@ -446,6 +524,18 @@ class EventSerializer(serializers.ModelSerializer):
 
         return attrs
 
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_edit(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return user_can_edit_event(user, obj) if user else False
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_delete(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return user_can_delete_event(user, obj) if user else False
+
 
 class EventListSerializer(EventSerializer):
     """Упрощённый сериализатор для списка событий."""
@@ -462,6 +552,8 @@ class EventListSerializer(EventSerializer):
             "color_event",
             "rule",
             "end_recurring_period",
+            "can_edit",
+            "can_delete",
         ]
 
 

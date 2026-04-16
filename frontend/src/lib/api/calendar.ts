@@ -3,11 +3,12 @@ import type { RequestFn, GetTokenFn } from './utils';
 
 export function createCalendarApi(request: RequestFn, getToken: GetTokenFn) {
     return {
-        getCalendarEvents: (params?: { start?: string; end?: string; calendar?: number }) => {
+        getCalendarEvents: (params?: { start?: string; end?: string; calendar?: number; scope?: "all" }) => {
             const qp = new URLSearchParams();
             if (params?.start) qp.append('start', params.start);
             if (params?.end) qp.append('end', params.end);
             if (params?.calendar) qp.append('calendar', params.calendar.toString());
+            if (params?.scope) qp.append('scope', params.scope);
             const qs = qp.toString();
             return request(`/api/v1/schedule/events/${qs ? '?' + qs : ''}`);
         },
@@ -18,7 +19,12 @@ export function createCalendarApi(request: RequestFn, getToken: GetTokenFn) {
             const qs = qp.toString();
             return request(`/api/v1/schedule/events/my-events/${qs ? '?' + qs : ''}`);
         },
-        getCalendars: () => request('/api/v1/schedule/calendars/'),
+        getCalendars: (params?: { scope?: "all" }) => {
+            const qp = new URLSearchParams();
+            if (params?.scope) qp.append('scope', params.scope);
+            const qs = qp.toString();
+            return request(`/api/v1/schedule/calendars/${qs ? '?' + qs : ''}`);
+        },
         getCalendar: (id: number) => request(`/api/v1/schedule/calendars/${id}/`),
         createCalendar: (data: { name: string; slug?: string }) => request('/api/v1/schedule/calendars/', { method: 'POST', body: JSON.stringify(data) }),
         updateCalendar: (id: number, data: { name?: string; slug?: string }) => request(`/api/v1/schedule/calendars/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
@@ -63,11 +69,12 @@ export function createCalendarApi(request: RequestFn, getToken: GetTokenFn) {
             request(`/api/v1/schedule/rules/${ruleId}/`, { method: 'PUT', body: JSON.stringify({ ...data, params: data.params ? JSON.stringify(data.params) : '{}' }) }),
         getRules: () => request('/api/v1/schedule/rules/'),
         getRule: (ruleId: number) => request(`/api/v1/schedule/rules/${ruleId}/`),
-        getOccurrences: (params: { start: string; end: string; calendar?: number }) => {
+        getOccurrences: (params: { start: string; end: string; calendar?: number; scope?: "all" }) => {
             const qp = new URLSearchParams();
             qp.append('start', params.start);
             qp.append('end', params.end);
             if (params.calendar) qp.append('calendar', params.calendar.toString());
+            if (params.scope) qp.append('scope', params.scope);
             return request(`/api/v1/schedule/events/occurrences/?${qp.toString()}`);
         },
     };

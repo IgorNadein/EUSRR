@@ -31,8 +31,6 @@ class DeptPerm:
     MANAGE = "manage_department"
     CHANGE_HEAD = "change_department_head"
     ASSIGN_ROLE = "assign_department_role"
-    MANAGE_CALENDAR = "manage_department_events"
-    CREATE_POST = "publish_department_post"
     MANAGE_FEED = "manage_department_feed"
     VIEW_REQUESTCOMMENT = "view_requestcomment"
     ADD_REQUESTCOMMENT = "add_requestcomment"
@@ -44,8 +42,6 @@ class DeptPerm:
         (MANAGE, "Управлять отделом"),
         (CHANGE_HEAD, "Назначать руководителя"),
         (ASSIGN_ROLE, "Назначать роли участникам"),
-        (MANAGE_CALENDAR, "Управлять календарём отдела"),
-        (CREATE_POST, "Публиковать новости на странице отдела"),
         (MANAGE_FEED, "Редактировать публикации отдела"),
         (VIEW_REQUESTCOMMENT, "Просмотр комментариев по заявлениям"),
         (ADD_REQUESTCOMMENT, "Добавление коментариев по заявлениям"),

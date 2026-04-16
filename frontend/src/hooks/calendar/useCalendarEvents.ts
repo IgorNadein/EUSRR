@@ -9,6 +9,8 @@ import { calendarService, type CalendarEvent, startOfWeekMonday } from "@/servic
 interface UseCalendarEventsOptions {
   monthDate: Date;
   selectedCalendarId: number | null;
+  calendarScope: "accessible" | "all";
+  canUseAllCalendarsMode: boolean;
   eventsRefreshTrigger: number;
   onEventsLoaded?: (events: CalendarEvent[]) => void;
 }
@@ -22,13 +24,15 @@ interface UseCalendarEventsResult {
 export function useCalendarEvents({
   monthDate,
   selectedCalendarId,
+  calendarScope,
+  canUseAllCalendarsMode,
   eventsRefreshTrigger,
   onEventsLoaded,
 }: UseCalendarEventsOptions): UseCalendarEventsResult {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const loadingRef = useRef(false);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,9 +49,7 @@ export function useCalendarEvents({
     const fetchEnd = weekEndExclusive > end ? weekEndExclusive : end;
 
     async function loadEvents() {
-      // Защита от множественных одновременных запросов
-      if (loadingRef.current) return;
-      loadingRef.current = true;
+      const requestId = ++requestIdRef.current;
 
       try {
         setLoading(true);
@@ -57,6 +59,8 @@ export function useCalendarEvents({
           fetchStart,
           fetchEnd,
           selectedCalendarId,
+          calendarScope,
+          canUseAllCalendarsMode,
           eventsRefreshTrigger
         );
 
@@ -65,6 +69,10 @@ export function useCalendarEvents({
           onEventsLoaded?.(loadedEvents);
         }
       } catch (err) {
+        if (requestId !== requestIdRef.current) {
+          return;
+        }
+
         if (!cancelled) {
           const message = err instanceof Error ? err.message : String(err || "");
           const isNetworkLike = message === "NetworkError" || /fetch failed/i.test(message);
@@ -77,9 +85,8 @@ export function useCalendarEvents({
           setEvents([]);
         }
       } finally {
-        if (!cancelled) {
+        if (!cancelled && requestId === requestIdRef.current) {
           setLoading(false);
-          loadingRef.current = false;
         }
       }
     }
@@ -89,7 +96,14 @@ export function useCalendarEvents({
     return () => {
       cancelled = true;
     };
-  }, [monthDate, selectedCalendarId, eventsRefreshTrigger, onEventsLoaded]);
+  }, [
+    monthDate,
+    selectedCalendarId,
+    calendarScope,
+    canUseAllCalendarsMode,
+    eventsRefreshTrigger,
+    onEventsLoaded,
+  ]);
 
   return { events, loading, error };
 }

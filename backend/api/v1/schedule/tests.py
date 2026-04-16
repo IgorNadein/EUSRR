@@ -3,11 +3,12 @@
 Тесты для django-scheduler API endpoints.
 """
 import pytest
+from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 from datetime import datetime, timedelta
 from rest_framework.test import APIClient
 from rest_framework import status
-from schedule.models import Calendar, Event, Rule
+from schedule.models import Calendar, CalendarRelation, Event, Rule
 from employees.models import Employee
 
 
@@ -43,10 +44,18 @@ def authenticated_client(api_client, test_user):
 @pytest.fixture
 def test_calendar(test_user):
     """Создание тестового календаря."""
-    return Calendar.objects.create(
+    calendar = Calendar.objects.create(
         name="Тестовый календарь",
         slug="test-calendar"
     )
+    CalendarRelation.objects.create(
+        calendar=calendar,
+        content_type=ContentType.objects.get_for_model(Employee),
+        object_id=test_user.id,
+        distinction="owner",
+        inheritable=True,
+    )
+    return calendar
 
 
 @pytest.fixture

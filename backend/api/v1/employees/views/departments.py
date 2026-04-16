@@ -36,6 +36,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from scheduling.services import get_or_create_department_calendar
 
 from ...permissions import (
     AdminOrActionOrModelPerms,
@@ -110,6 +111,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             return [AdminOrActionOrModelPerms()]
         if self.action in {
             "members",
+            "calendar",
             "discussion_chat",
             "user_perms",
             "list",
@@ -496,6 +498,28 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                 "chat_id": chat.id,
                 "chat_type": chat.type,
                 "name": chat.name,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=["get"], url_path="calendar")
+    def calendar(self, request, pk=None):
+        """Возвращает calendar отдела для входа из detail page."""
+        dept = self.get_object()
+        calendar, binding = get_or_create_department_calendar(dept)
+        return Response(
+            {
+                "calendar_id": calendar.id,
+                "calendar_type": binding.type,
+                "name": calendar.name,
+                "slug": calendar.slug,
+                "context_type": (
+                    binding.context_content_type.model
+                    if binding.context_content_type_id
+                    else None
+                ),
+                "context_object_id": binding.context_object_id,
+                "flags": binding.flags,
             },
             status=status.HTTP_200_OK,
         )

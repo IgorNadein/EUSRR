@@ -25,6 +25,7 @@ class SchedulingConfig(AppConfig):
 
         # Регистрируем сигналы для уведомлений
         import scheduling.notifications.signals  # noqa: F401
+        import scheduling.signals  # noqa: F401
 
         # Загружаем правила доступа (django-rules)
         try:

@@ -4,10 +4,8 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from employees.constants import DeptPerm
 from employees.models import (
     Department,
-    DepartmentPermission,
     DepartmentRole,
     EmployeeDepartment,
     RoleAssignment,
@@ -58,27 +56,6 @@ def test_department_user_perms_includes_feed_flags_for_head(api_client: APIClien
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json()["can_publish_posts"] is True
     assert resp.json()["can_manage_feed"] is True
-
-
-@pytest.mark.django_db
-def test_department_user_perms_resolves_role_based_feed_rights(api_client: APIClient):
-    employee = make_user()
-    dept = Department.objects.create(name="Закупки")
-    role = DepartmentRole.objects.create(department=dept, name="Редактор ленты")
-    publish_perm, _ = DepartmentPermission.objects.get_or_create(
-        code=DeptPerm.CREATE_POST,
-        defaults={"name": "Публиковать новости на странице отдела"},
-    )
-    role.scoped_permissions.add(publish_perm)
-    RoleAssignment.objects.create(employee=employee, role=role, is_active=True)
-
-    api_client.force_authenticate(user=employee)
-    url = reverse("api:v1:departments-user-perms", args=[dept.id])
-    resp = api_client.get(url)
-
-    assert resp.status_code == status.HTTP_200_OK
-    assert resp.json()["can_publish_posts"] is True
-    assert resp.json()["can_manage_feed"] is False
 
 
 @pytest.mark.django_db

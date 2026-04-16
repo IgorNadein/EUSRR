@@ -19,6 +19,8 @@ export interface CalendarEvent {
   event_id?: number;
   description?: string;
   calendar?: number;
+  can_edit?: boolean;
+  can_delete?: boolean;
 }
 
 interface EventsCache {
@@ -60,9 +62,13 @@ class CalendarService {
     startDate: Date,
     endDate: Date,
     calendarId: number | null,
+    calendarScope: "accessible" | "all",
+    canUseAllCalendarsMode: boolean,
     refreshTrigger: number
   ): Promise<CalendarEvent[]> {
-    const cacheKey = `${formatDateKey(startDate)}_${formatDateKey(endDate)}_${calendarId}_${refreshTrigger}`;
+    const apiScope =
+      canUseAllCalendarsMode && calendarScope === "all" ? "all" : undefined;
+    const cacheKey = `${formatDateKey(startDate)}_${formatDateKey(endDate)}_${calendarId}_${calendarScope}_${refreshTrigger}`;
 
     // Проверяем кэш
     if (eventsCache && eventsCache.key === cacheKey && Date.now() - eventsCache.timestamp < CACHE_TTL) {
@@ -75,11 +81,13 @@ class CalendarService {
         start: formatDateKey(startDate),
         end: formatDateKey(endDate),
         calendar: calendarId || undefined,
+        scope: apiScope,
       }),
       apiClient.getOccurrences({
         start: formatDateKey(startDate),
         end: formatDateKey(endDate),
         calendar: calendarId || undefined,
+        scope: apiScope,
       }),
     ]);
 
@@ -91,7 +99,11 @@ class CalendarService {
     const recurringOccurrences = occurrencesList.filter((occ: any) => occ.is_recurring);
 
     // Объединяем оба типа событий
-    const allEvents = [...regularEvents, ...recurringOccurrences];
+    let allEvents = [...regularEvents, ...recurringOccurrences];
+
+    if (calendarId !== null) {
+      allEvents = allEvents.filter((event) => event.calendar === calendarId);
+    }
 
     // Сохраняем в кэш
     eventsCache = {
