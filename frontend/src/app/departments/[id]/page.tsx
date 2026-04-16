@@ -1045,7 +1045,7 @@ export default function DepartmentDetailPage() {
                       className="app-action-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
                     >
                       <MessageCircle size={16} />
-                      Перейти в чат отдела
+                      Чат отдела
                     </button>
                     <button
                       type="button"
@@ -1054,7 +1054,7 @@ export default function DepartmentDetailPage() {
                       className="app-action-secondary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
                     >
                       <CalendarDays size={16} />
-                      Перейти в календарь отдела
+                      Календарь отдела
                     </button>
                   </div>
                 </div>
