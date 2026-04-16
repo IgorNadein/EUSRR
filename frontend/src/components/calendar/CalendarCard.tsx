@@ -2,7 +2,8 @@
 
 import { memo, useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Plus, Users } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Pencil, Trash2, Users } from "lucide-react";
+import { apiClient } from "@/lib/api";
 import { useCalendar } from "@/contexts/CalendarContext";
 import { useCalendarEvents } from "@/hooks/calendar/useCalendarEvents";
 import { calendarService, formatDateKey, type CalendarEvent } from "@/services/calendarService";
@@ -12,7 +13,14 @@ import { DEFAULT_EVENT_COLOR, resolveEventColor } from "@/lib/calendar-event-col
 interface CalendarCardProps {
   onOpenCalendarModal: (calendar?: { id?: number; name: string }) => void;
   onOpenEventModal: (event: any, date?: Date) => void;
-  onOpenParticipantsModal: (calendar: { id: number; name: string; user_role?: string }) => void;
+  onOpenParticipantsModal: (calendar: {
+    id: number;
+    name: string;
+    user_role?: string;
+    can_manage_participants?: boolean;
+    type?: string | null;
+    context_type?: string | null;
+  }) => void;
   eventsRefreshTrigger: number;
   setEventsRefreshTrigger: (value: number | ((prev: number) => number)) => void;
   setSidebarEvents: (events: CalendarEvent[]) => void;
@@ -38,9 +46,19 @@ export const CalendarCard = memo(function CalendarCard({
   setSidebarEvents,
   onCalendarChange,
 }: CalendarCardProps) {
-  const { calendars, selectedCalendarId, setSelectedCalendarId } = useCalendar();
+  const {
+    calendars,
+    selectedCalendarId,
+    setSelectedCalendarId,
+    calendarScope,
+    setCalendarScope,
+    canUseAllCalendarsMode,
+    reloadCalendars,
+  } = useCalendar();
   const searchParams = useSearchParams();
   const linkedCalendarName = searchParams.get("calendarName") || "";
+  const linkedCalendarType = searchParams.get("calendarType") || "";
+  const linkedContextType = searchParams.get("contextType") || "";
 
   const [monthDate, setMonthDate] = useState(() => {
     const now = new Date();
@@ -60,13 +78,15 @@ export const CalendarCard = memo(function CalendarCard({
         id: selectedCalendarId,
         name: linkedCalendarName,
         slug: `linked-calendar-${selectedCalendarId}`,
+        type: linkedCalendarType || null,
+        context_type: linkedContextType || null,
         can_create_events: true,
         can_edit_calendar: false,
         can_manage_participants: false,
       };
     }
     return null;
-  }, [calendars, linkedCalendarName, selectedCalendarId]);
+  }, [calendars, linkedCalendarName, linkedCalendarType, linkedContextType, selectedCalendarId]);
 
   const calendarOptions = useMemo(() => {
     if (!selectedCalendar) return calendars;
@@ -76,10 +96,26 @@ export const CalendarCard = memo(function CalendarCard({
     return [...calendars, selectedCalendar];
   }, [calendars, selectedCalendar]);
 
+  const canOpenParticipantsModal = Boolean(
+    selectedCalendar && (
+      selectedCalendar.can_manage_participants ||
+      selectedCalendar.type === "department" ||
+      selectedCalendar.context_type === "department"
+    )
+  );
+  const isDepartmentCalendar = Boolean(
+    selectedCalendar && (
+      selectedCalendar.type === "department" ||
+      selectedCalendar.context_type === "department"
+    )
+  );
+
   // Загружаем события через хук
   const { events, loading, error } = useCalendarEvents({
     monthDate,
     selectedCalendarId,
+    calendarScope,
+    canUseAllCalendarsMode,
     eventsRefreshTrigger,
     onEventsLoaded: setSidebarEvents,
   });
@@ -183,6 +219,33 @@ export const CalendarCard = memo(function CalendarCard({
     setShowCalendarMenu(false);
   }, [selectedCalendarId]);
 
+  const handleDeleteCalendar = useCallback(async () => {
+    if (!selectedCalendar?.id || !selectedCalendar.can_edit_calendar) {
+      return;
+    }
+    if (!confirm(`Удалить календарь "${selectedCalendar.name}"?`)) {
+      return;
+    }
+
+    try {
+      await apiClient.deleteCalendar(selectedCalendar.id);
+      calendarService.clearCache();
+      setSelectedCalendarId(null);
+      setEventsRefreshTrigger((prev) => prev + 1);
+      await reloadCalendars();
+    } catch (error) {
+      console.error("Не удалось удалить календарь:", error);
+      alert("Не удалось удалить календарь");
+    } finally {
+      setShowCalendarMenu(false);
+    }
+  }, [
+    reloadCalendars,
+    selectedCalendar,
+    setEventsRefreshTrigger,
+    setSelectedCalendarId,
+  ]);
+
   // Дни с событиями
   const eventDays = useMemo(() => {
     const days = new Set<string>();
@@ -275,71 +338,56 @@ export const CalendarCard = memo(function CalendarCard({
       <div className="app-surface rounded-2xl p-4">
         <div className="mb-2 flex items-center justify-between">
           <p className="app-text-muted text-[11px] font-semibold uppercase tracking-wide">Календарь</p>
-          <button
-            onClick={handleCreateCalendar}
-            className="app-icon-button flex h-6 w-6 items-center justify-center rounded-full transition"
-            title="Создать календарь"
-          >
-            <Plus size={14} />
-          </button>
-        </div>
-        {calendars.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-[var(--border-strong)] bg-[var(--surface-secondary)] p-3">
-            <p className="mb-2 text-xs font-medium text-[var(--foreground)]">Календарей пока нет</p>
+          <div className="relative">
             <button
-              onClick={handleCreateCalendar}
-              className="app-action-primary w-full rounded-md px-3 py-1.5 text-xs font-medium"
+              onClick={() => setShowCalendarMenu(!showCalendarMenu)}
+              className="app-icon-button flex h-6 w-6 items-center justify-center rounded-full transition"
+              title="Меню календаря"
+              aria-expanded={showCalendarMenu}
             >
-              Создать первый календарь
+              {showCalendarMenu ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedCalendarId === null ? "" : selectedCalendarId}
-              onChange={(e) => {
-                const value = e.target.value;
-                setSelectedCalendarId(value === "" ? null : Number(value));
-              }}
-              className="app-select flex-1 rounded-lg px-2.5 py-2 text-xs"
-            >
-              <option value="">📅 Все события</option>
-              {calendarOptions.map((cal) => (
-                <option key={cal.id} value={cal.id}>
-                  {cal.name}
-                </option>
-              ))}
-            </select>
-            {selectedCalendar && (
-              <div className="relative">
-                <button
-                  onClick={() => setShowCalendarMenu(!showCalendarMenu)}
-                  className="app-icon-button flex h-9 w-9 items-center justify-center rounded-lg transition"
-                  title="Меню календаря"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="1"></circle>
-                    <circle cx="12" cy="5" r="1"></circle>
-                    <circle cx="12" cy="19" r="1"></circle>
-                  </svg>
-                </button>
 
-                {showCalendarMenu && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-[50]"
-                      onClick={() => setShowCalendarMenu(false)}
-                    />
-                    <div className="app-menu absolute right-0 top-full z-[60] mt-1 w-48 rounded-lg">
-                      <div className="py-1">
+            {showCalendarMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-[50]"
+                  onClick={() => setShowCalendarMenu(false)}
+                />
+                <div className="app-menu absolute right-0 top-full z-[60] mt-1 w-48 rounded-lg">
+                  <div className="py-1">
+                    <button
+                      onClick={() => {
+                        handleCreateCalendar();
+                        setShowCalendarMenu(false);
+                      }}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 12h14"></path>
+                        <path d="M12 5v14"></path>
+                      </svg>
+                      Создать календарь
+                    </button>
+
+                    {selectedCalendar ? (
+                      <>
+                        <div className="app-divider my-1 border-t"></div>
                         <button
                           onClick={() => {
-                            if (selectedCalendar?.can_manage_participants) {
-                              onOpenParticipantsModal({ id: selectedCalendar.id, name: selectedCalendar.name, user_role: (selectedCalendar as any).user_role });
+                            if (canOpenParticipantsModal) {
+                              onOpenParticipantsModal({
+                                id: selectedCalendar.id,
+                                name: selectedCalendar.name,
+                                user_role: (selectedCalendar as any).user_role,
+                                can_manage_participants: selectedCalendar.can_manage_participants,
+                                type: selectedCalendar.type,
+                                context_type: selectedCalendar.context_type,
+                              });
                             }
                             setShowCalendarMenu(false);
                           }}
-                          disabled={!selectedCalendar?.can_manage_participants}
+                          disabled={!canOpenParticipantsModal}
                           className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
                         >
                           <Users size={16} />
@@ -381,29 +429,98 @@ export const CalendarCard = memo(function CalendarCard({
                           className="hidden"
                         />
 
-                        <div className="app-divider my-1 border-t"></div>
-                        <button
-                          onClick={() => {
-                            if (selectedCalendar?.can_edit_calendar) {
-                              onOpenCalendarModal(selectedCalendar);
-                            }
-                            setShowCalendarMenu(false);
-                          }}
-                          disabled={!selectedCalendar?.can_edit_calendar}
-                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
-                            <circle cx="12" cy="12" r="3"></circle>
-                          </svg>
-                          Настройки
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
+                        {!isDepartmentCalendar ? (
+                          <>
+                            <div className="app-divider my-1 border-t"></div>
+                            <button
+                              onClick={() => {
+                                if (selectedCalendar.can_edit_calendar) {
+                                  onOpenCalendarModal(selectedCalendar);
+                                }
+                                setShowCalendarMenu(false);
+                              }}
+                              disabled={!selectedCalendar.can_edit_calendar}
+                              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                            >
+                              <Pencil size={16} />
+                              Редактировать
+                            </button>
+                            <button
+                              onClick={() => {
+                                void handleDeleteCalendar();
+                              }}
+                              disabled={!selectedCalendar.can_edit_calendar}
+                              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                            >
+                              <Trash2 size={16} />
+                              Удалить
+                            </button>
+                          </>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+        {calendars.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-[var(--border-strong)] bg-[var(--surface-secondary)] p-3">
+            <p className="mb-2 text-xs font-medium text-[var(--foreground)]">Календарей пока нет</p>
+            <button
+              onClick={handleCreateCalendar}
+              className="app-action-primary w-full rounded-md px-3 py-1.5 text-xs font-medium"
+            >
+              Создать первый календарь
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {canUseAllCalendarsMode && (
+              <div className="grid w-full grid-cols-2 rounded-xl border border-[var(--border-strong)] bg-[var(--surface-secondary)] p-1">
+                <button
+                  type="button"
+                  onClick={() => setCalendarScope("accessible")}
+                  className={`min-w-0 rounded-lg px-2.5 py-1 text-center text-[11px] font-medium transition ${
+                    calendarScope === "accessible"
+                      ? "bg-[var(--surface-primary)] text-[var(--foreground)] shadow-sm"
+                      : "app-text-muted hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  Доступные
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCalendarScope("all")}
+                  className={`min-w-0 rounded-lg px-2.5 py-1 text-center text-[11px] font-medium transition ${
+                    calendarScope === "all"
+                      ? "bg-[var(--surface-primary)] text-[var(--foreground)] shadow-sm"
+                      : "app-text-muted hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  Все
+                </button>
               </div>
             )}
+
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedCalendarId === null ? "" : selectedCalendarId}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSelectedCalendarId(value === "" ? null : Number(value));
+                }}
+                className="app-select flex-1 rounded-lg px-2.5 py-2 text-xs"
+              >
+                <option value="">📅 Все события</option>
+                {calendarOptions.map((cal) => (
+                  <option key={cal.id} value={cal.id}>
+                    {cal.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
       </div>
@@ -465,14 +582,14 @@ export const CalendarCard = memo(function CalendarCard({
 
       {/* События — неделя / месяц */}
       <div className="app-surface rounded-2xl p-5">
-        <div className="mb-3 flex items-center gap-1 rounded-lg bg-[var(--surface-secondary)] p-0.5">
+        <div className="mb-3 grid w-full grid-cols-2 rounded-xl border border-[var(--border-strong)] bg-[var(--surface-secondary)] p-1">
           <button
             type="button"
             onClick={() => setEventsViewMode("week")}
-            className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition ${
+            className={`min-w-0 rounded-lg px-2.5 py-1 text-center text-[11px] font-medium transition ${
               eventsViewMode === "week"
-                ? "bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-[var(--shadow-card)]"
-                : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                ? "bg-[var(--surface-primary)] text-[var(--foreground)] shadow-sm"
+                : "app-text-muted hover:text-[var(--foreground)]"
             }`}
           >
             Неделя
@@ -480,10 +597,10 @@ export const CalendarCard = memo(function CalendarCard({
           <button
             type="button"
             onClick={() => setEventsViewMode("month")}
-            className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition ${
+            className={`min-w-0 rounded-lg px-2.5 py-1 text-center text-[11px] font-medium transition ${
               eventsViewMode === "month"
-                ? "bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-[var(--shadow-card)]"
-                : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                ? "bg-[var(--surface-primary)] text-[var(--foreground)] shadow-sm"
+                : "app-text-muted hover:text-[var(--foreground)]"
             }`}
           >
             Месяц

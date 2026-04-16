@@ -2,9 +2,12 @@
 """
 Тесты для системы прав доступа календарей django-scheduler.
 """
+from datetime import timedelta
+
 import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework import status
 from schedule.models import Calendar, CalendarRelation, Event, Rule
@@ -54,6 +57,22 @@ def user3(db):
         first_name='User',
         last_name='Three',
         phone_number='+79991234569'
+    )
+
+
+@pytest.fixture
+def admin_user(db):
+    """Администратор для проверки scope календарей."""
+    return User.objects.create_user(
+        username="admin",
+        email="admin@example.com",
+        password="testpass123",
+        first_name="Admin",
+        last_name="User",
+        phone_number="+79991234570",
+        is_staff=True,
+        is_superuser=True,
+        email_verified=True,
     )
 
 
@@ -254,10 +273,136 @@ class TestCalendarPermissions:
         assert roles[user2.id] == 'editor'
         assert roles[user3.id] == 'viewer'
 
+    def test_admin_list_scope_defaults_to_accessible_only(
+        self, api_client, admin_user, user1
+    ):
+        """По умолчанию админ видит свои доступные календари, а не весь реестр."""
+        api_client.force_authenticate(user=admin_user)
+        admin_calendar_response = api_client.post(
+            '/api/v1/schedule/calendars/',
+            {'name': 'Admin Calendar'}
+        )
+        assert admin_calendar_response.status_code == status.HTTP_201_CREATED
+        admin_calendar_id = admin_calendar_response.data['id']
+
+        api_client.force_authenticate(user=user1)
+        other_calendar_response = api_client.post(
+            '/api/v1/schedule/calendars/',
+            {'name': 'Other Calendar'}
+        )
+        assert other_calendar_response.status_code == status.HTTP_201_CREATED
+        other_calendar_id = other_calendar_response.data['id']
+
+        api_client.force_authenticate(user=admin_user)
+        default_response = api_client.get('/api/v1/schedule/calendars/')
+        default_calendars = default_response.data
+        assert {cal['id'] for cal in default_calendars} == {admin_calendar_id}
+
+        full_response = api_client.get('/api/v1/schedule/calendars/?scope=all')
+        full_calendars = full_response.data
+        assert {cal['id'] for cal in full_calendars} == {
+            admin_calendar_id,
+            other_calendar_id,
+        }
+
 
 @pytest.mark.django_db
 class TestRecurringEvents:
     """Тесты повторяющихся событий."""
+
+    def test_admin_event_scope_matches_calendar_scope(
+        self, api_client, admin_user, user1
+    ):
+        """У admin default list/occurrences не должны тянуть чужие календари."""
+        api_client.force_authenticate(user=admin_user)
+        admin_calendar_response = api_client.post(
+            '/api/v1/schedule/calendars/',
+            {'name': 'Admin Calendar'}
+        )
+        admin_calendar_id = admin_calendar_response.data['id']
+
+        api_client.force_authenticate(user=user1)
+        other_calendar_response = api_client.post(
+            '/api/v1/schedule/calendars/',
+            {'name': 'Other Calendar'}
+        )
+        other_calendar_id = other_calendar_response.data['id']
+
+        start = timezone.now().replace(microsecond=0, second=0)
+        range_end = start + timedelta(hours=2)
+        Event.objects.create(
+            calendar_id=admin_calendar_id,
+            title='Admin event',
+            start=start,
+            end=start + timedelta(hours=1),
+            creator=admin_user,
+        )
+        Event.objects.create(
+            calendar_id=other_calendar_id,
+            title='Other event',
+            start=start,
+            end=start + timedelta(hours=1),
+            creator=user1,
+        )
+
+        api_client.force_authenticate(user=admin_user)
+        default_events = api_client.get(
+            '/api/v1/schedule/events/',
+            {
+                'start': start.isoformat(),
+                'end': range_end.isoformat(),
+            },
+        )
+        assert default_events.status_code == status.HTTP_200_OK
+        default_events_list = (
+            default_events.data['results']
+            if isinstance(default_events.data, dict)
+            else default_events.data
+        )
+        assert {event['title'] for event in default_events_list} == {'Admin event'}
+
+        all_events = api_client.get(
+            '/api/v1/schedule/events/',
+            {
+                'scope': 'all',
+                'start': start.isoformat(),
+                'end': range_end.isoformat(),
+            },
+        )
+        assert all_events.status_code == status.HTTP_200_OK
+        all_events_list = (
+            all_events.data['results']
+            if isinstance(all_events.data, dict)
+            else all_events.data
+        )
+        assert {event['title'] for event in all_events_list} == {
+            'Admin event',
+            'Other event',
+        }
+
+        default_occurrences = api_client.get(
+            '/api/v1/schedule/events/occurrences/',
+            {
+                'start': start.isoformat(),
+                'end': range_end.isoformat(),
+            },
+        )
+        assert default_occurrences.status_code == status.HTTP_200_OK
+        assert {event['title'] for event in default_occurrences.data} == {'Admin event'}
+
+        all_occurrences = api_client.get(
+            '/api/v1/schedule/events/occurrences/',
+            {
+                'scope': 'all',
+                'start': start.isoformat(),
+                'end': range_end.isoformat(),
+            },
+        )
+        assert all_occurrences.status_code == status.HTTP_200_OK
+        assert {event['title'] for event in all_occurrences.data} == {
+            'Admin event',
+            'Other event',
+        }
     
     def test_create_rule(self, api_client, user1):
         """Создание правила повторения."""

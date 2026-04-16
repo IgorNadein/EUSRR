@@ -51,7 +51,7 @@ def get_department_calendar_binding(
 
 
 def department_calendar_name(department: Department) -> str:
-    return f"Календарь отдела: {department.name}"
+    return department.name
 
 
 def department_calendar_slug(department: Department) -> str:

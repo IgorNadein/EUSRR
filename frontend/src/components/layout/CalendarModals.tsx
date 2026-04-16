@@ -25,6 +25,9 @@ export function CalendarModals(props: CalendarModalsProps) {
           calendarId={props.participantsCalendar.id}
           calendarName={props.participantsCalendar.name}
           userRole={props.participantsCalendar.user_role}
+          canManageParticipants={props.participantsCalendar.can_manage_participants}
+          calendarType={props.participantsCalendar.type}
+          contextType={props.participantsCalendar.context_type}
         />
       )}
 

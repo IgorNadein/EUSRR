@@ -31,6 +31,8 @@ class RelatedUserSummarySerializer(serializers.Serializer):
     username = serializers.CharField()
     first_name = serializers.CharField(required=False, allow_blank=True)
     last_name = serializers.CharField(required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+    avatar = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     full_name = serializers.CharField(required=False)
     role = serializers.CharField(required=False)
 
@@ -63,6 +65,13 @@ class CalendarRelationSerializer(serializers.ModelSerializer):
     def get_user(self, obj):
         """Информация о связанном пользователе."""
         if obj.content_object:
+            avatar = getattr(obj.content_object, "avatar", None)
+            avatar_url = None
+            if avatar:
+                try:
+                    avatar_url = avatar.url
+                except Exception:
+                    avatar_url = str(avatar)
             return {
                 "id": obj.content_object.id,
                 "username": getattr(
@@ -70,6 +79,8 @@ class CalendarRelationSerializer(serializers.ModelSerializer):
                 ),
                 "first_name": getattr(obj.content_object, "first_name", ""),
                 "last_name": getattr(obj.content_object, "last_name", ""),
+                "email": getattr(obj.content_object, "email", ""),
+                "avatar": avatar_url,
             }
         return None
 

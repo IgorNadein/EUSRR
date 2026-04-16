@@ -44,6 +44,9 @@ interface CalendarParticipantsModalProps {
   calendarId: number;
   calendarName: string;
   userRole?: string; // owner, editor, viewer
+  canManageParticipants?: boolean;
+  calendarType?: string | null;
+  contextType?: string | null;
 }
 
 export default function CalendarParticipantsModal({
@@ -52,6 +55,9 @@ export default function CalendarParticipantsModal({
   calendarId,
   calendarName,
   userRole,
+  canManageParticipants = false,
+  calendarType,
+  contextType,
 }: CalendarParticipantsModalProps) {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -62,7 +68,9 @@ export default function CalendarParticipantsModal({
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const isOwner = userRole === 'owner';
+  const isDepartmentCalendar =
+    calendarType === 'department' || contextType === 'department';
+  const canManage = canManageParticipants && !isDepartmentCalendar;
 
   useEffect(() => {
     if (isOpen) {
@@ -204,8 +212,18 @@ export default function CalendarParticipantsModal({
         </div>
 
         <div className="space-y-6 p-6">
-          {/* Add Participant Section - только для владельца */}
-          {isOwner && (
+          {isDepartmentCalendar && (
+            <div className="app-surface-muted rounded-lg p-4">
+              <p className="app-text-muted text-sm">
+                Состав участников календаря отдела синхронизируется автоматически
+                из состава отдела и назначенных ролей. Управление через эту
+                модалку отключено для всех пользователей, включая администраторов.
+              </p>
+            </div>
+          )}
+
+          {/* Add Participant Section */}
+          {canManage && (
             <div className="app-surface-muted space-y-3 rounded-lg p-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium text-[var(--foreground)]">
@@ -351,7 +369,8 @@ export default function CalendarParticipantsModal({
                   const user = participant.user || {};
                   const firstName = user.first_name || 'N';
                   const lastName = user.last_name || 'A';
-                  const username = user.username || 'unknown';
+                  const username = typeof user.username === 'string' ? user.username.trim() : '';
+                  const secondaryLabel = user.email || (username ? `@${username}` : '');
                   
                   return (
                     <div
@@ -376,7 +395,9 @@ export default function CalendarParticipantsModal({
                           <div className="text-sm font-medium text-[var(--foreground)]">
                             {firstName} {lastName}
                           </div>
-                          <div className="app-text-muted text-xs">{user.email || `@${username}`}</div>
+                          {secondaryLabel ? (
+                            <div className="app-text-muted text-xs">{secondaryLabel}</div>
+                          ) : null}
                         </div>
                       </div>
 
@@ -392,7 +413,7 @@ export default function CalendarParticipantsModal({
                          participant.distinction === 'editor' ? 'Редактор' : 'Просмотр'}
                       </span>
 
-                      {isOwner && participant.distinction !== 'owner' && (
+                      {canManage && participant.distinction !== 'owner' && (
                         <button
                           onClick={() => handleRemoveParticipant(participant.user.id)}
                           disabled={loading}

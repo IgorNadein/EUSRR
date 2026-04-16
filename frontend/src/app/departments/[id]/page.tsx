@@ -848,11 +848,19 @@ export default function DepartmentDetailPage() {
       const response = await apiClient.getDepartmentCalendar(h.department.id) as {
         calendar_id: number;
         name: string;
+        calendar_type?: string;
+        context_type?: string | null;
       };
       const params = new URLSearchParams({
         calendar: String(response.calendar_id),
         calendarName: response.name,
       });
+      if (response.calendar_type) {
+        params.set("calendarType", response.calendar_type);
+      }
+      if (response.context_type) {
+        params.set("contextType", response.context_type);
+      }
       router.push(`/calendar?${params.toString()}`);
     } catch {
       toast.error("Не удалось открыть календарь отдела");

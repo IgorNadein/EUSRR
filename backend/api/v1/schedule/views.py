@@ -46,6 +46,24 @@ from scheduling.services import (
 )
 
 
+def _admin_requested_all_scope(request) -> bool:
+    user = request.user
+    if not (user.is_staff or user.is_superuser):
+        return False
+    return request.query_params.get("scope") == "all"
+
+
+def _user_accessible_calendar_ids(user):
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    ct = ContentType.objects.get_for_model(User)
+    return CalendarRelation.objects.filter(
+        content_type=ct,
+        object_id=user.id,
+    ).values_list("calendar_id", flat=True)
+
+
 class ScheduleCalendarViewSet(viewsets.ModelViewSet):
     """CRUD для django-scheduler Calendar с системой прав доступа.
 
@@ -78,26 +96,20 @@ class ScheduleCalendarViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Фильтрация календарей по доступу пользователя."""
-        from django.contrib.auth import get_user_model
-
-        User = get_user_model()
-
         qs = super().get_queryset().select_related(
             "binding",
             "binding__context_content_type",
         )
         user = self.request.user
+        show_all_scope = _admin_requested_all_scope(self.request)
 
-        # Админы видят все
-        if user.is_staff or user.is_superuser:
+        # Для detail/admin actions доступ админа остаётся полным.
+        if (user.is_staff or user.is_superuser) and (
+            self.action != "list" or show_all_scope
+        ):
             filtered = qs
         else:
-            # Остальные видят только календари, где они участники
-            ct = ContentType.objects.get_for_model(User)
-            calendar_ids = CalendarRelation.objects.filter(
-                content_type=ct, object_id=user.id
-            ).values_list("calendar_id", flat=True)
-
+            calendar_ids = _user_accessible_calendar_ids(user)
             visibility_filter = Q(id__in=calendar_ids)
             if self.action not in {"list", "create"}:
                 visibility_filter |= Q(
@@ -411,23 +423,21 @@ class ScheduleEventViewSet(viewsets.ModelViewSet):
         )
         user = self.request.user
         calendar_id = self.request.query_params.get("calendar")
+        show_all_scope = _admin_requested_all_scope(self.request)
 
-        # Админы видят все события
-        if not (user.is_staff or user.is_superuser):
+        # Полный обзор для админа включается только явным scope=all
+        # либо на detail actions, где нужен прямой доступ.
+        if not ((user.is_staff or user.is_superuser) and show_all_scope):
+            from django.contrib.auth import get_user_model
+
+            User = get_user_model()
             ct = ContentType.objects.get_for_model(User)
-
-            # ID календарей где пользователь участник
-            accessible_calendar_ids = CalendarRelation.objects.filter(
-                content_type=ct, object_id=user.id
-            ).values_list("calendar_id", flat=True)
-
-            # ID событий где пользователь участник
+            accessible_calendar_ids = _user_accessible_calendar_ids(user)
             participant_event_ids = EventRelation.objects.filter(
-                content_type=ct, object_id=user.id
+                content_type=ct,
+                object_id=user.id,
             ).values_list("event_id", flat=True)
 
-            # Объединяем: события из доступных календарей ИЛИ где пользователь
-            # участник
             visibility_filter = (
                 Q(calendar_id__in=accessible_calendar_ids)
                 | Q(id__in=participant_event_ids)
@@ -524,18 +534,12 @@ class ScheduleEventViewSet(viewsets.ModelViewSet):
         else:
             # Если календарь не указан - берем все доступные пользователю
             # календари
-            from django.contrib.auth import get_user_model
-
-            User = get_user_model()
             user = request.user
 
-            if user.is_staff or user.is_superuser:
+            if _admin_requested_all_scope(request):
                 calendars = Calendar.objects.all()
             else:
-                ct = ContentType.objects.get_for_model(User)
-                calendar_ids = CalendarRelation.objects.filter(
-                    content_type=ct, object_id=user.id
-                ).values_list("calendar_id", flat=True)
+                calendar_ids = _user_accessible_calendar_ids(user)
                 calendars = Calendar.objects.filter(id__in=calendar_ids)
 
         # Результат

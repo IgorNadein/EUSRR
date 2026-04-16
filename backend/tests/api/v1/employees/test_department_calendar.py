@@ -244,3 +244,109 @@ def test_department_calendar_membership_sync_removes_inactive_member(
         content_type=user_ct,
         object_id=member.id,
     ).exists()
+
+
+def test_department_calendar_rejects_manual_participant_changes(
+    api_client: APIClient,
+):
+    head = make_user("head@example.com")
+    member = make_user("member@example.com")
+    outsider = make_user("outsider@example.com")
+    department = Department.objects.create(name="Audit", head=head)
+    EmployeeDepartment.objects.create(
+        employee=member,
+        department=department,
+        is_active=True,
+    )
+
+    api_client.force_authenticate(user=head)
+    calendar_id = api_client.get(department_calendar_url(department.id)).data[
+        "calendar_id"
+    ]
+
+    add_response = api_client.post(
+        f"/api/v1/schedule/calendars/{calendar_id}/add-participant/",
+        {"user_id": outsider.id, "role": "viewer"},
+        format="json",
+    )
+    assert add_response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "синхронизируются" in add_response.data["detail"]
+
+    remove_response = api_client.delete(
+        f"/api/v1/schedule/calendars/{calendar_id}/remove-participant/{member.id}/"
+    )
+    assert remove_response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "синхронизируются" in remove_response.data["detail"]
+
+
+def test_department_calendar_participants_include_avatar_and_email(
+    api_client: APIClient,
+):
+    head = make_user("head@example.com", first_name="Head", last_name="User")
+    head.avatar = "avatars/head-calendar.jpg"
+    head.save(update_fields=["avatar"])
+
+    department = Department.objects.create(name="HR", head=head)
+
+    api_client.force_authenticate(user=head)
+    calendar_id = api_client.get(department_calendar_url(department.id)).data[
+        "calendar_id"
+    ]
+
+    response = api_client.get(
+        f"/api/v1/schedule/calendars/{calendar_id}/participants/"
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.data) == 1
+    participant = response.data[0]
+    assert participant["user"]["id"] == head.id
+    assert participant["user"]["email"] == head.email
+    assert participant["user"]["avatar"] == head.avatar.url
+    assert participant["user"]["first_name"] == "Head"
+    assert participant["user"]["last_name"] == "User"
+
+
+def test_department_calendar_occurrences_allow_outsider_but_keep_permissions(
+    api_client: APIClient,
+):
+    head = make_user("head@example.com")
+    member = make_user("member@example.com")
+    outsider = make_user("outsider@example.com")
+    department = Department.objects.create(name="Treasury", head=head)
+    EmployeeDepartment.objects.create(
+        employee=member,
+        department=department,
+        is_active=True,
+    )
+
+    api_client.force_authenticate(user=member)
+    calendar_id = api_client.get(department_calendar_url(department.id)).data[
+        "calendar_id"
+    ]
+
+    start = timezone.now().replace(microsecond=0)
+    member_event = Event.objects.create(
+        calendar_id=calendar_id,
+        title="Member-only event",
+        start=start,
+        end=start + timedelta(hours=1),
+        creator=member,
+    )
+
+    api_client.force_authenticate(user=outsider)
+    response = api_client.get(
+        "/api/v1/schedule/events/occurrences/",
+        {
+            "calendar": calendar_id,
+            "start": (start - timedelta(minutes=5)).isoformat(),
+            "end": (start + timedelta(hours=2)).isoformat(),
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.data) == 1
+    occurrence = response.data[0]
+    assert occurrence["event_id"] == member_event.id
+    assert occurrence["can_edit"] is False
+    assert occurrence["can_delete"] is False
