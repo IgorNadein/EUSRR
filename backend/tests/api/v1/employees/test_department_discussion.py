@@ -181,7 +181,7 @@ def test_any_active_user_can_send_message_to_department_comments_chat(
     assert chat.flags.get("show_in_messages") is True
 
 
-def test_department_comment_notifications_keep_chat_routing_and_include_role_only(
+def test_department_comment_notifications_only_include_department_and_role_only(
     monkeypatch,
 ):
     department = Department.objects.create(name="Backoffice")
@@ -229,12 +229,57 @@ def test_department_comment_notifications_keep_chat_routing_and_include_role_onl
     recipient_ids = {payload["recipient"].id for payload in sent_notifications}
 
     assert role_only.id in recipient_ids
-    assert previous_commenter.id in recipient_ids
+    assert previous_commenter.id not in recipient_ids
     assert member.id not in recipient_ids
     assert sent_notifications
     for payload in sent_notifications:
         assert payload["action_url"] == f"/messages/{message.chat_id}"
         assert payload["data"]["chat_id"] == message.chat_id
+
+
+def test_department_comment_reply_notifies_reply_target_outside_department(
+    monkeypatch,
+):
+    department = Department.objects.create(name="Operations")
+    member = make_user("member@example.com")
+    outsider = make_user("outsider@example.com")
+
+    EmployeeDepartment.objects.create(
+        employee=member,
+        department=department,
+        is_active=True,
+    )
+
+    first_comment = create_comment(
+        department,
+        author=outsider,
+        content="Вопрос от сотрудника вне отдела",
+    )
+
+    sent_notifications = []
+
+    def capture_notification(**kwargs):
+        sent_notifications.append(kwargs)
+
+    monkeypatch.setattr(
+        "communications.notifications.handlers._send_notification",
+        capture_notification,
+    )
+
+    reply = create_comment(
+        department,
+        author=member,
+        content="Ответ сотруднику",
+        reply_to=first_comment,
+    )
+
+    recipient_ids = {payload["recipient"].id for payload in sent_notifications}
+
+    assert outsider.id in recipient_ids
+    assert member.id not in recipient_ids
+    for payload in sent_notifications:
+        assert payload["action_url"] == f"/messages/{reply.chat_id}"
+        assert payload["data"]["chat_id"] == reply.chat_id
 
 
 def test_department_chat_visible_in_messages_list_but_generic_comments_hidden(

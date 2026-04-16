@@ -93,6 +93,24 @@ function getChatSortTimestamp(chat: Chat): number {
   return Number.isNaN(chatCreatedTs) ? 0 : chatCreatedTs;
 }
 
+function isChatVisibleInMessagesList(
+  chat: Chat,
+  visibleDepartmentIds: ReadonlySet<number>
+): boolean {
+  const chatType = chat.chat_type || chat.type;
+
+  if (chatType !== "comments") {
+    return true;
+  }
+
+  if (!isDepartmentCommentsChat(chat)) {
+    return false;
+  }
+
+  return typeof chat.context_object_id === "number"
+    && visibleDepartmentIds.has(chat.context_object_id);
+}
+
 export default function MessagesPage() {
   const { user } = useUser();
   const router = useRouter();
@@ -111,6 +129,15 @@ export default function MessagesPage() {
     }),
     [currentUserEmail, currentUserFirstName, currentUserLastName, currentUserPatronymic]
   );
+  const visibleDepartmentIds = useMemo(() => {
+    const ids = new Set<number>();
+    (user?.departments || []).forEach((department) => {
+      if (typeof department.id === "number") {
+        ids.add(department.id);
+      }
+    });
+    return ids;
+  }, [user?.departments]);
   const [chats, setChats] = useState<Chat[]>([]);
   const [search, setSearch] = useState("");
   const [chatTypeFilter, setChatTypeFilter] = useState<string>("all");
@@ -147,7 +174,11 @@ export default function MessagesPage() {
       }
       setError(null);
       const items = await apiClient.getAllChats();
-      setChats(items);
+      setChats(
+        items.filter((chat) =>
+          isChatVisibleInMessagesList(chat, visibleDepartmentIds)
+        )
+      );
       hasCompletedInitialLoadRef.current = true;
     } catch (e: unknown) {
       console.error("Ошибка загрузки чатов:", e);
@@ -158,7 +189,7 @@ export default function MessagesPage() {
         setLoading(false);
       }
     }
-  }, []);
+  }, [visibleDepartmentIds]);
 
   const refreshChat = useCallback(async (chatId: number) => {
     if (!Number.isFinite(chatId) || chatId <= 0) {
@@ -174,6 +205,10 @@ export default function MessagesPage() {
     try {
       const chat = await apiClient.getChat(chatId);
       setChats((prev) => {
+        if (!isChatVisibleInMessagesList(chat, visibleDepartmentIds)) {
+          return prev.filter((item) => item.id !== chatId);
+        }
+
         const existingIndex = prev.findIndex((item) => item.id === chatId);
         if (existingIndex === -1) {
           return [chat, ...prev];
@@ -192,7 +227,7 @@ export default function MessagesPage() {
     } finally {
       refreshChatInFlightRef.current.delete(chatId);
     }
-  }, [loadChats]);
+  }, [loadChats, visibleDepartmentIds]);
 
   useEffect(() => {
     void loadChats();
@@ -523,7 +558,7 @@ export default function MessagesPage() {
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="relative h-10 w-10">
+                    <div className="relative h-10 w-10 overflow-visible">
                       <div className="app-avatar-fallback flex h-10 w-10 items-center justify-center overflow-hidden rounded-full text-xs font-semibold">
                         {chatAvatar ? (
                           <Image
@@ -544,7 +579,7 @@ export default function MessagesPage() {
                       </span>
                       {/* Счетчик непрочитанных */}
                       {(chat.unread_count ?? 0) > 0 ? (
-                        <span className="app-counter-danger absolute -top-1 -right-1 z-10 flex h-5 min-w-[20px] items-center justify-center border-2 border-[var(--surface-primary)] px-1.5 text-[10px] font-bold">
+                        <span className="chat-list-unread-badge app-counter-danger absolute right-0 top-0 z-20 flex min-w-[1.35rem] -translate-y-1/4 translate-x-1/4 items-center justify-center px-1.5 text-[10px] font-bold leading-none">
                           {chat.unread_count! > 99 ? '99+' : chat.unread_count}
                         </span>
                       ) : null}

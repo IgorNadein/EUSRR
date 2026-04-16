@@ -219,7 +219,8 @@ def _notify_comment(message):
 
     Уведомляет:
     1. Автора объекта (Post/Document/Request)
-    2. Других участников обсуждения (кто оставлял комментарии)
+    2. Для Department: сотрудников отдела и role-only участников отдела
+    3. Автора parent comment, если это reply
 
     Args:
         message: Экземпляр модели Message (в чате type='comments')
@@ -298,17 +299,9 @@ def _notify_comment(message):
     if object_author and object_author.id != author.id:
         recipient_ids.add(object_author.id)
 
-    # 2. Уведомляем всех, кто участвовал в обсуждении
-    from ..models import Message
-    previous_commenters = Message.objects.filter(
-        chat=chat,
-        is_deleted=False
-    ).exclude(
-        author_id=author.id
-    ).values_list('author_id', flat=True).distinct()
-
-    if previous_commenters:
-        recipient_ids.update(previous_commenters)
+    # 2. Reply notification for comments is opt-in by explicit reply target.
+    if message.reply_to and message.reply_to.author_id != author.id:
+        recipient_ids.add(message.reply_to.author_id)
 
     recipient_ids.discard(author.id)
     if not recipient_ids:

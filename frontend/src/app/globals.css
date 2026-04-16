@@ -378,6 +378,24 @@ html[data-bs-theme="dark"] .app-input::-webkit-calendar-picker-indicator {
   color: #ffffff;
 }
 
+.chat-list-unread-badge {
+  min-height: 1.35rem;
+  border: 2px solid var(--surface-primary);
+  box-shadow: 0 4px 10px color-mix(in srgb, #ef4444 22%, transparent);
+  letter-spacing: -0.01em;
+}
+
+.chat-unread-divider {
+  color: var(--accent-primary-strong);
+}
+
+.chat-unread-divider__label {
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 20%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent-primary) 10%, var(--surface-primary));
+  color: var(--accent-primary-strong);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent-primary) 10%, transparent);
+}
+
 .app-action-primary {
   border: 1px solid transparent;
   background: var(--accent-primary);
