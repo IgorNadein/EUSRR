@@ -6,7 +6,7 @@
  * нативные уведомления даже когда страница закрыта.
  */
 
-const SW_VERSION = '2.1.0';
+const SW_VERSION = '2.1.1';
 const STATIC_CACHE = `eusrr-static-${SW_VERSION}`;
 const PRECACHE_URLS = [
     '/manifest.webmanifest',
@@ -136,12 +136,20 @@ self.addEventListener('push', (event) => {
             
             notificationData = {
                 ...notificationData,
-                title: payload.title || notificationData.title,
+                title: payload.title || payload.head || notificationData.title,
                 body: payload.body || payload.message || '',
                 icon: payload.icon || notificationData.icon,
                 badge: payload.badge || notificationData.badge,
                 tag: payload.tag || `notification-${Date.now()}`,
-                data: payload.data || {}
+                data: {
+                    ...(payload.data || {}),
+                    url:
+                        payload.data?.url ||
+                        payload.url ||
+                        payload.action_url ||
+                        notificationData.data?.url ||
+                        '/',
+                }
             };
             
             // Дополнительные опции

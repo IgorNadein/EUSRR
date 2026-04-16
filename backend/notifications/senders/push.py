@@ -72,6 +72,7 @@ class PushNotificationSender(BaseNotificationSender):
                 "tag": f"notification-{notification.id}",
                 "requireInteraction": False,
                 "data": {
+                    "url": notification.action_url or "/",
                     "notification_id": notification.id,
                     "verb": notification.verb,
                 },
