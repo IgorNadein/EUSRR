@@ -42,11 +42,25 @@ const localizer = dateFnsLocalizer({
   locales,
 });
 
-type CalendarDisplayEvent = CalendarEventData & {
+type CalendarDisplayEvent = Omit<CalendarEventData, "start" | "end"> & {
   start: Date;
   end: Date;
   allDay: boolean;
 };
+
+function toEventDraft(event: CalendarEventData | CalendarDisplayEvent): CalendarEventDraft {
+  const normalizedId =
+    typeof event.id === "number"
+      ? event.id
+      : typeof event.id === "string" && Number.isFinite(Number(event.id))
+        ? Number(event.id)
+        : undefined;
+
+  return {
+    ...event,
+    id: normalizedId,
+  };
+}
 
 // Кастомные сообщения на русском
 const messages = {
@@ -349,7 +363,7 @@ export function BigCalendar() {
       }
     } else {
       // Обычное событие - открываем детали
-      setViewingEvent(calEvent);
+      setViewingEvent(toEventDraft(calEvent));
       setShowEventDetailsModal(true);
     }
   }, []);
@@ -462,7 +476,7 @@ export function BigCalendar() {
         console.error("Ошибка загрузки события:", err);
       }
     } else {
-      setViewingEvent(event);
+      setViewingEvent(toEventDraft(event));
       setShowEventDetailsModal(true);
     }
   }, []);

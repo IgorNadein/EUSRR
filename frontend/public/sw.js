@@ -7,6 +7,16 @@
  */
 
 const SW_VERSION = '2.0.0';
+const STATIC_CACHE = `eusrr-static-${SW_VERSION}`;
+const PRECACHE_URLS = [
+    '/manifest.webmanifest',
+    '/logo.png',
+    '/logo.webp',
+    '/icon-192.png',
+    '/icon-512.png',
+    '/icon-512-maskable.png',
+    '/apple-touch-icon.png',
+];
 
 // Настройки по умолчанию для уведомлений
 const DEFAULT_NOTIFICATION_OPTIONS = {
@@ -22,8 +32,15 @@ const DEFAULT_NOTIFICATION_OPTIONS = {
  */
 self.addEventListener('install', (event) => {
     console.log('[SW] Service Worker installing, version:', SW_VERSION);
-    // Немедленно активировать новую версию
-    self.skipWaiting();
+    event.waitUntil(
+        caches
+            .open(STATIC_CACHE)
+            .then((cache) => cache.addAll(PRECACHE_URLS))
+            .catch((error) => {
+                console.error('[SW] Failed to precache static assets:', error);
+            })
+            .then(() => self.skipWaiting())
+    );
 });
 
 /**
@@ -31,8 +48,56 @@ self.addEventListener('install', (event) => {
  */
 self.addEventListener('activate', (event) => {
     console.log('[SW] Service Worker activated, version:', SW_VERSION);
-    // Захватить все клиенты без перезагрузки
-    event.waitUntil(self.clients.claim());
+    event.waitUntil(
+        caches.keys().then((cacheKeys) =>
+            Promise.all(
+                cacheKeys.map((cacheKey) => {
+                    if (cacheKey !== STATIC_CACHE && cacheKey.startsWith('eusrr-static-')) {
+                        return caches.delete(cacheKey);
+                    }
+                    return Promise.resolve(false);
+                })
+            )
+        ).then(() => self.clients.claim())
+    );
+});
+
+self.addEventListener('fetch', (event) => {
+    const { request } = event;
+
+    if (request.method !== 'GET') {
+        return;
+    }
+
+    const url = new URL(request.url);
+    if (url.origin !== self.location.origin) {
+        return;
+    }
+
+    const isApiRequest = url.pathname.startsWith('/api/');
+    const isStaticAsset =
+        url.pathname.startsWith('/_next/static/') ||
+        PRECACHE_URLS.includes(url.pathname) ||
+        ['image', 'style', 'script', 'font', 'worker'].includes(request.destination);
+
+    if (isApiRequest || !isStaticAsset) {
+        return;
+    }
+
+    event.respondWith(
+        caches.open(STATIC_CACHE).then(async (cache) => {
+            const cachedResponse = await cache.match(request);
+            if (cachedResponse) {
+                return cachedResponse;
+            }
+
+            const networkResponse = await fetch(request);
+            if (networkResponse.ok) {
+                cache.put(request, networkResponse.clone()).catch(() => undefined);
+            }
+            return networkResponse;
+        })
+    );
 });
 
 /**

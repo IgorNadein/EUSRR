@@ -4,7 +4,11 @@ import { useState, useCallback } from "react";
 import { apiClient } from "@/lib/api";
 import { type CalendarParticipantsTarget } from "@/lib/calendar/ui";
 import { DEFAULT_EVENT_COLOR } from "@/lib/calendar-event-colors";
-import type { CalendarEvent, CalendarEventDraft } from "@/services/calendarService";
+import {
+  toCalendarEventDraft,
+  type CalendarEvent,
+  type CalendarEventDraft,
+} from "@/services/calendarService";
 
 export interface CalendarModalsState {
   showCalendarModal: boolean;
@@ -16,7 +20,7 @@ export interface CalendarModalsState {
   editingEvent: CalendarEventDraft | null;
   participantsCalendar: CalendarParticipantsTarget | null;
   selectedDateForModal: Date | null;
-  viewingEvent: CalendarEvent | null;
+  viewingEvent: CalendarEventDraft | null;
   sidebarEvents: CalendarEvent[];
   currentSelectedCalendarId: number | null;
   eventsRefreshTrigger: number;
@@ -33,7 +37,7 @@ export function useCalendarModals() {
   const [editingEvent, setEditingEvent] = useState<CalendarEventDraft | null>(null);
   const [participantsCalendar, setParticipantsCalendar] = useState<CalendarParticipantsTarget | null>(null);
   const [selectedDateForModal, setSelectedDateForModal] = useState<Date | null>(null);
-  const [viewingEvent, setViewingEvent] = useState<CalendarEvent | null>(null);
+  const [viewingEvent, setViewingEvent] = useState<CalendarEventDraft | null>(null);
   const [sidebarEvents, setSidebarEvents] = useState<CalendarEvent[]>([]);
   const [currentSelectedCalendarId, setCurrentSelectedCalendarId] = useState<number | null>(null);
   const [eventsRefreshTrigger, setEventsRefreshTrigger] = useState(0);
@@ -60,7 +64,7 @@ export function useCalendarModals() {
       setSelectedDateForModal(date);
       setShowDayEventsModal(true);
     } else if (event.id) {
-      setViewingEvent(event as CalendarEvent);
+      setViewingEvent(event);
       setShowEventDetailsModal(true);
     } else {
       setEditingEvent(event);
@@ -106,17 +110,17 @@ export function useCalendarModals() {
     if (event.is_recurring && event.event_id) {
       try {
         const fullEvent = await apiClient.getEvent(event.event_id);
-        setViewingEvent({
+        setViewingEvent(toCalendarEventDraft({
           ...fullEvent,
           start: event.start,
           end: event.end,
-        });
+        }));
         setShowEventDetailsModal(true);
       } catch (err) {
         console.error("Ошибка загрузки события:", err);
       }
     } else {
-      setViewingEvent(event);
+      setViewingEvent(toCalendarEventDraft(event));
       setShowEventDetailsModal(true);
     }
   }, []);
