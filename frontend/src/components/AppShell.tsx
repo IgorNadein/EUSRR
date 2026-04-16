@@ -10,6 +10,7 @@ import { useNotifications } from "@/hooks/useApi";
 import { getVerbCategory } from "@/lib/verbTranslations";
 import { NotificationCenter, NotificationPanel } from "@/components/NotificationCenter";
 import { CalendarSidebar } from "@/components/calendar/CalendarSidebar";
+import { PushOnboardingPrompt } from "@/components/PushOnboardingPrompt";
 import { useCalendarModals } from "@/hooks/useCalendarModals";
 import { CalendarModals } from "@/components/layout/CalendarModals";
 import { MobileLeftDrawer, MobileCalendarDrawer } from "@/components/layout/MobileDrawers";
@@ -478,7 +479,10 @@ export function AppShell({ children }: AppShellProps) {
         />
         <div className={`mx-auto flex w-full flex-1 min-h-0 max-w-6xl ${isMessageDialogPage ? 'gap-0 px-0 py-0 lg:gap-6 lg:px-8 lg:py-8' : 'gap-6 px-4 py-4 sm:px-8 lg:py-8'}`}>
           <LeftNav fixedDesktop />
-          <main className={`flex-1 min-w-0 min-h-0 space-y-6 ${isMessageDialogPage ? 'overflow-visible' : ''}`}>{children}</main>
+          <main className={`flex-1 min-w-0 min-h-0 space-y-6 ${isMessageDialogPage ? 'overflow-visible' : ''}`}>
+            {!isMessageDialogPage ? <PushOnboardingPrompt /> : null}
+            {children}
+          </main>
           <CalendarSidebar
             onOpenCalendarModal={cal.handleOpenCalendarModal}
             onOpenEventModal={cal.handleOpenEventModal}
