@@ -504,14 +504,14 @@ export const CalendarCard = memo(function CalendarCard({
               </div>
             )}
 
-            <div className="flex items-center gap-2">
+            <div className="relative">
               <select
                 value={selectedCalendarId === null ? "" : selectedCalendarId}
                 onChange={(e) => {
                   const value = e.target.value;
                   setSelectedCalendarId(value === "" ? null : Number(value));
                 }}
-                className="app-select flex-1 rounded-lg px-2.5 py-2 text-xs"
+                className="app-select w-full appearance-none rounded-xl py-2.5 pl-3 pr-10 text-sm"
               >
                 <option value="">📅 Все события</option>
                 {calendarOptions.map((cal) => (
@@ -520,6 +520,10 @@ export const CalendarCard = memo(function CalendarCard({
                   </option>
                 ))}
               </select>
+              <ChevronDown
+                size={16}
+                className="app-text-muted pointer-events-none absolute right-3 top-1/2 -translate-y-1/2"
+              />
             </div>
           </div>
         )}
