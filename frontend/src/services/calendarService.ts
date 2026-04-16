@@ -19,6 +19,8 @@ export interface CalendarEvent {
   event_id?: number;
   description?: string;
   calendar?: number;
+  can_edit?: boolean;
+  can_delete?: boolean;
 }
 
 interface EventsCache {

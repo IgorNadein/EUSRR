@@ -17,6 +17,14 @@ from .constants import (
 )
 
 
+def _sync_department_calendar_after_commit(department_id: int) -> None:
+    from scheduling.services import (
+        sync_department_calendar_binding_by_department_id,
+    )
+
+    sync_department_calendar_binding_by_department_id(department_id)
+
+
 class DateRangeMixin(models.Model):
     class Meta:
         abstract = True
@@ -458,6 +466,12 @@ class Department(models.Model):
                         "date_from": timezone.now().date(),
                     },
                 )
+
+        transaction.on_commit(
+            lambda department_id=self.pk: _sync_department_calendar_after_commit(
+                department_id
+            )
+        )
 
     @property
     def active_employees(self):

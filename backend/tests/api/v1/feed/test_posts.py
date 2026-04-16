@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
-from employees.constants import DeptPerm
+from employees.models import DepartmentPermission
 from employees.models import (
-    DepartmentPermission,
     DepartmentRole,
     EmployeeDepartment,
     RoleAssignment,
@@ -28,14 +27,14 @@ def _department_post_payload(department_id: int, **extra):
     return payload
 
 
-def _grant_department_post_role(user, department):
+def _grant_department_feed_role(user, department):
     permission, _ = DepartmentPermission.objects.get_or_create(
-        code=DeptPerm.CREATE_POST,
-        defaults={"name": "Публиковать новости на странице отдела"},
+        code="manage_department_feed",
+        defaults={"name": "Редактировать публикации отдела"},
     )
     role = DepartmentRole.objects.create(
         department=department,
-        name=f"Publisher {user.id}",
+        name=f"Feed manager {user.id}",
     )
     role.scoped_permissions.add(permission)
     RoleAssignment.objects.create(
@@ -197,26 +196,6 @@ def test_active_department_member_can_create_department_post(
     assert Post.objects.filter(id=response.data["id"], department=department).exists()
 
 
-def test_role_assignment_can_create_department_post(
-    auth_client_factory,
-    make_user,
-    department_factory,
-):
-    user = make_user("publisher@example.com")
-    department = department_factory(name="Accounting")
-    _grant_department_post_role(user, department)
-
-    client = auth_client_factory(user)
-    response = client.post(
-        API_POSTS_URL,
-        _department_post_payload(department.id),
-        format="json",
-    )
-
-    assert response.status_code == status.HTTP_201_CREATED
-    assert Post.objects.filter(id=response.data["id"], department=department).exists()
-
-
 def test_any_role_assignment_can_create_department_post(
     auth_client_factory,
     make_user,
@@ -243,6 +222,85 @@ def test_any_role_assignment_can_create_department_post(
 
     assert response.status_code == status.HTTP_201_CREATED
     assert Post.objects.filter(id=response.data["id"], department=department).exists()
+
+
+def test_department_post_patch_requires_manage_feed_permission(
+    auth_client_factory,
+    make_user,
+    department_factory,
+):
+    author = make_user("author-edit@example.com")
+    editor = make_user("editor@example.com")
+    member_without_perm = make_user("member-without-feed@example.com")
+    department = department_factory(name="Accounting", head=author)
+    post = Post.objects.create(
+        author=author,
+        department=department,
+        type="department",
+        title="До редактирования",
+        body="body",
+    )
+
+    EmployeeDepartment.objects.create(
+        employee=member_without_perm,
+        department=department,
+        is_active=True,
+    )
+    _grant_department_feed_role(editor, department)
+
+    member_client = auth_client_factory(member_without_perm)
+    response = member_client.patch(
+        f"{API_POSTS_URL}{post.id}/",
+        {"title": "Не должно пройти"},
+        format="json",
+    )
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    editor_client = auth_client_factory(editor)
+    response = editor_client.patch(
+        f"{API_POSTS_URL}{post.id}/",
+        {"title": "После редактирования"},
+        format="json",
+    )
+    assert response.status_code == status.HTTP_200_OK
+
+    post.refresh_from_db()
+    assert post.title == "После редактирования"
+
+
+def test_department_post_delete_requires_manage_feed_permission(
+    auth_client_factory,
+    make_user,
+    department_factory,
+):
+    author = make_user("author-delete@example.com")
+    editor = make_user("feed-editor@example.com")
+    member_without_perm = make_user("member-without-delete@example.com")
+    department = department_factory(name="Finance", head=author)
+    post = Post.objects.create(
+        author=author,
+        department=department,
+        type="department",
+        title="Удаляемый пост",
+        body="body",
+    )
+
+    EmployeeDepartment.objects.create(
+        employee=member_without_perm,
+        department=department,
+        is_active=True,
+    )
+    _grant_department_feed_role(editor, department)
+
+    member_client = auth_client_factory(member_without_perm)
+    response = member_client.delete(f"{API_POSTS_URL}{post.id}/")
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert Post.objects.filter(id=post.id).exists()
+
+    editor_client = auth_client_factory(editor)
+    response = editor_client.delete(f"{API_POSTS_URL}{post.id}/")
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert not Post.objects.filter(id=post.id).exists()
 
 
 def test_list_department_posts_filtered_by_department(

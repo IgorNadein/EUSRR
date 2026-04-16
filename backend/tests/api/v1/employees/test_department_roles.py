@@ -173,6 +173,8 @@ def test_perm_choices_and_perms_and_set_perms(api_client: APIClient):
     assert resp.status_code == 200
     codes = {row["code"] for row in resp.json().get("results", [])}
     assert {"manage_department", "change_department_head", "assign_department_role"}.issubset(codes)
+    assert "manage_department_events" not in codes
+    assert "publish_department_post" not in codes
 
     # set_perms (codes)
     url_set = reverse("api:v1:department-roles-set-perms", args=[role.id])

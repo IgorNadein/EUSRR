@@ -35,6 +35,15 @@ from .serializers import (
     EventRelationSerializer,
 )
 from .permissions import IsOwnerOfCalendar, CanEditCalendar
+from scheduling.models import CalendarBinding
+from scheduling.services import (
+    get_calendar_binding,
+    user_can_edit_calendar,
+    user_can_delete_event,
+    user_can_edit_event,
+    user_can_manage_participants,
+    user_can_view_calendar,
+)
 
 
 class ScheduleCalendarViewSet(viewsets.ModelViewSet):
@@ -56,7 +65,10 @@ class ScheduleCalendarViewSet(viewsets.ModelViewSet):
     - GET /api/v1/schedule/calendars/{id}/export_ical/ - экспорт в .ics
     """
 
-    queryset = Calendar.objects.all()
+    queryset = Calendar.objects.select_related(
+        "binding",
+        "binding__context_content_type",
+    ).all()
     serializer_class = CalendarSerializer
     permission_classes = [IsAuthenticated, IsOwnerOfCalendar]
     renderer_classes = [JSONRenderer]
@@ -70,27 +82,35 @@ class ScheduleCalendarViewSet(viewsets.ModelViewSet):
 
         User = get_user_model()
 
-        qs = super().get_queryset()
+        qs = super().get_queryset().select_related(
+            "binding",
+            "binding__context_content_type",
+        )
         user = self.request.user
 
         # Админы видят все
         if user.is_staff or user.is_superuser:
-            return qs.order_by("name")
+            filtered = qs
+        else:
+            # Остальные видят только календари, где они участники
+            ct = ContentType.objects.get_for_model(User)
+            calendar_ids = CalendarRelation.objects.filter(
+                content_type=ct, object_id=user.id
+            ).values_list("calendar_id", flat=True)
 
-        # Остальные видят только календари, где они участники
-        ct = ContentType.objects.get_for_model(User)
-        calendar_ids = CalendarRelation.objects.filter(
-            content_type=ct, object_id=user.id
-        ).values_list("calendar_id", flat=True)
-
-        qs = qs.filter(id__in=calendar_ids)
+            visibility_filter = Q(id__in=calendar_ids)
+            if self.action not in {"list", "create"}:
+                visibility_filter |= Q(
+                    binding__type=CalendarBinding.BindingType.DEPARTMENT
+                )
+            filtered = qs.filter(visibility_filter)
 
         # Фильтр по имени
         name = self.request.query_params.get("name")
         if name:
-            qs = qs.filter(name__icontains=name)
+            filtered = filtered.filter(name__icontains=name)
 
-        return qs.order_by("name")
+        return filtered.distinct().order_by("name")
 
     def perform_create(self, serializer):
         """При создании календаря автоматически добавляем creator как owner."""
@@ -98,6 +118,10 @@ class ScheduleCalendarViewSet(viewsets.ModelViewSet):
         # Создаем CalendarRelation с distinction='owner'
         calendar.create_relation(
             self.request.user, distinction="owner", inheritable=True
+        )
+        CalendarBinding.objects.get_or_create(
+            calendar=calendar,
+            defaults={"type": CalendarBinding.BindingType.DEFAULT},
         )
 
     @action(detail=True, methods=["post"], url_path="add-participant")
@@ -112,8 +136,21 @@ class ScheduleCalendarViewSet(viewsets.ModelViewSet):
         """
         calendar = self.get_object()
 
+        if get_calendar_binding(calendar) and get_calendar_binding(
+            calendar
+        ).type == CalendarBinding.BindingType.DEPARTMENT:
+            return Response(
+                {
+                    "detail": (
+                        "Участники календаря отдела синхронизируются "
+                        "автоматически."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Проверка прав (только owner может добавлять участников)
-        if not self._is_owner(calendar, request.user):
+        if not user_can_manage_participants(request.user, calendar):
             return Response(
                 {"detail": "Только владелец может добавлять участников"},
                 status=status.HTTP_403_FORBIDDEN,
@@ -142,8 +179,21 @@ class ScheduleCalendarViewSet(viewsets.ModelViewSet):
         """Удалить участника из календаря."""
         calendar = self.get_object()
 
+        if get_calendar_binding(calendar) and get_calendar_binding(
+            calendar
+        ).type == CalendarBinding.BindingType.DEPARTMENT:
+            return Response(
+                {
+                    "detail": (
+                        "Участники календаря отдела синхронизируются "
+                        "автоматически."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Проверка прав
-        if not self._is_owner(calendar, request.user):
+        if not user_can_manage_participants(request.user, calendar):
             return Response(
                 {"detail": "Только владелец может удалять участников"},
                 status=status.HTTP_403_FORBIDDEN,
@@ -222,7 +272,7 @@ class ScheduleCalendarViewSet(viewsets.ModelViewSet):
         calendar = self.get_object()
 
         # Проверка, что пользователь - владелец
-        if not self._is_owner(calendar, request.user):
+        if not user_can_edit_calendar(request.user, calendar):
             return Response(
                 {
                     "error": (
@@ -312,24 +362,6 @@ class ScheduleCalendarViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-    def _is_owner(self, calendar, user):
-        """Проверка, является ли пользователь владельцем календаря."""
-        if user.is_staff or user.is_superuser:
-            return True
-
-        from django.contrib.auth import get_user_model
-
-        User = get_user_model()
-        ct = ContentType.objects.get_for_model(User)
-
-        return CalendarRelation.objects.filter(
-            calendar=calendar,
-            content_type=ct,
-            object_id=user.id,
-            distinction="owner",
-        ).exists()
-
-
 class ScheduleEventViewSet(viewsets.ModelViewSet):
     """CRUD для django-scheduler Event.
 
@@ -343,7 +375,13 @@ class ScheduleEventViewSet(viewsets.ModelViewSet):
     - DELETE /api/v1/schedule/events/{id}/ - удалить
     """
 
-    queryset = Event.objects.select_related("calendar", "rule", "creator")
+    queryset = Event.objects.select_related(
+        "calendar",
+        "calendar__binding",
+        "calendar__binding__context_content_type",
+        "rule",
+        "creator",
+    )
     permission_classes = [IsAuthenticated, CanEditCalendar]
     renderer_classes = [JSONRenderer]
 
@@ -364,8 +402,15 @@ class ScheduleEventViewSet(viewsets.ModelViewSet):
 
         User = get_user_model()
 
-        qs = super().get_queryset()
+        qs = super().get_queryset().select_related(
+            "calendar",
+            "calendar__binding",
+            "calendar__binding__context_content_type",
+            "rule",
+            "creator",
+        )
         user = self.request.user
+        calendar_id = self.request.query_params.get("calendar")
 
         # Админы видят все события
         if not (user.is_staff or user.is_superuser):
@@ -383,13 +428,30 @@ class ScheduleEventViewSet(viewsets.ModelViewSet):
 
             # Объединяем: события из доступных календарей ИЛИ где пользователь
             # участник
-            qs = qs.filter(
+            visibility_filter = (
                 Q(calendar_id__in=accessible_calendar_ids)
                 | Q(id__in=participant_event_ids)
             )
 
+            if self.action != "list":
+                visibility_filter |= Q(
+                    calendar__binding__type=CalendarBinding.BindingType.DEPARTMENT
+                )
+
+            if calendar_id:
+                try:
+                    calendar = Calendar.objects.select_related("binding").get(
+                        id=calendar_id
+                    )
+                except Calendar.DoesNotExist:
+                    calendar = None
+
+                if calendar and user_can_view_calendar(user, calendar):
+                    visibility_filter |= Q(calendar_id=calendar.id)
+
+            qs = qs.filter(visibility_filter)
+
         # Фильтр по календарю
-        calendar_id = self.request.query_params.get("calendar")
         if calendar_id:
             qs = qs.filter(calendar_id=calendar_id)
 
@@ -445,12 +507,19 @@ class ScheduleEventViewSet(viewsets.ModelViewSet):
         # Если указан конкретный календарь - фильтруем по нему
         if calendar_id:
             try:
-                calendar = Calendar.objects.get(id=calendar_id)
+                calendar = Calendar.objects.select_related("binding").get(
+                    id=calendar_id
+                )
                 calendars = [calendar]
             except Calendar.DoesNotExist:
                 return Response(
                     {"detail": "Календарь не найден"},
                     status=status.HTTP_404_NOT_FOUND,
+                )
+            if not user_can_view_calendar(request.user, calendar):
+                return Response(
+                    {"detail": "Нет доступа к календарю"},
+                    status=status.HTTP_403_FORBIDDEN,
                 )
         else:
             # Если календарь не указан - берем все доступные пользователю
@@ -495,6 +564,12 @@ class ScheduleEventViewSet(viewsets.ModelViewSet):
                         "color_event": occurrence.event.color_event,
                         # ID оригинального события
                         "event_id": occurrence.event.id,
+                        "can_edit": user_can_edit_event(
+                            request.user, occurrence.event
+                        ),
+                        "can_delete": user_can_delete_event(
+                            request.user, occurrence.event
+                        ),
                         "is_recurring": occurrence.event.rule_id is not None,
                         "rule": occurrence.event.rule_id,
                         "end_recurring_period": (

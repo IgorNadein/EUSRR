@@ -3,7 +3,7 @@
 import { Calendar, dateFnsLocalizer, View, ToolbarProps, NavigateAction } from "react-big-calendar";
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import { ru } from "date-fns/locale";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiClient } from "@/lib/api";
 import { useCalendar } from "@/contexts/CalendarContext";
@@ -43,6 +43,8 @@ type CalendarEvent = {
   isOccurrence?: boolean; // Флаг для повторяющихся событий
   event_id?: number; // ID базового события для occurrence
   allDay?: boolean; // Флаг целодневного события
+  can_edit?: boolean;
+  can_delete?: boolean;
 };
 
 // Кастомные сообщения на русском
@@ -145,6 +147,32 @@ export function BigCalendar() {
   const [showEventDetailsModal, setShowEventDetailsModal] = useState(false);
   const [viewingEvent, setViewingEvent] = useState<CalendarEvent | null>(null);
   const linkedEventId = Number(searchParams.get("event") || "");
+  const linkedCalendarId = Number(searchParams.get("calendar") || "");
+  const linkedCalendarName = searchParams.get("calendarName") || "";
+
+  const selectedCalendar = useMemo(() => {
+    const calendar = calendars.find((item) => item.id === selectedCalendarId);
+    if (calendar) return calendar;
+    if (selectedCalendarId && linkedCalendarName) {
+      return {
+        id: selectedCalendarId,
+        name: linkedCalendarName,
+        slug: `linked-calendar-${selectedCalendarId}`,
+        can_create_events: true,
+        can_edit_calendar: false,
+        can_manage_participants: false,
+      };
+    }
+    return null;
+  }, [calendars, linkedCalendarName, selectedCalendarId]);
+
+  const calendarOptions = useMemo(() => {
+    if (!selectedCalendar) return calendars;
+    if (calendars.some((item) => item.id === selectedCalendar.id)) {
+      return calendars;
+    }
+    return [...calendars, selectedCalendar];
+  }, [calendars, selectedCalendar]);
 
   const clearEventParam = useCallback(() => {
     if (!searchParams.get("event")) return;
@@ -152,6 +180,11 @@ export function BigCalendar() {
     nextParams.delete("event");
     router.replace(nextParams.toString() ? `${pathname}?${nextParams.toString()}` : pathname, { scroll: false });
   }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    if (!linkedCalendarId) return;
+    setSelectedCalendarId(linkedCalendarId);
+  }, [linkedCalendarId, setSelectedCalendarId]);
 
   // Загрузка событий
   const loadEvents = useCallback(async () => {
@@ -217,6 +250,8 @@ export function BigCalendar() {
           color_event: resolveEventColor(occ.color_event),
           event_id: occ.event_id,
           rule: occ.rule,
+          can_edit: occ.can_edit,
+          can_delete: occ.can_delete,
           isOccurrence: true, // Помечаем как occurrence для корректного отображения
         }));
 
@@ -275,6 +310,10 @@ export function BigCalendar() {
       alert("Сначала выберите календарь");
       return;
     }
+    if (selectedCalendar?.can_create_events === false) {
+      alert("В выбранный календарь нельзя добавлять события");
+      return;
+    }
 
     if (!selectedDate) return;
 
@@ -297,7 +336,7 @@ export function BigCalendar() {
     // Закрываем модал просмотра дня и открываем модал создания
     setShowDayEventsModal(false);
     setShowEventModal(true);
-  }, [selectedCalendarId, selectedDate]);
+  }, [selectedCalendar?.can_create_events, selectedCalendarId, selectedDate]);
 
   const handleSelectEvent = useCallback(async (calEvent: CalendarEvent) => {
     // Если это occurrence (повторяющееся событие), загружаем базовое событие
@@ -398,7 +437,7 @@ export function BigCalendar() {
                   className="app-select max-w-xs flex-1"
                 >
                   <option value="">📅 Все события</option>
-                  {calendars.map((cal) => (
+                  {calendarOptions.map((cal) => (
                     <option key={cal.id} value={cal.id}>
                       {cal.name}
                     </option>
@@ -416,10 +455,10 @@ export function BigCalendar() {
                   <Plus size={16} />
                 </button>
 
-                {selectedCalendarId && (
+                {selectedCalendarId && selectedCalendar?.can_edit_calendar && (
                   <button
                     onClick={() => {
-                      const cal = calendars.find((c) => c.id === selectedCalendarId);
+                      const cal = selectedCalendar;
                       if (cal) {
                         setEditingCalendar({ id: cal.id, name: cal.name });
                         setShowCalendarModal(true);

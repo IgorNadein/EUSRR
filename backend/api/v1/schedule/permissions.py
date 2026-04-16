@@ -4,8 +4,13 @@
 """
 
 from rest_framework import permissions
-from django.contrib.contenttypes.models import ContentType
-from schedule.models import CalendarRelation
+
+from scheduling.services import (
+    user_can_create_event,
+    user_can_edit_calendar,
+    user_can_edit_event,
+    user_can_view_calendar,
+)
 
 
 class IsOwnerOfCalendar(permissions.BasePermission):
@@ -18,28 +23,10 @@ class IsOwnerOfCalendar(permissions.BasePermission):
         """Проверка прав на календарь."""
         # SAFE_METHODS (GET, HEAD, OPTIONS) доступны всем участникам
         if request.method in permissions.SAFE_METHODS:
-            return True
+            return user_can_view_calendar(request.user, obj)
 
         # Только owner может изменять/удалять календарь
-        return self._is_owner(obj, request.user)
-
-    @staticmethod
-    def _is_owner(calendar, user):
-        """Проверка, является ли пользователь владельцем календаря."""
-        if user.is_staff or user.is_superuser:
-            return True
-
-        from django.contrib.auth import get_user_model
-
-        User = get_user_model()
-        ct = ContentType.objects.get_for_model(User)
-
-        return CalendarRelation.objects.filter(
-            calendar=calendar,
-            content_type=ct,
-            object_id=user.id,
-            distinction="owner",
-        ).exists()
+        return user_can_edit_calendar(request.user, obj)
 
 
 class CanEditCalendar(permissions.BasePermission):
@@ -66,7 +53,7 @@ class CanEditCalendar(permissions.BasePermission):
             except Calendar.DoesNotExist:
                 return False
 
-            return self._can_edit(calendar, request.user)
+            return user_can_create_event(request.user, calendar)
 
         return True
 
@@ -78,28 +65,7 @@ class CanEditCalendar(permissions.BasePermission):
 
         # SAFE_METHODS (GET, HEAD, OPTIONS) доступны всем участникам
         if request.method in permissions.SAFE_METHODS:
-            return True
+            return user_can_view_calendar(request.user, calendar)
 
         # Для изменения/удаления нужны права editor или owner
-        return self._can_edit(calendar, request.user)
-
-    @staticmethod
-    def _can_edit(calendar, user):
-        """Проверка, может ли пользователь редактировать события в календаре."""
-        if user.is_staff or user.is_superuser:
-            return True
-
-        from django.contrib.auth import get_user_model
-
-        User = get_user_model()
-        ct = ContentType.objects.get_for_model(User)
-
-        # Проверяем роль пользователя в календаре
-        try:
-            relation = CalendarRelation.objects.get(
-                calendar=calendar, content_type=ct, object_id=user.id
-            )
-            # Owner и editor могут редактировать, viewer - нет
-            return relation.distinction in ["owner", "editor"]
-        except CalendarRelation.DoesNotExist:
-            return False
+        return user_can_edit_event(request.user, event)

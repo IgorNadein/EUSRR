@@ -716,6 +716,8 @@ export interface CalendarEvent {
   creator?: number | null;
   created_on?: string;
   updated_on?: string;
+  can_edit?: boolean;
+  can_delete?: boolean;
 }
 
 export interface Calendar {
@@ -723,6 +725,14 @@ export interface Calendar {
   name: string; // django-scheduler использует name (не title)
   slug: string;
   events_count?: number;
+  type?: string;
+  context_object_id?: number | null;
+  context_type?: string | null;
+  flags?: Record<string, any>;
+  user_role?: string | null;
+  can_create_events?: boolean;
+  can_edit_calendar?: boolean;
+  can_manage_participants?: boolean;
 }
 
 // Notifications types (v2 API)

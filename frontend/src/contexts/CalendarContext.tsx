@@ -3,13 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from "react";
 import { apiClient } from "@/lib/api";
 import { useUser } from "@/contexts/UserContext";
-
-type Calendar = {
-  id: number;
-  name: string;
-  slug: string;
-  events_count?: number;
-};
+import type { Calendar } from "@/types/api";
 
 type CalendarContextType = {
   calendars: Calendar[];

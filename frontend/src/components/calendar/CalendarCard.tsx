@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useMemo, useState, useRef, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Plus, Users } from "lucide-react";
 import { useCalendar } from "@/contexts/CalendarContext";
 import { useCalendarEvents } from "@/hooks/calendar/useCalendarEvents";
@@ -38,6 +39,8 @@ export const CalendarCard = memo(function CalendarCard({
   onCalendarChange,
 }: CalendarCardProps) {
   const { calendars, selectedCalendarId, setSelectedCalendarId } = useCalendar();
+  const searchParams = useSearchParams();
+  const linkedCalendarName = searchParams.get("calendarName") || "";
 
   const [monthDate, setMonthDate] = useState(() => {
     const now = new Date();
@@ -48,6 +51,30 @@ export const CalendarCard = memo(function CalendarCard({
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [eventsViewMode, setEventsViewMode] = useState<"week" | "month">("week");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const selectedCalendar = useMemo(() => {
+    const calendar = calendars.find((item) => item.id === selectedCalendarId);
+    if (calendar) return calendar;
+    if (selectedCalendarId && linkedCalendarName) {
+      return {
+        id: selectedCalendarId,
+        name: linkedCalendarName,
+        slug: `linked-calendar-${selectedCalendarId}`,
+        can_create_events: true,
+        can_edit_calendar: false,
+        can_manage_participants: false,
+      };
+    }
+    return null;
+  }, [calendars, linkedCalendarName, selectedCalendarId]);
+
+  const calendarOptions = useMemo(() => {
+    if (!selectedCalendar) return calendars;
+    if (calendars.some((item) => item.id === selectedCalendar.id)) {
+      return calendars;
+    }
+    return [...calendars, selectedCalendar];
+  }, [calendars, selectedCalendar]);
 
   // Загружаем события через хук
   const { events, loading, error } = useCalendarEvents({
@@ -81,6 +108,9 @@ export const CalendarCard = memo(function CalendarCard({
   }, [onOpenCalendarModal]);
 
   const handleDayClick = useCallback((date: Date) => {
+    if (selectedCalendar?.can_create_events === false) {
+      return;
+    }
     setSelectedDate(date);
     const startDate = new Date(date);
     startDate.setHours(10, 0, 0, 0);
@@ -96,7 +126,7 @@ export const CalendarCard = memo(function CalendarCard({
       color_event: DEFAULT_EVENT_COLOR,
     };
     onOpenEventModal(newEvent, date);
-  }, [selectedCalendarId, onOpenEventModal]);
+  }, [onOpenEventModal, selectedCalendar?.can_create_events, selectedCalendarId]);
 
   const handleEventClick = useCallback(async (event: CalendarEvent) => {
     // Если это occurrence (повторяющееся событие), загружаем базовое событие
@@ -274,13 +304,13 @@ export const CalendarCard = memo(function CalendarCard({
               className="app-select flex-1 rounded-lg px-2.5 py-2 text-xs"
             >
               <option value="">📅 Все события</option>
-              {calendars.map((cal) => (
+              {calendarOptions.map((cal) => (
                 <option key={cal.id} value={cal.id}>
                   {cal.name}
                 </option>
               ))}
             </select>
-            {selectedCalendarId && (
+            {selectedCalendar && (
               <div className="relative">
                 <button
                   onClick={() => setShowCalendarMenu(!showCalendarMenu)}
@@ -304,12 +334,12 @@ export const CalendarCard = memo(function CalendarCard({
                       <div className="py-1">
                         <button
                           onClick={() => {
-                            const cal = calendars.find(c => c.id === selectedCalendarId);
-                            if (cal) {
-                              onOpenParticipantsModal({ id: cal.id, name: cal.name, user_role: (cal as any).user_role });
+                            if (selectedCalendar?.can_manage_participants) {
+                              onOpenParticipantsModal({ id: selectedCalendar.id, name: selectedCalendar.name, user_role: (selectedCalendar as any).user_role });
                             }
                             setShowCalendarMenu(false);
                           }}
+                          disabled={!selectedCalendar?.can_manage_participants}
                           className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
                         >
                           <Users size={16} />
@@ -330,6 +360,7 @@ export const CalendarCard = memo(function CalendarCard({
                           onClick={() => {
                             fileInputRef.current?.click();
                           }}
+                          disabled={!selectedCalendar?.can_edit_calendar}
                           className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -353,12 +384,12 @@ export const CalendarCard = memo(function CalendarCard({
                         <div className="app-divider my-1 border-t"></div>
                         <button
                           onClick={() => {
-                            const cal = calendars.find(c => c.id === selectedCalendarId);
-                            if (cal) {
-                              onOpenCalendarModal(cal);
+                            if (selectedCalendar?.can_edit_calendar) {
+                              onOpenCalendarModal(selectedCalendar);
                             }
                             setShowCalendarMenu(false);
                           }}
+                          disabled={!selectedCalendar?.can_edit_calendar}
                           className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
