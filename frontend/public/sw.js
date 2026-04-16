@@ -6,11 +6,12 @@
  * нативные уведомления даже когда страница закрыта.
  */
 
-const SW_VERSION = '2.0.0';
+const SW_VERSION = '2.1.0';
 const STATIC_CACHE = `eusrr-static-${SW_VERSION}`;
 const PRECACHE_URLS = [
     '/manifest.webmanifest',
     '/favicon-source.svg',
+    '/notification-badge.png',
     '/logo.png',
     '/logo.webp',
     '/icon-192.png',
@@ -21,8 +22,8 @@ const PRECACHE_URLS = [
 
 // Настройки по умолчанию для уведомлений
 const DEFAULT_NOTIFICATION_OPTIONS = {
-    icon: '/logo.png',
-    badge: '/logo.png',
+    icon: '/icon-192.png',
+    badge: '/notification-badge.png',
     vibrate: [100, 50, 100],
     requireInteraction: false,
     renotify: true,
@@ -183,32 +184,43 @@ self.addEventListener('notificationclick', (event) => {
     event.notification.close();
     
     // Получаем URL из данных уведомления
-    const urlToOpen = event.notification.data?.url || '/';
+    const urlToOpen = new URL(
+        event.notification.data?.url || '/',
+        self.location.origin,
+    ).toString();
     
-    // Открываем или фокусируемся на странице
+    // Для установленного PWA даём браузеру самому решить, открыть app window
+    // или вкладку. Не фокусируем произвольную already-open same-origin вкладку.
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true })
-            .then((windowClients) => {
-                // Ищем уже открытую вкладку с нашим сайтом
-                for (let client of windowClients) {
-                    if (client.url.includes(self.location.origin) && 'focus' in client) {
-                        return client.focus().then((client) => {
-                            // Отправляем сообщение для навигации
-                            if ('navigate' in client) {
-                                return client.navigate(urlToOpen);
-                            }
-                            return client.postMessage({
-                                type: 'NOTIFICATION_CLICK',
-                                url: urlToOpen,
-                                notificationId: event.notification.data?.notification_id
-                            });
-                        });
-                    }
+            .then(async (windowClients) => {
+                const exactClient = windowClients.find(
+                    (client) => client.url === urlToOpen && 'focus' in client,
+                );
+                if (exactClient) {
+                    return exactClient.focus();
                 }
-                
-                // Если открытой вкладки нет, открываем новую
+
                 if (clients.openWindow) {
                     return clients.openWindow(urlToOpen);
+                }
+
+                const sameOriginClient = windowClients.find(
+                    (client) =>
+                        client.url.startsWith(self.location.origin) &&
+                        'focus' in client,
+                );
+                if (sameOriginClient) {
+                    return sameOriginClient.focus().then((client) => {
+                        if ('navigate' in client) {
+                            return client.navigate(urlToOpen);
+                        }
+                        return client.postMessage({
+                            type: 'NOTIFICATION_CLICK',
+                            url: urlToOpen,
+                            notificationId: event.notification.data?.notification_id
+                        });
+                    });
                 }
             })
     );

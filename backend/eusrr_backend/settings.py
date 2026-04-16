@@ -364,7 +364,7 @@ DEFAULT_FROM_EMAIL = os.getenv(
 # SITE SETTINGS
 # -----------------------------------------------------------------------------
 # Название сайта для email уведомлений и UI
-SITE_NAME = os.getenv("SITE_NAME", "CORP HiRo")
+SITE_NAME = os.getenv("SITE_NAME", "CORP - HiRo")
 SITE_URL = os.getenv("SITE_URL", "https://corp.robotail.pro")
 
 # -----------------------------------------------------------------------------
@@ -436,7 +436,7 @@ REST_FRAMEWORK = {
 SPECTACULAR_SETTINGS = {
     "TITLE": f"{SITE_NAME} API",
     "DESCRIPTION": (
-        "OpenAPI-документация backend API EUSRR. "
+        "OpenAPI-документация backend API CORP - HiRo. "
         "Включает JWT-аутентификацию, session auth и основные REST endpoints."
     ),
     "VERSION": "1.0.0",
@@ -598,7 +598,7 @@ LDAP_POSITIONS_BASE = os.getenv(
     "LDAP_POSITIONS_BASE", "OU=Positions,DC=eusrr,DC=local"
 )
 
-BRAND_NAME = os.getenv("BRAND_NAME", "HiRo")
+BRAND_NAME = os.getenv("BRAND_NAME", "CORP - HiRo")
 BRAND_LOGO = "img/logo.png"
 
 # Web Push Notifications (VAPID)
