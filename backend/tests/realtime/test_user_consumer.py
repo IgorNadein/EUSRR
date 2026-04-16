@@ -150,6 +150,55 @@ class TestUserConsumerChatManagement:
         assert unrelated_notification.unread is True
 
         await communicator.disconnect()
+
+    async def test_open_chat_marks_related_commented_notifications_as_read(self, ws_communicator, user, test_chat):
+        """Открытие comments-чата должно читать уведомления verb=commented этого чата."""
+        related_notification = await database_sync_to_async(Notification.objects.create)(
+            recipient=user,
+            verb='commented',
+            description='Department chat comment notification',
+            action_url=f'/messages/{test_chat.id}',
+            data={'chat_id': test_chat.id, 'message_id': 12, 'object_type': 'Department'},
+        )
+        unrelated_notification = await database_sync_to_async(Notification.objects.create)(
+            recipient=user,
+            verb='commented',
+            description='Other comments chat notification',
+            action_url='/messages/999',
+            data={'chat_id': 999, 'message_id': 13, 'object_type': 'Department'},
+        )
+
+        communicator = await ws_communicator(user=user)
+
+        connected, _ = await communicator.connect()
+        assert connected
+
+        await communicator.send_json_to({
+            'action': 'open_chat',
+            'chat_id': test_chat.id,
+            'load_history': False,
+        })
+
+        response = await communicator.receive_json_from(timeout=5)
+        assert response['type'] == 'chat_opened'
+        assert response['chat_id'] == test_chat.id
+
+        read_all_event = await communicator.receive_json_from(timeout=5)
+        assert read_all_event['type'] == 'notifications_read_all'
+        assert related_notification.id in read_all_event['notification_ids']
+        assert unrelated_notification.id not in read_all_event['notification_ids']
+
+        count_event = await communicator.receive_json_from(timeout=5)
+        assert count_event['type'] == 'unread_count'
+        assert count_event['count'] == 1
+
+        related_notification = await database_sync_to_async(Notification.objects.get)(id=related_notification.id)
+        unrelated_notification = await database_sync_to_async(Notification.objects.get)(id=unrelated_notification.id)
+
+        assert related_notification.unread is False
+        assert unrelated_notification.unread is True
+
+        await communicator.disconnect()
     
     async def test_open_nonexistent_chat(self, ws_communicator, user):
         """Попытка открыть несуществующий чат возвращает ошибку."""

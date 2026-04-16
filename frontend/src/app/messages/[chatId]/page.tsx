@@ -135,6 +135,19 @@ function MessageDialogPageContent() {
   /* ── derived state ── */
   const displayMessages = useMemo(() => mergeDisplayMessages(cm.messages, cm.pendingMessages), [cm.messages, cm.pendingMessages]);
   const messagesById = useMemo(() => new Map(displayMessages.map(m => [m.id, m])), [displayMessages]);
+  const unreadDividerMessageId = useMemo(() => {
+    if (cm.newMessagesBelowCount <= 0) {
+      return null;
+    }
+
+    const unreadBelowIds = cm.unreadBelowIdsRef.current;
+    if (!unreadBelowIds || unreadBelowIds.size === 0) {
+      return null;
+    }
+
+    const firstUnreadIncoming = displayMessages.find((message) => unreadBelowIds.has(message.id));
+    return firstUnreadIncoming?.id ?? null;
+  }, [cm.newMessagesBelowCount, cm.unreadBelowIdsRef, displayMessages]);
 
   /**
    * Badge count: take the maximum of the server-provided unread_count
@@ -1057,6 +1070,7 @@ function MessageDialogPageContent() {
                         const prevDay = index > 0 ? getMessageDayKey(displayMessages[index - 1]) : null;
                         const curDate = getMessageDate(message);
                         const showDayDivider = Boolean(curDate && curDay !== prevDay);
+                        const showUnreadDivider = unreadDividerMessageId === message.id;
 
                         return (
                           <React.Fragment key={message.id}>
@@ -1065,6 +1079,15 @@ function MessageDialogPageContent() {
                                 <button type="button" data-date-trigger="true" onClick={() => scroll.openDateNavigator(formatDateInputValue(curDate))} className="app-surface-elevated pointer-events-auto inline-block rounded-full px-3 py-1 text-xs text-[var(--muted-foreground)] backdrop-blur transition hover:text-[var(--foreground)]">
                                   {formatDayDivider(curDate)}
                                 </button>
+                              </div>
+                            ) : null}
+                            {showUnreadDivider ? (
+                              <div className="chat-unread-divider mb-3 mt-1 flex items-center gap-3 px-2" role="separator" aria-label="Непрочитанные сообщения">
+                                <span className="h-px flex-1 bg-[color:color-mix(in_srgb,var(--accent-primary)_18%,var(--border-subtle))]" />
+                                <span className="chat-unread-divider__label rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em]">
+                                  Непрочитанные сообщения
+                                </span>
+                                <span className="h-px flex-1 bg-[color:color-mix(in_srgb,var(--accent-primary)_18%,var(--border-subtle))]" />
                               </div>
                             ) : null}
                             <ChatMessageItem

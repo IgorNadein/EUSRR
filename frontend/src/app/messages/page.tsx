@@ -523,7 +523,7 @@ export default function MessagesPage() {
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="relative h-10 w-10">
+                    <div className="relative h-10 w-10 overflow-visible">
                       <div className="app-avatar-fallback flex h-10 w-10 items-center justify-center overflow-hidden rounded-full text-xs font-semibold">
                         {chatAvatar ? (
                           <Image
@@ -544,7 +544,7 @@ export default function MessagesPage() {
                       </span>
                       {/* Счетчик непрочитанных */}
                       {(chat.unread_count ?? 0) > 0 ? (
-                        <span className="app-counter-danger absolute -top-1 -right-1 z-10 flex h-5 min-w-[20px] items-center justify-center border-2 border-[var(--surface-primary)] px-1.5 text-[10px] font-bold">
+                        <span className="chat-list-unread-badge app-counter-danger absolute right-0 top-0 z-20 flex min-w-[1.35rem] -translate-y-1/4 translate-x-1/4 items-center justify-center px-1.5 text-[10px] font-bold leading-none">
                           {chat.unread_count! > 99 ? '99+' : chat.unread_count}
                         </span>
                       ) : null}

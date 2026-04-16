@@ -24,6 +24,7 @@ class ChatNotificationReadService:
         NotificationVerbs.MENTION,
         NotificationVerbs.REPLY,
         NotificationVerbs.ADDED_TO_CHAT,
+        NotificationVerbs.COMMENTED,
     )
 
     def mark_chat_notifications_as_read(
