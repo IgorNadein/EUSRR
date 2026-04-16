@@ -6,21 +6,29 @@ import { ChevronDown, ChevronLeft, ChevronRight, Pencil, Trash2, Users } from "l
 import { apiClient } from "@/lib/api";
 import { useCalendar } from "@/contexts/CalendarContext";
 import { useCalendarEvents } from "@/hooks/calendar/useCalendarEvents";
-import { calendarService, formatDateKey, type CalendarEvent } from "@/services/calendarService";
+import {
+  calendarService,
+  formatDateKey,
+  type CalendarEvent,
+  type CalendarEventDraft,
+  toCalendarEventDraft,
+} from "@/services/calendarService";
 import { DEFAULT_EVENT_COLOR, resolveEventColor } from "@/lib/calendar-event-colors";
+import {
+  buildCalendarOptions,
+  canOpenParticipantsModal,
+  isDepartmentCalendar,
+  readLinkedCalendarState,
+  resolveSelectedCalendar,
+  toParticipantsTarget,
+  type CalendarParticipantsTarget,
+} from "@/lib/calendar/ui";
 
 // Типы
 interface CalendarCardProps {
   onOpenCalendarModal: (calendar?: { id?: number; name: string }) => void;
-  onOpenEventModal: (event: any, date?: Date) => void;
-  onOpenParticipantsModal: (calendar: {
-    id: number;
-    name: string;
-    user_role?: string;
-    can_manage_participants?: boolean;
-    type?: string | null;
-    context_type?: string | null;
-  }) => void;
+  onOpenEventModal: (event: CalendarEventDraft, date?: Date) => void;
+  onOpenParticipantsModal: (calendar: CalendarParticipantsTarget) => void;
   eventsRefreshTrigger: number;
   setEventsRefreshTrigger: (value: number | ((prev: number) => number)) => void;
   setSidebarEvents: (events: CalendarEvent[]) => void;
@@ -56,9 +64,10 @@ export const CalendarCard = memo(function CalendarCard({
     reloadCalendars,
   } = useCalendar();
   const searchParams = useSearchParams();
-  const linkedCalendarName = searchParams.get("calendarName") || "";
-  const linkedCalendarType = searchParams.get("calendarType") || "";
-  const linkedContextType = searchParams.get("contextType") || "";
+  const linkedCalendarState = useMemo(
+    () => readLinkedCalendarState(searchParams),
+    [searchParams],
+  );
 
   const [monthDate, setMonthDate] = useState(() => {
     const now = new Date();
@@ -66,49 +75,26 @@ export const CalendarCard = memo(function CalendarCard({
   });
 
   const [showCalendarMenu, setShowCalendarMenu] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [eventsViewMode, setEventsViewMode] = useState<"week" | "month">("week");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const selectedCalendar = useMemo(() => {
-    const calendar = calendars.find((item) => item.id === selectedCalendarId);
-    if (calendar) return calendar;
-    if (selectedCalendarId && linkedCalendarName) {
-      return {
-        id: selectedCalendarId,
-        name: linkedCalendarName,
-        slug: `linked-calendar-${selectedCalendarId}`,
-        type: linkedCalendarType || null,
-        context_type: linkedContextType || null,
-        can_create_events: true,
-        can_edit_calendar: false,
-        can_manage_participants: false,
-      };
-    }
-    return null;
-  }, [calendars, linkedCalendarName, linkedCalendarType, linkedContextType, selectedCalendarId]);
-
-  const calendarOptions = useMemo(() => {
-    if (!selectedCalendar) return calendars;
-    if (calendars.some((item) => item.id === selectedCalendar.id)) {
-      return calendars;
-    }
-    return [...calendars, selectedCalendar];
-  }, [calendars, selectedCalendar]);
-
-  const canOpenParticipantsModal = Boolean(
-    selectedCalendar && (
-      selectedCalendar.can_manage_participants ||
-      selectedCalendar.type === "department" ||
-      selectedCalendar.context_type === "department"
-    )
+  const selectedCalendar = useMemo(
+    () =>
+      resolveSelectedCalendar(
+        calendars,
+        selectedCalendarId,
+        linkedCalendarState,
+      ),
+    [calendars, linkedCalendarState, selectedCalendarId],
   );
-  const isDepartmentCalendar = Boolean(
-    selectedCalendar && (
-      selectedCalendar.type === "department" ||
-      selectedCalendar.context_type === "department"
-    )
+
+  const calendarOptions = useMemo(
+    () => buildCalendarOptions(calendars, selectedCalendar),
+    [calendars, selectedCalendar],
   );
+
+  const participantsModalAvailable = canOpenParticipantsModal(selectedCalendar);
+  const departmentCalendar = isDepartmentCalendar(selectedCalendar);
 
   // Загружаем события через хук
   const { events, loading, error } = useCalendarEvents({
@@ -147,7 +133,6 @@ export const CalendarCard = memo(function CalendarCard({
     if (selectedCalendar?.can_create_events === false) {
       return;
     }
-    setSelectedDate(date);
     const startDate = new Date(date);
     startDate.setHours(10, 0, 0, 0);
     const endDate = new Date(date);
@@ -169,12 +154,12 @@ export const CalendarCard = memo(function CalendarCard({
     if (event.is_recurring && event.event_id) {
       try {
         const fullEvent = await calendarService.loadFullEvent(event.event_id, event.start || undefined, event.end || undefined);
-        onOpenEventModal(fullEvent);
+        onOpenEventModal(toCalendarEventDraft(fullEvent));
       } catch (err) {
         console.error("Ошибка загрузки базового события:", err);
       }
     } else {
-      onOpenEventModal(event);
+      onOpenEventModal(toCalendarEventDraft(event));
     }
   }, [onOpenEventModal]);
 
@@ -189,9 +174,9 @@ export const CalendarCard = memo(function CalendarCard({
       const result = await calendarService.importFromICS(selectedCalendarId, file);
       alert(`Импорт завершен!\nИмпортировано: ${result.imported}\nПропущено: ${result.skipped}`);
       setEventsRefreshTrigger(prev => prev + 1);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to import calendar:', error);
-      alert(`Ошибка импорта: ${error.message}`);
+      alert(`Ошибка импорта: ${error instanceof Error ? error.message : 'Не удалось импортировать календарь'}`);
     } finally {
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -375,19 +360,14 @@ export const CalendarCard = memo(function CalendarCard({
                         <div className="app-divider my-1 border-t"></div>
                         <button
                           onClick={() => {
-                            if (canOpenParticipantsModal) {
-                              onOpenParticipantsModal({
-                                id: selectedCalendar.id,
-                                name: selectedCalendar.name,
-                                user_role: (selectedCalendar as any).user_role,
-                                can_manage_participants: selectedCalendar.can_manage_participants,
-                                type: selectedCalendar.type,
-                                context_type: selectedCalendar.context_type,
-                              });
+                            if (participantsModalAvailable) {
+                              onOpenParticipantsModal(
+                                toParticipantsTarget(selectedCalendar),
+                              );
                             }
                             setShowCalendarMenu(false);
                           }}
-                          disabled={!canOpenParticipantsModal}
+                          disabled={!participantsModalAvailable}
                           className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
                         >
                           <Users size={16} />
@@ -429,7 +409,7 @@ export const CalendarCard = memo(function CalendarCard({
                           className="hidden"
                         />
 
-                        {!isDepartmentCalendar ? (
+                        {!departmentCalendar ? (
                           <>
                             <div className="app-divider my-1 border-t"></div>
                             <button
@@ -643,7 +623,7 @@ export const CalendarCard = memo(function CalendarCard({
                     <div className="flex items-center gap-1">
                       <div
                         className="h-2 w-2 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: resolveEventColor(event.color_event || event.color) }}
+                        style={{ backgroundColor: resolveEventColor(event.color_event) }}
                       />
                       <p className="truncate text-xs font-medium text-[var(--foreground)]">{event.title}</p>
                       {(event.is_recurring || event.rule) && (

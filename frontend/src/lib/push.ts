@@ -2,6 +2,8 @@
  * Web Push утилиты для управления подписками
  */
 
+import { registerAppServiceWorker } from "@/lib/pwa";
+
 /**
  * Конвертирует base64 строку в Uint8Array для applicationServerKey
  */
@@ -68,27 +70,12 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
  * Регистрирует Service Worker
  */
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration> {
-    if (!('serviceWorker' in navigator)) {
+    const registration = await registerAppServiceWorker();
+    if (!registration) {
         throw new Error('Service Worker не поддерживается');
     }
-    
-    const registration = await navigator.serviceWorker.register('/sw.js', {
-        scope: '/'
-    });
-    
+
     console.log('[PushNotifications] Service Worker зарегистрирован:', registration.scope);
-    
-    // Ждем активации
-    if (registration.installing) {
-        await new Promise<void>((resolve) => {
-            registration.installing!.addEventListener('statechange', (e) => {
-                if ((e.target as ServiceWorker).state === 'activated') {
-                    resolve();
-                }
-            });
-        });
-    }
-    
     return registration;
 }
 

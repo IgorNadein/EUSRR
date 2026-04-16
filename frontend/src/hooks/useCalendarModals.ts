@@ -2,8 +2,13 @@
 
 import { useState, useCallback } from "react";
 import { apiClient } from "@/lib/api";
+import { type CalendarParticipantsTarget } from "@/lib/calendar/ui";
 import { DEFAULT_EVENT_COLOR } from "@/lib/calendar-event-colors";
-import type { CalendarEvent } from "@/services/calendarService";
+import {
+  toCalendarEventDraft,
+  type CalendarEvent,
+  type CalendarEventDraft,
+} from "@/services/calendarService";
 
 export interface CalendarModalsState {
   showCalendarModal: boolean;
@@ -12,17 +17,10 @@ export interface CalendarModalsState {
   showDayEventsModal: boolean;
   showEventDetailsModal: boolean;
   editingCalendar: { id?: number; name: string } | null;
-  editingEvent: CalendarEvent | null;
-  participantsCalendar: {
-    id: number;
-    name: string;
-    user_role?: string;
-    can_manage_participants?: boolean;
-    type?: string | null;
-    context_type?: string | null;
-  } | null;
+  editingEvent: CalendarEventDraft | null;
+  participantsCalendar: CalendarParticipantsTarget | null;
   selectedDateForModal: Date | null;
-  viewingEvent: CalendarEvent | null;
+  viewingEvent: CalendarEventDraft | null;
   sidebarEvents: CalendarEvent[];
   currentSelectedCalendarId: number | null;
   eventsRefreshTrigger: number;
@@ -36,17 +34,10 @@ export function useCalendarModals() {
   const [showEventDetailsModal, setShowEventDetailsModal] = useState(false);
 
   const [editingCalendar, setEditingCalendar] = useState<{ id?: number; name: string } | null>(null);
-  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
-  const [participantsCalendar, setParticipantsCalendar] = useState<{
-    id: number;
-    name: string;
-    user_role?: string;
-    can_manage_participants?: boolean;
-    type?: string | null;
-    context_type?: string | null;
-  } | null>(null);
+  const [editingEvent, setEditingEvent] = useState<CalendarEventDraft | null>(null);
+  const [participantsCalendar, setParticipantsCalendar] = useState<CalendarParticipantsTarget | null>(null);
   const [selectedDateForModal, setSelectedDateForModal] = useState<Date | null>(null);
-  const [viewingEvent, setViewingEvent] = useState<CalendarEvent | null>(null);
+  const [viewingEvent, setViewingEvent] = useState<CalendarEventDraft | null>(null);
   const [sidebarEvents, setSidebarEvents] = useState<CalendarEvent[]>([]);
   const [currentSelectedCalendarId, setCurrentSelectedCalendarId] = useState<number | null>(null);
   const [eventsRefreshTrigger, setEventsRefreshTrigger] = useState(0);
@@ -68,15 +59,15 @@ export function useCalendarModals() {
     setShowCalendarModal(true);
   }, []);
 
-  const handleOpenEventModal = useCallback((event: Partial<CalendarEvent> & { id?: number }, date?: Date) => {
+  const handleOpenEventModal = useCallback((event: CalendarEventDraft, date?: Date) => {
     if (date && !event.id) {
       setSelectedDateForModal(date);
       setShowDayEventsModal(true);
     } else if (event.id) {
-      setViewingEvent(event as CalendarEvent);
+      setViewingEvent(event);
       setShowEventDetailsModal(true);
     } else {
-      setEditingEvent(event as CalendarEvent);
+      setEditingEvent(event);
       setShowEventModal(true);
     }
   }, []);
@@ -93,15 +84,16 @@ export function useCalendarModals() {
     const endDate = new Date(selectedDateForModal);
     endDate.setHours(11, 0, 0, 0);
 
-    setEditingEvent({
+    const draftEvent: CalendarEventDraft = {
       title: "",
       description: "",
       start: startDate.toISOString(),
       end: endDate.toISOString(),
       calendar: currentSelectedCalendarId,
       color_event: DEFAULT_EVENT_COLOR,
-    } as CalendarEvent);
+    };
 
+    setEditingEvent(draftEvent);
     setShowDayEventsModal(false);
     setShowEventModal(true);
   }, [currentSelectedCalendarId, selectedDateForModal]);
@@ -118,17 +110,17 @@ export function useCalendarModals() {
     if (event.is_recurring && event.event_id) {
       try {
         const fullEvent = await apiClient.getEvent(event.event_id);
-        setViewingEvent({
+        setViewingEvent(toCalendarEventDraft({
           ...fullEvent,
           start: event.start,
           end: event.end,
-        });
+        }));
         setShowEventDetailsModal(true);
       } catch (err) {
         console.error("Ошибка загрузки события:", err);
       }
     } else {
-      setViewingEvent(event);
+      setViewingEvent(toCalendarEventDraft(event));
       setShowEventDetailsModal(true);
     }
   }, []);
@@ -137,14 +129,7 @@ export function useCalendarModals() {
     setEventsRefreshTrigger(prev => prev + 1);
   }, []);
 
-  const handleOpenParticipantsModal = useCallback((calendar: {
-    id: number;
-    name: string;
-    user_role?: string;
-    can_manage_participants?: boolean;
-    type?: string | null;
-    context_type?: string | null;
-  }) => {
+  const handleOpenParticipantsModal = useCallback((calendar: CalendarParticipantsTarget) => {
     setParticipantsCalendar(calendar);
     setShowParticipantsModal(true);
   }, []);

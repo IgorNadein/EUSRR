@@ -1,49 +1,18 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { X, UserPlus, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
 import { Modal } from '@/components/ui';
 import { loadAllPages } from '@/lib/shared';
 import { resolveMediaUrl } from '@/lib/url';
-
-interface Participant {
-  id: number;
-  user: {
-    id: number;
-    username: string;
-    first_name: string;
-    last_name: string;
-    email?: string;
-    avatar?: string | null;
-  };
-  distinction: string;
-}
-
-interface Employee {
-  id: number;
-  username?: string;
-  first_name: string;
-  last_name: string;
-  email?: string;
-  avatar?: string | null;
-  departments?: Array<{
-    id: number;
-    name: string;
-  }>;
-}
-
-interface Department {
-  id: number;
-  name: string;
-}
+import type { CalendarParticipant, Department, User } from '@/types/api';
 
 interface CalendarParticipantsModalProps {
   isOpen: boolean;
   onClose: () => void;
   calendarId: number;
   calendarName: string;
-  userRole?: string; // owner, editor, viewer
   canManageParticipants?: boolean;
   calendarType?: string | null;
   contextType?: string | null;
@@ -54,13 +23,12 @@ export default function CalendarParticipantsModal({
   onClose,
   calendarId,
   calendarName,
-  userRole,
   canManageParticipants = false,
   calendarType,
   contextType,
 }: CalendarParticipantsModalProps) {
-  const [participants, setParticipants] = useState<Participant[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [participants, setParticipants] = useState<CalendarParticipant[]>([]);
+  const [employees, setEmployees] = useState<User[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
   const [selectedRole, setSelectedRole] = useState<string>('viewer');
@@ -72,40 +40,45 @@ export default function CalendarParticipantsModal({
     calendarType === 'department' || contextType === 'department';
   const canManage = canManageParticipants && !isDepartmentCalendar;
 
-  useEffect(() => {
-    if (isOpen) {
-      loadParticipants();
-      loadEmployees();
-      loadDepartments();
-    }
-  }, [isOpen, calendarId]);
-
-  const loadParticipants = async () => {
+  const loadParticipants = useCallback(async () => {
     try {
       const data = await api.getCalendarParticipants(calendarId);
       setParticipants(data);
     } catch (error) {
       console.error('Failed to load participants:', error);
     }
-  };
+  }, [calendarId]);
 
-  const loadEmployees = async () => {
+  const loadEmployees = useCallback(async () => {
     try {
-      const allEmployees = await loadAllPages<Employee>((params) => api.getEmployees(params));
+      const allEmployees = await loadAllPages<User>((params) => api.getEmployees(params));
       setEmployees(allEmployees);
     } catch (error) {
       console.error('Failed to load employees:', error);
     }
-  };
+  }, []);
 
-  const loadDepartments = async () => {
+  const loadDepartments = useCallback(async () => {
     try {
       const data = await api.getDepartments({ limit: 100 });
       setDepartments(data.results || []);
     } catch (error) {
       console.error('Failed to load departments:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    void loadParticipants();
+
+    if (canManage) {
+      void loadEmployees();
+      void loadDepartments();
+    }
+  }, [canManage, isOpen, loadDepartments, loadEmployees, loadParticipants]);
 
   const handleAddParticipants = async () => {
     if (selectedUserIds.length === 0) {
@@ -174,7 +147,7 @@ export default function CalendarParticipantsModal({
     }
   };
 
-  const filteredEmployees = employees.filter(emp => {
+  const filteredEmployees = employees.filter((emp) => {
     const fullName = `${emp.first_name} ${emp.last_name} ${emp.email || ''}`.toLowerCase();
     const matchesSearch = fullName.includes(searchQuery.toLowerCase());
     
@@ -301,6 +274,7 @@ export default function CalendarParticipantsModal({
                         className="h-4 w-4 rounded border-[var(--border-strong)] text-[var(--accent-primary)]"
                       />
                       {emp.avatar ? (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={resolveMediaUrl(emp.avatar)}
                           alt={`${emp.first_name} ${emp.last_name}`.trim() || 'Сотрудник'}
@@ -366,11 +340,11 @@ export default function CalendarParticipantsModal({
                 <p className="app-text-muted py-4 text-center text-sm">Нет участников</p>
               ) : (
                 participants.map((participant) => {
-                  const user = participant.user || {};
-                  const firstName = user.first_name || 'N';
-                  const lastName = user.last_name || 'A';
-                  const username = typeof user.username === 'string' ? user.username.trim() : '';
-                  const secondaryLabel = user.email || (username ? `@${username}` : '');
+                  const user = participant.user;
+                  const firstName = user?.first_name || 'N';
+                  const lastName = user?.last_name || 'A';
+                  const username = typeof user?.username === 'string' ? user.username.trim() : '';
+                  const secondaryLabel = user?.email || (username ? `@${username}` : '');
                   
                   return (
                     <div
@@ -378,7 +352,8 @@ export default function CalendarParticipantsModal({
                       className="app-surface-elevated flex items-center justify-between rounded-lg px-4 py-3 transition hover:bg-[var(--surface-secondary)]"
                     >
                       <div className="flex items-center gap-3">
-                        {user.avatar ? (
+                        {user?.avatar ? (
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={resolveMediaUrl(user.avatar)}
                             alt={`${firstName} ${lastName}`.trim() || 'Сотрудник'}
@@ -415,7 +390,11 @@ export default function CalendarParticipantsModal({
 
                       {canManage && participant.distinction !== 'owner' && (
                         <button
-                          onClick={() => handleRemoveParticipant(participant.user.id)}
+                          onClick={() => {
+                            if (participant.user) {
+                              void handleRemoveParticipant(participant.user.id);
+                            }
+                          }}
                           disabled={loading}
                           className="app-action-danger rounded-lg p-2 transition disabled:opacity-50"
                           title="Удалить участника"

@@ -14,7 +14,18 @@ import { EventModal } from "@/components/EventModal";
 import { ViewDayEventsModal } from "@/components/ViewDayEventsModal";
 import { ViewEventDetailsModal } from "@/components/ViewEventDetailsModal";
 import { DEFAULT_EVENT_COLOR, resolveEventColor } from "@/lib/calendar-event-colors";
-import { calendarService } from "@/services/calendarService";
+import {
+  buildCalendarOptions,
+  canOpenParticipantsModal,
+  isDepartmentCalendar,
+  readLinkedCalendarState,
+  resolveSelectedCalendar,
+} from "@/lib/calendar/ui";
+import {
+  calendarService,
+  type CalendarEvent as CalendarEventData,
+  type CalendarEventDraft,
+} from "@/services/calendarService";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "../app/calendar/calendar.css";
 
@@ -31,23 +42,25 @@ const localizer = dateFnsLocalizer({
   locales,
 });
 
-// Типы для событий
-type CalendarEvent = {
-  id: number;
-  title: string;
-  description?: string;
+type CalendarDisplayEvent = Omit<CalendarEventData, "start" | "end"> & {
   start: Date;
   end: Date;
-  calendar: number;
-  color_event?: string;
-  rule?: number;
-  rule_description?: string;
-  isOccurrence?: boolean; // Флаг для повторяющихся событий
-  event_id?: number; // ID базового события для occurrence
-  allDay?: boolean; // Флаг целодневного события
-  can_edit?: boolean;
-  can_delete?: boolean;
+  allDay: boolean;
 };
+
+function toEventDraft(event: CalendarEventData | CalendarDisplayEvent): CalendarEventDraft {
+  const normalizedId =
+    typeof event.id === "number"
+      ? event.id
+      : typeof event.id === "string" && Number.isFinite(Number(event.id))
+        ? Number(event.id)
+        : undefined;
+
+  return {
+    ...event,
+    id: normalizedId,
+  };
+}
 
 // Кастомные сообщения на русском
 const messages = {
@@ -67,7 +80,7 @@ const messages = {
 };
 
 // Кастомный тулбар с улучшенным UI
-const CustomToolbar = ({ label, onNavigate, onView, view, date }: ToolbarProps<CalendarEvent, object>) => {
+const CustomToolbar = ({ onNavigate, onView, view, date }: ToolbarProps<CalendarDisplayEvent, object>) => {
   const viewLabels = {
     month: "Месяц",
     week: "Неделя",
@@ -141,14 +154,14 @@ export function BigCalendar() {
     canUseAllCalendarsMode,
     reloadCalendars,
   } = useCalendar();
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [events, setEvents] = useState<CalendarEventData[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentView, setCurrentView] = useState<View>("month");
   const [currentDate, setCurrentDate] = useState(new Date());
 
   // Модальные окна
   const [showEventModal, setShowEventModal] = useState(false);
-  const [editingEvent, setEditingEvent] = useState<Partial<CalendarEvent> | null>(null);
+  const [editingEvent, setEditingEvent] = useState<CalendarEventDraft | null>(null);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [editingCalendar, setEditingCalendar] = useState<{ id?: number; name: string } | null>(null);
   const [showCalendarActions, setShowCalendarActions] = useState(false);
@@ -159,53 +172,26 @@ export function BigCalendar() {
   const [showDayEventsModal, setShowDayEventsModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [showEventDetailsModal, setShowEventDetailsModal] = useState(false);
-  const [viewingEvent, setViewingEvent] = useState<CalendarEvent | null>(null);
+  const [viewingEvent, setViewingEvent] = useState<CalendarEventDraft | null>(null);
   const eventsRequestIdRef = useRef(0);
   const linkedEventId = Number(searchParams.get("event") || "");
   const linkedCalendarId = Number(searchParams.get("calendar") || "");
-  const linkedCalendarName = searchParams.get("calendarName") || "";
-  const linkedCalendarType = searchParams.get("calendarType") || "";
-  const linkedContextType = searchParams.get("contextType") || "";
+  const linkedCalendarState = useMemo(
+    () => readLinkedCalendarState(searchParams),
+    [searchParams],
+  );
 
   const selectedCalendar = useMemo(() => {
-    const calendar = calendars.find((item) => item.id === selectedCalendarId);
-    if (calendar) return calendar;
-    if (selectedCalendarId && linkedCalendarName) {
-      return {
-        id: selectedCalendarId,
-        name: linkedCalendarName,
-        slug: `linked-calendar-${selectedCalendarId}`,
-        type: linkedCalendarType || null,
-        context_type: linkedContextType || null,
-        can_create_events: true,
-        can_edit_calendar: false,
-        can_manage_participants: false,
-      };
-    }
-    return null;
-  }, [calendars, linkedCalendarName, linkedCalendarType, linkedContextType, selectedCalendarId]);
+    return resolveSelectedCalendar(calendars, selectedCalendarId, linkedCalendarState);
+  }, [calendars, linkedCalendarState, selectedCalendarId]);
 
   const calendarOptions = useMemo(() => {
-    if (!selectedCalendar) return calendars;
-    if (calendars.some((item) => item.id === selectedCalendar.id)) {
-      return calendars;
-    }
-    return [...calendars, selectedCalendar];
+    return buildCalendarOptions(calendars, selectedCalendar);
   }, [calendars, selectedCalendar]);
+  const hasCalendarSelection = calendarOptions.length > 0 || selectedCalendar !== null;
 
-  const canOpenParticipantsModal = Boolean(
-    selectedCalendar && (
-      selectedCalendar.can_manage_participants ||
-      selectedCalendar.type === "department" ||
-      selectedCalendar.context_type === "department"
-    )
-  );
-  const isDepartmentCalendar = Boolean(
-    selectedCalendar && (
-      selectedCalendar.type === "department" ||
-      selectedCalendar.context_type === "department"
-    )
-  );
+  const participantsModalAvailable = canOpenParticipantsModal(selectedCalendar);
+  const departmentCalendar = isDepartmentCalendar(selectedCalendar);
 
   const clearEventParam = useCallback(() => {
     if (!searchParams.get("event")) return;
@@ -219,6 +205,29 @@ export function BigCalendar() {
     setSelectedCalendarId(linkedCalendarId);
   }, [linkedCalendarId, setSelectedCalendarId]);
 
+  const displayEvents = useMemo<CalendarDisplayEvent[]>(() => {
+    return events.reduce<CalendarDisplayEvent[]>((result, event) => {
+      if (!event.start || !event.end) {
+        return result;
+      }
+
+      const start = new Date(event.start);
+      const end = new Date(event.end);
+
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        return result;
+      }
+
+      result.push({
+        ...event,
+        start,
+        end,
+        allDay: false,
+      });
+      return result;
+    }, []);
+  }, [events]);
+
   // Загрузка событий
   const loadEvents = useCallback(async () => {
     const requestId = ++eventsRequestIdRef.current;
@@ -226,79 +235,18 @@ export function BigCalendar() {
 
     try {
       setLoading(true);
-
-      // Вычисляем диапазон для загрузки (месяц ±1 неделя)
-      const start = new Date(currentDate);
-      start.setDate(1);
+      const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
       start.setDate(start.getDate() - 7);
 
-      const end = new Date(currentDate);
-      end.setMonth(end.getMonth() + 1);
-      end.setDate(7);
-
-      const startStr = start.toISOString().split("T")[0];
-      const endStr = end.toISOString().split("T")[0];
-
-      // Загружаем обычные события и occurrences параллельно
-      // Если selectedCalendarId === null, загружаем все доступные события со всех календарей
-      const [eventsResult, occurrencesResult] = await Promise.all([
-        apiClient.getCalendarEvents({
-          calendar: requestedCalendarId || undefined,
-          scope: canUseAllCalendarsMode && calendarScope === "all" ? "all" : undefined,
-          start: startStr,
-          end: endStr,
-        }),
-        apiClient.getOccurrences({
-          calendar: requestedCalendarId || undefined,
-          scope: canUseAllCalendarsMode && calendarScope === "all" ? "all" : undefined,
-          start: startStr,
-          end: endStr,
-        }),
-      ]);
-
-      // Обработка обычных событий (без правил повторения)
-      const eventsList = Array.isArray(eventsResult) ? eventsResult : (eventsResult?.results || []);
-      const regularEvents = eventsList
-        .filter((evt: any) => !evt.rule) // Только события без правил
-        .map((evt: any) => {
-          const startDate = new Date(evt.start);
-          const endDate = new Date(evt.end);
-
-          return {
-            ...evt,
-            start: startDate,
-            end: endDate,
-            allDay: false, // Явно указываем что событие с временем
-          };
-        });
-
-      // Обработка occurrences (повторяющихся событий)
-      const occurrencesList = Array.isArray(occurrencesResult) ? occurrencesResult : (occurrencesResult?.results || []);
-      
-      const occurrenceEvents = occurrencesList
-        .filter((occ: any) => occ && occ.is_recurring) // Только повторяющиеся (обычные события уже в regularEvents)
-        .map((occ: any) => ({
-          id: occ.id,
-          title: occ.title.startsWith('⟲') ? occ.title : `⟲ ${occ.title}`, // Добавляем индикатор повторения
-          description: occ.description,
-          start: new Date(occ.start),
-          end: new Date(occ.end),
-          allDay: false, // Явно указываем что событие с временем
-          calendar: occ.calendar, // Используем calendar из occurrence (важно для "Все события")
-          color_event: resolveEventColor(occ.color_event),
-          event_id: occ.event_id,
-          rule: occ.rule,
-          can_edit: occ.can_edit,
-          can_delete: occ.can_delete,
-          isOccurrence: true, // Помечаем как occurrence для корректного отображения
-        }));
-
-      // Объединяем обычные события и occurrences
-      let nextEvents = [...regularEvents, ...occurrenceEvents];
-
-      if (requestedCalendarId !== null) {
-        nextEvents = nextEvents.filter((event) => event.calendar === requestedCalendarId);
-      }
+      const end = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 7);
+      const nextEvents = await calendarService.loadEvents(
+        start,
+        end,
+        requestedCalendarId,
+        calendarScope,
+        canUseAllCalendarsMode,
+        0,
+      );
 
       // Если параллельно ушёл более новый запрос, его ответ приоритетнее.
       if (requestId !== eventsRequestIdRef.current) {
@@ -360,7 +308,7 @@ export function BigCalendar() {
 
   // Создание события из модала просмотра дня
   const handleCreateEventFromDay = useCallback(() => {
-    if (!selectedCalendarId) {
+    if (selectedCalendarId === null) {
       alert("Сначала выберите календарь");
       return;
     }
@@ -378,25 +326,31 @@ export function BigCalendar() {
     const endDate = new Date(selectedDate);
     endDate.setHours(11, 0, 0, 0);
 
-    setEditingEvent({
+    const nextDraft: CalendarEventDraft = {
       title: "",
       description: "",
       start: startDate,
       end: endDate,
       calendar: selectedCalendarId,
       color_event: DEFAULT_EVENT_COLOR,
-    });
+    };
+
+    setEditingEvent(nextDraft);
 
     // Закрываем модал просмотра дня и открываем модал создания
     setShowDayEventsModal(false);
     setShowEventModal(true);
   }, [selectedCalendar?.can_create_events, selectedCalendarId, selectedDate]);
 
-  const handleSelectEvent = useCallback(async (calEvent: CalendarEvent) => {
+  const handleSelectEvent = useCallback(async (calEvent: CalendarDisplayEvent) => {
     // Если это occurrence (повторяющееся событие), загружаем базовое событие
-    if (calEvent.isOccurrence && calEvent.event_id) {
+    if (calEvent.is_recurring && calEvent.event_id) {
       try {
-        const fullEvent = await apiClient.getEvent(calEvent.event_id);
+        const fullEvent = await calendarService.loadFullEvent(
+          calEvent.event_id,
+          calEvent.start.toISOString(),
+          calEvent.end.toISOString(),
+        );
         // Устанавливаем время из occurrence, но остальные данные из базового события
         setViewingEvent({
           ...fullEvent,
@@ -409,7 +363,7 @@ export function BigCalendar() {
       }
     } else {
       // Обычное событие - открываем детали
-      setViewingEvent(calEvent);
+      setViewingEvent(toEventDraft(calEvent));
       setShowEventDetailsModal(true);
     }
   }, []);
@@ -428,16 +382,16 @@ export function BigCalendar() {
   }, []);
 
   const handleEditCalendar = useCallback(() => {
-    if (!selectedCalendar?.can_edit_calendar || isDepartmentCalendar) {
+    if (!selectedCalendar?.can_edit_calendar || departmentCalendar) {
       return;
     }
     setEditingCalendar({ id: selectedCalendar.id, name: selectedCalendar.name });
     setShowCalendarModal(true);
     setShowCalendarActions(false);
-  }, [isDepartmentCalendar, selectedCalendar]);
+  }, [departmentCalendar, selectedCalendar]);
 
   const handleDeleteCalendar = useCallback(async () => {
-    if (!selectedCalendar?.id || !selectedCalendar.can_edit_calendar || isDepartmentCalendar) {
+    if (!selectedCalendar?.id || !selectedCalendar.can_edit_calendar || departmentCalendar) {
       return;
     }
     if (!confirm(`Удалить календарь "${selectedCalendar.name}"?`)) {
@@ -455,7 +409,7 @@ export function BigCalendar() {
       console.error("Не удалось удалить календарь:", error);
       alert("Не удалось удалить календарь");
     }
-  }, [isDepartmentCalendar, loadEvents, reloadCalendars, selectedCalendar, setSelectedCalendarId]);
+  }, [departmentCalendar, loadEvents, reloadCalendars, selectedCalendar, setSelectedCalendarId]);
 
   const handleExportCalendar = useCallback(async () => {
     if (!selectedCalendar?.id) return;
@@ -487,10 +441,11 @@ export function BigCalendar() {
     try {
       const result = await calendarService.importFromICS(selectedCalendar.id, file);
       alert(`Импорт завершен!\nИмпортировано: ${result.imported}\nПропущено: ${result.skipped}`);
+      calendarService.clearCache();
       loadEvents();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Не удалось импортировать календарь:", error);
-      alert(`Ошибка импорта: ${error.message}`);
+      alert(`Ошибка импорта: ${error instanceof Error ? error.message : "Не удалось импортировать календарь"}`);
     } finally {
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -500,13 +455,17 @@ export function BigCalendar() {
   }, [loadEvents, selectedCalendar]);
 
   // Клик на событие из модала просмотра дня
-  const handleEventClickFromDay = useCallback(async (event: any) => {
+  const handleEventClickFromDay = useCallback(async (event: CalendarEventData) => {
     setShowDayEventsModal(false);
 
     // Если это occurrence, загружаем базовое событие
-    if (event.isOccurrence && event.event_id) {
+    if (event.is_recurring && event.event_id) {
       try {
-        const fullEvent = await apiClient.getEvent(event.event_id);
+        const fullEvent = await calendarService.loadFullEvent(
+          event.event_id,
+          typeof event.start === "string" ? event.start : undefined,
+          typeof event.end === "string" ? event.end : undefined,
+        );
         setViewingEvent({
           ...fullEvent,
           start: event.start,
@@ -517,14 +476,14 @@ export function BigCalendar() {
         console.error("Ошибка загрузки события:", err);
       }
     } else {
-      setViewingEvent(event);
+      setViewingEvent(toEventDraft(event));
       setShowEventDetailsModal(true);
     }
   }, []);
 
 
   // Стилизация событий по цвету
-  const eventStyleGetter = (event: CalendarEvent) => {
+  const eventStyleGetter = (event: CalendarDisplayEvent) => {
     const backgroundColor = resolveEventColor(event.color_event);
     return {
       style: {
@@ -562,7 +521,7 @@ export function BigCalendar() {
                   </div>
                 )}
 
-                {calendars.length > 0 && (
+                {hasCalendarSelection && (
                   <div className="relative z-30">
                     <button
                       type="button"
@@ -602,12 +561,12 @@ export function BigCalendar() {
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    if (canOpenParticipantsModal) {
+                                    if (participantsModalAvailable && selectedCalendar) {
                                       setShowParticipantsModal(true);
                                     }
                                     setShowCalendarActions(false);
                                   }}
-                                  disabled={!canOpenParticipantsModal}
+                                  disabled={!participantsModalAvailable}
                                   className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
                                 >
                                   <Users size={16} />
@@ -646,7 +605,7 @@ export function BigCalendar() {
                                   className="hidden"
                                 />
 
-                                {!isDepartmentCalendar ? (
+                                {!departmentCalendar ? (
                                   <>
                                     <div className="app-divider my-1 border-t"></div>
                                     <button
@@ -680,7 +639,7 @@ export function BigCalendar() {
               </div>
             </div>
 
-            {calendars.length === 0 ? (
+            {!hasCalendarSelection ? (
               <div className="flex flex-wrap items-center gap-2">
                 <p className="app-text-muted text-sm">Календарей нет.</p>
                 <button
@@ -755,10 +714,10 @@ export function BigCalendar() {
           <div className="calendar-shell h-full rounded-[1.4rem]">
             <Calendar
               localizer={localizer}
-              events={events}
+              events={displayEvents}
               startAccessor="start"
               endAccessor="end"
-              allDayAccessor={(event: CalendarEvent) => event.allDay || false}
+              allDayAccessor={(event: CalendarDisplayEvent) => event.allDay || false}
               messages={messages}
               culture="ru"
               view={currentView}
@@ -788,6 +747,7 @@ export function BigCalendar() {
         }}
         event={editingEvent}
         onSave={() => {
+          calendarService.clearCache();
           loadEvents(); // ✅ Обновляем список событий
         }}
         showParticipants={true}
@@ -821,7 +781,7 @@ export function BigCalendar() {
           if (!confirm("Удалить это событие?")) return;
 
           try {
-            await apiClient.deleteEvent(viewingEvent.id);
+            await calendarService.deleteEvent(viewingEvent.id);
             setShowEventDetailsModal(false);
             setViewingEvent(null);
             loadEvents();
@@ -849,7 +809,6 @@ export function BigCalendar() {
           onClose={() => setShowParticipantsModal(false)}
           calendarId={selectedCalendar.id}
           calendarName={selectedCalendar.name}
-          userRole={(selectedCalendar as any).user_role}
           canManageParticipants={selectedCalendar.can_manage_participants}
           calendarType={selectedCalendar.type}
           contextType={selectedCalendar.context_type}

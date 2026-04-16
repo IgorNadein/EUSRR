@@ -2,22 +2,13 @@
 
 import { memo } from "react";
 import { CalendarCard } from "@/components/calendar/CalendarCard";
-import type { CalendarEvent } from "@/services/calendarService";
+import { type CalendarParticipantsTarget } from "@/lib/calendar/ui";
+import type { CalendarEvent, CalendarEventDraft } from "@/services/calendarService";
 
 interface CalendarSidebarProps {
   onOpenCalendarModal: (calendar?: { id?: number; name: string }) => void;
-  onOpenEventModal: (
-    event: Partial<CalendarEvent> & { id?: number; calendar?: number | null },
-    date?: Date,
-  ) => void;
-  onOpenParticipantsModal: (calendar: {
-    id: number;
-    name: string;
-    user_role?: string;
-    can_manage_participants?: boolean;
-    type?: string | null;
-    context_type?: string | null;
-  }) => void;
+  onOpenEventModal: (event: CalendarEventDraft, date?: Date) => void;
+  onOpenParticipantsModal: (calendar: CalendarParticipantsTarget) => void;
   eventsRefreshTrigger: number;
   setEventsRefreshTrigger: (value: number | ((prev: number) => number)) => void;
   setSidebarEvents: (events: CalendarEvent[]) => void;

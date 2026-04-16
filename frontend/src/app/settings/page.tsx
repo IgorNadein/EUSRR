@@ -7,6 +7,7 @@ import {
   Bell,
   Check,
   Clock3,
+  Download,
   Eye,
   EyeOff,
   KeyRound,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
+import { usePwa } from "@/contexts/PwaContext";
 import { useMobileNavPlacement } from "@/contexts/MobileNavPlacementContext";
 import {
   formatSessionDateTime,
@@ -126,6 +128,7 @@ function SectionCard({
 
 export default function SettingsPage() {
   const { mobileNavPlacement, setMobileNavPlacement } = useMobileNavPlacement();
+  const { canInstall, install, isInstalled, isRegistrationReady } = usePwa();
   const {
     activeVerbCount,
     avatarInputRef,
@@ -396,6 +399,61 @@ export default function SettingsPage() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              id="app"
+              title="Приложение"
+              description="Установка приложения на устройство и базовый PWA-статус."
+            >
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="app-surface-muted rounded-2xl p-4">
+                  <div className="flex items-start gap-3">
+                    <span
+                      className={`app-badge flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                        isInstalled ? "app-badge-accent" : ""
+                      }`}
+                    >
+                      <Download size={18} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[var(--foreground)]">Статус установки</p>
+                      <p className="app-text-muted mt-1 text-sm">
+                        {isInstalled
+                          ? "Приложение уже установлено на это устройство."
+                          : canInstall
+                            ? "Приложение можно установить через системный prompt браузера."
+                            : "Установка через браузер сейчас недоступна."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="app-surface-muted rounded-2xl p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="app-badge flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+                      <Smartphone size={18} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[var(--foreground)]">PWA-компоненты</p>
+                      <p className="app-text-muted mt-1 text-sm">
+                        Service Worker: {isRegistrationReady ? "зарегистрирован" : "не зарегистрирован"}.
+                      </p>
+                      <div className="mt-3">
+                        <button
+                          type="button"
+                          onClick={() => void install()}
+                          disabled={!canInstall}
+                          className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+                        >
+                          <Download size={16} />
+                          {isInstalled ? "Установлено" : "Установить приложение"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </SectionCard>

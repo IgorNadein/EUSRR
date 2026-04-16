@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Check, Bell, BellOff, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Bell, BellOff, Eye, EyeOff, Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui";
 import { apiClient } from "@/lib/api";
 
@@ -9,7 +9,7 @@ interface Calendar {
   id: number;
   name: string;
   title?: string;
-  color: string;
+  color?: string;
   is_subscribed?: boolean;
   subscriber_count?: number;
   visibility?: string;
@@ -191,7 +191,7 @@ export function CalendarSubscriptionsModal({ isOpen, onClose, onUpdate }: Props)
                     <div className="flex items-center gap-3">
                       <div
                         className="h-4 w-4 rounded"
-                        style={{ backgroundColor: cal.color }}
+                        style={{ backgroundColor: cal.color || "var(--accent-primary)" }}
                       />
                       <div>
                         <p className="font-medium text-[var(--foreground)]">{cal.name || cal.title}</p>

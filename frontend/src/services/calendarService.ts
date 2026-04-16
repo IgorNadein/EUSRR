@@ -4,23 +4,46 @@
  */
 
 import { apiClient } from "@/lib/api";
+import type {
+  CalendarEvent as CalendarEventDetails,
+  CalendarListEvent,
+  CalendarOccurrence,
+  PaginatedResponse,
+} from "@/types/api";
 
-// Типы
-export interface CalendarEvent {
-  id: number;
-  title: string;
-  start?: string | null;
-  end?: string | null;
-  allDay?: boolean;
-  color?: string | null;
+export type CalendarEvent = CalendarListEvent;
+export type CalendarEventDraft = Record<string, unknown> & {
+  id?: number;
+  title?: string;
+  description?: string;
+  start?: string | Date | null;
+  end?: string | Date | null;
+  calendar?: number | null;
   color_event?: string | null;
   rule?: number | null;
-  is_recurring?: boolean;
   event_id?: number;
-  description?: string;
-  calendar?: number;
+  is_recurring?: boolean;
   can_edit?: boolean;
   can_delete?: boolean;
+};
+
+export function toCalendarEventDraft(
+  event: CalendarEvent | CalendarEventDetails,
+): CalendarEventDraft {
+  return {
+    ...event,
+    id: typeof event.id === "number" ? event.id : undefined,
+    start: event.start ?? null,
+    end: event.end ?? null,
+    calendar:
+      typeof event.calendar === "number" ? event.calendar : event.calendar ?? null,
+    color_event: event.color_event ?? null,
+    rule: event.rule ?? null,
+    event_id: "event_id" in event ? event.event_id : undefined,
+    is_recurring: "is_recurring" in event ? event.is_recurring : false,
+    can_edit: event.can_edit,
+    can_delete: event.can_delete,
+  };
 }
 
 interface EventsCache {
@@ -48,6 +71,37 @@ export const startOfWeekMonday = (date: Date): Date => {
   d.setDate(d.getDate() - dayIndex);
   return d;
 };
+
+const extractResults = <T>(
+  response: PaginatedResponse<T> | T[],
+): T[] => (Array.isArray(response) ? response : response.results || []);
+
+function normalizeRegularEvent(event: CalendarEventDetails): CalendarEvent {
+  return {
+    ...event,
+    color_event: event.color_event ?? null,
+    is_recurring: false,
+  };
+}
+
+function normalizeOccurrence(occurrence: CalendarOccurrence): CalendarEvent {
+  return {
+    id: occurrence.id,
+    title: occurrence.title.startsWith("⟲")
+      ? occurrence.title
+      : `⟲ ${occurrence.title}`,
+    description: occurrence.description,
+    start: occurrence.start,
+    end: occurrence.end,
+    calendar: occurrence.calendar,
+    color_event: occurrence.color_event ?? null,
+    event_id: occurrence.event_id,
+    rule: occurrence.rule ?? null,
+    can_edit: occurrence.can_edit,
+    can_delete: occurrence.can_delete,
+    is_recurring: true,
+  };
+}
 
 // Сервис для работы с событиями календаря
 class CalendarService {
@@ -92,11 +146,13 @@ class CalendarService {
     ]);
 
     // Обрабатываем результаты
-    const eventsList = Array.isArray(eventsResult) ? eventsResult : (eventsResult?.results || []);
-    const regularEvents = eventsList.filter((evt: any) => !evt.rule);
+    const regularEvents = extractResults(eventsResult)
+      .filter((event) => !event.rule)
+      .map(normalizeRegularEvent);
 
-    const occurrencesList = Array.isArray(occurrencesResult) ? occurrencesResult : (occurrencesResult?.results || []);
-    const recurringOccurrences = occurrencesList.filter((occ: any) => occ.is_recurring);
+    const recurringOccurrences = extractResults(occurrencesResult)
+      .filter((occurrence) => occurrence.is_recurring)
+      .map(normalizeOccurrence);
 
     // Объединяем оба типа событий
     let allEvents = [...regularEvents, ...recurringOccurrences];
@@ -125,7 +181,11 @@ class CalendarService {
   /**
    * Загружает полное событие по ID (для повторяющихся событий)
    */
-  async loadFullEvent(eventId: number, occurrenceStart?: string, occurrenceEnd?: string): Promise<CalendarEvent> {
+  async loadFullEvent(
+    eventId: number,
+    occurrenceStart?: string,
+    occurrenceEnd?: string,
+  ): Promise<CalendarEventDetails> {
     const fullEvent = await apiClient.getEvent(eventId);
     
     // Если переданы время occurrence, используем их
