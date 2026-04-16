@@ -10,6 +10,7 @@ const SW_VERSION = '2.0.0';
 const STATIC_CACHE = `eusrr-static-${SW_VERSION}`;
 const PRECACHE_URLS = [
     '/manifest.webmanifest',
+    '/favicon-source.svg',
     '/logo.png',
     '/logo.webp',
     '/icon-192.png',
