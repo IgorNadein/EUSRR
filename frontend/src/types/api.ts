@@ -720,6 +720,52 @@ export interface CalendarEvent {
   can_delete?: boolean;
 }
 
+export interface CalendarOccurrence {
+  id: string;
+  title: string;
+  description?: string;
+  start: string;
+  end: string;
+  calendar: number;
+  color_event?: string | null;
+  event_id: number;
+  rule?: number | null;
+  is_recurring: boolean;
+  end_recurring_period?: string | null;
+  can_edit?: boolean;
+  can_delete?: boolean;
+}
+
+export interface CalendarListEvent {
+  id: number | string;
+  title: string;
+  description?: string;
+  start: string;
+  end: string;
+  calendar: number;
+  color_event?: string | null;
+  rule?: number | null;
+  event_id?: number;
+  is_recurring?: boolean;
+  can_edit?: boolean;
+  can_delete?: boolean;
+}
+
+export interface CalendarParticipantUser {
+  id: number;
+  username: string;
+  first_name: string;
+  last_name: string;
+  email?: string | null;
+  avatar?: string | null;
+}
+
+export interface CalendarParticipant {
+  id: number;
+  user: CalendarParticipantUser | null;
+  distinction: string;
+}
+
 export interface Calendar {
   id: number;
   name: string; // django-scheduler использует name (не title)
@@ -728,7 +774,7 @@ export interface Calendar {
   type?: string;
   context_object_id?: number | null;
   context_type?: string | null;
-  flags?: Record<string, any>;
+  flags?: Record<string, unknown>;
   user_role?: string | null;
   can_create_events?: boolean;
   can_edit_calendar?: boolean;
