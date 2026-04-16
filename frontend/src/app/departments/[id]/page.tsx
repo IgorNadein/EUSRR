@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } 
 import {
   ArrowLeft,
   BadgePlus,
+  CalendarDays,
   Check,
   ChevronDown,
   ChevronRight,
@@ -760,6 +761,7 @@ export default function DepartmentDetailPage() {
   const [departmentMenuOpen, setDepartmentMenuOpen] = useState(false);
   const departmentMenuRef = useRef<HTMLDivElement | null>(null);
   const [openingDepartmentChat, setOpeningDepartmentChat] = useState(false);
+  const [openingDepartmentCalendar, setOpeningDepartmentCalendar] = useState(false);
 
   const activeMembersCount = h.members.filter((member) => member.is_active).length;
   const roleOptions = h.roles.map((role) => ({ id: role.id, name: role.name }));
@@ -835,6 +837,35 @@ export default function DepartmentDetailPage() {
       toast.error("Не удалось открыть чат отдела");
     } finally {
       setOpeningDepartmentChat(false);
+    }
+  };
+
+  const openDepartmentCalendar = async () => {
+    if (!h.department) return;
+
+    try {
+      setOpeningDepartmentCalendar(true);
+      const response = await apiClient.getDepartmentCalendar(h.department.id) as {
+        calendar_id: number;
+        name: string;
+        calendar_type?: string;
+        context_type?: string | null;
+      };
+      const params = new URLSearchParams({
+        calendar: String(response.calendar_id),
+        calendarName: response.name,
+      });
+      if (response.calendar_type) {
+        params.set("calendarType", response.calendar_type);
+      }
+      if (response.context_type) {
+        params.set("contextType", response.context_type);
+      }
+      router.push(`/calendar?${params.toString()}`);
+    } catch {
+      toast.error("Не удалось открыть календарь отдела");
+    } finally {
+      setOpeningDepartmentCalendar(false);
     }
   };
 
@@ -1006,7 +1037,7 @@ export default function DepartmentDetailPage() {
                   <p className="app-text-muted mt-2 text-sm">
                     {h.department.description}
                   </p>
-                  <div className="mt-4">
+                  <div className="mt-4 flex flex-wrap gap-3">
                     <button
                       type="button"
                       onClick={() => void openDepartmentChat()}
@@ -1014,7 +1045,16 @@ export default function DepartmentDetailPage() {
                       className="app-action-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
                     >
                       <MessageCircle size={16} />
-                      Перейти в чат отдела
+                      Чат отдела
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void openDepartmentCalendar()}
+                      disabled={openingDepartmentCalendar}
+                      className="app-action-secondary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+                    >
+                      <CalendarDays size={16} />
+                      Календарь отдела
                     </button>
                   </div>
                 </div>

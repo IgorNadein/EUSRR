@@ -13,7 +13,14 @@ export interface CalendarModalsState {
   showEventDetailsModal: boolean;
   editingCalendar: { id?: number; name: string } | null;
   editingEvent: CalendarEvent | null;
-  participantsCalendar: { id: number; name: string; user_role?: string } | null;
+  participantsCalendar: {
+    id: number;
+    name: string;
+    user_role?: string;
+    can_manage_participants?: boolean;
+    type?: string | null;
+    context_type?: string | null;
+  } | null;
   selectedDateForModal: Date | null;
   viewingEvent: CalendarEvent | null;
   sidebarEvents: CalendarEvent[];
@@ -30,7 +37,14 @@ export function useCalendarModals() {
 
   const [editingCalendar, setEditingCalendar] = useState<{ id?: number; name: string } | null>(null);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
-  const [participantsCalendar, setParticipantsCalendar] = useState<{ id: number; name: string; user_role?: string } | null>(null);
+  const [participantsCalendar, setParticipantsCalendar] = useState<{
+    id: number;
+    name: string;
+    user_role?: string;
+    can_manage_participants?: boolean;
+    type?: string | null;
+    context_type?: string | null;
+  } | null>(null);
   const [selectedDateForModal, setSelectedDateForModal] = useState<Date | null>(null);
   const [viewingEvent, setViewingEvent] = useState<CalendarEvent | null>(null);
   const [sidebarEvents, setSidebarEvents] = useState<CalendarEvent[]>([]);
@@ -123,7 +137,14 @@ export function useCalendarModals() {
     setEventsRefreshTrigger(prev => prev + 1);
   }, []);
 
-  const handleOpenParticipantsModal = useCallback((calendar: { id: number; name: string; user_role?: string }) => {
+  const handleOpenParticipantsModal = useCallback((calendar: {
+    id: number;
+    name: string;
+    user_role?: string;
+    can_manage_participants?: boolean;
+    type?: string | null;
+    context_type?: string | null;
+  }) => {
     setParticipantsCalendar(calendar);
     setShowParticipantsModal(true);
   }, []);

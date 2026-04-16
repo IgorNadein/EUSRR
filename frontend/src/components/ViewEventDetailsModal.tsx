@@ -98,6 +98,8 @@ export function ViewEventDetailsModal({
 
   const capitalizedStart = formatDateTime(event.start).charAt(0).toUpperCase() + formatDateTime(event.start).slice(1);
   const capitalizedEnd = formatDateTime(event.end).charAt(0).toUpperCase() + formatDateTime(event.end).slice(1);
+  const canEdit = event.can_edit !== false;
+  const canDelete = event.can_delete !== false;
 
   return (
     <Modal
@@ -105,24 +107,28 @@ export function ViewEventDetailsModal({
       onClose={onClose}
       title={event.title}
       size="sm"
-      footer={
+      footer={canEdit || canDelete ? (
         <div className="flex gap-2">
-          <button
-            onClick={onEdit}
-            className="app-action-primary flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium"
-          >
-            <Edit2 size={16} />
-            Редактировать
-          </button>
-          <button
-            onClick={onDelete}
-            className="app-action-danger rounded-lg px-4 py-2.5 text-sm font-medium"
-            title="Удалить событие"
-          >
-            <Trash2 size={16} />
-          </button>
+          {canEdit ? (
+            <button
+              onClick={onEdit}
+              className="app-action-primary flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium"
+            >
+              <Edit2 size={16} />
+              Редактировать
+            </button>
+          ) : null}
+          {canDelete ? (
+            <button
+              onClick={onDelete}
+              className="app-action-danger rounded-lg px-4 py-2.5 text-sm font-medium"
+              title="Удалить событие"
+            >
+              <Trash2 size={16} />
+            </button>
+          ) : null}
         </div>
-      }
+      ) : undefined}
     >
       <div className="space-y-4">
         {/* Event meta */}

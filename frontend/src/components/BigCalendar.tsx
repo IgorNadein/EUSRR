@@ -1,18 +1,20 @@
 "use client";
 
-import { Calendar, dateFnsLocalizer, View, ToolbarProps, NavigateAction } from "react-big-calendar";
+import { Calendar, dateFnsLocalizer, View, ToolbarProps } from "react-big-calendar";
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import { ru } from "date-fns/locale";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiClient } from "@/lib/api";
 import { useCalendar } from "@/contexts/CalendarContext";
-import { X, Plus, Trash2, Settings, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, ChevronDown, ChevronLeft, ChevronRight, Users, Pencil, Trash2 } from "lucide-react";
 import { CalendarModal } from "@/components/CalendarModal";
+import CalendarParticipantsModal from "@/components/CalendarParticipantsModal";
 import { EventModal } from "@/components/EventModal";
 import { ViewDayEventsModal } from "@/components/ViewDayEventsModal";
 import { ViewEventDetailsModal } from "@/components/ViewEventDetailsModal";
 import { DEFAULT_EVENT_COLOR, resolveEventColor } from "@/lib/calendar-event-colors";
+import { calendarService } from "@/services/calendarService";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "../app/calendar/calendar.css";
 
@@ -43,6 +45,8 @@ type CalendarEvent = {
   isOccurrence?: boolean; // Флаг для повторяющихся событий
   event_id?: number; // ID базового события для occurrence
   allDay?: boolean; // Флаг целодневного события
+  can_edit?: boolean;
+  can_delete?: boolean;
 };
 
 // Кастомные сообщения на русском
@@ -82,20 +86,20 @@ const CustomToolbar = ({ label, onNavigate, onView, view, date }: ToolbarProps<C
         <div className="flex items-center gap-2">
           <button
             onClick={() => onNavigate("TODAY")}
-            className="app-action-secondary px-3 py-2"
+            className="app-action-secondary rounded-xl px-4 py-2"
           >
             Сегодня
           </button>
           <button
             onClick={() => onNavigate("PREV")}
-            className="app-action-secondary flex h-9 w-9 items-center justify-center p-0"
+            className="app-action-secondary flex h-10 w-10 items-center justify-center rounded-xl p-0"
             title="Назад"
           >
             <ChevronLeft size={18} />
           </button>
           <button
             onClick={() => onNavigate("NEXT")}
-            className="app-action-secondary flex h-9 w-9 items-center justify-center p-0"
+            className="app-action-secondary flex h-10 w-10 items-center justify-center rounded-xl p-0"
             title="Вперёд"
           >
             <ChevronRight size={18} />
@@ -107,17 +111,18 @@ const CustomToolbar = ({ label, onNavigate, onView, view, date }: ToolbarProps<C
       </div>
 
       {/* Выбор вида */}
-      <div>
+      <div className="relative">
         <select
           value={view}
           onChange={(e) => onView(e.target.value as View)}
-          className="app-select w-full"
+          className="app-select w-full appearance-none rounded-xl py-2.5 pl-3 pr-10 text-sm"
         >
           <option value="month">{viewLabels.month}</option>
           <option value="week">{viewLabels.week}</option>
           <option value="day">{viewLabels.day}</option>
           <option value="agenda">{viewLabels.agenda}</option>
         </select>
+        <ChevronDown size={16} className="app-text-muted pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" />
       </div>
     </div>
   );
@@ -127,7 +132,15 @@ export function BigCalendar() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { calendars, selectedCalendarId, setSelectedCalendarId, reloadCalendars } = useCalendar();
+  const {
+    calendars,
+    selectedCalendarId,
+    setSelectedCalendarId,
+    calendarScope,
+    setCalendarScope,
+    canUseAllCalendarsMode,
+    reloadCalendars,
+  } = useCalendar();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentView, setCurrentView] = useState<View>("month");
@@ -138,13 +151,61 @@ export function BigCalendar() {
   const [editingEvent, setEditingEvent] = useState<Partial<CalendarEvent> | null>(null);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [editingCalendar, setEditingCalendar] = useState<{ id?: number; name: string } | null>(null);
+  const [showCalendarActions, setShowCalendarActions] = useState(false);
+  const [showParticipantsModal, setShowParticipantsModal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Новые модалы для просмотра
   const [showDayEventsModal, setShowDayEventsModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [showEventDetailsModal, setShowEventDetailsModal] = useState(false);
   const [viewingEvent, setViewingEvent] = useState<CalendarEvent | null>(null);
+  const eventsRequestIdRef = useRef(0);
   const linkedEventId = Number(searchParams.get("event") || "");
+  const linkedCalendarId = Number(searchParams.get("calendar") || "");
+  const linkedCalendarName = searchParams.get("calendarName") || "";
+  const linkedCalendarType = searchParams.get("calendarType") || "";
+  const linkedContextType = searchParams.get("contextType") || "";
+
+  const selectedCalendar = useMemo(() => {
+    const calendar = calendars.find((item) => item.id === selectedCalendarId);
+    if (calendar) return calendar;
+    if (selectedCalendarId && linkedCalendarName) {
+      return {
+        id: selectedCalendarId,
+        name: linkedCalendarName,
+        slug: `linked-calendar-${selectedCalendarId}`,
+        type: linkedCalendarType || null,
+        context_type: linkedContextType || null,
+        can_create_events: true,
+        can_edit_calendar: false,
+        can_manage_participants: false,
+      };
+    }
+    return null;
+  }, [calendars, linkedCalendarName, linkedCalendarType, linkedContextType, selectedCalendarId]);
+
+  const calendarOptions = useMemo(() => {
+    if (!selectedCalendar) return calendars;
+    if (calendars.some((item) => item.id === selectedCalendar.id)) {
+      return calendars;
+    }
+    return [...calendars, selectedCalendar];
+  }, [calendars, selectedCalendar]);
+
+  const canOpenParticipantsModal = Boolean(
+    selectedCalendar && (
+      selectedCalendar.can_manage_participants ||
+      selectedCalendar.type === "department" ||
+      selectedCalendar.context_type === "department"
+    )
+  );
+  const isDepartmentCalendar = Boolean(
+    selectedCalendar && (
+      selectedCalendar.type === "department" ||
+      selectedCalendar.context_type === "department"
+    )
+  );
 
   const clearEventParam = useCallback(() => {
     if (!searchParams.get("event")) return;
@@ -153,8 +214,16 @@ export function BigCalendar() {
     router.replace(nextParams.toString() ? `${pathname}?${nextParams.toString()}` : pathname, { scroll: false });
   }, [pathname, router, searchParams]);
 
+  useEffect(() => {
+    if (!linkedCalendarId) return;
+    setSelectedCalendarId(linkedCalendarId);
+  }, [linkedCalendarId, setSelectedCalendarId]);
+
   // Загрузка событий
   const loadEvents = useCallback(async () => {
+    const requestId = ++eventsRequestIdRef.current;
+    const requestedCalendarId = selectedCalendarId;
+
     try {
       setLoading(true);
 
@@ -174,12 +243,14 @@ export function BigCalendar() {
       // Если selectedCalendarId === null, загружаем все доступные события со всех календарей
       const [eventsResult, occurrencesResult] = await Promise.all([
         apiClient.getCalendarEvents({
-          calendar: selectedCalendarId || undefined,
+          calendar: requestedCalendarId || undefined,
+          scope: canUseAllCalendarsMode && calendarScope === "all" ? "all" : undefined,
           start: startStr,
           end: endStr,
         }),
         apiClient.getOccurrences({
-          calendar: selectedCalendarId || undefined,
+          calendar: requestedCalendarId || undefined,
+          scope: canUseAllCalendarsMode && calendarScope === "all" ? "all" : undefined,
           start: startStr,
           end: endStr,
         }),
@@ -217,17 +288,35 @@ export function BigCalendar() {
           color_event: resolveEventColor(occ.color_event),
           event_id: occ.event_id,
           rule: occ.rule,
+          can_edit: occ.can_edit,
+          can_delete: occ.can_delete,
           isOccurrence: true, // Помечаем как occurrence для корректного отображения
         }));
 
       // Объединяем обычные события и occurrences
-      setEvents([...regularEvents, ...occurrenceEvents]);
+      let nextEvents = [...regularEvents, ...occurrenceEvents];
+
+      if (requestedCalendarId !== null) {
+        nextEvents = nextEvents.filter((event) => event.calendar === requestedCalendarId);
+      }
+
+      // Если параллельно ушёл более новый запрос, его ответ приоритетнее.
+      if (requestId !== eventsRequestIdRef.current) {
+        return;
+      }
+
+      setEvents(nextEvents);
     } catch (err) {
+      if (requestId !== eventsRequestIdRef.current) {
+        return;
+      }
       console.error("Ошибка загрузки событий:", err);
     } finally {
-      setLoading(false);
+      if (requestId === eventsRequestIdRef.current) {
+        setLoading(false);
+      }
     }
-  }, [selectedCalendarId, currentDate]);
+  }, [calendarScope, canUseAllCalendarsMode, currentDate, selectedCalendarId]);
 
   useEffect(() => {
     loadEvents();
@@ -275,6 +364,10 @@ export function BigCalendar() {
       alert("Сначала выберите календарь");
       return;
     }
+    if (selectedCalendar?.can_create_events === false) {
+      alert("В выбранный календарь нельзя добавлять события");
+      return;
+    }
 
     if (!selectedDate) return;
 
@@ -297,7 +390,7 @@ export function BigCalendar() {
     // Закрываем модал просмотра дня и открываем модал создания
     setShowDayEventsModal(false);
     setShowEventModal(true);
-  }, [selectedCalendarId, selectedDate]);
+  }, [selectedCalendar?.can_create_events, selectedCalendarId, selectedDate]);
 
   const handleSelectEvent = useCallback(async (calEvent: CalendarEvent) => {
     // Если это occurrence (повторяющееся событие), загружаем базовое событие
@@ -327,6 +420,84 @@ export function BigCalendar() {
     setShowEventDetailsModal(false);
     setShowEventModal(true);
   }, [viewingEvent]);
+
+  const handleCreateCalendar = useCallback(() => {
+    setEditingCalendar({ name: "" });
+    setShowCalendarModal(true);
+    setShowCalendarActions(false);
+  }, []);
+
+  const handleEditCalendar = useCallback(() => {
+    if (!selectedCalendar?.can_edit_calendar || isDepartmentCalendar) {
+      return;
+    }
+    setEditingCalendar({ id: selectedCalendar.id, name: selectedCalendar.name });
+    setShowCalendarModal(true);
+    setShowCalendarActions(false);
+  }, [isDepartmentCalendar, selectedCalendar]);
+
+  const handleDeleteCalendar = useCallback(async () => {
+    if (!selectedCalendar?.id || !selectedCalendar.can_edit_calendar || isDepartmentCalendar) {
+      return;
+    }
+    if (!confirm(`Удалить календарь "${selectedCalendar.name}"?`)) {
+      return;
+    }
+
+    try {
+      await apiClient.deleteCalendar(selectedCalendar.id);
+      calendarService.clearCache();
+      setSelectedCalendarId(null);
+      setShowCalendarActions(false);
+      await reloadCalendars();
+      loadEvents();
+    } catch (error) {
+      console.error("Не удалось удалить календарь:", error);
+      alert("Не удалось удалить календарь");
+    }
+  }, [isDepartmentCalendar, loadEvents, reloadCalendars, selectedCalendar, setSelectedCalendarId]);
+
+  const handleExportCalendar = useCallback(async () => {
+    if (!selectedCalendar?.id) return;
+
+    try {
+      const blob = await calendarService.exportToICS(selectedCalendar.id);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `calendar-${selectedCalendar.id}.ics`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Не удалось экспортировать календарь:", error);
+      alert("Не удалось экспортировать календарь");
+    } finally {
+      setShowCalendarActions(false);
+    }
+  }, [selectedCalendar]);
+
+  const handleImportCalendar = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!selectedCalendar?.id || !event.target.files || event.target.files.length === 0) {
+      return;
+    }
+
+    const file = event.target.files[0];
+    try {
+      const result = await calendarService.importFromICS(selectedCalendar.id, file);
+      alert(`Импорт завершен!\nИмпортировано: ${result.imported}\nПропущено: ${result.skipped}`);
+      loadEvents();
+    } catch (error: any) {
+      console.error("Не удалось импортировать календарь:", error);
+      alert(`Ошибка импорта: ${error.message}`);
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      setShowCalendarActions(false);
+    }
+  }, [loadEvents, selectedCalendar]);
 
   // Клик на событие из модала просмотра дня
   const handleEventClickFromDay = useCallback(async (event: any) => {
@@ -371,11 +542,146 @@ export function BigCalendar() {
     <>
       <div className="app-surface rounded-2xl">
         {/* Панель выбора календаря */}
-        <div className="flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3 flex-1">
-            <label className="text-sm font-medium text-[var(--foreground)]">Календарь:</label>
+        <div className="app-divider relative z-20 border-b px-6 py-5">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div className="space-y-1">
+                <p className="app-card-caption">Календарь</p>
+                <p className="app-text-muted text-sm">
+                  {selectedCalendar
+                    ? `События календаря «${selectedCalendar.name}»`
+                  : "Просмотр всех доступных событий"}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 self-end">
+                {loading && (
+                  <div className="app-text-muted flex items-center gap-2 text-sm">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--border-subtle)] border-t-[var(--accent-primary)]"></div>
+                    <span>Загрузка...</span>
+                  </div>
+                )}
+
+                {calendars.length > 0 && (
+                  <div className="relative z-30">
+                    <button
+                      type="button"
+                      onClick={() => setShowCalendarActions((prev) => !prev)}
+                      className="app-action-ghost flex h-8 w-8 items-center justify-center rounded-md"
+                      title="Действия с календарем"
+                      aria-label="Действия с календарем"
+                      aria-expanded={showCalendarActions}
+                      aria-haspopup="menu"
+                    >
+                      <ChevronRight
+                        size={15}
+                        className={`transition-transform duration-200 ${showCalendarActions ? "rotate-90" : ""}`}
+                      />
+                    </button>
+
+                    {showCalendarActions && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-[50]"
+                          onClick={() => setShowCalendarActions(false)}
+                        />
+                        <div className="app-menu pointer-events-auto absolute right-0 top-full z-[80] mt-1 w-52 rounded-xl">
+                          <div className="py-1">
+                            <button
+                              type="button"
+                              onClick={handleCreateCalendar}
+                              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                            >
+                              <Plus size={16} />
+                              Создать календарь
+                            </button>
+
+                            {selectedCalendar ? (
+                              <>
+                                <div className="app-divider my-1 border-t"></div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (canOpenParticipantsModal) {
+                                      setShowParticipantsModal(true);
+                                    }
+                                    setShowCalendarActions(false);
+                                  }}
+                                  disabled={!canOpenParticipantsModal}
+                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                                >
+                                  <Users size={16} />
+                                  Участники
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleExportCalendar}
+                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                    <polyline points="7 10 12 15 17 10"></polyline>
+                                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                                  </svg>
+                                  Экспорт .ics
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => fileInputRef.current?.click()}
+                                  disabled={!selectedCalendar.can_edit_calendar}
+                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                    <polyline points="17 8 12 3 7 8"></polyline>
+                                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                                  </svg>
+                                  Импорт .ics
+                                </button>
+                                <input
+                                  ref={fileInputRef}
+                                  type="file"
+                                  accept=".ics"
+                                  onChange={handleImportCalendar}
+                                  className="hidden"
+                                />
+
+                                {!isDepartmentCalendar ? (
+                                  <>
+                                    <div className="app-divider my-1 border-t"></div>
+                                    <button
+                                      type="button"
+                                      onClick={handleEditCalendar}
+                                      disabled={!selectedCalendar.can_edit_calendar}
+                                      className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                                    >
+                                      <Pencil size={16} />
+                                      Редактировать
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleDeleteCalendar()}
+                                      disabled={!selectedCalendar.can_edit_calendar}
+                                      className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                                    >
+                                      <Trash2 size={16} />
+                                      Удалить
+                                    </button>
+                                  </>
+                                ) : null}
+                              </>
+                            ) : null}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
             {calendars.length === 0 ? (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <p className="app-text-muted text-sm">Календарей нет.</p>
                 <button
                   onClick={() => {
@@ -388,84 +694,87 @@ export function BigCalendar() {
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2 flex-1">
-                <select
-                  value={selectedCalendarId === null ? "" : selectedCalendarId}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setSelectedCalendarId(value === "" ? null : Number(value));
-                  }}
-                  className="app-select max-w-xs flex-1"
-                >
-                  <option value="">📅 Все события</option>
-                  {calendars.map((cal) => (
-                    <option key={cal.id} value={cal.id}>
-                      {cal.name}
-                    </option>
-                  ))}
-                </select>
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                <div className="flex min-w-0 flex-1 flex-col gap-3 lg:flex-row lg:items-center">
+                  <label className="app-text-muted shrink-0 text-sm font-medium">Календарь</label>
+                  <div className="relative min-w-0 flex-1">
+                    <select
+                      value={selectedCalendarId === null ? "" : selectedCalendarId}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setSelectedCalendarId(value === "" ? null : Number(value));
+                      }}
+                      className="app-select w-full min-w-0 appearance-none rounded-xl py-2.5 pl-3 pr-10 text-sm"
+                    >
+                      <option value="">📅 Все события</option>
+                      {calendarOptions.map((cal) => (
+                        <option key={cal.id} value={cal.id}>
+                          {cal.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={16} className="app-text-muted pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                </div>
 
-                <button
-                  onClick={() => {
-                    setEditingCalendar({ name: "" });
-                    setShowCalendarModal(true);
-                  }}
-                  className="app-action-secondary flex h-9 w-9 items-center justify-center p-0"
-                  title="Создать календарь"
-                >
-                  <Plus size={16} />
-                </button>
-
-                {selectedCalendarId && (
-                  <button
-                    onClick={() => {
-                      const cal = calendars.find((c) => c.id === selectedCalendarId);
-                      if (cal) {
-                        setEditingCalendar({ id: cal.id, name: cal.name });
-                        setShowCalendarModal(true);
-                      }
-                    }}
-                    className="app-action-secondary flex h-9 w-9 items-center justify-center p-0"
-                    title="Настройки календаря"
-                  >
-                    <Settings size={16} />
-                  </button>
-                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  {canUseAllCalendarsMode && (
+                    <div className="grid min-w-[12rem] grid-cols-2 rounded-xl border border-[var(--border-strong)] bg-[var(--surface-secondary)] p-1">
+                      <button
+                        type="button"
+                        onClick={() => setCalendarScope("accessible")}
+                        className={`min-w-0 rounded-lg px-3 py-1.5 text-center text-xs font-medium transition ${
+                          calendarScope === "accessible"
+                            ? "bg-[var(--surface-primary)] text-[var(--foreground)] shadow-sm"
+                            : "app-text-muted hover:text-[var(--foreground)]"
+                        }`}
+                      >
+                        Доступные
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCalendarScope("all")}
+                        className={`min-w-0 rounded-lg px-3 py-1.5 text-center text-xs font-medium transition ${
+                          calendarScope === "all"
+                            ? "bg-[var(--surface-primary)] text-[var(--foreground)] shadow-sm"
+                            : "app-text-muted hover:text-[var(--foreground)]"
+                        }`}
+                      >
+                        Все
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
-
-          {loading && (
-            <div className="app-text-muted flex items-center gap-2 text-sm">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--border-subtle)] border-t-[var(--accent-primary)]"></div>
-              <span>Загрузка...</span>
-            </div>
-          )}
         </div>
 
         {/* Календарь */}
-        <div className="overflow-hidden px-6 pb-6" style={{ height: "750px" }}>
-          <Calendar
-            localizer={localizer}
-            events={events}
-            startAccessor="start"
-            endAccessor="end"
-            allDayAccessor={(event: CalendarEvent) => event.allDay || false}
-            messages={messages}
-            culture="ru"
-            view={currentView}
-            onView={(view: View) => setCurrentView(view)}
-            date={currentDate}
-            onNavigate={(date: Date) => setCurrentDate(date)}
-            onSelectSlot={handleSelectSlot}
-            onSelectEvent={handleSelectEvent}
-            selectable
-            eventPropGetter={eventStyleGetter}
-            popup
-            components={{
-              toolbar: CustomToolbar,
-            }}
-          />
+        <div className="relative z-0 overflow-hidden px-6 pb-6 pt-5" style={{ height: "750px" }}>
+          <div className="calendar-shell h-full rounded-[1.4rem]">
+            <Calendar
+              localizer={localizer}
+              events={events}
+              startAccessor="start"
+              endAccessor="end"
+              allDayAccessor={(event: CalendarEvent) => event.allDay || false}
+              messages={messages}
+              culture="ru"
+              view={currentView}
+              onView={(view: View) => setCurrentView(view)}
+              date={currentDate}
+              onNavigate={(date: Date) => setCurrentDate(date)}
+              onSelectSlot={handleSelectSlot}
+              onSelectEvent={handleSelectEvent}
+              selectable
+              eventPropGetter={eventStyleGetter}
+              popup
+              components={{
+                toolbar: CustomToolbar,
+              }}
+            />
+          </div>
         </div>
       </div>
 
@@ -533,6 +842,19 @@ export function BigCalendar() {
         }}
         calendar={editingCalendar}
       />
+
+      {selectedCalendar && (
+        <CalendarParticipantsModal
+          isOpen={showParticipantsModal}
+          onClose={() => setShowParticipantsModal(false)}
+          calendarId={selectedCalendar.id}
+          calendarName={selectedCalendar.name}
+          userRole={(selectedCalendar as any).user_role}
+          canManageParticipants={selectedCalendar.can_manage_participants}
+          calendarType={selectedCalendar.type}
+          contextType={selectedCalendar.context_type}
+        />
+      )}
     </>
   );
 }

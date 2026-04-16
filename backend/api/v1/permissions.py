@@ -176,8 +176,8 @@ class AdminOrDeptAllowed(BasePermission):
 
     Поведение:
         1. Если пользователь superuser/staff — доступ всегда разрешён.
-          2. Если для текущего экшена требуется код права
-              (например, DeptPerm.MANAGE_CALENDAR), то доступ
+        2. Если для текущего экшена требуется код права
+              (например, DeptPerm.MANAGE_FEED), то доступ
               разрешается только при наличии у пользователя этого права
               на указанный отдел.
         3. Идентификатор отдела извлекается из:
@@ -203,15 +203,15 @@ class AdminOrDeptAllowed(BasePermission):
             когда код не задан. По умолчанию True.
 
     Примеры:
-        class ManageCalendarPerm(AdminOrDeptAllowed):
-            required_code = DeptPerm.MANAGE_CALENDAR
+        class ManageFeedPerm(AdminOrDeptAllowed):
+            required_code = DeptPerm.MANAGE_FEED
 
-        class DeptEventsPerm(AdminOrDeptAllowed):
+        class DeptFeedPerm(AdminOrDeptAllowed):
             required_code_map = {
-                "create": DeptPerm.MANAGE_CALENDAR,
-                "update": DeptPerm.MANAGE_CALENDAR,
-                "partial_update": DeptPerm.MANAGE_CALENDAR,
-                "destroy": DeptPerm.MANAGE_CALENDAR,
+                "create": DeptPerm.MANAGE_FEED,
+                "update": DeptPerm.MANAGE_FEED,
+                "partial_update": DeptPerm.MANAGE_FEED,
+                "destroy": DeptPerm.MANAGE_FEED,
             }
     """
 
