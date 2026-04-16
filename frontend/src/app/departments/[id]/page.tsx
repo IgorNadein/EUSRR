@@ -12,6 +12,7 @@ import {
   Crown,
   Link2,
   MessageCircle,
+  Minus,
   PencilLine,
   Plus,
   Search,
@@ -84,6 +85,7 @@ function DepartmentMemberRow({
   roleOptions,
   onAssignRole,
   onCreateRole,
+  onRemoveHead,
   onRemoveMember,
   onSetHead,
   onToggleRoleMenu,
@@ -101,6 +103,7 @@ function DepartmentMemberRow({
   onAssignRole: (employeeId: number, roleId: number | null) => Promise<void>;
   onCreateRole: () => void;
   onRemoveMember: (employeeId: number) => Promise<void>;
+  onRemoveHead: () => Promise<void>;
   onSetHead: (employeeId: number) => Promise<void>;
   onToggleRoleMenu: (employeeId: number | null) => void;
   roleMenuOpenForId: number | null;
@@ -293,9 +296,23 @@ function DepartmentMemberRow({
         ) : null}
 
         {isHead ? (
-          <MetaChip tone="warning">
-            <Crown size={12} />
-          </MetaChip>
+          canChangeHead ? (
+            <button
+              type="button"
+              onClick={() => void onRemoveHead()}
+              disabled={pendingKey === "head"}
+              aria-label="Снять руководителя"
+              title="Снять руководителя"
+              className="app-selected inline-flex items-center gap-1 rounded-full px-2 py-1 text-[var(--warning-foreground)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Crown size={12} />
+              <Minus size={10} />
+            </button>
+          ) : (
+            <MetaChip tone="warning">
+              <Crown size={12} />
+            </MetaChip>
+          )
         ) : null}
 
         {isRoleOnly ? (
@@ -1045,6 +1062,7 @@ export default function DepartmentDetailPage() {
                           roleOptions={roleOptions}
                           onAssignRole={h.submitMemberRole}
                           onCreateRole={h.openCreateRole}
+                          onRemoveHead={h.submitHeadRemoval}
                           onRemoveMember={h.submitRemoveMember}
                           onSetHead={h.submitQuickHeadChange}
                           onToggleRoleMenu={setRoleMenuOpenForId}
