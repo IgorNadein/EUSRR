@@ -340,11 +340,11 @@ export default function CalendarParticipantsModal({
                 <p className="app-text-muted py-4 text-center text-sm">Нет участников</p>
               ) : (
                 participants.map((participant) => {
-                  const user = participant.user || {};
-                  const firstName = user.first_name || 'N';
-                  const lastName = user.last_name || 'A';
-                  const username = typeof user.username === 'string' ? user.username.trim() : '';
-                  const secondaryLabel = user.email || (username ? `@${username}` : '');
+                  const user = participant.user;
+                  const firstName = user?.first_name || 'N';
+                  const lastName = user?.last_name || 'A';
+                  const username = typeof user?.username === 'string' ? user.username.trim() : '';
+                  const secondaryLabel = user?.email || (username ? `@${username}` : '');
                   
                   return (
                     <div
@@ -352,7 +352,7 @@ export default function CalendarParticipantsModal({
                       className="app-surface-elevated flex items-center justify-between rounded-lg px-4 py-3 transition hover:bg-[var(--surface-secondary)]"
                     >
                       <div className="flex items-center gap-3">
-                        {user.avatar ? (
+                        {user?.avatar ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={resolveMediaUrl(user.avatar)}

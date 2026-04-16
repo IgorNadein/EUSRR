@@ -27,6 +27,25 @@ export type CalendarEventDraft = Record<string, unknown> & {
   can_delete?: boolean;
 };
 
+export function toCalendarEventDraft(
+  event: CalendarEvent | CalendarEventDetails,
+): CalendarEventDraft {
+  return {
+    ...event,
+    id: typeof event.id === "number" ? event.id : undefined,
+    start: event.start ?? null,
+    end: event.end ?? null,
+    calendar:
+      typeof event.calendar === "number" ? event.calendar : event.calendar ?? null,
+    color_event: event.color_event ?? null,
+    rule: event.rule ?? null,
+    event_id: "event_id" in event ? event.event_id : undefined,
+    is_recurring: "is_recurring" in event ? event.is_recurring : false,
+    can_edit: event.can_edit,
+    can_delete: event.can_delete,
+  };
+}
+
 interface EventsCache {
   key: string;
   events: CalendarEvent[];

@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, CalendarDays, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Monitor, Search, ShoppingCart, Users } from "lucide-react";
+import { Building2, CalendarDays, Download, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Monitor, Search, ShoppingCart, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, startTransition, useEffect, useRef, useState, useMemo } from "react";
@@ -13,6 +13,7 @@ import { CalendarSidebar } from "@/components/calendar/CalendarSidebar";
 import { useCalendarModals } from "@/hooks/useCalendarModals";
 import { CalendarModals } from "@/components/layout/CalendarModals";
 import { MobileLeftDrawer, MobileCalendarDrawer } from "@/components/layout/MobileDrawers";
+import { usePwa } from "@/contexts/PwaContext";
 
 type AppShellProps = {
   children: ReactNode;
@@ -51,6 +52,7 @@ const navItems = [
 function Header({ mobileNavPlacement, suppressMobileChrome = false, onOpenLeftNav, onOpenCalendar }: HeaderProps) {
   const router = useRouter();
   const { user, logout } = useUser();
+  const { canInstall, install } = usePwa();
   const [searchQuery, setSearchQuery] = useState("");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -147,6 +149,7 @@ function Header({ mobileNavPlacement, suppressMobileChrome = false, onOpenLeftNa
           </button>
 
           <Link href="/" className="flex items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/logo.png"
               alt="Логотип"
@@ -200,6 +203,7 @@ function Header({ mobileNavPlacement, suppressMobileChrome = false, onOpenLeftNa
                 onClick={() => setUserMenuOpen((v) => !v)}
               >
                 {user?.avatar ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
                   <img src={user.avatar} alt={userName} className="h-full w-full object-cover" />
                 ) : (
                   userInitials
@@ -216,6 +220,18 @@ function Header({ mobileNavPlacement, suppressMobileChrome = false, onOpenLeftNa
                     className="app-action-ghost w-full px-4 py-2 text-left text-sm transition"
                     onClick={() => { setUserMenuOpen(false); router.push('/settings'); }}
                   >Настройки</button>
+                  {canInstall ? (
+                    <button
+                      className="app-action-ghost flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition"
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        void install();
+                      }}
+                    >
+                      <Download size={16} />
+                      Установить
+                    </button>
+                  ) : null}
                   <div className="app-divider my-1 border-t" />
                   <button
                     className="app-action-danger w-full px-4 py-2 text-left text-sm transition"

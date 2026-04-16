@@ -11,6 +11,7 @@ import {
   formatDateKey,
   type CalendarEvent,
   type CalendarEventDraft,
+  toCalendarEventDraft,
 } from "@/services/calendarService";
 import { DEFAULT_EVENT_COLOR, resolveEventColor } from "@/lib/calendar-event-colors";
 import {
@@ -153,12 +154,12 @@ export const CalendarCard = memo(function CalendarCard({
     if (event.is_recurring && event.event_id) {
       try {
         const fullEvent = await calendarService.loadFullEvent(event.event_id, event.start || undefined, event.end || undefined);
-        onOpenEventModal(fullEvent);
+        onOpenEventModal(toCalendarEventDraft(fullEvent));
       } catch (err) {
         console.error("Ошибка загрузки базового события:", err);
       }
     } else {
-      onOpenEventModal(event);
+      onOpenEventModal(toCalendarEventDraft(event));
     }
   }, [onOpenEventModal]);
 
@@ -622,7 +623,7 @@ export const CalendarCard = memo(function CalendarCard({
                     <div className="flex items-center gap-1">
                       <div
                         className="h-2 w-2 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: resolveEventColor(event.color_event || event.color) }}
+                        style={{ backgroundColor: resolveEventColor(event.color_event) }}
                       />
                       <p className="truncate text-xs font-medium text-[var(--foreground)]">{event.title}</p>
                       {(event.is_recurring || event.rule) && (
