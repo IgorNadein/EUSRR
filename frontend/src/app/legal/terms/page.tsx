@@ -76,7 +76,7 @@ export default function TermsPage() {
             <p className="app-text-muted text-xs uppercase tracking-[0.2em]">Legal</p>
             <h1 className="mt-3 text-3xl font-semibold">Условия использования</h1>
             <p className="app-text-muted mt-3 text-sm leading-6">
-              Общие правила доступа и использования сервиса EUSRR.
+              Общие правила доступа и использования сервиса CORP - HiRo.
             </p>
           </div>
 

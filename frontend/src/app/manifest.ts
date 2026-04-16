@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "EUSRR",
-    short_name: "EUSRR",
-    description: "Корпоративная система управления EUSRR",
+    name: "CORP - HiRo",
+    short_name: "CORP - HiRo",
+    description: "Корпоративная система управления CORP - HiRo",
     start_url: "/",
     scope: "/",
     display: "standalone",

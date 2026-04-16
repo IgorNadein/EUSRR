@@ -16,14 +16,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "EUSRR - Корпоративная система",
-  description: "Корпоративная система управления EUSRR",
-  applicationName: "EUSRR",
+  title: "CORP - HiRo",
+  description: "Корпоративная система управления CORP - HiRo",
+  applicationName: "CORP - HiRo",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "EUSRR",
+    title: "CORP - HiRo",
   },
   icons: {
     icon: [
