@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { X, ChevronDown } from "lucide-react";
 import { useUser } from "@/contexts/UserContext";
 import { CalendarCard } from "@/components/calendar/CalendarCard";
-import type { CalendarEvent } from "@/services/calendarService";
+import { type CalendarParticipantsTarget } from "@/lib/calendar/ui";
+import type { CalendarEvent, CalendarEventDraft } from "@/services/calendarService";
 
 /* ────────────── Left Navigation Drawer (mobile) ────────────── */
 
@@ -60,6 +61,7 @@ export function MobileLeftDrawer({ isOpen, onClose, children }: LeftNavDrawerPro
           >
             <div className="app-avatar-fallback flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-semibold">
               {user?.avatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img src={user.avatar} alt={userName} className="h-full w-full object-cover" />
               ) : (
                 userInitials
@@ -103,15 +105,8 @@ interface CalendarDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenCalendarModal: (calendar?: { id?: number; name: string }) => void;
-  onOpenEventModal: (event: Partial<CalendarEvent> & { id?: number }, date?: Date) => void;
-  onOpenParticipantsModal: (calendar: {
-    id: number;
-    name: string;
-    user_role?: string;
-    can_manage_participants?: boolean;
-    type?: string | null;
-    context_type?: string | null;
-  }) => void;
+  onOpenEventModal: (event: CalendarEventDraft, date?: Date) => void;
+  onOpenParticipantsModal: (calendar: CalendarParticipantsTarget) => void;
   eventsRefreshTrigger: number;
   setEventsRefreshTrigger: (value: number | ((prev: number) => number)) => void;
   setSidebarEvents: (events: CalendarEvent[]) => void;

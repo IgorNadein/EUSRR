@@ -1,9 +1,21 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { RequestFn, GetTokenFn } from './utils';
+import type {
+    Calendar,
+    CalendarEvent,
+    CalendarOccurrence,
+    CalendarParticipant,
+    PaginatedResponse,
+} from '@/types/api';
+
+type CalendarScopeParam = { scope?: "all" };
+type CalendarQueryParams = { start?: string; end?: string; calendar?: number; scope?: "all" };
+type CalendarListResponse = PaginatedResponse<Calendar> | Calendar[];
+type CalendarEventsResponse = PaginatedResponse<CalendarEvent> | CalendarEvent[];
+type CalendarRulesParams = Record<string, unknown>;
 
 export function createCalendarApi(request: RequestFn, getToken: GetTokenFn) {
     return {
-        getCalendarEvents: (params?: { start?: string; end?: string; calendar?: number; scope?: "all" }) => {
+        getCalendarEvents: (params?: CalendarQueryParams): Promise<CalendarEventsResponse> => {
             const qp = new URLSearchParams();
             if (params?.start) qp.append('start', params.start);
             if (params?.end) qp.append('end', params.end);
@@ -19,29 +31,29 @@ export function createCalendarApi(request: RequestFn, getToken: GetTokenFn) {
             const qs = qp.toString();
             return request(`/api/v1/schedule/events/my-events/${qs ? '?' + qs : ''}`);
         },
-        getCalendars: (params?: { scope?: "all" }) => {
+        getCalendars: (params?: CalendarScopeParam): Promise<CalendarListResponse> => {
             const qp = new URLSearchParams();
             if (params?.scope) qp.append('scope', params.scope);
             const qs = qp.toString();
             return request(`/api/v1/schedule/calendars/${qs ? '?' + qs : ''}`);
         },
-        getCalendar: (id: number) => request(`/api/v1/schedule/calendars/${id}/`),
-        createCalendar: (data: { name: string; slug?: string }) => request('/api/v1/schedule/calendars/', { method: 'POST', body: JSON.stringify(data) }),
-        updateCalendar: (id: number, data: { name?: string; slug?: string }) => request(`/api/v1/schedule/calendars/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+        getCalendar: (id: number): Promise<Calendar> => request(`/api/v1/schedule/calendars/${id}/`),
+        createCalendar: (data: { name: string; slug?: string }): Promise<Calendar> => request('/api/v1/schedule/calendars/', { method: 'POST', body: JSON.stringify(data) }),
+        updateCalendar: (id: number, data: { name?: string; slug?: string }): Promise<Calendar> => request(`/api/v1/schedule/calendars/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
         deleteCalendar: (id: number): Promise<void> => request(`/api/v1/schedule/calendars/${id}/`, { method: 'DELETE' }),
         // Subscriptions
         getCalendarSubscriptions: () => request('/api/v1/schedule/subscriptions/'),
         subscribeToCalendar: (calendarId: number) => request('/api/v1/schedule/subscriptions/', { method: 'POST', body: JSON.stringify({ calendar: calendarId }) }),
         unsubscribeFromCalendar: (subscriptionId: number) => request(`/api/v1/schedule/subscriptions/${subscriptionId}/`, { method: 'DELETE' }),
-        updateSubscription: (subscriptionId: number, data: Record<string, any>) => request(`/api/v1/schedule/subscriptions/${subscriptionId}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+        updateSubscription: (subscriptionId: number, data: Record<string, unknown>) => request(`/api/v1/schedule/subscriptions/${subscriptionId}/`, { method: 'PATCH', body: JSON.stringify(data) }),
         // Events
-        getEvent: (id: number) => request(`/api/v1/schedule/events/${id}/`),
-        createEvent: (data: { title: string; description?: string; start: string; end: string; calendar: number; color_event?: string; rule?: number | null }) =>
+        getEvent: (id: number): Promise<CalendarEvent> => request(`/api/v1/schedule/events/${id}/`),
+        createEvent: (data: { title: string; description?: string; start: string; end: string; calendar: number; color_event?: string; rule?: number | null }): Promise<CalendarEvent> =>
             request('/api/v1/schedule/events/', { method: 'POST', body: JSON.stringify(data) }),
-        updateEvent: (id: number, data: Record<string, any>) => request(`/api/v1/schedule/events/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+        updateEvent: (id: number, data: Record<string, unknown>): Promise<CalendarEvent> => request(`/api/v1/schedule/events/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
         deleteEvent: (id: number): Promise<void> => request(`/api/v1/schedule/events/${id}/`, { method: 'DELETE' }),
         // Participants
-        getCalendarParticipants: (calendarId: number) => request(`/api/v1/schedule/calendars/${calendarId}/participants/`),
+        getCalendarParticipants: (calendarId: number): Promise<CalendarParticipant[]> => request(`/api/v1/schedule/calendars/${calendarId}/participants/`),
         addCalendarParticipant: (calendarId: number, userId: number, distinction: string = 'viewer') =>
             request(`/api/v1/schedule/calendars/${calendarId}/add-participant/`, { method: 'POST', body: JSON.stringify({ user_id: userId, distinction }) }),
         removeCalendarParticipant: (calendarId: number, userId: number): Promise<void> =>
@@ -63,13 +75,13 @@ export function createCalendarApi(request: RequestFn, getToken: GetTokenFn) {
             return response.json();
         },
         // Rules
-        createRule: (data: { name: string; description?: string; frequency: string; params?: any }) =>
+        createRule: (data: { name: string; description?: string; frequency: string; params?: CalendarRulesParams }) =>
             request('/api/v1/schedule/rules/', { method: 'POST', body: JSON.stringify({ ...data, params: data.params ? JSON.stringify(data.params) : '{}' }) }),
-        updateRule: (ruleId: number, data: { name: string; description?: string; frequency: string; params?: any }) =>
+        updateRule: (ruleId: number, data: { name: string; description?: string; frequency: string; params?: CalendarRulesParams }) =>
             request(`/api/v1/schedule/rules/${ruleId}/`, { method: 'PUT', body: JSON.stringify({ ...data, params: data.params ? JSON.stringify(data.params) : '{}' }) }),
         getRules: () => request('/api/v1/schedule/rules/'),
         getRule: (ruleId: number) => request(`/api/v1/schedule/rules/${ruleId}/`),
-        getOccurrences: (params: { start: string; end: string; calendar?: number; scope?: "all" }) => {
+        getOccurrences: (params: { start: string; end: string; calendar?: number; scope?: "all" }): Promise<CalendarOccurrence[]> => {
             const qp = new URLSearchParams();
             qp.append('start', params.start);
             qp.append('end', params.end);
