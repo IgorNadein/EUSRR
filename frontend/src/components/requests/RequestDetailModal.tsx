@@ -146,7 +146,7 @@ export function RequestDetailModal({
     >
       <div className="space-y-5 text-sm text-[var(--foreground)]">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
-          <div className="app-surface-muted h-full rounded-xl p-4 lg:min-h-0">
+          <div className="app-surface-muted rounded-xl p-4">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="app-badge app-badge-accent px-2.5 py-1 text-xs font-medium">
@@ -236,7 +236,7 @@ export function RequestDetailModal({
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
-          <div className="app-surface h-full rounded-xl p-4 lg:min-h-0">
+          <div className="app-surface rounded-xl p-4">
             <p className="app-text-muted text-xs font-semibold uppercase tracking-wide">Даты</p>
             <div className="mt-3 space-y-2">
               <div>
@@ -261,7 +261,7 @@ export function RequestDetailModal({
             </div>
           </div>
 
-          <div className="app-surface h-full rounded-xl p-4 lg:min-h-0">
+          <div className="app-surface rounded-xl p-4">
             <p className="app-text-muted text-xs font-semibold uppercase tracking-wide">Участники</p>
             <div className="mt-3 space-y-3">
               <div>
