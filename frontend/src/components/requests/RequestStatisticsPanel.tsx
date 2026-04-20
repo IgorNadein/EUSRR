@@ -1,10 +1,10 @@
 "use client";
 
-import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
 import { apiClient } from "@/lib/api";
 import { displayUserName } from "@/lib/shared";
+import { resolveMediaUrl } from "@/lib/url";
 import type { RequestEmployeeStatistics, User } from "@/types/api";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const statsPeriods = [
@@ -25,6 +25,7 @@ export function RequestStatisticsPanel({
   employees,
 }: RequestStatisticsPanelProps) {
   const [open, setOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [employeeId, setEmployeeId] = useState<number | null>(null);
   const [period, setPeriod] = useState<StatsPeriod>("all");
   const [stats, setStats] = useState<RequestEmployeeStatistics | null>(null);
@@ -40,7 +41,9 @@ export function RequestStatisticsPanel({
     setLoading(true);
     setError(null);
 
-    apiClient.getEmployeeRequestStatistics(employeeId, period)
+    apiClient.request<RequestEmployeeStatistics>(
+      `/api/v1/requests/statistics/?employee_id=${employeeId}&period=${period}`
+    )
       .then((response) => {
         if (!cancelled) {
           setStats(response);
@@ -64,10 +67,19 @@ export function RequestStatisticsPanel({
 
   if (!canView) return null;
 
-  const employeeOptions = employees.map((employee) => ({
-    id: employee.id,
-    name: displayUserName(employee),
-  }));
+  const filteredEmployees = employees.filter((employee) => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (!normalizedQuery) return true;
+
+    const haystack = [
+      displayUserName(employee),
+      employee.email || "",
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
 
   const statsItems = stats ? [
     { label: "Всего заявлений", value: stats.total_submitted_requests },
@@ -101,20 +113,87 @@ export function RequestStatisticsPanel({
 
       {open ? (
         <div className="border-t border-[var(--border-subtle)] px-4 py-4">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-            <SearchableSelectSingle
-              label="Сотрудник"
-              items={employeeOptions}
-              selectedId={employeeId}
-              onSelect={(id) => {
-                setEmployeeId(id);
-                setStats(null);
-                setError(null);
-              }}
-              placeholder="Выберите сотрудника"
-            />
+          <div className="app-surface-muted rounded-2xl p-4">
+            <div className="relative">
+              <Search
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 app-text-muted"
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Выберите сотрудника для статистики"
+                className="app-input w-full rounded-xl py-2.5 pl-10 pr-3 text-sm"
+              />
+            </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="mt-3 flex items-center justify-between px-1 text-xs">
+              <span className="app-text-muted">Найдено: {filteredEmployees.length}</span>
+              <span className="app-accent-text font-medium">Выбрано: {employeeId ? 1 : 0}</span>
+            </div>
+
+            <div className="app-surface mt-3 max-h-72 space-y-2 overflow-y-auto rounded-2xl p-2">
+              {filteredEmployees.length > 0 ? (
+                filteredEmployees.map((employee) => {
+                  const isSelected = employee.id === employeeId;
+                  const employeeName = displayUserName(employee);
+                  return (
+                    <button
+                      key={employee.id}
+                      type="button"
+                      onClick={() => {
+                        setEmployeeId((current) => current === employee.id ? null : employee.id);
+                        setStats(null);
+                        setError(null);
+                      }}
+                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
+                        isSelected
+                          ? "app-selected"
+                          : "app-surface-muted hover:bg-[var(--surface-tertiary)]"
+                      }`}
+                    >
+                      {employee.avatar ? (
+                        <img
+                          src={resolveMediaUrl(employee.avatar)}
+                          alt={employeeName}
+                          className="app-avatar-frame h-10 w-10 shrink-0 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="app-avatar-fallback flex h-10 w-10 shrink-0 items-center justify-center rounded-full">
+                          <span className="text-sm font-semibold">
+                            {employee.first_name?.[0] || employee.last_name?.[0] || "?"}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-[var(--foreground)]">
+                          {employeeName}
+                        </div>
+                        <div className="truncate text-xs text-[var(--muted-foreground)]">
+                          {employee.email || "Почта не указана"}
+                        </div>
+                      </div>
+
+                      <div
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition ${
+                          isSelected
+                            ? "border-[color:var(--accent-primary)] bg-[var(--accent-primary)] text-white"
+                            : "border-[var(--border-strong)] text-transparent"
+                        }`}
+                      >
+                        <div className="h-2.5 w-2.5 rounded-full bg-current" />
+                      </div>
+                    </button>
+                  );
+                })
+              ) : (
+                <p className="app-text-muted px-2 py-3 text-sm">Сотрудники не найдены</p>
+              )}
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
               {statsPeriods.map((periodOption) => {
                 const isActive = period === periodOption.value;
                 return (
