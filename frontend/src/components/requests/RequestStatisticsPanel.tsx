@@ -80,7 +80,7 @@ export function RequestStatisticsPanel({
   ] : [];
 
   return (
-    <div className="app-surface mb-4 overflow-hidden rounded-2xl">
+    <div className="app-surface overflow-hidden rounded-2xl">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
