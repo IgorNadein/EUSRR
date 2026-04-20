@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import type { RequestEmployeeStatistics } from '@/types/api';
 import type { RequestFn, GetTokenFn } from './utils';
 
 export function createRequestsApi(request: RequestFn, getToken: GetTokenFn) {
@@ -30,6 +31,8 @@ export function createRequestsApi(request: RequestFn, getToken: GetTokenFn) {
             return request(`/api/v1/requests/${qs ? '?' + qs : ''}`);
         },
         getRequest: (requestId: number) => request(`/api/v1/requests/${requestId}/`),
+        getRequestEmployeeStatistics: (requestId: number): Promise<RequestEmployeeStatistics> =>
+            request(`/api/v1/requests/${requestId}/employee-statistics/`),
         createRequest: (data: Record<string, any>, saveAs?: 'draft' | 'submit') => formDataRequest('/api/v1/requests/', 'POST', data, saveAs),
         updateRequest: (requestId: number, data: Record<string, any>, saveAs?: 'draft' | 'submit') => formDataRequest(`/api/v1/requests/${requestId}/`, 'PATCH', data, saveAs),
         deleteRequest: (requestId: number): Promise<void> => request(`/api/v1/requests/${requestId}/`, { method: 'DELETE' }),

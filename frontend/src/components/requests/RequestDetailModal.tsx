@@ -1,3 +1,5 @@
+"use client";
+
 import { Modal } from "@/components/ui";
 import {
   defaultStatusMeta,
@@ -5,16 +7,19 @@ import {
   statusMeta,
   type RequestAttachmentPreview,
 } from "@/hooks/useRequestsPage";
-import { displayUserName, formatDate, formatDateTime } from "@/lib/shared";
-import type { Request, RequestComment } from "@/types/api";
-import { Ban, Paperclip, Pencil, ThumbsDown, ThumbsUp, Trash2 } from "lucide-react";
 import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
+import { apiClient } from "@/lib/api";
+import { displayUserName, formatDate, formatDateTime } from "@/lib/shared";
+import type { Request, RequestComment, RequestEmployeeStatistics } from "@/types/api";
+import { Ban, ChevronDown, Paperclip, Pencil, ThumbsDown, ThumbsUp, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { getRequestActionState } from "./requestActions";
 import { RequestUserBadge } from "./RequestUserBadge";
 
 type RequestDetailModalProps = {
   actionError?: string | null;
   busyKey: string | null;
+  canViewStats?: boolean;
   commentDraft: string;
   comments: RequestComment[];
   commentsLoading: boolean;
@@ -37,6 +42,7 @@ type RequestDetailModalProps = {
 export function RequestDetailModal({
   actionError,
   busyKey,
+  canViewStats = false,
   commentDraft,
   comments,
   commentsLoading,
@@ -55,6 +61,49 @@ export function RequestDetailModal({
   onSetCommentDraft,
   request,
 }: RequestDetailModalProps) {
+  const [statsOpen, setStatsOpen] = useState(false);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState<string | null>(null);
+  const [stats, setStats] = useState<RequestEmployeeStatistics | null>(null);
+
+  useEffect(() => {
+    setStatsOpen(false);
+    setStatsLoading(false);
+    setStatsError(null);
+    setStats(null);
+  }, [request?.id]);
+
+  useEffect(() => {
+    if (!request?.id || !canViewStats || !statsOpen || stats || statsLoading) {
+      return;
+    }
+
+    let cancelled = false;
+    setStatsLoading(true);
+    setStatsError(null);
+
+    apiClient.getRequestEmployeeStatistics(request.id)
+      .then((response) => {
+        if (!cancelled) {
+          setStats(response);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setStatsError(error instanceof Error ? error.message : "Не удалось загрузить статистику.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setStatsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewStats, request?.id, stats, statsLoading, statsOpen]);
+
   if (!request) return null;
 
   const author = request.employee || request.created_by;
@@ -69,6 +118,18 @@ export function RequestDetailModal({
     ? decodeURIComponent(attachmentUrl.split("/").pop() || "Вложение")
     : "";
   const commentCount = request.comments_count ?? comments.length;
+  const statsItems = useMemo(() => {
+    if (!stats) return [];
+    return [
+      { label: "Всего заявлений", value: stats.total_submitted_requests },
+      { label: "Больничных", value: stats.sick_leave_requests_count },
+      { label: "Отгулов", value: stats.day_off_requests_count },
+      { label: "Дней на больничном", value: stats.sick_leave_days },
+      { label: "Дней на отгулах", value: stats.day_off_days },
+      { label: "Оплачиваемый отпуск, дней", value: stats.paid_vacation_days },
+      { label: "За свой счёт, дней", value: stats.unpaid_vacation_days },
+    ];
+  }, [stats]);
 
   return (
     <Modal
@@ -145,6 +206,55 @@ export function RequestDetailModal({
       )}
     >
       <div className="space-y-5 text-sm text-[var(--foreground)]">
+        {canViewStats ? (
+          <div className="app-surface overflow-hidden rounded-xl">
+            <button
+              type="button"
+              onClick={() => setStatsOpen((current) => !current)}
+              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-[var(--surface-secondary)]"
+              aria-expanded={statsOpen}
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[var(--foreground)]">Статистика сотрудника</p>
+                <p className="app-text-muted mt-1 text-xs">
+                  {displayUserName(author) || "Сотрудник"}: история заявлений и дней отсутствия
+                </p>
+              </div>
+              <ChevronDown
+                size={18}
+                className={`shrink-0 text-[var(--foreground-muted)] transition-transform ${statsOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            {statsOpen ? (
+              <div className="border-t border-[var(--border-subtle)] px-4 py-4">
+                {statsLoading || (!stats && !statsError) ? (
+                  <div className="app-text-muted flex items-center gap-2 text-sm">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--border-strong)] border-t-[var(--accent-primary)]" />
+                    <span>Загрузка статистики...</span>
+                  </div>
+                ) : statsError ? (
+                  <div className="app-feedback-danger rounded-xl px-3 py-2 text-sm">
+                    {statsError}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {statsItems.map((item) => (
+                      <div
+                        key={item.label}
+                        className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-primary)] px-3 py-3"
+                      >
+                        <p className="app-text-muted text-xs">{item.label}</p>
+                        <p className="mt-2 text-2xl font-semibold text-[var(--foreground)]">{item.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
           <div className="app-surface-muted rounded-xl p-4">
             <div className="space-y-3">

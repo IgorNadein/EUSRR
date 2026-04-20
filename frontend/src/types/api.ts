@@ -369,6 +369,18 @@ export interface RequestComment {
   created_at: string;
 }
 
+export interface RequestEmployeeStatistics {
+  employee_id: number;
+  employee_name: string;
+  total_submitted_requests: number;
+  sick_leave_requests_count: number;
+  day_off_requests_count: number;
+  sick_leave_days: number;
+  day_off_days: number;
+  paid_vacation_days: number;
+  unpaid_vacation_days: number;
+}
+
 // Equipment types
 export interface EquipmentCategory {
   id: number;

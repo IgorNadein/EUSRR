@@ -11,6 +11,7 @@ import { useUser } from "@/contexts/UserContext";
 import { Suspense } from "react";
 import { useRequestsPage } from "@/hooks/useRequestsPage";
 import { useRequestsPageScreen } from "@/hooks/useRequestsPageScreen";
+import { canViewRequestStatistics } from "@/lib/permissions";
 
 export default function RequestsPage() {
   return (
@@ -33,6 +34,7 @@ function RequestsPageFallback() {
 
 function RequestsPageContent() {
   const { user } = useUser();
+  const canViewStats = canViewRequestStatistics(user);
   const h = useRequestsPage(user?.id);
   const screen = useRequestsPageScreen({
     detailsRequestId: h.detailsRequest?.id,
@@ -140,6 +142,7 @@ function RequestsPageContent() {
       <RequestDetailModal
         actionError={h.actionError}
         busyKey={h.busyKey}
+        canViewStats={canViewStats}
         commentDraft={h.detailsRequest ? (h.commentDrafts[h.detailsRequest.id] || "") : ""}
         comments={h.detailsRequest ? (h.commentsMap[h.detailsRequest.id] || []) : []}
         commentsLoading={h.detailsRequest ? Boolean(h.commentsLoadingMap[h.detailsRequest.id]) : false}

@@ -6,7 +6,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db.models import Count, IntegerField, OuterRef, Q, QuerySet, Subquery, Value
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404  # раскомментируйте импорт
-from requests_app.enums import RequestStatus
+from requests_app.enums import RequestStatus, RequestType
 from requests_app.models import Request as EmployeeRequest
 from communications import comments_helpers
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -27,7 +27,6 @@ from rest_framework.serializers import (
     BaseSerializer,
 )  # <- для типизации get_serializer_class
 
-from ..permissions import IsSelfOrStaff
 from .permissions import (
     CanViewRequest,
     CommentsPermission,
@@ -39,6 +38,40 @@ from .serializers import (
     RequestReadSerializer,
     RequestWriteSerializer,
 )
+
+
+UNPAID_VACATION_MARKERS = (
+    "за свой счет",
+    "за свой счёт",
+    "без сохранения заработной платы",
+    "без сохранения зарплаты",
+    "без сохранения зп",
+    "неоплачиваем",
+)
+
+
+def _request_duration_days(req: EmployeeRequest) -> int:
+    """Возвращает длительность заявки в днях, включая обе даты."""
+    if req.date_from and req.date_to:
+        return max((req.date_to - req.date_from).days + 1, 0)
+    if req.date_from:
+        return 1
+    return 0
+
+
+def _is_unpaid_vacation(req: EmployeeRequest) -> bool:
+    """Определяет отпуск за свой счёт по текстовым маркерам.
+
+    Явного поля в модели пока нет, поэтому используем временную эвристику
+    по title/comment.
+    """
+    haystack = " ".join(
+        [
+            str(getattr(req, "title", "") or ""),
+            str(getattr(req, "comment", "") or ""),
+        ]
+    ).lower()
+    return any(marker in haystack for marker in UNPAID_VACATION_MARKERS)
 
 
 class RequestViewSet(viewsets.ModelViewSet):
@@ -80,7 +113,7 @@ class RequestViewSet(viewsets.ModelViewSet):
             return [IsRecipientOfRequest()]
         if self.action == "cancel":
             return [IsRequestAuthor()]
-        if self.action == "retrieve":
+        if self.action in {"retrieve", "employee_statistics"}:
             return [CanViewRequest()]
         if self.action == "destroy":
             return [IsRequestAuthor(), NotFinalOrStaff()]
@@ -210,6 +243,7 @@ class RequestViewSet(viewsets.ModelViewSet):
             "comments",
             "cancel",
             "retrieve",
+            "employee_statistics",
         }:
             lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
             lookup_value = self.kwargs[lookup_url_kwarg]
@@ -479,6 +513,70 @@ class RequestViewSet(viewsets.ModelViewSet):
                 obj, context=self.get_serializer_context()
             ).data
         )
+
+    @action(detail=True, methods=["get"], url_path="employee-statistics")
+    def employee_statistics(
+        self, request: DRFRequest, pk: int | str | None = None
+    ) -> Response:
+        """Возвращает сводную статистику по заявлениям сотрудника.
+
+        Доступно администраторам и пользователям с явным правом
+        ``requests_app.view_statistics`` или ``requests_app.can_view_all_requests``.
+        """
+        obj = self.get_object()
+        user = request.user
+
+        can_view_statistics = bool(
+            getattr(user, "is_staff", False)
+            or getattr(user, "is_superuser", False)
+            or user.has_perm("requests_app.view_statistics")
+            or user.has_perm("requests_app.can_view_all_requests")
+        )
+        if not can_view_statistics:
+            raise PermissionDenied(
+                "У вас нет доступа к статистике по заявлениям."
+            )
+
+        base_qs = EmployeeRequest.objects.filter(employee=obj.employee).exclude(
+            status=RequestStatus.DRAFT
+        )
+        approved_qs = base_qs.filter(status=RequestStatus.APPROVED)
+
+        sick_leave_days = 0
+        day_off_days = 0
+        paid_vacation_days = 0
+        unpaid_vacation_days = 0
+
+        for req in approved_qs.only(
+            "type", "date_from", "date_to", "title", "comment"
+        ):
+            duration = _request_duration_days(req)
+            if req.type == RequestType.SICK_LEAVE:
+                sick_leave_days += duration
+            elif req.type == RequestType.DAY_OFF:
+                day_off_days += duration
+            elif req.type == RequestType.VACATION:
+                if _is_unpaid_vacation(req):
+                    unpaid_vacation_days += duration
+                else:
+                    paid_vacation_days += duration
+
+        payload = {
+            "employee_id": obj.employee_id,
+            "employee_name": str(obj.employee),
+            "total_submitted_requests": base_qs.count(),
+            "sick_leave_requests_count": base_qs.filter(
+                type=RequestType.SICK_LEAVE
+            ).count(),
+            "day_off_requests_count": base_qs.filter(
+                type=RequestType.DAY_OFF
+            ).count(),
+            "sick_leave_days": sick_leave_days,
+            "day_off_days": day_off_days,
+            "paid_vacation_days": paid_vacation_days,
+            "unpaid_vacation_days": unpaid_vacation_days,
+        }
+        return Response(payload)
 
     def create(self, request, *args, **kwargs):
         """
