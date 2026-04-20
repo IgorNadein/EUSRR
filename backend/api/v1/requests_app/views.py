@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import calendar
+from datetime import date
 from typing import Any  # было: Any, Dict, List, Type
 
 from django.contrib.auth import get_user_model
@@ -88,6 +89,42 @@ def _resolve_stats_window(period: str) -> tuple[timezone.datetime.date, timezone
     return None, None
 
 
+def _parse_iso_date(raw_value: str, field_name: str) -> date:
+    """Парсит ISO-даты для custom period."""
+    try:
+        return date.fromisoformat(raw_value)
+    except ValueError as exc:
+        raise ValidationError(
+            {field_name: ["Ожидается дата в формате YYYY-MM-DD."]}
+        ) from exc
+
+
+def _resolve_stats_window_from_query(
+    period: str, request: DRFRequest
+) -> tuple[date | None, date | None]:
+    """Возвращает окно статистики, включая custom range."""
+    if period != "custom":
+        return _resolve_stats_window(period)
+
+    date_from_raw = (request.query_params.get("date_from") or "").strip()
+    date_to_raw = (request.query_params.get("date_to") or "").strip()
+    if not date_from_raw or not date_to_raw:
+        raise ValidationError(
+            {
+                "date_from": ["Обязательное поле для custom периода."],
+                "date_to": ["Обязательное поле для custom периода."],
+            }
+        )
+
+    start_date = _parse_iso_date(date_from_raw, "date_from")
+    end_date = _parse_iso_date(date_to_raw, "date_to")
+    if start_date > end_date:
+        raise ValidationError(
+            {"date_to": ["Дата окончания не может быть раньше даты начала."]}
+        )
+    return start_date, end_date
+
+
 def _request_duration_days_in_window(
     req: EmployeeRequest,
     start_date,
@@ -119,8 +156,15 @@ def _can_view_request_statistics(user) -> bool:
     )
 
 
-def _build_employee_statistics(employee_id: int, employee_name: str, period: str):
-    start_date, end_date = _resolve_stats_window(period)
+def _build_employee_statistics(
+    employee_id: int,
+    employee_name: str,
+    period: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+):
+    if period != "custom":
+        start_date, end_date = _resolve_stats_window(period)
 
     base_qs = EmployeeRequest.objects.filter(employee_id=employee_id).exclude(
         status=RequestStatus.DRAFT
@@ -163,6 +207,8 @@ def _build_employee_statistics(employee_id: int, employee_name: str, period: str
         "employee_id": employee_id,
         "employee_name": employee_name,
         "period": period,
+        "date_from": start_date.isoformat() if start_date else None,
+        "date_to": end_date.isoformat() if end_date else None,
         "total_submitted_requests": base_qs.count(),
         "sick_leave_requests_count": base_qs.filter(
             type=RequestType.SICK_LEAVE
@@ -639,16 +685,19 @@ class RequestViewSet(viewsets.ModelViewSet):
             )
 
         period = (request.query_params.get("period") or "all").strip().lower()
-        if period not in {"all", "year", "month"}:
+        if period not in {"all", "year", "month", "custom"}:
             raise ValidationError(
-                "Параметр period должен быть one of: all, year, month."
+                "Параметр period должен быть one of: all, year, month, custom."
             )
+        start_date, end_date = _resolve_stats_window_from_query(period, request)
 
         return Response(
             _build_employee_statistics(
                 employee_id=obj.employee_id,
                 employee_name=str(obj.employee),
                 period=period,
+                start_date=start_date,
+                end_date=end_date,
             )
         )
 
@@ -665,10 +714,11 @@ class RequestViewSet(viewsets.ModelViewSet):
             raise ValidationError("Параметр employee_id обязателен.")
 
         period = (request.query_params.get("period") or "all").strip().lower()
-        if period not in {"all", "year", "month"}:
+        if period not in {"all", "year", "month", "custom"}:
             raise ValidationError(
-                "Параметр period должен быть one of: all, year, month."
+                "Параметр period должен быть one of: all, year, month, custom."
             )
+        start_date, end_date = _resolve_stats_window_from_query(period, request)
 
         UserModel = get_user_model()
         employee = get_object_or_404(UserModel, pk=int(employee_id_raw))
@@ -677,6 +727,8 @@ class RequestViewSet(viewsets.ModelViewSet):
                 employee_id=employee.id,
                 employee_name=str(employee),
                 period=period,
+                start_date=start_date,
+                end_date=end_date,
             )
         )
 

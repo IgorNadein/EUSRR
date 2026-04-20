@@ -372,7 +372,9 @@ export interface RequestComment {
 export interface RequestEmployeeStatistics {
   employee_id: number;
   employee_name: string;
-  period: "all" | "year" | "month";
+  period: "all" | "year" | "month" | "custom";
+  date_from: string | null;
+  date_to: string | null;
   total_submitted_requests: number;
   sick_leave_requests_count: number;
   day_off_requests_count: number;

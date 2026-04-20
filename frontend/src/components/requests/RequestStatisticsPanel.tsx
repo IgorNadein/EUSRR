@@ -11,6 +11,7 @@ const statsPeriods = [
   { value: "all", label: "За всё время" },
   { value: "year", label: "За год" },
   { value: "month", label: "За месяц" },
+  { value: "custom", label: "Свой период" },
 ] as const;
 
 type StatsPeriod = (typeof statsPeriods)[number]["value"];
@@ -28,12 +29,19 @@ export function RequestStatisticsPanel({
   const [searchQuery, setSearchQuery] = useState("");
   const [employeeId, setEmployeeId] = useState<number | null>(null);
   const [period, setPeriod] = useState<StatsPeriod>("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [stats, setStats] = useState<RequestEmployeeStatistics | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!canView || !open || !employeeId) {
+    if (
+      !canView
+      || !open
+      || !employeeId
+      || (period === "custom" && (!dateFrom || !dateTo))
+    ) {
       return;
     }
 
@@ -41,8 +49,17 @@ export function RequestStatisticsPanel({
     setLoading(true);
     setError(null);
 
+    const query = new URLSearchParams({
+      employee_id: String(employeeId),
+      period,
+    });
+    if (period === "custom") {
+      query.set("date_from", dateFrom);
+      query.set("date_to", dateTo);
+    }
+
     apiClient.request<RequestEmployeeStatistics>(
-      `/api/v1/requests/statistics/?employee_id=${employeeId}&period=${period}`
+      `/api/v1/requests/statistics/?${query.toString()}`
     )
       .then((response) => {
         if (!cancelled) {
@@ -63,7 +80,7 @@ export function RequestStatisticsPanel({
     return () => {
       cancelled = true;
     };
-  }, [canView, employeeId, open, period]);
+  }, [canView, dateFrom, dateTo, employeeId, open, period]);
 
   if (!canView) return null;
 
@@ -216,11 +233,46 @@ export function RequestStatisticsPanel({
                 );
               })}
             </div>
+
+            {period === "custom" ? (
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="app-text-muted mb-1 block text-xs font-medium">Дата начала</span>
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => {
+                      setDateFrom(e.target.value);
+                      setStats(null);
+                      setError(null);
+                    }}
+                    className="app-input w-full rounded-xl px-3 py-2.5 text-sm"
+                  />
+                </label>
+                <label className="block">
+                  <span className="app-text-muted mb-1 block text-xs font-medium">Дата окончания</span>
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => {
+                      setDateTo(e.target.value);
+                      setStats(null);
+                      setError(null);
+                    }}
+                    className="app-input w-full rounded-xl px-3 py-2.5 text-sm"
+                  />
+                </label>
+              </div>
+            ) : null}
           </div>
 
           {!employeeId ? (
             <p className="app-text-muted mt-4 text-sm">
               Выберите сотрудника, чтобы посмотреть статистику.
+            </p>
+          ) : period === "custom" && (!dateFrom || !dateTo) ? (
+            <p className="app-text-muted mt-4 text-sm">
+              Укажите даты начала и окончания для выбранного периода.
             </p>
           ) : loading || (!stats && !error) ? (
             <div className="app-text-muted mt-4 flex items-center gap-2 text-sm">
@@ -238,7 +290,9 @@ export function RequestStatisticsPanel({
                   ? "Период: за всё время"
                   : period === "year"
                     ? "Период: текущий календарный год"
-                    : "Период: текущий календарный месяц"}
+                    : period === "month"
+                      ? "Период: текущий календарный месяц"
+                      : `Период: ${stats?.date_from || dateFrom} — ${stats?.date_to || dateTo}`}
               </p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {statsItems.map((item) => (
