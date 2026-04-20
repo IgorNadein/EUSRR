@@ -102,7 +102,7 @@ export function RequestDetailModal({
     return () => {
       cancelled = true;
     };
-  }, [canViewStats, request?.id, stats, statsLoading, statsOpen]);
+  }, [canViewStats, request?.id, statsOpen]);
 
   if (!request) return null;
 
