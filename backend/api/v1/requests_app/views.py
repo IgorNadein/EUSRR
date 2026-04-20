@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import calendar
 from typing import Any  # было: Any, Dict, List, Type
 
+from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Count, IntegerField, OuterRef, Q, QuerySet, Subquery, Value
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404  # раскомментируйте импорт
+from django.utils import timezone
 from requests_app.enums import RequestStatus, RequestType
 from requests_app.models import Request as EmployeeRequest
 from communications import comments_helpers
@@ -74,6 +77,106 @@ def _is_unpaid_vacation(req: EmployeeRequest) -> bool:
     return any(marker in haystack for marker in UNPAID_VACATION_MARKERS)
 
 
+def _resolve_stats_window(period: str) -> tuple[timezone.datetime.date, timezone.datetime.date] | tuple[None, None]:
+    """Возвращает границы окна статистики для month/year/all."""
+    today = timezone.localdate()
+    if period == "month":
+        _, last_day = calendar.monthrange(today.year, today.month)
+        return today.replace(day=1), today.replace(day=last_day)
+    if period == "year":
+        return today.replace(month=1, day=1), today.replace(month=12, day=31)
+    return None, None
+
+
+def _request_duration_days_in_window(
+    req: EmployeeRequest,
+    start_date,
+    end_date,
+) -> int:
+    """Возвращает число дней заявки внутри заданного окна."""
+    if start_date is None or end_date is None:
+        return _request_duration_days(req)
+
+    if req.date_from and req.date_to:
+        overlap_start = max(req.date_from, start_date)
+        overlap_end = min(req.date_to, end_date)
+        if overlap_start > overlap_end:
+            return 0
+        return (overlap_end - overlap_start).days + 1
+
+    if req.date_from and start_date <= req.date_from <= end_date:
+        return 1
+
+    return 0
+
+
+def _can_view_request_statistics(user) -> bool:
+    return bool(
+        getattr(user, "is_staff", False)
+        or getattr(user, "is_superuser", False)
+        or user.has_perm("requests_app.view_statistics")
+        or user.has_perm("requests_app.can_view_all_requests")
+    )
+
+
+def _build_employee_statistics(employee_id: int, employee_name: str, period: str):
+    start_date, end_date = _resolve_stats_window(period)
+
+    base_qs = EmployeeRequest.objects.filter(employee_id=employee_id).exclude(
+        status=RequestStatus.DRAFT
+    )
+    if start_date and end_date:
+        base_qs = base_qs.filter(
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date,
+        )
+
+    approved_qs = EmployeeRequest.objects.filter(
+        employee_id=employee_id,
+        status=RequestStatus.APPROVED,
+    )
+
+    sick_leave_days = 0
+    day_off_days = 0
+    paid_vacation_days = 0
+    unpaid_vacation_days = 0
+
+    for req in approved_qs.only(
+        "type", "date_from", "date_to", "title", "comment"
+    ):
+        duration = _request_duration_days_in_window(
+            req,
+            start_date,
+            end_date,
+        )
+        if req.type == RequestType.SICK_LEAVE:
+            sick_leave_days += duration
+        elif req.type == RequestType.DAY_OFF:
+            day_off_days += duration
+        elif req.type == RequestType.VACATION:
+            if _is_unpaid_vacation(req):
+                unpaid_vacation_days += duration
+            else:
+                paid_vacation_days += duration
+
+    return {
+        "employee_id": employee_id,
+        "employee_name": employee_name,
+        "period": period,
+        "total_submitted_requests": base_qs.count(),
+        "sick_leave_requests_count": base_qs.filter(
+            type=RequestType.SICK_LEAVE
+        ).count(),
+        "day_off_requests_count": base_qs.filter(
+            type=RequestType.DAY_OFF
+        ).count(),
+        "sick_leave_days": sick_leave_days,
+        "day_off_days": day_off_days,
+        "paid_vacation_days": paid_vacation_days,
+        "unpaid_vacation_days": unpaid_vacation_days,
+    }
+
+
 class RequestViewSet(viewsets.ModelViewSet):
     """ViewSet для заявок сотрудников.
 
@@ -113,6 +216,10 @@ class RequestViewSet(viewsets.ModelViewSet):
             return [IsRecipientOfRequest()]
         if self.action == "cancel":
             return [IsRequestAuthor()]
+        if self.action == "statistics":
+            from rest_framework.permissions import IsAuthenticated
+
+            return [IsAuthenticated()]
         if self.action in {"retrieve", "employee_statistics"}:
             return [CanViewRequest()]
         if self.action == "destroy":
@@ -526,57 +633,52 @@ class RequestViewSet(viewsets.ModelViewSet):
         obj = self.get_object()
         user = request.user
 
-        can_view_statistics = bool(
-            getattr(user, "is_staff", False)
-            or getattr(user, "is_superuser", False)
-            or user.has_perm("requests_app.view_statistics")
-            or user.has_perm("requests_app.can_view_all_requests")
-        )
-        if not can_view_statistics:
+        if not _can_view_request_statistics(user):
             raise PermissionDenied(
                 "У вас нет доступа к статистике по заявлениям."
             )
 
-        base_qs = EmployeeRequest.objects.filter(employee=obj.employee).exclude(
-            status=RequestStatus.DRAFT
+        period = (request.query_params.get("period") or "all").strip().lower()
+        if period not in {"all", "year", "month"}:
+            raise ValidationError(
+                "Параметр period должен быть one of: all, year, month."
+            )
+
+        return Response(
+            _build_employee_statistics(
+                employee_id=obj.employee_id,
+                employee_name=str(obj.employee),
+                period=period,
+            )
         )
-        approved_qs = base_qs.filter(status=RequestStatus.APPROVED)
 
-        sick_leave_days = 0
-        day_off_days = 0
-        paid_vacation_days = 0
-        unpaid_vacation_days = 0
+    @action(detail=False, methods=["get"], url_path="statistics")
+    def statistics(self, request: DRFRequest) -> Response:
+        """Возвращает статистику по выбранному сотруднику для страницы."""
+        if not _can_view_request_statistics(request.user):
+            raise PermissionDenied(
+                "У вас нет доступа к статистике по заявлениям."
+            )
 
-        for req in approved_qs.only(
-            "type", "date_from", "date_to", "title", "comment"
-        ):
-            duration = _request_duration_days(req)
-            if req.type == RequestType.SICK_LEAVE:
-                sick_leave_days += duration
-            elif req.type == RequestType.DAY_OFF:
-                day_off_days += duration
-            elif req.type == RequestType.VACATION:
-                if _is_unpaid_vacation(req):
-                    unpaid_vacation_days += duration
-                else:
-                    paid_vacation_days += duration
+        employee_id_raw = (request.query_params.get("employee_id") or "").strip()
+        if not employee_id_raw.isdigit():
+            raise ValidationError("Параметр employee_id обязателен.")
 
-        payload = {
-            "employee_id": obj.employee_id,
-            "employee_name": str(obj.employee),
-            "total_submitted_requests": base_qs.count(),
-            "sick_leave_requests_count": base_qs.filter(
-                type=RequestType.SICK_LEAVE
-            ).count(),
-            "day_off_requests_count": base_qs.filter(
-                type=RequestType.DAY_OFF
-            ).count(),
-            "sick_leave_days": sick_leave_days,
-            "day_off_days": day_off_days,
-            "paid_vacation_days": paid_vacation_days,
-            "unpaid_vacation_days": unpaid_vacation_days,
-        }
-        return Response(payload)
+        period = (request.query_params.get("period") or "all").strip().lower()
+        if period not in {"all", "year", "month"}:
+            raise ValidationError(
+                "Параметр period должен быть one of: all, year, month."
+            )
+
+        UserModel = get_user_model()
+        employee = get_object_or_404(UserModel, pk=int(employee_id_raw))
+        return Response(
+            _build_employee_statistics(
+                employee_id=employee.id,
+                employee_name=str(employee),
+                period=period,
+            )
+        )
 
     def create(self, request, *args, **kwargs):
         """

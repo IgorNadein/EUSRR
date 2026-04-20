@@ -6,6 +6,7 @@ import { RequestComposeModal } from "@/components/requests/RequestComposeModal";
 import { RequestDetailModal } from "@/components/requests/RequestDetailModal";
 import { RequestListControls } from "@/components/requests/RequestListControls";
 import { RequestListSection } from "@/components/requests/RequestListSection";
+import { RequestStatisticsPanel } from "@/components/requests/RequestStatisticsPanel";
 import { RequestSwipeModePanel } from "@/components/requests/RequestSwipeModePanel";
 import { useUser } from "@/contexts/UserContext";
 import { Suspense } from "react";
@@ -100,6 +101,10 @@ function RequestsPageContent() {
             />
           ) : (
           <>
+          <RequestStatisticsPanel
+            canView={canViewStats}
+            employees={h.employees}
+          />
           <RequestListControls
             actions={requestControlsActions}
             feedback={requestControlsFeedback}
@@ -142,7 +147,6 @@ function RequestsPageContent() {
       <RequestDetailModal
         actionError={h.actionError}
         busyKey={h.busyKey}
-        canViewStats={canViewStats}
         commentDraft={h.detailsRequest ? (h.commentDrafts[h.detailsRequest.id] || "") : ""}
         comments={h.detailsRequest ? (h.commentsMap[h.detailsRequest.id] || []) : []}
         commentsLoading={h.detailsRequest ? Boolean(h.commentsLoadingMap[h.detailsRequest.id]) : false}

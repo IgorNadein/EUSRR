@@ -31,8 +31,10 @@ export function createRequestsApi(request: RequestFn, getToken: GetTokenFn) {
             return request(`/api/v1/requests/${qs ? '?' + qs : ''}`);
         },
         getRequest: (requestId: number) => request(`/api/v1/requests/${requestId}/`),
-        getRequestEmployeeStatistics: (requestId: number): Promise<RequestEmployeeStatistics> =>
-            request(`/api/v1/requests/${requestId}/employee-statistics/`),
+        getRequestEmployeeStatistics: (requestId: number, period: 'all' | 'year' | 'month' = 'all'): Promise<RequestEmployeeStatistics> =>
+            request(`/api/v1/requests/${requestId}/employee-statistics/?period=${period}`),
+        getEmployeeRequestStatistics: (employeeId: number, period: 'all' | 'year' | 'month' = 'all'): Promise<RequestEmployeeStatistics> =>
+            request(`/api/v1/requests/statistics/?employee_id=${employeeId}&period=${period}`),
         createRequest: (data: Record<string, any>, saveAs?: 'draft' | 'submit') => formDataRequest('/api/v1/requests/', 'POST', data, saveAs),
         updateRequest: (requestId: number, data: Record<string, any>, saveAs?: 'draft' | 'submit') => formDataRequest(`/api/v1/requests/${requestId}/`, 'PATCH', data, saveAs),
         deleteRequest: (requestId: number): Promise<void> => request(`/api/v1/requests/${requestId}/`, { method: 'DELETE' }),
