@@ -12,7 +12,7 @@ import { apiClient } from "@/lib/api";
 import { displayUserName, formatDate, formatDateTime } from "@/lib/shared";
 import type { Request, RequestComment, RequestEmployeeStatistics } from "@/types/api";
 import { Ban, ChevronDown, Paperclip, Pencil, ThumbsDown, ThumbsUp, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { getRequestActionState } from "./requestActions";
 import { RequestUserBadge } from "./RequestUserBadge";
 
@@ -118,18 +118,15 @@ export function RequestDetailModal({
     ? decodeURIComponent(attachmentUrl.split("/").pop() || "Вложение")
     : "";
   const commentCount = request.comments_count ?? comments.length;
-  const statsItems = useMemo(() => {
-    if (!stats) return [];
-    return [
-      { label: "Всего заявлений", value: stats.total_submitted_requests },
-      { label: "Больничных", value: stats.sick_leave_requests_count },
-      { label: "Отгулов", value: stats.day_off_requests_count },
-      { label: "Дней на больничном", value: stats.sick_leave_days },
-      { label: "Дней на отгулах", value: stats.day_off_days },
-      { label: "Оплачиваемый отпуск, дней", value: stats.paid_vacation_days },
-      { label: "За свой счёт, дней", value: stats.unpaid_vacation_days },
-    ];
-  }, [stats]);
+  const statsItems = stats ? [
+    { label: "Всего заявлений", value: stats.total_submitted_requests },
+    { label: "Больничных", value: stats.sick_leave_requests_count },
+    { label: "Отгулов", value: stats.day_off_requests_count },
+    { label: "Дней на больничном", value: stats.sick_leave_days },
+    { label: "Дней на отгулах", value: stats.day_off_days },
+    { label: "Оплачиваемый отпуск, дней", value: stats.paid_vacation_days },
+    { label: "За свой счёт, дней", value: stats.unpaid_vacation_days },
+  ] : [];
 
   return (
     <Modal
