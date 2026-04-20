@@ -83,6 +83,30 @@ export function canManageRequests(user?: User | null): boolean {
     return false;
 }
 
+export function canViewRequestStatistics(user?: User | null): boolean {
+    if (!user) return false;
+
+    const auth = user.auth;
+    if (!auth) return false;
+
+    if (auth.is_staff || auth.is_superuser) {
+        return true;
+    }
+
+    if (
+        auth.permissions?.includes("requests_app.view_statistics")
+        || auth.permissions?.includes("requests_app.can_view_all_requests")
+    ) {
+        return true;
+    }
+
+    const requestPerms = auth.permissions_by_app?.["requests_app"] || [];
+    return (
+        requestPerms.includes("view_statistics")
+        || requestPerms.includes("can_view_all_requests")
+    );
+}
+
 /**
  * Проверяет, может ли пользователь управлять оборудованием.
  *

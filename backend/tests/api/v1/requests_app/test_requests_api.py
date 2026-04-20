@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 import pytest
 from django.db import models
+from django.utils import timezone
 from notifications.models import Notification
 from rest_framework.test import APIClient
 
@@ -29,6 +31,122 @@ def test_list_unauth_401(api_client: APIClient) -> None:
     """Неаутентифицированный доступ к списку → 401."""
     resp = api_client.get(API_BASE)
     assert resp.status_code == 401
+
+
+def test_statistics_requires_privileged_access(
+    auth_client, regular_user: models.Model, make_user
+) -> None:
+    """Статистика недоступна обычному пользователю без спецправ."""
+    employee = make_user(email="stats-target@example.com")
+
+    resp = auth_client(regular_user).get(
+        f"{API_BASE}statistics/?employee_id={employee.id}&period=all"
+    )
+
+    assert resp.status_code == 403
+
+
+def test_statistics_counts_all_employee_requests_for_admin(
+    auth_client,
+    admin_user: models.Model,
+    make_user,
+    make_request,
+) -> None:
+    """Админ получает полную статистику по сотруднику, а не только видимые заявки."""
+    employee = make_user(email="stats-admin-target@example.com")
+    make_request(
+        employee=employee,
+        type_=RequestType.SICK_LEAVE,
+        status=RequestStatus.APPROVED,
+    )
+    make_request(
+        employee=employee,
+        type_=RequestType.DAY_OFF,
+        status=RequestStatus.PENDING,
+    )
+
+    resp = auth_client(admin_user).get(
+        f"{API_BASE}statistics/?employee_id={employee.id}&period=all"
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["employee_id"] == employee.id
+    assert payload["period"] == "all"
+    assert payload["date_from"] is None
+    assert payload["date_to"] is None
+    assert payload["total_submitted_requests"] == 2
+    assert payload["sick_leave_requests_count"] == 1
+    assert payload["day_off_requests_count"] == 1
+
+
+def test_statistics_custom_period_filters_request_counts_and_absence_days(
+    auth_client,
+    admin_user: models.Model,
+    make_user,
+    make_request,
+) -> None:
+    """Custom период фильтрует заявки по дате отправки и дни по пересечению периода."""
+    employee = make_user(email="stats-custom-target@example.com")
+
+    matching = make_request(
+        employee=employee,
+        type_=RequestType.VACATION,
+        status=RequestStatus.APPROVED,
+        comment="отпуск за свой счет",
+    )
+    matching.created_at = datetime(
+        2026, 4, 10, 12, 0, tzinfo=timezone.get_current_timezone()
+    )
+    matching.date_from = datetime(2026, 4, 5).date()
+    matching.date_to = datetime(2026, 4, 12).date()
+    matching.save(
+        update_fields=["created_at", "date_from", "date_to", "comment"]
+    )
+
+    outside_count = make_request(
+        employee=employee,
+        type_=RequestType.DAY_OFF,
+        status=RequestStatus.APPROVED,
+    )
+    outside_count.created_at = datetime(
+        2026, 3, 1, 12, 0, tzinfo=timezone.get_current_timezone()
+    )
+    outside_count.date_from = datetime(2026, 4, 11).date()
+    outside_count.date_to = datetime(2026, 4, 11).date()
+    outside_count.save(update_fields=["created_at", "date_from", "date_to"])
+
+    resp = auth_client(admin_user).get(
+        f"{API_BASE}statistics/?employee_id={employee.id}&period=custom"
+        "&date_from=2026-04-10&date_to=2026-04-15"
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["period"] == "custom"
+    assert payload["date_from"] == "2026-04-10"
+    assert payload["date_to"] == "2026-04-15"
+    assert payload["total_submitted_requests"] == 1
+    assert payload["day_off_requests_count"] == 0
+    assert payload["unpaid_vacation_days"] == 3
+
+
+def test_statistics_custom_period_requires_valid_dates(
+    auth_client, admin_user: models.Model, make_user
+) -> None:
+    """Custom период требует обе даты и валидный диапазон."""
+    employee = make_user(email="stats-custom-validation@example.com")
+
+    missing_resp = auth_client(admin_user).get(
+        f"{API_BASE}statistics/?employee_id={employee.id}&period=custom"
+    )
+    invalid_resp = auth_client(admin_user).get(
+        f"{API_BASE}statistics/?employee_id={employee.id}&period=custom"
+        "&date_from=2026-04-20&date_to=2026-04-10"
+    )
+
+    assert missing_resp.status_code == 400
+    assert invalid_resp.status_code == 400
 
 
 def test_list_only_participants_see_requests(

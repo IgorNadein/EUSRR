@@ -177,12 +177,19 @@ function Header({ mobileNavPlacement, suppressMobileChrome = false, onOpenLeftNa
           </button>
 
           <div className="hidden flex-1 items-center justify-center lg:flex">
-            <div className="relative w-full max-w-xl">
+            <form
+              className="relative w-full max-w-xl"
+              onSubmit={(e) => {
+                e.preventDefault();
+                submitSearch();
+              }}
+            >
               <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 app-text-muted" />
               <input
-                type="text"
+                type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                enterKeyHint="search"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
@@ -192,7 +199,7 @@ function Header({ mobileNavPlacement, suppressMobileChrome = false, onOpenLeftNa
                 className="app-input w-full rounded-full py-2.5 pl-11 pr-4 text-sm"
                 placeholder="Поиск"
               />
-            </div>
+            </form>
           </div>
 
           <div className="ml-auto hidden items-center gap-1 sm:gap-2 lg:flex">
@@ -250,13 +257,21 @@ function Header({ mobileNavPlacement, suppressMobileChrome = false, onOpenLeftNa
             isSearchOpen ? "max-h-20 pb-3" : "max-h-0"
           } ${isBottomMobileNav ? "absolute inset-x-0 bottom-full px-4 sm:px-8" : ""}`}
         >
-          <div className={`relative ${isBottomMobileNav ? "mx-auto max-w-6xl" : ""}`}>
+          <form
+            className={`relative ${isBottomMobileNav ? "mx-auto max-w-6xl" : ""}`}
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitSearch();
+              setIsSearchOpen(false);
+            }}
+          >
             <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 app-text-muted" />
             <input
               ref={searchInputRef}
-              type="text"
+              type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              enterKeyHint="search"
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -267,10 +282,18 @@ function Header({ mobileNavPlacement, suppressMobileChrome = false, onOpenLeftNa
                   setIsSearchOpen(false);
                 }
               }}
-              className="app-input w-full rounded-full py-2.5 pl-11 pr-4 text-sm"
+              className="app-input w-full rounded-full py-2.5 pl-11 pr-12 text-sm"
               placeholder="Поиск по сайту..."
             />
-          </div>
+            <button
+              type="submit"
+              className="app-action-primary absolute right-1.5 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full"
+              aria-label="Найти"
+              title="Найти"
+            >
+              <Search size={14} />
+            </button>
+          </form>
         </div>
 
         {/* Мобильная панель уведомлений */}

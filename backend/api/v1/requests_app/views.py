@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import calendar
+from datetime import date
 from typing import Any  # было: Any, Dict, List, Type
 
+from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Count, IntegerField, OuterRef, Q, QuerySet, Subquery, Value
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404  # раскомментируйте импорт
-from requests_app.enums import RequestStatus
+from django.utils import timezone
+from requests_app.enums import RequestStatus, RequestType
 from requests_app.models import Request as EmployeeRequest
 from communications import comments_helpers
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -27,7 +31,6 @@ from rest_framework.serializers import (
     BaseSerializer,
 )  # <- для типизации get_serializer_class
 
-from ..permissions import IsSelfOrStaff
 from .permissions import (
     CanViewRequest,
     CommentsPermission,
@@ -39,6 +42,185 @@ from .serializers import (
     RequestReadSerializer,
     RequestWriteSerializer,
 )
+
+
+UNPAID_VACATION_MARKERS = (
+    "за свой счет",
+    "за свой счёт",
+    "без сохранения заработной платы",
+    "без сохранения зарплаты",
+    "без сохранения зп",
+    "неоплачиваем",
+)
+
+
+def _request_duration_days(req: EmployeeRequest) -> int:
+    """Возвращает длительность заявки в днях, включая обе даты."""
+    if req.date_from and req.date_to:
+        return max((req.date_to - req.date_from).days + 1, 0)
+    if req.date_from:
+        return 1
+    return 0
+
+
+def _is_unpaid_vacation(req: EmployeeRequest) -> bool:
+    """Определяет отпуск за свой счёт по текстовым маркерам.
+
+    Явного поля в модели пока нет, поэтому используем временную эвристику
+    по title/comment.
+    """
+    haystack = " ".join(
+        [
+            str(getattr(req, "title", "") or ""),
+            str(getattr(req, "comment", "") or ""),
+        ]
+    ).lower()
+    return any(marker in haystack for marker in UNPAID_VACATION_MARKERS)
+
+
+def _resolve_stats_window(period: str) -> tuple[timezone.datetime.date, timezone.datetime.date] | tuple[None, None]:
+    """Возвращает границы окна статистики для month/year/all."""
+    today = timezone.localdate()
+    if period == "month":
+        _, last_day = calendar.monthrange(today.year, today.month)
+        return today.replace(day=1), today.replace(day=last_day)
+    if period == "year":
+        return today.replace(month=1, day=1), today.replace(month=12, day=31)
+    return None, None
+
+
+def _parse_iso_date(raw_value: str, field_name: str) -> date:
+    """Парсит ISO-даты для custom period."""
+    try:
+        return date.fromisoformat(raw_value)
+    except ValueError as exc:
+        raise ValidationError(
+            {field_name: ["Ожидается дата в формате YYYY-MM-DD."]}
+        ) from exc
+
+
+def _resolve_stats_window_from_query(
+    period: str, request: DRFRequest
+) -> tuple[date | None, date | None]:
+    """Возвращает окно статистики, включая custom range."""
+    if period != "custom":
+        return _resolve_stats_window(period)
+
+    date_from_raw = (request.query_params.get("date_from") or "").strip()
+    date_to_raw = (request.query_params.get("date_to") or "").strip()
+    if not date_from_raw or not date_to_raw:
+        raise ValidationError(
+            {
+                "date_from": ["Обязательное поле для custom периода."],
+                "date_to": ["Обязательное поле для custom периода."],
+            }
+        )
+
+    start_date = _parse_iso_date(date_from_raw, "date_from")
+    end_date = _parse_iso_date(date_to_raw, "date_to")
+    if start_date > end_date:
+        raise ValidationError(
+            {"date_to": ["Дата окончания не может быть раньше даты начала."]}
+        )
+    return start_date, end_date
+
+
+def _request_duration_days_in_window(
+    req: EmployeeRequest,
+    start_date,
+    end_date,
+) -> int:
+    """Возвращает число дней заявки внутри заданного окна."""
+    if start_date is None or end_date is None:
+        return _request_duration_days(req)
+
+    if req.date_from and req.date_to:
+        overlap_start = max(req.date_from, start_date)
+        overlap_end = min(req.date_to, end_date)
+        if overlap_start > overlap_end:
+            return 0
+        return (overlap_end - overlap_start).days + 1
+
+    if req.date_from and start_date <= req.date_from <= end_date:
+        return 1
+
+    return 0
+
+
+def _can_view_request_statistics(user) -> bool:
+    return bool(
+        getattr(user, "is_staff", False)
+        or getattr(user, "is_superuser", False)
+        or user.has_perm("requests_app.view_statistics")
+        or user.has_perm("requests_app.can_view_all_requests")
+    )
+
+
+def _build_employee_statistics(
+    employee_id: int,
+    employee_name: str,
+    period: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+):
+    if period != "custom":
+        start_date, end_date = _resolve_stats_window(period)
+
+    base_qs = EmployeeRequest.objects.filter(employee_id=employee_id).exclude(
+        status=RequestStatus.DRAFT
+    )
+    if start_date and end_date:
+        base_qs = base_qs.filter(
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date,
+        )
+
+    approved_qs = EmployeeRequest.objects.filter(
+        employee_id=employee_id,
+        status=RequestStatus.APPROVED,
+    )
+
+    sick_leave_days = 0
+    day_off_days = 0
+    paid_vacation_days = 0
+    unpaid_vacation_days = 0
+
+    for req in approved_qs.only(
+        "type", "date_from", "date_to", "title", "comment"
+    ):
+        duration = _request_duration_days_in_window(
+            req,
+            start_date,
+            end_date,
+        )
+        if req.type == RequestType.SICK_LEAVE:
+            sick_leave_days += duration
+        elif req.type == RequestType.DAY_OFF:
+            day_off_days += duration
+        elif req.type == RequestType.VACATION:
+            if _is_unpaid_vacation(req):
+                unpaid_vacation_days += duration
+            else:
+                paid_vacation_days += duration
+
+    return {
+        "employee_id": employee_id,
+        "employee_name": employee_name,
+        "period": period,
+        "date_from": start_date.isoformat() if start_date else None,
+        "date_to": end_date.isoformat() if end_date else None,
+        "total_submitted_requests": base_qs.count(),
+        "sick_leave_requests_count": base_qs.filter(
+            type=RequestType.SICK_LEAVE
+        ).count(),
+        "day_off_requests_count": base_qs.filter(
+            type=RequestType.DAY_OFF
+        ).count(),
+        "sick_leave_days": sick_leave_days,
+        "day_off_days": day_off_days,
+        "paid_vacation_days": paid_vacation_days,
+        "unpaid_vacation_days": unpaid_vacation_days,
+    }
 
 
 class RequestViewSet(viewsets.ModelViewSet):
@@ -80,7 +262,11 @@ class RequestViewSet(viewsets.ModelViewSet):
             return [IsRecipientOfRequest()]
         if self.action == "cancel":
             return [IsRequestAuthor()]
-        if self.action == "retrieve":
+        if self.action == "statistics":
+            from rest_framework.permissions import IsAuthenticated
+
+            return [IsAuthenticated()]
+        if self.action in {"retrieve", "employee_statistics"}:
             return [CanViewRequest()]
         if self.action == "destroy":
             return [IsRequestAuthor(), NotFinalOrStaff()]
@@ -210,6 +396,7 @@ class RequestViewSet(viewsets.ModelViewSet):
             "comments",
             "cancel",
             "retrieve",
+            "employee_statistics",
         }:
             lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
             lookup_value = self.kwargs[lookup_url_kwarg]
@@ -478,6 +665,71 @@ class RequestViewSet(viewsets.ModelViewSet):
             RequestReadSerializer(
                 obj, context=self.get_serializer_context()
             ).data
+        )
+
+    @action(detail=True, methods=["get"], url_path="employee-statistics")
+    def employee_statistics(
+        self, request: DRFRequest, pk: int | str | None = None
+    ) -> Response:
+        """Возвращает сводную статистику по заявлениям сотрудника.
+
+        Доступно администраторам и пользователям с явным правом
+        ``requests_app.view_statistics`` или ``requests_app.can_view_all_requests``.
+        """
+        obj = self.get_object()
+        user = request.user
+
+        if not _can_view_request_statistics(user):
+            raise PermissionDenied(
+                "У вас нет доступа к статистике по заявлениям."
+            )
+
+        period = (request.query_params.get("period") or "all").strip().lower()
+        if period not in {"all", "year", "month", "custom"}:
+            raise ValidationError(
+                "Параметр period должен быть one of: all, year, month, custom."
+            )
+        start_date, end_date = _resolve_stats_window_from_query(period, request)
+
+        return Response(
+            _build_employee_statistics(
+                employee_id=obj.employee_id,
+                employee_name=str(obj.employee),
+                period=period,
+                start_date=start_date,
+                end_date=end_date,
+            )
+        )
+
+    @action(detail=False, methods=["get"], url_path="statistics")
+    def statistics(self, request: DRFRequest) -> Response:
+        """Возвращает статистику по выбранному сотруднику для страницы."""
+        if not _can_view_request_statistics(request.user):
+            raise PermissionDenied(
+                "У вас нет доступа к статистике по заявлениям."
+            )
+
+        employee_id_raw = (request.query_params.get("employee_id") or "").strip()
+        if not employee_id_raw.isdigit():
+            raise ValidationError("Параметр employee_id обязателен.")
+
+        period = (request.query_params.get("period") or "all").strip().lower()
+        if period not in {"all", "year", "month", "custom"}:
+            raise ValidationError(
+                "Параметр period должен быть one of: all, year, month, custom."
+            )
+        start_date, end_date = _resolve_stats_window_from_query(period, request)
+
+        UserModel = get_user_model()
+        employee = get_object_or_404(UserModel, pk=int(employee_id_raw))
+        return Response(
+            _build_employee_statistics(
+                employee_id=employee.id,
+                employee_name=str(employee),
+                period=period,
+                start_date=start_date,
+                end_date=end_date,
+            )
         )
 
     def create(self, request, *args, **kwargs):

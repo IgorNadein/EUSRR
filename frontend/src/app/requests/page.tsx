@@ -6,11 +6,13 @@ import { RequestComposeModal } from "@/components/requests/RequestComposeModal";
 import { RequestDetailModal } from "@/components/requests/RequestDetailModal";
 import { RequestListControls } from "@/components/requests/RequestListControls";
 import { RequestListSection } from "@/components/requests/RequestListSection";
+import { RequestStatisticsPanel } from "@/components/requests/RequestStatisticsPanel";
 import { RequestSwipeModePanel } from "@/components/requests/RequestSwipeModePanel";
 import { useUser } from "@/contexts/UserContext";
 import { Suspense } from "react";
 import { useRequestsPage } from "@/hooks/useRequestsPage";
 import { useRequestsPageScreen } from "@/hooks/useRequestsPageScreen";
+import { canViewRequestStatistics } from "@/lib/permissions";
 
 export default function RequestsPage() {
   return (
@@ -33,6 +35,7 @@ function RequestsPageFallback() {
 
 function RequestsPageContent() {
   const { user } = useUser();
+  const canViewStats = canViewRequestStatistics(user);
   const h = useRequestsPage(user?.id);
   const screen = useRequestsPageScreen({
     detailsRequestId: h.detailsRequest?.id,
@@ -87,72 +90,84 @@ function RequestsPageContent() {
       ) : h.error ? (
         <div className="app-feedback-danger rounded-2xl p-6 text-center"><p className="text-sm">{h.error}</p></div>
       ) : (
-        <section className="app-surface rounded-2xl p-4">
-          {h.swipeMode && h.pendingDecisionRequests.length > 0 ? (
-            <RequestSwipeModePanel
-              actionError={h.actionError}
-              onApprove={h.handleApprove}
-              onClose={() => h.setSwipeMode(false)}
-              onReject={h.handleReject}
-              requests={h.pendingDecisionRequests}
+        <>
+          <RequestStatisticsPanel
+            canView={canViewStats}
+            employees={h.employees}
+          />
+          <section className="app-surface rounded-2xl p-4">
+            {h.swipeMode && h.pendingDecisionRequests.length > 0 ? (
+              <RequestSwipeModePanel
+                actionError={h.actionError}
+                onApprove={h.handleApprove}
+                onClose={() => h.setSwipeMode(false)}
+                onReject={h.handleReject}
+                requests={h.pendingDecisionRequests}
+              />
+            ) : (
+            <>
+            <RequestListControls
+              actions={requestControlsActions}
+              feedback={requestControlsFeedback}
+              state={requestControlsState}
             />
-          ) : (
-          <>
-          <RequestListControls
-            actions={requestControlsActions}
-            feedback={requestControlsFeedback}
-            state={requestControlsState}
-          />
-          <RequestListSection
-            busyKey={h.busyKey}
-            commentDrafts={h.commentDrafts}
-            commentsMap={h.commentsMap}
-            currentUserId={user?.id}
-            departmentNameMap={h.departmentNameMap}
-            expandedComments={h.expandedComments}
-            expandedRows={h.expandedRows}
-            handleAddComment={h.handleAddComment}
-            handleApprove={h.handleApprove}
-            handleCancel={h.handleCancel}
-            handleDelete={h.handleDelete}
-            handleDeleteComment={h.handleDeleteComment}
-            handleReject={h.handleReject}
-            isFinal={h.isFinal}
-            loadMoreRef={h.loadMoreRef}
-            loadingMore={h.loadingMore}
-            nextPage={h.nextPage}
-            openEdit={h.openEdit}
-            requestMenuOpenId={screen.requestMenuOpenId}
-            requestMenuRef={screen.requestMenuRef}
-            requests={h.requests}
-            setAttachmentPreview={h.setAttachmentPreview}
-            onSetCommentDraft={h.setCommentDraft}
-            setDetailsRequest={h.setDetailsRequest}
-            setRequestMenuOpenId={screen.setRequestMenuOpenId}
-            toggleComments={h.toggleComments}
-            toggleRow={h.toggleRow}
-          />
-          </>
-          )}
-        </section>
+            <RequestListSection
+              busyKey={h.busyKey}
+              commentDrafts={h.commentDrafts}
+              commentsMap={h.commentsMap}
+              currentUserId={user?.id}
+              departmentNameMap={h.departmentNameMap}
+              expandedComments={h.expandedComments}
+              expandedRows={h.expandedRows}
+              handleAddComment={h.handleAddComment}
+              handleApprove={h.handleApprove}
+              handleCancel={h.handleCancel}
+              handleDelete={h.handleDelete}
+              handleDeleteComment={h.handleDeleteComment}
+              handleReject={h.handleReject}
+              isFinal={h.isFinal}
+              loadMoreRef={h.loadMoreRef}
+              loadingMore={h.loadingMore}
+              nextPage={h.nextPage}
+              openEdit={h.openEdit}
+              requestMenuOpenId={screen.requestMenuOpenId}
+              requestMenuRef={screen.requestMenuRef}
+              requests={h.requests}
+              setAttachmentPreview={h.setAttachmentPreview}
+              onSetCommentDraft={h.setCommentDraft}
+              setDetailsRequest={h.setDetailsRequest}
+              setRequestMenuOpenId={screen.setRequestMenuOpenId}
+              toggleComments={h.toggleComments}
+              toggleRow={h.toggleRow}
+            />
+            </>
+            )}
+          </section>
+        </>
       )}
 
       <RequestDetailModal
         actionError={h.actionError}
         busyKey={h.busyKey}
+        commentDraft={h.detailsRequest ? (h.commentDrafts[h.detailsRequest.id] || "") : ""}
+        comments={h.detailsRequest ? (h.commentsMap[h.detailsRequest.id] || []) : []}
+        commentsLoading={h.detailsRequest ? Boolean(h.commentsLoadingMap[h.detailsRequest.id]) : false}
         currentUserId={user?.id}
         departmentNameMap={h.departmentNameMap}
         isFinal={h.isFinal}
+        onAddComment={h.handleAddComment}
         onApprove={h.handleApprove}
         onCancel={h.handleCancel}
         onClose={screen.closeDetailsRequest}
         onDelete={h.handleDelete}
+        onDeleteComment={h.handleDeleteComment}
         onEdit={(request) => {
           screen.closeDetailsRequest();
           h.openEdit(request);
         }}
         onPreviewAttachment={h.setAttachmentPreview}
         onReject={h.handleReject}
+        onSetCommentDraft={h.setCommentDraft}
         request={h.detailsRequest}
       />
 
