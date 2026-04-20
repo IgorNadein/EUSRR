@@ -109,6 +109,7 @@ export function useRequestsPage(_userId: number | null | undefined) {
   const [employees, setEmployees] = useState<User[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [commentsMap, setCommentsMap] = useState<Record<number, RequestComment[]>>({});
+  const [commentsLoadingMap, setCommentsLoadingMap] = useState<Record<number, boolean>>({});
   const [expandedRows, setExpandedRows] = useState<Record<number, boolean>>({});
   const [expandedComments, setExpandedComments] = useState<Record<number, boolean>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
@@ -427,12 +428,25 @@ export function useRequestsPage(_userId: number | null | undefined) {
   };
 
   /* ── comments ── */
+  const ensureCommentsLoaded = useCallback(async (requestId: number) => {
+    if (commentsMap[requestId] || commentsLoadingMap[requestId]) return;
+
+    setCommentsLoadingMap((prev) => ({ ...prev, [requestId]: true }));
+    try {
+      const comments = await apiClient.getRequestComments(requestId);
+      setCommentsMap((prev) => ({ ...prev, [requestId]: comments }));
+    } catch {
+      setCommentsMap((prev) => ({ ...prev, [requestId]: [] }));
+    } finally {
+      setCommentsLoadingMap((prev) => ({ ...prev, [requestId]: false }));
+    }
+  }, [commentsLoadingMap, commentsMap]);
+
   const toggleComments = async (requestId: number) => {
     const isOpen = Boolean(expandedComments[requestId]);
     setExpandedComments((p) => ({ ...p, [requestId]: !isOpen }));
     if (!isOpen && !commentsMap[requestId]) {
-      try { const c = await apiClient.getRequestComments(requestId); setCommentsMap((p) => ({ ...p, [requestId]: c })); }
-      catch { setCommentsMap((p) => ({ ...p, [requestId]: [] })); }
+      await ensureCommentsLoaded(requestId);
     }
   };
 
@@ -477,6 +491,13 @@ export function useRequestsPage(_userId: number | null | undefined) {
     return () => { if (el) observer.unobserve(el); };
   }, [nextPage, loadingMore, loading, handleLoadMore]);
 
+  useEffect(() => {
+    const requestId = detailsRequest?.id;
+    if (!requestId) return;
+    if (String(detailsRequest.status || "").toLowerCase() === "draft") return;
+    void ensureCommentsLoaded(requestId);
+  }, [detailsRequest, ensureCommentsLoaded]);
+
   return {
     /* data */
     requests: filteredRequests,
@@ -485,6 +506,7 @@ export function useRequestsPage(_userId: number | null | undefined) {
     departments,
     departmentNameMap,
     commentsMap,
+    commentsLoadingMap,
     expandedRows,
     expandedComments,
     commentDrafts,

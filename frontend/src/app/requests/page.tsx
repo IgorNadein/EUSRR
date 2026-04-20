@@ -140,19 +140,25 @@ function RequestsPageContent() {
       <RequestDetailModal
         actionError={h.actionError}
         busyKey={h.busyKey}
+        commentDraft={h.detailsRequest ? (h.commentDrafts[h.detailsRequest.id] || "") : ""}
+        comments={h.detailsRequest ? (h.commentsMap[h.detailsRequest.id] || []) : []}
+        commentsLoading={h.detailsRequest ? Boolean(h.commentsLoadingMap[h.detailsRequest.id]) : false}
         currentUserId={user?.id}
         departmentNameMap={h.departmentNameMap}
         isFinal={h.isFinal}
+        onAddComment={h.handleAddComment}
         onApprove={h.handleApprove}
         onCancel={h.handleCancel}
         onClose={screen.closeDetailsRequest}
         onDelete={h.handleDelete}
+        onDeleteComment={h.handleDeleteComment}
         onEdit={(request) => {
           screen.closeDetailsRequest();
           h.openEdit(request);
         }}
         onPreviewAttachment={h.setAttachmentPreview}
         onReject={h.handleReject}
+        onSetCommentDraft={h.setCommentDraft}
         request={h.detailsRequest}
       />
 
