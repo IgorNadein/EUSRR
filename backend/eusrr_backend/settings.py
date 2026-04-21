@@ -203,6 +203,11 @@ LOGIN_REDIRECT_URL = "/admin/"
 # Используем локальный адрес для избежания проблем с SSL
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:9000/api")
 
+# LogStorm attendance analyzer integration.
+LOGSTORM_API_URL = os.getenv("LOGSTORM_API_URL", "http://127.0.0.1:8000")
+LOGSTORM_API_TOKEN = os.getenv("LOGSTORM_API_TOKEN", "")
+LOGSTORM_TIMEOUT_SECONDS = int(os.getenv("LOGSTORM_TIMEOUT_SECONDS", "30"))
+
 PHONE_DEFAULT_REGION = os.getenv("PHONE_DEFAULT_REGION", "RU")
 PHONENUMBER_DEFAULT_REGION = "RU"
 
