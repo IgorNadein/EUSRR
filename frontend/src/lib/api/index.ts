@@ -13,6 +13,7 @@ import { createFeedApi } from './feed';
 import { createRequestsApi } from './requests';
 import { createEquipmentApi } from './equipment';
 import { createProcurementApi } from './procurement';
+import { createAttendanceApi } from './attendance';
 
 const base = new ApiClientBase();
 const req = base.request.bind(base);
@@ -29,6 +30,7 @@ export const apiClient = Object.assign(base, {
     ...createRequestsApi(req, tok),
     ...createEquipmentApi(req, tok),
     ...createProcurementApi(req),
+    ...createAttendanceApi(req),
 });
 
 export default apiClient;

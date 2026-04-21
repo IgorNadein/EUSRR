@@ -29,6 +29,7 @@ from .employees.views import (
 from .feed.views import PostViewSet
 from .requests_app.views import RequestViewSet
 from .search.views import search_api_view
+from .attendance.views import LogStormAttendanceAnalyzeAPIView
 
 app_name = "v1"
 
@@ -88,6 +89,11 @@ router.register(r"communications/polls", PollViewSet, basename="polls")
 
 urlpatterns = [
     path("auth/", include("api.auth.urls")),
+    path(
+        "attendance/logstorm/analyze/",
+        LogStormAttendanceAnalyzeAPIView.as_view(),
+        name="logstorm-attendance-analyze",
+    ),
     path("directory/", include("api.v1.directory.urls")),
     # Notifications API (из самого модуля notifications)
     path("notifications/", include("notifications.api.urls")),

@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, CalendarDays, Download, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Monitor, Search, ShoppingCart, Users } from "lucide-react";
+import { Building2, CalendarCheck, CalendarDays, Download, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Monitor, Search, ShoppingCart, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, startTransition, useEffect, useRef, useState, useMemo } from "react";
@@ -43,6 +43,7 @@ const navItems = [
   { href: "/messages", label: "Сообщения", icon: MessageSquare, category: "Сообщения" },
   { href: "/employees", label: "Сотрудники", icon: Users },
   { href: "/departments", label: "Отделы", icon: Building2 },
+  { href: "/attendance", label: "Посещаемость", icon: CalendarCheck },
   { href: "/requests", label: "Заявления", icon: FileSignature, category: "Заявки" },
   { href: "/equipment", label: "Оборудование", icon: Monitor },
   { href: "/procurement", label: "Закупки", icon: ShoppingCart, category: "Закупки" },
