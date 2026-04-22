@@ -337,6 +337,14 @@ class EmployeeAction(models.Model):
     action = models.CharField(
         "Кадровое событие", max_length=50, choices=ACTION_CHOICES
     )
+    source_request = models.ForeignKey(
+        "requests_app.Request",
+        related_name="employee_actions",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Источник-заявление",
+    )
     date = models.DateTimeField("Дата действия")
     comment = models.TextField("Комментарий/причина", blank=True)
     extra = models.JSONField("Дополнительно", blank=True, null=True)
@@ -346,6 +354,13 @@ class EmployeeAction(models.Model):
         verbose_name = "Кадровое событие"
         verbose_name_plural = "Кадровые события"
         ordering = ["-date"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source_request", "action"],
+                condition=models.Q(source_request__isnull=False),
+                name="uniq_employee_action_source_request_action",
+            ),
+        ]
 
     def __str__(self):
         return (
