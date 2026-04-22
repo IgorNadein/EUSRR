@@ -7,19 +7,23 @@ Management команда для миграции существующих за�
 
 from datetime import datetime, timedelta
 from django.core.management.base import BaseCommand
-from django.db import transaction
 from django.utils import timezone
 
 from requests_app.models import Request
 from requests_app.enums import RequestStatus
-from employees.models import EmployeeAction
 from employees.signals import IMMEDIATE_ACTION_MAPPING, SCHEDULED_ACTION_MAPPING
+from employees.services.request_actions import (
+    build_request_action_comment,
+    create_request_action,
+    get_existing_request_action,
+)
 
 
 # Маппинг для событий возврата из отпуска/больничного
 RETURN_ACTION_MAPPING = {
     "vacation": "returned_from_leave",
-    "sick_leave": "returned_from_leave",
+    "sick_leave": "returned_from_sick_leave",
+    "day_off": "returned_from_day_off",
 }
 
 
@@ -71,13 +75,8 @@ class Command(BaseCommand):
             if not action_type:
                 continue
 
-            # Проверяем, существует ли уже событие для этой заявки
-            existing = EmployeeAction.objects.filter(
-                extra__request_id=request.id, action=action_type
-            ).exists()
-
-            # Флаг - нужно ли создавать основное событие
-            should_create_main = not existing
+            existing = get_existing_request_action(request, action_type)
+            should_create_main = existing is None
 
             if existing:
                 skipped_count += 1
@@ -94,15 +93,14 @@ class Command(BaseCommand):
             return_date = None
 
             if request.type in RETURN_ACTION_MAPPING and request.date_to:
-                return_action = RETURN_ACTION_MAPPING[request.type]
+                return_action = RETURN_ACTION_MAPPING.get(request.type)
                 return_date = request.date_to + timedelta(days=1)
 
-                # Проверяем что возврат ещё не создан
-                existing_return = EmployeeAction.objects.filter(
-                    extra__request_id=request.id, action=return_action
-                ).exists()
-
-                should_create_return = not existing_return
+                if return_action:
+                    existing_return = get_existing_request_action(
+                        request, return_action
+                    )
+                    should_create_return = existing_return is None
 
             # Если нечего создавать - пропускаем
             if not should_create_main and not should_create_return:
@@ -127,14 +125,8 @@ class Command(BaseCommand):
                     datetime.combine(raw_date, datetime.min.time())
                 )
 
-            # Формируем комментарий
-            action_comment = f"Заявление #{request.id}"
-            if request.comment:
-                action_comment += f": {request.comment[:200]}"
-
             # Готовим extra данные
             extra_data = {
-                "request_id": request.id,
                 "approved_by": request.approver.id
                 if request.approver
                 else None,
@@ -147,12 +139,10 @@ class Command(BaseCommand):
                 if should_create_main:
                     self.stdout.write(
                         self.style.SUCCESS(
-                            f"  WOULD CREATE: Request #{request.id} ({
-                                request.type
-                            }) → "
-                            f"EmployeeAction ({action_type}) for {
-                                request.employee
-                            } "
+                            f"  WOULD CREATE: Request #{request.id} "
+                            f"({request.type}) → "
+                            f"EmployeeAction ({action_type}) "
+                            f"for {request.employee} "
                             f"on {action_date.date()}"
                         )
                     )
@@ -169,20 +159,19 @@ class Command(BaseCommand):
                     return_count += 1
             else:
                 try:
-                    with transaction.atomic():
-                        # Создаём основное событие
-                        if should_create_main:
-                            action = EmployeeAction.objects.create(
-                                employee=request.employee,
-                                action=action_type,
-                                date=action_date,
-                                comment=action_comment,
-                                extra=extra_data,
-                            )
-
-                            # Применяем эффекты (деактивация, LDAP sync)
+                    # Создаём основное событие
+                    if should_create_main:
+                        action, created = create_request_action(
+                            request=request,
+                            action_type=action_type,
+                            action_date=request.date_from
+                            or request.decided_at
+                            or request.created_at,
+                            comment=build_request_action_comment(request),
+                            extra=extra_data,
+                        )
+                        if created:
                             self._apply_effects(action)
-
                             created_count += 1
                             self.stdout.write(
                                 self.style.SUCCESS(
@@ -192,40 +181,29 @@ class Command(BaseCommand):
                                     f"for {request.employee}"
                                 )
                             )
+                        else:
+                            skipped_count += 1
 
-                        # Создаём событие возврата
-                        if should_create_return:
-                            return_comment = (
-                                f"Автоматически: окончание "
-                                f"{request.get_type_display().lower()} "
-                                f"(заявка #{request.id})"
-                            )
-
-                            # Конвертируем date в datetime с timezone
-                            return_datetime = timezone.make_aware(
-                                datetime.combine(
-                                    return_date, datetime.min.time()
-                                )
-                            )
-
-                            return_action_obj = EmployeeAction.objects.create(
-                                employee=request.employee,
-                                action=return_action,
-                                date=return_datetime,
-                                comment=return_comment,
-                                extra={
-                                    "request_id": request.id,
-                                    "auto_return": True,
-                                    "migrated": True,
-                                    "migration_date": (
-                                        timezone.now().isoformat()
-                                    ),
-                                },
-                            )
-
-                            # Применяем эффекты для возврата
+                    # Создаём событие возврата
+                    if should_create_return and return_action and return_date:
+                        return_comment = (
+                            f"Автоматически: окончание "
+                            f"{request.get_type_display().lower()} "
+                            f"(заявка #{request.id})"
+                        )
+                        return_action_obj, created = create_request_action(
+                            request=request,
+                            action_type=return_action,
+                            action_date=return_date,
+                            comment=return_comment,
+                            extra={
+                                "auto_return": True,
+                                "migrated": True,
+                                "migration_date": timezone.now().isoformat(),
+                            },
+                        )
+                        if created:
                             self._apply_effects(return_action_obj)
-
                             return_count += 1
                             self.stdout.write(
                                 self.style.SUCCESS(
@@ -235,6 +213,8 @@ class Command(BaseCommand):
                                     f"({return_action}) on {return_date}"
                                 )
                             )
+                        else:
+                            skipped_count += 1
 
                 except Exception as e:
                     errors.append((request.id, str(e)))

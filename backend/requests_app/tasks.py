@@ -28,7 +28,10 @@ def create_scheduled_action(self, request_id):
         ACTION_ON_LEAVE,
         ACTION_ON_SICK_LEAVE,
     )
-    from employees.models import EmployeeAction
+    from employees.services.request_actions import (
+        build_request_action_comment,
+        create_request_action,
+    )
 
     try:
         request = Request.objects.get(id=request_id)
@@ -56,29 +59,19 @@ def create_scheduled_action(self, request_id):
             )
             return
 
-        # Проверяем, что событие еще не создано
-        if EmployeeAction.objects.filter(
-            extra__request_id=request_id, action=action_type
-        ).exists():
-            logger.info(f"Action already exists for Request #{request_id}, skipping")
-            return
-
-        # Создаем событие
-        action_comment = f"Заявление #{request.id}"
-        if request.comment:
-            action_comment += f": {request.comment[:200]}"
-
-        action = EmployeeAction.objects.create(
-            employee=request.employee,
-            action=action_type,
-            date=timezone.now(),
-            comment=action_comment,
+        action, created = create_request_action(
+            request=request,
+            action_type=action_type,
+            action_date=request.date_from,
+            comment=build_request_action_comment(request),
             extra={
-                "request_id": request.id,
                 "approved_by": (request.approver.id if request.approver else None),
                 "scheduled": True,
             },
         )
+        if not created:
+            logger.info(f"Action already exists for Request #{request_id}, skipping")
+            return
 
         logger.info(
             f"Created scheduled EmployeeAction #{action.id} ({action_type}) "
@@ -128,7 +121,7 @@ def schedule_auto_return(self, request_id):
         ACTION_RETURNED_FROM_LEAVE,
         ACTION_RETURNED_FROM_SICK_LEAVE,
     )
-    from employees.models import EmployeeAction
+    from employees.services.request_actions import create_request_action
 
     try:
         request = Request.objects.get(id=request_id)
@@ -155,27 +148,25 @@ def schedule_auto_return(self, request_id):
             )
             return
 
-        # Проверяем, что событие возврата еще не создано
-        if EmployeeAction.objects.filter(
-            extra__request_id=request_id, action=return_action
-        ).exists():
-            logger.info(f"Return action already exists for Request #{request_id}")
-            return
-
-        # Создаем событие возврата
         return_comment = (
             f"Автоматически: окончание "
             f"{request.get_type_display().lower()} "
             f"(заявка #{request.id})"
         )
-
-        action = EmployeeAction.objects.create(
-            employee=request.employee,
-            action=return_action,
-            date=timezone.now(),
-            comment=return_comment,
-            extra={"request_id": request.id, "auto_return": True},
+        return_date = (
+            request.date_to + timedelta(days=1) if request.date_to else None
         )
+
+        action, created = create_request_action(
+            request=request,
+            action_type=return_action,
+            action_date=return_date,
+            comment=return_comment,
+            extra={"auto_return": True},
+        )
+        if not created:
+            logger.info(f"Return action already exists for Request #{request_id}")
+            return
 
         logger.info(
             f"Created auto-return EmployeeAction #{action.id} "
@@ -205,7 +196,7 @@ def cleanup_missed_returns():
     """
     from .models import Request
     from .enums import RequestStatus
-    from employees.models import EmployeeAction
+    from employees.services.request_actions import create_request_action
 
     logger.info("Running cleanup_missed_returns task")
 
@@ -233,24 +224,19 @@ def cleanup_missed_returns():
         if not return_action:
             continue
 
-        # Проверяем, что события возврата нет
-        if EmployeeAction.objects.filter(
-            extra__request_id=req.id, action=return_action
-        ).exists():
-            continue
-
-        # Создаем пропущенное событие возврата
         try:
-            action = EmployeeAction.objects.create(
-                employee=req.employee,
-                action=return_action,
-                date=req.date_to + timedelta(days=1),
+            action, created = create_request_action(
+                request=req,
+                action_type=return_action,
+                action_date=req.date_to + timedelta(days=1),
                 comment=(
                     f"Автоматически восстановлено: окончание "
                     f"{req.get_type_display().lower()} (заявка #{req.id})"
                 ),
-                extra={"request_id": req.id, "auto_return": True, "cleanup": True},
+                extra={"auto_return": True, "cleanup": True},
             )
+            if not created:
+                continue
             created_count += 1
             logger.info(
                 f"Cleanup: created return action #{action.id} for Request #{req.id}"

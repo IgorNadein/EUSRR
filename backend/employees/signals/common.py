@@ -7,7 +7,7 @@
 """
 
 import logging
-from datetime import date, datetime, time
+from datetime import datetime
 
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
@@ -20,6 +20,10 @@ from employees.constants import (
     ACTION_ON_SICK_LEAVE,
 )
 from employees.models import Employee, EmployeeAction
+from employees.services.request_actions import (
+    build_request_action_comment,
+    create_request_action,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -122,33 +126,20 @@ def _create_immediate_action(request):
     if not action_type:
         return
 
-    # Проверяем дубли
-    if EmployeeAction.objects.filter(
-        extra__request_id=request.id, action=action_type
-    ).exists():
-        logger.warning(f"EmployeeAction already exists for Request #{request.id}")
-        return
-
-    # Создаем событие
-    action_date = _as_action_datetime(
-        request.date_from or request.decided_at or timezone.now()
-    )
-    action_comment = f"Заявление #{request.id}"
-    if request.comment:
-        action_comment += f": {request.comment[:200]}"
-
     try:
-        action = EmployeeAction.objects.create(
-            employee=request.employee,
-            action=action_type,
-            date=action_date,
-            comment=action_comment,
+        action, created = create_request_action(
+            request=request,
+            action_type=action_type,
+            action_date=request.date_from or request.decided_at or timezone.now(),
+            comment=build_request_action_comment(request),
             extra={
-                "request_id": request.id,
                 "approved_by": (request.approver.id if request.approver else None),
                 "immediate": True,
             },
         )
+        if not created:
+            logger.warning(f"EmployeeAction already exists for Request #{request.id}")
+            return
 
         # Применяем эффекты (деактивация, LDAP sync)
         _apply_action_effects(action)
@@ -204,14 +195,6 @@ def _schedule_delayed_action(request):
         logger.error(
             f"Failed to schedule action for Request #{request.id}: {e}", exc_info=True
         )
-
-
-def _as_action_datetime(value):
-    if isinstance(value, datetime):
-        return value if timezone.is_aware(value) else timezone.make_aware(value)
-    if isinstance(value, date):
-        return timezone.make_aware(datetime.combine(value, time(hour=12)))
-    return value
 
 
 def _apply_action_effects(action):
