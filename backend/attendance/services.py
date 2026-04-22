@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from io import BytesIO
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from calendar import monthrange
 from typing import Any
 
 from django.conf import settings
 from django.db import transaction
+from django.utils import timezone
 from django.utils.dateparse import parse_date
 from openpyxl import Workbook
 from openpyxl.comments import Comment
@@ -15,6 +16,7 @@ from openpyxl.styles import Alignment, Font, PatternFill, Side, Border
 from openpyxl.utils import get_column_letter
 
 from attendance.models import (
+    AttendanceAutoSyncSettings,
     AttendanceAnalysisRun,
     AttendanceRecord,
     EmployeeWorkSchedule,
@@ -249,6 +251,136 @@ def get_standard_work_schedule_payload() -> dict[str, Any]:
     if schedule is None:
         return get_default_work_schedule_payload()
     return schedule.to_logstorm_payload()
+
+
+def get_attendance_auto_sync_settings() -> AttendanceAutoSyncSettings:
+    settings, _ = AttendanceAutoSyncSettings.objects.get_or_create(
+        singleton=True,
+    )
+    return settings
+
+
+def run_attendance_auto_sync(*, force: bool = False) -> AttendanceAutoSyncSettings:
+    from common.logstorm_attendance import (
+        analyze_employee_attendance,
+        build_logstorm_attendance_payload,
+    )
+    now = timezone.now()
+    with transaction.atomic():
+        settings = (
+            AttendanceAutoSyncSettings.objects.select_for_update()
+            .filter(singleton=True)
+            .first()
+        )
+        if settings is None:
+            settings = AttendanceAutoSyncSettings.objects.create(singleton=True)
+
+        if settings.last_status == AttendanceAutoSyncSettings.STATUS_RUNNING:
+            return settings
+        if not force:
+            if not settings.enabled:
+                return settings
+            if settings.next_run_at and settings.next_run_at > now:
+                return settings
+
+        settings.last_status = AttendanceAutoSyncSettings.STATUS_RUNNING
+        settings.last_started_at = now
+        settings.last_finished_at = None
+        settings.last_error = ""
+        settings.last_success_count = 0
+        settings.last_error_count = 0
+        if settings.enabled:
+            settings.next_run_at = now + timedelta(
+                minutes=settings.frequency_minutes
+            )
+        settings.save(
+            update_fields=[
+                "last_status",
+                "last_started_at",
+                "last_finished_at",
+                "last_error",
+                "last_success_count",
+                "last_error_count",
+                "next_run_at",
+                "updated_at",
+            ]
+        )
+        settings_id = settings.id
+        lookback_days = settings.lookback_days
+
+    period_end = timezone.localdate()
+    period_start = period_end - timedelta(days=lookback_days - 1)
+    success_count = 0
+    error_count = 0
+    errors: list[str] = []
+
+    for employee in Employee.objects.get_active():
+        schedule_payload = (
+            get_employee_work_schedule_payload(employee)
+            or get_standard_work_schedule_payload()
+        )
+        try:
+            result = analyze_employee_attendance(
+                employee=employee,
+                period_start=period_start,
+                period_end=period_end,
+                schedule=schedule_payload,
+                client=None,
+            )
+            request_payload = build_logstorm_attendance_payload(
+                employee=employee,
+                period_start=period_start,
+                period_end=period_end,
+                schedule=schedule_payload,
+            )
+            save_logstorm_attendance_result(
+                employee=employee,
+                period_start=period_start,
+                period_end=period_end,
+                schedule_payload=request_payload.get("schedule"),
+                request_payload=request_payload,
+                response_payload=result,
+                triggered_by=None,
+            )
+            success_count += 1
+        except Exception as exc:
+            error_count += 1
+            errors.append(f"{_employee_display_name(employee)}: {exc}")
+
+    finished_at = timezone.now()
+    if error_count and success_count:
+        status = AttendanceAutoSyncSettings.STATUS_PARTIAL
+    elif error_count:
+        status = AttendanceAutoSyncSettings.STATUS_FAILED
+    else:
+        status = AttendanceAutoSyncSettings.STATUS_SUCCESS
+
+    with transaction.atomic():
+        settings = AttendanceAutoSyncSettings.objects.select_for_update().get(
+            pk=settings_id,
+        )
+        settings.last_status = status
+        settings.last_finished_at = finished_at
+        settings.last_success_count = success_count
+        settings.last_error_count = error_count
+        settings.last_error = "\n".join(errors)[:4000]
+        settings.next_run_at = (
+            finished_at + timedelta(minutes=settings.frequency_minutes)
+            if settings.enabled
+            else None
+        )
+        settings.save(
+            update_fields=[
+                "last_status",
+                "last_finished_at",
+                "last_success_count",
+                "last_error_count",
+                "last_error",
+                "next_run_at",
+                "updated_at",
+            ]
+        )
+        return settings
 
 
 def build_monthly_attendance_matrix(

@@ -36,6 +36,23 @@ export type StandardWorkSchedule = AttendanceSchedulePayload & {
     updated_at?: string | null;
 };
 
+export type AttendanceAutoSyncSettings = {
+    id: number | null;
+    enabled: boolean;
+    frequency_minutes: number;
+    lookback_days: number;
+    next_run_at?: string | null;
+    last_started_at?: string | null;
+    last_finished_at?: string | null;
+    last_status: 'idle' | 'running' | 'success' | 'partial' | 'failed' | string;
+    last_status_label?: string;
+    last_error?: string;
+    last_success_count: number;
+    last_error_count: number;
+    updated_by?: number | null;
+    updated_at?: string | null;
+};
+
 export type AttendanceAnalyzePayload = {
     employee_id: number;
     period_start: string;
@@ -263,6 +280,22 @@ export function createAttendanceApi(request: RequestFn, getToken: GetTokenFn) {
                 method: 'PATCH',
                 body: JSON.stringify(data),
             }) as Promise<StandardWorkSchedule>,
+        getAttendanceAutoSyncSettings: () =>
+            request('/api/v1/attendance/auto-sync-settings/') as Promise<AttendanceAutoSyncSettings>,
+        updateAttendanceAutoSyncSettings: (
+            data: Partial<Pick<
+                AttendanceAutoSyncSettings,
+                'enabled' | 'frequency_minutes' | 'lookback_days'
+            >>,
+        ) =>
+            request('/api/v1/attendance/auto-sync-settings/', {
+                method: 'PATCH',
+                body: JSON.stringify(data),
+            }) as Promise<AttendanceAutoSyncSettings>,
+        runAttendanceAutoSyncNow: () =>
+            request('/api/v1/attendance/auto-sync/run-now/', {
+                method: 'POST',
+            }) as Promise<AttendanceAutoSyncSettings>,
         getEmployeeWorkSchedule: (employeeId: number | string) =>
             request(`/api/v1/attendance/work-schedules/${employeeId}/`) as Promise<EmployeeWorkSchedule>,
         updateEmployeeWorkSchedule: (

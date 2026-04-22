@@ -157,6 +157,90 @@ class StandardWorkSchedule(models.Model):
         }
 
 
+class AttendanceAutoSyncSettings(models.Model):
+    STATUS_IDLE = "idle"
+    STATUS_RUNNING = "running"
+    STATUS_SUCCESS = "success"
+    STATUS_PARTIAL = "partial"
+    STATUS_FAILED = "failed"
+    STATUS_CHOICES = (
+        (STATUS_IDLE, "Ожидание"),
+        (STATUS_RUNNING, "Выполняется"),
+        (STATUS_SUCCESS, "Успешно"),
+        (STATUS_PARTIAL, "Частично"),
+        (STATUS_FAILED, "Ошибка"),
+    )
+    FREQUENCY_CHOICES = (
+        (5, "5 минут"),
+        (15, "15 минут"),
+        (30, "30 минут"),
+        (60, "1 час"),
+        (1440, "1 сутки"),
+    )
+    LOOKBACK_CHOICES = (
+        (1, "1 день"),
+        (3, "3 дня"),
+        (7, "7 дней"),
+    )
+
+    singleton = models.BooleanField(default=True, unique=True, editable=False)
+    enabled = models.BooleanField("Включено", default=False)
+    frequency_minutes = models.PositiveIntegerField(
+        "Периодичность",
+        choices=FREQUENCY_CHOICES,
+        default=1440,
+    )
+    lookback_days = models.PositiveIntegerField(
+        "Глубина обновления",
+        choices=LOOKBACK_CHOICES,
+        default=3,
+    )
+    next_run_at = models.DateTimeField(
+        "Следующий запуск",
+        null=True,
+        blank=True,
+    )
+    last_started_at = models.DateTimeField(
+        "Последний старт",
+        null=True,
+        blank=True,
+    )
+    last_finished_at = models.DateTimeField(
+        "Последнее завершение",
+        null=True,
+        blank=True,
+    )
+    last_status = models.CharField(
+        "Последний статус",
+        max_length=16,
+        choices=STATUS_CHOICES,
+        default=STATUS_IDLE,
+    )
+    last_error = models.TextField("Последняя ошибка", blank=True)
+    last_success_count = models.PositiveIntegerField("Успешно", default=0)
+    last_error_count = models.PositiveIntegerField("Ошибок", default=0)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_attendance_auto_sync_settings",
+        verbose_name="Изменил",
+    )
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+
+    class Meta:
+        verbose_name = "Автообновление посещаемости"
+        verbose_name_plural = "Автообновление посещаемости"
+
+    def save(self, *args, **kwargs):
+        self.singleton = True
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return "Автообновление посещаемости"
+
+
 class AttendanceRecord(models.Model):
     analysis_run = models.ForeignKey(
         AttendanceAnalysisRun,

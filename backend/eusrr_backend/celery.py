@@ -24,6 +24,10 @@ app.conf.beat_schedule = {
         'task': 'requests_app.tasks.cleanup_missed_returns',
         'schedule': crontab(hour=0, minute=5),  # Каждый день в 00:05
     },
+    'attendance-auto-sync-dispatcher': {
+        'task': 'attendance.tasks.dispatch_attendance_auto_sync',
+        'schedule': 60.0,
+    },
 }
 
 

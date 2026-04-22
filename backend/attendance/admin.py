@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from attendance.models import (
     AttendanceAnalysisRun,
+    AttendanceAutoSyncSettings,
     AttendanceRecord,
     EmployeeWorkSchedule,
     StandardWorkSchedule,
@@ -78,3 +79,27 @@ class StandardWorkScheduleAdmin(admin.ModelAdmin):
         "updated_at",
     )
     readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(AttendanceAutoSyncSettings)
+class AttendanceAutoSyncSettingsAdmin(admin.ModelAdmin):
+    list_display = (
+        "enabled",
+        "frequency_minutes",
+        "lookback_days",
+        "next_run_at",
+        "last_status",
+        "last_success_count",
+        "last_error_count",
+        "updated_at",
+    )
+    readonly_fields = (
+        "next_run_at",
+        "last_started_at",
+        "last_finished_at",
+        "last_status",
+        "last_error",
+        "last_success_count",
+        "last_error_count",
+        "updated_at",
+    )

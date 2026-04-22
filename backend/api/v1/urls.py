@@ -30,6 +30,8 @@ from .feed.views import PostViewSet
 from .requests_app.views import RequestViewSet
 from .search.views import search_api_view
 from .attendance.views import (
+    AttendanceAutoSyncRunNowAPIView,
+    AttendanceAutoSyncSettingsAPIView,
     AttendanceMonthlyMatrixExportAPIView,
     AttendanceMonthlyMatrixAPIView,
     AttendanceRecordDayEventPhotoAPIView,
@@ -130,6 +132,16 @@ urlpatterns = [
         "attendance/standard-work-schedule/",
         StandardWorkScheduleAPIView.as_view(),
         name="attendance-standard-work-schedule",
+    ),
+    path(
+        "attendance/auto-sync-settings/",
+        AttendanceAutoSyncSettingsAPIView.as_view(),
+        name="attendance-auto-sync-settings",
+    ),
+    path(
+        "attendance/auto-sync/run-now/",
+        AttendanceAutoSyncRunNowAPIView.as_view(),
+        name="attendance-auto-sync-run-now",
     ),
     path(
         "attendance/records/<int:record_id>/",

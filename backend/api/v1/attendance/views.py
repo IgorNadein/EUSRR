@@ -3,13 +3,19 @@ from calendar import monthrange
 from datetime import date
 from urllib.parse import quote
 
-from attendance.models import AttendanceRecord, EmployeeWorkSchedule, StandardWorkSchedule
+from attendance.models import (
+    AttendanceRecord,
+    EmployeeWorkSchedule,
+    StandardWorkSchedule,
+)
 from attendance.services import (
     build_attendance_matrix_export_workbook,
     build_monthly_attendance_matrix,
+    get_attendance_auto_sync_settings,
     get_employee_work_schedule_payload,
     get_standard_work_schedule_payload,
     normalize_attendance_record_manual_issues,
+    run_attendance_auto_sync,
     save_logstorm_attendance_result,
 )
 from communications import comments_helpers
@@ -34,6 +40,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .serializers import (
+    AttendanceAutoSyncSettingsSerializer,
     AttendanceMonthlyMatrixExportQuerySerializer,
     AttendanceMonthlyMatrixQuerySerializer,
     AttendanceRecordCommentSerializer,
@@ -258,6 +265,52 @@ class StandardWorkScheduleAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         instance = serializer.save(updated_by=request.user)
         return Response(StandardWorkScheduleSerializer(instance).data)
+
+
+class AttendanceAutoSyncSettingsAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        _check_staff_access(request.user)
+        return Response(
+            AttendanceAutoSyncSettingsSerializer(
+                get_attendance_auto_sync_settings()
+            ).data
+        )
+
+    def patch(self, request):
+        _check_staff_access(request.user)
+        settings = get_attendance_auto_sync_settings()
+        was_enabled = settings.enabled
+        old_frequency = settings.frequency_minutes
+        serializer = AttendanceAutoSyncSettingsSerializer(
+            settings,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save(updated_by=request.user)
+
+        update_fields = ["updated_by", "updated_at"]
+        if not instance.enabled:
+            instance.next_run_at = None
+            update_fields.append("next_run_at")
+        elif not was_enabled or old_frequency != instance.frequency_minutes:
+            instance.next_run_at = timezone.now()
+            update_fields.append("next_run_at")
+        if update_fields != ["updated_by", "updated_at"]:
+            instance.save(update_fields=update_fields)
+
+        return Response(AttendanceAutoSyncSettingsSerializer(instance).data)
+
+
+class AttendanceAutoSyncRunNowAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        _check_staff_access(request.user)
+        settings = run_attendance_auto_sync(force=True)
+        return Response(AttendanceAutoSyncSettingsSerializer(settings).data)
 
 
 class AttendanceRecordListAPIView(ListAPIView):

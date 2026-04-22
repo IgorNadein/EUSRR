@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CalendarCheck,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -27,7 +28,7 @@ import {
 import { Modal } from "@/components/ui";
 import { useUser } from "@/contexts/UserContext";
 import { apiClient } from "@/lib/api";
-import { loadAllPages, displayUserName } from "@/lib/shared";
+import { loadAllPages, displayUserName, formatDateTime } from "@/lib/shared";
 import { resolveMediaUrl } from "@/lib/url";
 import type {
   MonthlyAttendanceMatrix,
@@ -36,6 +37,7 @@ import type {
   MonthlyAttendanceMatrixRow,
   AttendanceSchedulePayload,
   AttendanceRecord,
+  AttendanceAutoSyncSettings,
 } from "@/lib/api/attendance";
 import type { User } from "@/types/api";
 
@@ -61,6 +63,20 @@ const periodPresets: Array<{ value: AttendancePeriodPreset; label: string }> = [
   { value: "month", label: "За месяц" },
   { value: "year", label: "За год" },
   { value: "custom", label: "Свой период" },
+];
+
+const autoSyncFrequencyOptions = [
+  { value: 5, label: "5 минут" },
+  { value: 15, label: "15 минут" },
+  { value: 30, label: "30 минут" },
+  { value: 60, label: "1 час" },
+  { value: 1440, label: "1 сутки" },
+];
+
+const autoSyncLookbackOptions = [
+  { value: 1, label: "1 день" },
+  { value: 3, label: "3 дня" },
+  { value: 7, label: "7 дней" },
 ];
 
 function toDateInputValue(date: Date) {
@@ -105,6 +121,15 @@ function formatHours(value: unknown) {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return String((error as Error)?.message || fallback);
+}
+
+function formatOptionalDateTime(value?: string | null) {
+  return value ? formatDateTime(value) : "-";
+}
+
+function autoSyncStatusText(settings: AttendanceAutoSyncSettings | null) {
+  if (!settings) return "Не загружено";
+  return settings.last_status_label || settings.last_status || "Ожидание";
 }
 
 function monthKeyFromDate(value: string) {
@@ -304,6 +329,13 @@ export default function AttendancePage() {
   const [downloadingReport, setDownloadingReport] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scheduleFeedback, setScheduleFeedback] = useState<string | null>(null);
+  const [autoSyncSettings, setAutoSyncSettings] =
+    useState<AttendanceAutoSyncSettings | null>(null);
+  const [autoSyncOpen, setAutoSyncOpen] = useState(false);
+  const [loadingAutoSync, setLoadingAutoSync] = useState(true);
+  const [savingAutoSync, setSavingAutoSync] = useState(false);
+  const [runningAutoSync, setRunningAutoSync] = useState(false);
+  const [autoSyncFeedback, setAutoSyncFeedback] = useState<string | null>(null);
   const [matrices, setMatrices] = useState<MonthlyAttendanceMatrix[]>([]);
   const [activeMonthIndex, setActiveMonthIndex] = useState(0);
   const [visibleEmployeePage, setVisibleEmployeePage] = useState(0);
@@ -388,6 +420,35 @@ export default function AttendancePage() {
     }
 
     void loadStandardSchedule();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageAttendance]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAutoSyncSettings() {
+      if (!canManageAttendance) {
+        setLoadingAutoSync(false);
+        return;
+      }
+
+      try {
+        setLoadingAutoSync(true);
+        const settings = await apiClient.getAttendanceAutoSyncSettings();
+        if (!cancelled) setAutoSyncSettings(settings);
+      } catch (autoSyncError) {
+        if (!cancelled) {
+          setError(getErrorMessage(autoSyncError, "Не удалось загрузить автообновление"));
+        }
+      } finally {
+        if (!cancelled) setLoadingAutoSync(false);
+      }
+    }
+
+    void loadAutoSyncSettings();
 
     return () => {
       cancelled = true;
@@ -580,6 +641,41 @@ export default function AttendancePage() {
       setError(getErrorMessage(saveError, "Не удалось сохранить стандартный график"));
     } finally {
       setSavingSchedule(false);
+    }
+  }
+
+  async function saveAutoSyncSettings(
+    patch: Partial<Pick<
+      AttendanceAutoSyncSettings,
+      "enabled" | "frequency_minutes" | "lookback_days"
+    >>,
+  ) {
+    try {
+      setSavingAutoSync(true);
+      setError(null);
+      setAutoSyncFeedback(null);
+      const settings = await apiClient.updateAttendanceAutoSyncSettings(patch);
+      setAutoSyncSettings(settings);
+      setAutoSyncFeedback("Автообновление сохранено");
+    } catch (saveError) {
+      setError(getErrorMessage(saveError, "Не удалось сохранить автообновление"));
+    } finally {
+      setSavingAutoSync(false);
+    }
+  }
+
+  async function runAutoSyncNow() {
+    try {
+      setRunningAutoSync(true);
+      setError(null);
+      setAutoSyncFeedback(null);
+      const settings = await apiClient.runAttendanceAutoSyncNow();
+      setAutoSyncSettings(settings);
+      setAutoSyncFeedback("Автообновление выполнено");
+    } catch (runError) {
+      setError(getErrorMessage(runError, "Не удалось запустить автообновление"));
+    } finally {
+      setRunningAutoSync(false);
     }
   }
 
@@ -1090,6 +1186,152 @@ export default function AttendancePage() {
                       </p>
                     ) : null}
                   </div>
+                </div>
+
+                <div className="mt-4 app-surface-muted rounded-2xl p-3 sm:p-4">
+                  <button
+                    type="button"
+                    onClick={() => setAutoSyncOpen((current) => !current)}
+                    className="flex w-full items-start justify-between gap-3 text-left"
+                  >
+                    <span>
+                      <span className="text-sm font-semibold text-[var(--foreground)]">
+                        Автообновление
+                      </span>
+                      <span className="app-text-muted mt-1 block text-xs">
+                        {loadingAutoSync
+                          ? "Загрузка настроек"
+                          : autoSyncSettings?.enabled
+                            ? `Включено · ${autoSyncStatusText(autoSyncSettings)}`
+                            : "Выключено"}
+                      </span>
+                    </span>
+                    <ChevronDown
+                      size={16}
+                      className={`mt-1 shrink-0 text-[var(--muted-foreground)] transition ${
+                        autoSyncOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+
+                  {autoSyncOpen ? (
+                    <div className="mt-4 grid gap-3">
+                      {loadingAutoSync ? (
+                        <p className="app-text-muted flex items-center gap-2 text-xs">
+                          <Loader2 size={14} className="animate-spin" />
+                          Загрузка автообновления
+                        </p>
+                      ) : autoSyncSettings ? (
+                        <>
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <label className="inline-flex items-center gap-2 text-sm text-[var(--foreground)]">
+                              <input
+                                type="checkbox"
+                                checked={autoSyncSettings.enabled}
+                                onChange={(event) => {
+                                  setAutoSyncSettings({
+                                    ...autoSyncSettings,
+                                    enabled: event.target.checked,
+                                  });
+                                  void saveAutoSyncSettings({
+                                    enabled: event.target.checked,
+                                  });
+                                }}
+                                disabled={savingAutoSync || runningAutoSync}
+                                className="h-4 w-4 accent-[var(--accent-primary)]"
+                              />
+                              Включить автообновление
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => void runAutoSyncNow()}
+                              disabled={savingAutoSync || runningAutoSync}
+                              className="app-action-secondary inline-flex min-h-9 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {runningAutoSync ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                              Запустить сейчас
+                            </button>
+                          </div>
+
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <label className="block">
+                              <span className="app-card-caption mb-2 block">Частота</span>
+                              <select
+                                value={autoSyncSettings.frequency_minutes}
+                                onChange={(event) => {
+                                  const value = Number(event.target.value);
+                                  setAutoSyncSettings({
+                                    ...autoSyncSettings,
+                                    frequency_minutes: value,
+                                  });
+                                  void saveAutoSyncSettings({
+                                    frequency_minutes: value,
+                                  });
+                                }}
+                                disabled={savingAutoSync || runningAutoSync}
+                                className="app-input w-full rounded-lg px-3 py-2 text-sm"
+                              >
+                                {autoSyncFrequencyOptions.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="block">
+                              <span className="app-card-caption mb-2 block">Период</span>
+                              <select
+                                value={autoSyncSettings.lookback_days}
+                                onChange={(event) => {
+                                  const value = Number(event.target.value);
+                                  setAutoSyncSettings({
+                                    ...autoSyncSettings,
+                                    lookback_days: value,
+                                  });
+                                  void saveAutoSyncSettings({
+                                    lookback_days: value,
+                                  });
+                                }}
+                                disabled={savingAutoSync || runningAutoSync}
+                                className="app-input w-full rounded-lg px-3 py-2 text-sm"
+                              >
+                                {autoSyncLookbackOptions.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+
+                          <div className="grid gap-2 text-xs text-[var(--muted-foreground)] sm:grid-cols-2">
+                            <p>Статус: {autoSyncStatusText(autoSyncSettings)}</p>
+                            <p>Следующий запуск: {formatOptionalDateTime(autoSyncSettings.next_run_at)}</p>
+                            <p>Последний старт: {formatOptionalDateTime(autoSyncSettings.last_started_at)}</p>
+                            <p>Завершено: {formatOptionalDateTime(autoSyncSettings.last_finished_at)}</p>
+                            <p>Успешно: {autoSyncSettings.last_success_count}</p>
+                            <p>Ошибок: {autoSyncSettings.last_error_count}</p>
+                          </div>
+
+                          {autoSyncSettings.last_error ? (
+                            <p className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                              {autoSyncSettings.last_error}
+                            </p>
+                          ) : null}
+
+                          {autoSyncFeedback ? (
+                            <p className="text-xs font-medium text-emerald-300">
+                              {autoSyncFeedback}
+                            </p>
+                          ) : null}
+                        </>
+                      ) : (
+                        <p className="app-text-muted text-xs">
+                          Настройки автообновления недоступны
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
 
               {error ? (

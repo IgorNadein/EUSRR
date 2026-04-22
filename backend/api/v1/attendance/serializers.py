@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from attendance.models import (
     AttendanceAnalysisRun,
+    AttendanceAutoSyncSettings,
     AttendanceRecord,
     EmployeeWorkSchedule,
     StandardWorkSchedule,
@@ -131,6 +132,57 @@ class StandardWorkScheduleSerializer(serializers.ModelSerializer):
     def validate_expected_hours(self, value):
         if value <= 0 or value > 24:
             raise serializers.ValidationError("expected_hours must be between 0 and 24")
+        return value
+
+
+class AttendanceAutoSyncSettingsSerializer(serializers.ModelSerializer):
+    last_status_label = serializers.CharField(
+        source="get_last_status_display",
+        read_only=True,
+    )
+
+    class Meta:
+        model = AttendanceAutoSyncSettings
+        fields = (
+            "id",
+            "enabled",
+            "frequency_minutes",
+            "lookback_days",
+            "next_run_at",
+            "last_started_at",
+            "last_finished_at",
+            "last_status",
+            "last_status_label",
+            "last_error",
+            "last_success_count",
+            "last_error_count",
+            "updated_by",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "next_run_at",
+            "last_started_at",
+            "last_finished_at",
+            "last_status",
+            "last_status_label",
+            "last_error",
+            "last_success_count",
+            "last_error_count",
+            "updated_by",
+            "updated_at",
+        )
+
+    def validate_frequency_minutes(self, value):
+        allowed = {item[0] for item in AttendanceAutoSyncSettings.FREQUENCY_CHOICES}
+        if value not in allowed:
+            raise serializers.ValidationError("Unsupported frequency")
+        return value
+
+    def validate_lookback_days(self, value):
+        allowed = {item[0] for item in AttendanceAutoSyncSettings.LOOKBACK_CHOICES}
+        if value not in allowed:
+            raise serializers.ValidationError("Unsupported lookback")
         return value
 
 

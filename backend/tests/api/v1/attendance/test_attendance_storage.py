@@ -1,6 +1,6 @@
 from unittest.mock import patch
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from django.urls import reverse
@@ -9,6 +9,7 @@ from openpyxl import load_workbook
 
 from attendance.models import (
     AttendanceAnalysisRun,
+    AttendanceAutoSyncSettings,
     AttendanceRecord,
     EmployeeWorkSchedule,
     StandardWorkSchedule,
@@ -42,6 +43,14 @@ def _work_schedule_url(employee_id):
 
 def _standard_work_schedule_url():
     return reverse("api:v1:attendance-standard-work-schedule")
+
+
+def _auto_sync_settings_url():
+    return reverse("api:v1:attendance-auto-sync-settings")
+
+
+def _auto_sync_run_now_url():
+    return reverse("api:v1:attendance-auto-sync-run-now")
 
 
 def _record_detail_url(record_id):
@@ -289,6 +298,69 @@ def test_non_staff_cannot_manage_standard_work_schedule(
     assert not StandardWorkSchedule.objects.exists()
 
 
+def test_staff_can_read_default_auto_sync_settings(
+    auth_client_factory,
+    user_factory,
+):
+    staff = user_factory(staff=True)
+    client = auth_client_factory(staff)
+
+    response = client.get(_auto_sync_settings_url())
+
+    assert response.status_code == 200
+    assert response.data["enabled"] is False
+    assert response.data["frequency_minutes"] == 1440
+    assert response.data["lookback_days"] == 3
+    assert response.data["last_status"] == "idle"
+    assert AttendanceAutoSyncSettings.objects.count() == 1
+
+
+def test_staff_can_update_auto_sync_settings(
+    auth_client_factory,
+    user_factory,
+):
+    staff = user_factory(staff=True)
+    client = auth_client_factory(staff)
+
+    response = client.patch(
+        _auto_sync_settings_url(),
+        {
+            "enabled": True,
+            "frequency_minutes": 15,
+            "lookback_days": 7,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["enabled"] is True
+    assert response.data["frequency_minutes"] == 15
+    assert response.data["lookback_days"] == 7
+    assert response.data["next_run_at"] is not None
+    settings = AttendanceAutoSyncSettings.objects.get()
+    assert settings.updated_by == staff
+
+
+def test_non_staff_cannot_manage_auto_sync_settings(
+    auth_client_factory,
+    user_factory,
+):
+    user = user_factory(staff=False)
+    client = auth_client_factory(user)
+
+    get_response = client.get(_auto_sync_settings_url())
+    patch_response = client.patch(
+        _auto_sync_settings_url(),
+        {"enabled": True},
+        format="json",
+    )
+    run_response = client.post(_auto_sync_run_now_url())
+
+    assert get_response.status_code == 403
+    assert patch_response.status_code == 403
+    assert run_response.status_code == 403
+
+
 def test_non_staff_cannot_save_other_employee_work_schedule(
     auth_client_factory,
     user_factory,
@@ -374,6 +446,162 @@ def test_analyze_uses_standard_work_schedule_when_payload_omits_schedule(
 
     run = AttendanceAnalysisRun.objects.get()
     assert run.schedule_payload == schedule
+
+
+def _auto_sync_result(employee, target_date):
+    return {
+        "records": [
+            {
+                "date": target_date.isoformat(),
+                "employee_id": str(employee.id),
+                "display_name": str(employee),
+                "arrival_time": "08:00",
+                "departure_time": "17:00",
+                "work_hours": 9,
+                "expected_hours": 9,
+                "is_workday": True,
+                "is_absent": False,
+                "statuses": [],
+                "employee_issues": [],
+                "technical_issues": [],
+            }
+        ]
+    }
+
+
+def test_auto_sync_disabled_settings_do_not_run_analysis(user_factory):
+    from attendance.services import run_attendance_auto_sync
+
+    user_factory()
+    AttendanceAutoSyncSettings.objects.create(enabled=False)
+
+    with patch("common.logstorm_attendance.analyze_employee_attendance") as analyze:
+        settings = run_attendance_auto_sync(force=False)
+
+    analyze.assert_not_called()
+    assert settings.last_status == "idle"
+
+
+def test_auto_sync_updates_due_active_employees_and_uses_schedules(user_factory):
+    from attendance.services import run_attendance_auto_sync
+
+    employee = user_factory(first_name="Ivan", last_name="Petrov")
+    other = user_factory(first_name="Anna", last_name="Sidorova")
+    user_factory(active=False)
+    EmployeeWorkSchedule.objects.create(
+        employee=employee,
+        start_time="10:00",
+        end_time="19:00",
+        expected_hours=8,
+        workdays=["Monday"],
+    )
+    StandardWorkSchedule.objects.create(
+        start_time="07:30",
+        end_time="16:30",
+        expected_hours=8,
+        workdays=["Tuesday"],
+    )
+    now = timezone.now()
+    AttendanceAutoSyncSettings.objects.create(
+        enabled=True,
+        frequency_minutes=15,
+        lookback_days=3,
+        next_run_at=now - timedelta(minutes=1),
+    )
+    today = timezone.localdate()
+
+    def analyze_result(*, employee, **kwargs):
+        return _auto_sync_result(employee, today)
+
+    with patch(
+        "common.logstorm_attendance.analyze_employee_attendance",
+        side_effect=analyze_result,
+    ) as analyze:
+        settings = run_attendance_auto_sync(force=False)
+
+    assert analyze.call_count == 2
+    calls_by_employee_id = {
+        call.kwargs["employee"].id: call.kwargs
+        for call in analyze.call_args_list
+    }
+    employee_call = calls_by_employee_id[employee.id]
+    other_call = calls_by_employee_id[other.id]
+    assert employee_call["period_start"] == today - timedelta(days=2)
+    assert employee_call["period_end"] == today
+    assert employee_call["schedule"]["start_time"] == "10:00"
+    assert other_call["schedule"]["start_time"] == "07:30"
+    assert settings.last_status == "success"
+    assert settings.last_success_count == 2
+    assert settings.last_error_count == 0
+    assert settings.next_run_at > settings.last_finished_at
+    assert AttendanceRecord.objects.filter(employee__in=[employee, other]).count() == 2
+
+
+def test_auto_sync_continues_after_employee_error(user_factory):
+    from attendance.services import run_attendance_auto_sync
+
+    first = user_factory(first_name="Broken", last_name="User")
+    second = user_factory(first_name="Good", last_name="User")
+    AttendanceAutoSyncSettings.objects.create(
+        enabled=True,
+        frequency_minutes=60,
+        lookback_days=1,
+        next_run_at=timezone.now() - timedelta(minutes=1),
+    )
+    today = timezone.localdate()
+
+    def analyze_result(*, employee, **kwargs):
+        if employee == first:
+            raise LogStormClientError("logstorm down")
+        return _auto_sync_result(employee, today)
+
+    with patch(
+        "common.logstorm_attendance.analyze_employee_attendance",
+        side_effect=analyze_result,
+    ):
+        settings = run_attendance_auto_sync(force=False)
+
+    assert settings.last_status == "partial"
+    assert settings.last_success_count == 1
+    assert settings.last_error_count == 1
+    assert "logstorm down" in settings.last_error
+    assert AttendanceRecord.objects.filter(employee=second, date=today).exists()
+
+
+def test_auto_sync_skips_parallel_running_state(user_factory):
+    from attendance.services import run_attendance_auto_sync
+
+    user_factory()
+    AttendanceAutoSyncSettings.objects.create(
+        enabled=True,
+        last_status=AttendanceAutoSyncSettings.STATUS_RUNNING,
+        next_run_at=timezone.now() - timedelta(minutes=1),
+    )
+
+    with patch("common.logstorm_attendance.analyze_employee_attendance") as analyze:
+        settings = run_attendance_auto_sync(force=False)
+
+    analyze.assert_not_called()
+    assert settings.last_status == "running"
+
+
+def test_staff_can_run_auto_sync_now(auth_client_factory, user_factory):
+    staff = user_factory(staff=True)
+    client = auth_client_factory(staff)
+    settings = AttendanceAutoSyncSettings.objects.create(
+        enabled=False,
+        last_status=AttendanceAutoSyncSettings.STATUS_SUCCESS,
+    )
+
+    with patch(
+        "api.v1.attendance.views.run_attendance_auto_sync",
+        return_value=settings,
+    ) as run_sync:
+        response = client.post(_auto_sync_run_now_url())
+
+    assert response.status_code == 200
+    run_sync.assert_called_once_with(force=True)
+    assert response.data["last_status"] == "success"
 
 
 def test_analyze_updates_existing_daily_record(auth_client_factory, user_factory):
