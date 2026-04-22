@@ -20,8 +20,27 @@ export function isStandaloneDisplayMode(): boolean {
   return Boolean(standaloneMatch || navigatorStandalone);
 }
 
+async function unregisterDevelopmentServiceWorker(): Promise<void> {
+  const registration = await navigator.serviceWorker.getRegistration("/");
+  await registration?.unregister().catch(() => undefined);
+
+  if ("caches" in window) {
+    const cacheNames = await caches.keys().catch(() => []);
+    await Promise.all(
+      cacheNames
+        .filter((cacheName) => cacheName.startsWith("eusrr-"))
+        .map((cacheName) => caches.delete(cacheName)),
+    );
+  }
+}
+
 export async function registerAppServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
+    return null;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    await unregisterDevelopmentServiceWorker();
     return null;
   }
 

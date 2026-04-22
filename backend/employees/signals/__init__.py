@@ -14,13 +14,33 @@ from importlib import import_module
 from django.conf import settings
 
 from . import common, birthday
+from .common import (
+    IMMEDIATE_ACTION_MAPPING,
+    SCHEDULED_ACTION_MAPPING,
+    _apply_action_effects,
+    _schedule_delayed_action,
+)
 
-if getattr(settings, 'LDAP_ENABLED', False):
-    import_module('employees.signals.ldap.employee')
-    import_module('employees.signals.ldap.department')
-    import_module('employees.signals.ldap.group')
-    import_module('employees.signals.ldap.position')
-    import_module('employees.signals.ldap.role')
-    __all__ = ['common', 'birthday']
+if getattr(settings, "LDAP_ENABLED", False):
+    import_module("employees.signals.ldap.employee")
+    import_module("employees.signals.ldap.department")
+    import_module("employees.signals.ldap.group")
+    import_module("employees.signals.ldap.position")
+    import_module("employees.signals.ldap.role")
+    __all__ = [
+        "common",
+        "birthday",
+        "IMMEDIATE_ACTION_MAPPING",
+        "SCHEDULED_ACTION_MAPPING",
+        "_apply_action_effects",
+        "_schedule_delayed_action",
+    ]
 else:
-    __all__ = ['common', 'birthday']
+    __all__ = [
+        "common",
+        "birthday",
+        "IMMEDIATE_ACTION_MAPPING",
+        "SCHEDULED_ACTION_MAPPING",
+        "_apply_action_effects",
+        "_schedule_delayed_action",
+    ]

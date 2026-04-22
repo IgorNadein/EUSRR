@@ -10,6 +10,10 @@ ACTION_HIRED = "hired"
 ACTION_DISMISSED = "dismissed"
 ACTION_ON_LEAVE = "on_leave"
 ACTION_RETURNED_FROM_LEAVE = "returned_from_leave"
+ACTION_ON_SICK_LEAVE = "on_sick_leave"
+ACTION_RETURNED_FROM_SICK_LEAVE = "returned_from_sick_leave"
+ACTION_ON_DAY_OFF = "on_day_off"
+ACTION_RETURNED_FROM_DAY_OFF = "returned_from_day_off"
 ACTION_ON_MATERNITY = "on_maternity"
 ACTION_RETURNED_FROM_MATERNITY = "returned_from_maternity"
 ACTION_TRANSFERRED = "transferred"
@@ -20,6 +24,10 @@ ACTION_CHOICES = [
     (ACTION_DISMISSED, "Уволен"),
     (ACTION_ON_LEAVE, "В отпуске"),
     (ACTION_RETURNED_FROM_LEAVE, "Вернулся из отпуска"),
+    (ACTION_ON_SICK_LEAVE, "На больничном"),
+    (ACTION_RETURNED_FROM_SICK_LEAVE, "Вернулся с больничного"),
+    (ACTION_ON_DAY_OFF, "В отгуле"),
+    (ACTION_RETURNED_FROM_DAY_OFF, "Вернулся из отгула"),
     (ACTION_ON_MATERNITY, "В декрете"),
     (ACTION_RETURNED_FROM_MATERNITY, "Вернулся из декрета"),
     (ACTION_TRANSFERRED, "Переведен"),
