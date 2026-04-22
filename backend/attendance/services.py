@@ -8,7 +8,11 @@ from typing import Any
 from django.db import transaction
 from django.utils.dateparse import parse_date
 
-from attendance.models import AttendanceAnalysisRun, AttendanceRecord
+from attendance.models import (
+    AttendanceAnalysisRun,
+    AttendanceRecord,
+    EmployeeWorkSchedule,
+)
 from employees.constants import (
     ACTION_DISMISSED,
     ACTION_ON_DAY_OFF,
@@ -64,6 +68,14 @@ SUPPRESSED_EMPLOYEE_ISSUE_MARKERS = (
     "ранн",
     "недоработ",
 )
+
+DEFAULT_WORK_SCHEDULE_PAYLOAD = {
+    "start_time": "08:00",
+    "end_time": "17:00",
+    "expected_hours": 9,
+    "workdays": list(EmployeeWorkSchedule.DEFAULT_WORKDAYS),
+    "date_overrides": [],
+}
 
 
 @dataclass(frozen=True)
@@ -150,6 +162,26 @@ def save_logstorm_attendance_result(
             )
 
     return run
+
+
+def get_employee_work_schedule_payload(
+    employee: Employee,
+) -> dict[str, Any] | None:
+    try:
+        schedule = employee.work_schedule
+    except EmployeeWorkSchedule.DoesNotExist:
+        return None
+    if schedule is None or not schedule.is_active:
+        return None
+    return schedule.to_logstorm_payload()
+
+
+def get_default_work_schedule_payload() -> dict[str, Any]:
+    return {
+        **DEFAULT_WORK_SCHEDULE_PAYLOAD,
+        "workdays": list(DEFAULT_WORK_SCHEDULE_PAYLOAD["workdays"]),
+        "date_overrides": list(DEFAULT_WORK_SCHEDULE_PAYLOAD["date_overrides"]),
+    }
 
 
 def build_monthly_attendance_matrix(

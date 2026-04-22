@@ -1,6 +1,10 @@
 from django.contrib import admin
 
-from attendance.models import AttendanceAnalysisRun, AttendanceRecord
+from attendance.models import (
+    AttendanceAnalysisRun,
+    AttendanceRecord,
+    EmployeeWorkSchedule,
+)
 
 
 @admin.register(AttendanceAnalysisRun)
@@ -42,3 +46,22 @@ class AttendanceRecordAdmin(admin.ModelAdmin):
     )
     search_fields = ("employee__email", "employee__first_name", "employee__last_name")
     readonly_fields = ("updated_at",)
+
+
+@admin.register(EmployeeWorkSchedule)
+class EmployeeWorkScheduleAdmin(admin.ModelAdmin):
+    list_display = (
+        "employee",
+        "start_time",
+        "end_time",
+        "expected_hours",
+        "is_active",
+        "updated_at",
+    )
+    list_filter = ("is_active",)
+    search_fields = (
+        "employee__last_name",
+        "employee__first_name",
+        "employee__email",
+    )
+    readonly_fields = ("created_at", "updated_at")

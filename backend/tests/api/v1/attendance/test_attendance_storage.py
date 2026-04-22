@@ -5,7 +5,11 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 
-from attendance.models import AttendanceAnalysisRun, AttendanceRecord
+from attendance.models import (
+    AttendanceAnalysisRun,
+    AttendanceRecord,
+    EmployeeWorkSchedule,
+)
 from employees.constants import ACTION_ON_LEAVE, ACTION_RETURNED_FROM_LEAVE
 from employees.models import EmployeeAction
 
@@ -22,6 +26,10 @@ def _records_url():
 
 def _monthly_matrix_url():
     return reverse("api:v1:attendance-monthly-matrix")
+
+
+def _work_schedule_url(employee_id):
+    return reverse("api:v1:attendance-work-schedule", args=[employee_id])
 
 
 def _record_detail_url(record_id):
@@ -129,6 +137,105 @@ def test_analyze_saves_run_and_records(auth_client_factory, user_factory):
     assert record.personnel_status == "normal"
     assert record.statuses == ["late", "underwork"]
     assert record.raw_data["employee_id"] == "42"
+
+
+def test_work_schedule_endpoint_returns_default_for_self(
+    auth_client_factory,
+    user_factory,
+):
+    employee = user_factory()
+    client = auth_client_factory(employee)
+
+    response = client.get(_work_schedule_url(employee.id))
+
+    assert response.status_code == 200
+    assert response.data["employee_id"] == employee.id
+    assert response.data["is_default"] is True
+    assert response.data["start_time"] == "08:00"
+    assert response.data["workdays"] == EmployeeWorkSchedule.DEFAULT_WORKDAYS
+
+
+def test_staff_can_save_employee_work_schedule(
+    auth_client_factory,
+    user_factory,
+):
+    staff = user_factory(staff=True)
+    employee = user_factory()
+    client = auth_client_factory(staff)
+
+    response = client.patch(
+        _work_schedule_url(employee.id),
+        {
+            "start_time": "09:00",
+            "end_time": "18:00",
+            "expected_hours": 8,
+            "workdays": ["Monday", "Wednesday", "Friday"],
+            "is_active": True,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["is_default"] is False
+    assert response.data["start_time"] == "09:00:00"
+    assert response.data["workdays"] == ["Monday", "Wednesday", "Friday"]
+
+    schedule = EmployeeWorkSchedule.objects.get(employee=employee)
+    assert schedule.updated_by == staff
+    assert schedule.expected_hours == 8
+
+
+def test_non_staff_cannot_save_other_employee_work_schedule(
+    auth_client_factory,
+    user_factory,
+):
+    user = user_factory()
+    employee = user_factory()
+    client = auth_client_factory(user)
+
+    response = client.patch(
+        _work_schedule_url(employee.id),
+        {"start_time": "09:00"},
+        format="json",
+    )
+
+    assert response.status_code == 403
+    assert not EmployeeWorkSchedule.objects.filter(employee=employee).exists()
+
+
+def test_analyze_uses_saved_work_schedule_when_payload_omits_schedule(
+    auth_client_factory,
+    user_factory,
+):
+    staff = user_factory(staff=True)
+    employee = user_factory()
+    EmployeeWorkSchedule.objects.create(
+        employee=employee,
+        start_time="10:00",
+        end_time="19:00",
+        expected_hours=8,
+        workdays=["Tuesday"],
+    )
+    client = auth_client_factory(staff)
+
+    with patch(
+        "api.v1.attendance.views.analyze_employee_attendance",
+        return_value=_logstorm_result(),
+    ) as analyze:
+        response = client.post(_analyze_url(), _payload(employee.id), format="json")
+
+    assert response.status_code == 200
+    schedule = analyze.call_args.kwargs["schedule"]
+    assert schedule == {
+        "start_time": "10:00",
+        "end_time": "19:00",
+        "expected_hours": 8,
+        "workdays": ["Tuesday"],
+        "date_overrides": [],
+    }
+
+    run = AttendanceAnalysisRun.objects.get()
+    assert run.schedule_payload == schedule
 
 
 def test_analyze_updates_existing_daily_record(auth_client_factory, user_factory):

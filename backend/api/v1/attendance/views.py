@@ -2,9 +2,10 @@ import logging
 from calendar import monthrange
 from datetime import date
 
-from attendance.models import AttendanceRecord
+from attendance.models import AttendanceRecord, EmployeeWorkSchedule
 from attendance.services import (
     build_monthly_attendance_matrix,
+    get_employee_work_schedule_payload,
     normalize_attendance_record_manual_issues,
     save_logstorm_attendance_result,
 )
@@ -33,7 +34,9 @@ from .serializers import (
     AttendanceRecordCommentSerializer,
     AttendanceRecordSerializer,
     AttendanceRecordUpdateSerializer,
+    EmployeeWorkScheduleSerializer,
     LogStormAttendanceAnalyzeSerializer,
+    default_work_schedule_response,
 )
 
 logger = logging.getLogger(__name__)
@@ -104,15 +107,16 @@ class LogStormAttendanceAnalyzeAPIView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # TODO: когда schedule UI сможет явно хранить рабочие/выходные дни,
-        # формировать schedule/date_overrides здесь из EUSRR-календаря, а не
-        # полагаться на ручной payload или fallback LogStorm.
+        schedule_payload = data.get("schedule")
+        if schedule_payload is None:
+            schedule_payload = get_employee_work_schedule_payload(employee)
+
         try:
             result = analyze_employee_attendance(
                 employee=employee,
                 period_start=data["period_start"],
                 period_end=data["period_end"],
-                schedule=data.get("schedule"),
+                schedule=schedule_payload,
                 client=None,
             )
         except LogStormClientError as exc:
@@ -126,7 +130,7 @@ class LogStormAttendanceAnalyzeAPIView(APIView):
             employee=employee,
             period_start=data["period_start"],
             period_end=data["period_end"],
-            schedule=data.get("schedule"),
+            schedule=schedule_payload,
         )
         save_logstorm_attendance_result(
             employee=employee,
@@ -139,6 +143,41 @@ class LogStormAttendanceAnalyzeAPIView(APIView):
         )
 
         return Response(result)
+
+
+class EmployeeWorkScheduleAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_employee(self, employee_id):
+        _check_employee_access(self.request.user, employee_id)
+        return get_object_or_404(Employee, pk=employee_id)
+
+    def get(self, request, employee_id):
+        employee = self.get_employee(employee_id)
+        try:
+            schedule = employee.work_schedule
+        except EmployeeWorkSchedule.DoesNotExist:
+            schedule = None
+        if schedule is None:
+            return Response(default_work_schedule_response(employee.id))
+        return Response(EmployeeWorkScheduleSerializer(schedule).data)
+
+    def patch(self, request, employee_id):
+        if not request.user.is_staff:
+            raise PermissionDenied("You don't have permission to edit schedules")
+        employee = get_object_or_404(Employee, pk=employee_id)
+        try:
+            schedule = employee.work_schedule
+        except EmployeeWorkSchedule.DoesNotExist:
+            schedule = None
+        serializer = EmployeeWorkScheduleSerializer(
+            schedule,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save(employee=employee, updated_by=request.user)
+        return Response(EmployeeWorkScheduleSerializer(instance).data)
 
 
 class AttendanceRecordListAPIView(ListAPIView):

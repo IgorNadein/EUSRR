@@ -18,6 +18,16 @@ export type LogStormSchedulePayload = {
     date_overrides?: LogStormDateOverridePayload[];
 };
 
+export type EmployeeWorkSchedule = LogStormSchedulePayload & {
+    id: number | null;
+    employee_id: number;
+    is_active: boolean;
+    is_default: boolean;
+    updated_by?: number | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+};
+
 export type LogStormAttendanceAnalyzePayload = {
     employee_id: number;
     period_start: string;
@@ -172,6 +182,16 @@ export function createAttendanceApi(request: RequestFn) {
             request(`/api/v1/attendance/records/${buildQuery(params)}`) as Promise<PaginatedLogStormAttendanceRecords>,
         getMonthlyAttendanceMatrix: (params: MonthlyAttendanceMatrixQuery) =>
             request(`/api/v1/attendance/monthly-matrix/${buildQuery(params)}`) as Promise<MonthlyAttendanceMatrix>,
+        getEmployeeWorkSchedule: (employeeId: number | string) =>
+            request(`/api/v1/attendance/work-schedules/${employeeId}/`) as Promise<EmployeeWorkSchedule>,
+        updateEmployeeWorkSchedule: (
+            employeeId: number | string,
+            data: Partial<LogStormSchedulePayload & { is_active: boolean }>,
+        ) =>
+            request(`/api/v1/attendance/work-schedules/${employeeId}/`, {
+                method: 'PATCH',
+                body: JSON.stringify(data),
+            }) as Promise<EmployeeWorkSchedule>,
         updateAttendanceRecord: (recordId: number, data: LogStormAttendanceRecordUpdatePayload) =>
             request(`/api/v1/attendance/records/${recordId}/`, {
                 method: 'PATCH',

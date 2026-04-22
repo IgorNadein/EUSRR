@@ -27,6 +27,7 @@ import {
   ProfileHeroCard,
   ProfileInfoCard,
   ProfileSkillsCard,
+  ProfileWorkScheduleCard,
   type ProfileContactRow,
   type ProfileInfoItem,
 } from "@/components/users/ProfileSections";
@@ -507,6 +508,12 @@ export default function UserDetailPage() {
             />
 
             <ProfileInfoCard items={infoItems} />
+
+            <ProfileWorkScheduleCard
+              canEdit={Boolean(currentUser?.auth?.is_staff || currentUser?.auth?.is_superuser)}
+              currentAction={latestAction}
+              employeeId={person.id}
+            />
 
             {person.departments?.length ? (
               <ProfileDepartmentsCard departments={person.departments} />

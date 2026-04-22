@@ -4,9 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   AlertTriangle,
   CalendarCheck,
-  CalendarClock,
   ChevronDown,
-  ChevronRight,
   Clock,
   Edit3,
   Loader2,
@@ -42,18 +40,6 @@ const attendancePeriods = [
 ] as const;
 
 type AttendancePeriod = (typeof attendancePeriods)[number]["value"];
-
-const scheduleWeekdays = [
-  { value: "Monday", label: "Пн" },
-  { value: "Tuesday", label: "Вт" },
-  { value: "Wednesday", label: "Ср" },
-  { value: "Thursday", label: "Чт" },
-  { value: "Friday", label: "Пт" },
-  { value: "Saturday", label: "Сб" },
-  { value: "Sunday", label: "Вс" },
-];
-
-const defaultWorkdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 function toDateInputValue(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -441,15 +427,8 @@ export default function EmployeeAttendanceCard({
   const [commentsMap, setCommentsMap] = useState<Record<number, AttendanceRecordComment[]>>({});
   const [commentsLoadingMap, setCommentsLoadingMap] = useState<Record<number, boolean>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
-  const [actionsOpen, setActionsOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [editForm, setEditForm] = useState<AttendanceRecordEditForm | null>(null);
-  const [useCustomSchedule, setUseCustomSchedule] = useState(false);
-  const [scheduleStart, setScheduleStart] = useState("08:00");
-  const [scheduleEnd, setScheduleEnd] = useState("17:00");
-  const [scheduleExpectedHours, setScheduleExpectedHours] = useState("9");
-  const [scheduleWorkdays, setScheduleWorkdays] = useState<string[]>(defaultWorkdays);
 
   const canManageAttendance = Boolean(
     currentUser?.auth?.is_staff || currentUser?.auth?.is_superuser,
@@ -496,15 +475,6 @@ export default function EmployeeAttendanceCard({
         employee_id: employeeId,
         period_start: periodStart,
         period_end: periodEnd,
-        schedule: useCustomSchedule
-          ? {
-            start_time: scheduleStart,
-            end_time: scheduleEnd,
-            expected_hours: Number(scheduleExpectedHours) || 0,
-            workdays: scheduleWorkdays,
-            date_overrides: [],
-          }
-          : undefined,
       });
       const savedRecords = await apiClient.getLogStormAttendanceRecords({
         employee_id: employeeId,
@@ -671,18 +641,11 @@ export default function EmployeeAttendanceCard({
 
     if (!form) {
       setError("Нет сохраненных записей для редактирования");
-      setActionsOpen(false);
       return;
     }
 
     setEditForm(form);
     setEditModalOpen(true);
-    setActionsOpen(false);
-  }
-
-  function openScheduleModal() {
-    setScheduleModalOpen(true);
-    setActionsOpen(false);
   }
 
   function handleEditRecordSelect(recordId: string) {
@@ -741,14 +704,6 @@ export default function EmployeeAttendanceCard({
     }
   }
 
-  function toggleScheduleWorkday(day: string) {
-    setScheduleWorkdays((current) =>
-      current.includes(day)
-        ? current.filter((item) => item !== day)
-        : [...current, day],
-    );
-  }
-
   return (
     <>
       <section className="app-surface rounded-2xl p-4 sm:p-5">
@@ -773,43 +728,15 @@ export default function EmployeeAttendanceCard({
             </button>
 
             {canManageAttendance ? (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setActionsOpen((current) => !current)}
-                  className="app-action-ghost flex h-8 w-8 items-center justify-center rounded-md"
-                  aria-expanded={actionsOpen}
-                  aria-haspopup="menu"
-                  aria-label="Действия посещаемости"
-                  title="Действия посещаемости"
-                >
-                  <ChevronRight
-                    size={15}
-                    className={`transition-transform duration-200 ${actionsOpen ? "rotate-90" : ""}`}
-                  />
-                </button>
-
-                {actionsOpen ? (
-                  <div className="app-menu absolute right-0 top-full z-30 mt-2 w-64 rounded-xl py-1.5">
-                    <button
-                      type="button"
-                      onClick={openEditModal}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
-                    >
-                      <Edit3 size={14} className="app-text-muted" />
-                      Редактировать записи
-                    </button>
-                    <button
-                      type="button"
-                      onClick={openScheduleModal}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
-                    >
-                      <CalendarClock size={14} className="app-text-muted" />
-                      Изменить график анализа
-                    </button>
-                  </div>
-                ) : null}
-              </div>
+              <button
+                type="button"
+                onClick={openEditModal}
+                className="app-action-ghost flex h-9 w-9 items-center justify-center rounded-md"
+                aria-label="Редактировать записи посещаемости"
+                title="Редактировать записи"
+              >
+                <Edit3 size={15} />
+              </button>
             ) : null}
           </div>
         </div>
@@ -1276,92 +1203,6 @@ export default function EmployeeAttendanceCard({
         )}
       </Modal>
 
-      <Modal
-        isOpen={scheduleModalOpen}
-        onClose={() => setScheduleModalOpen(false)}
-        title="График анализа"
-        size="md"
-        footer={(
-          <div className="flex flex-wrap justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setScheduleModalOpen(false)}
-              className="app-action-primary rounded-lg px-4 py-2 text-sm font-semibold"
-            >
-              Готово
-            </button>
-          </div>
-        )}
-      >
-        <div className="space-y-4">
-          <label className="flex items-center gap-3 text-sm font-medium text-[var(--foreground)]">
-            <input
-              type="checkbox"
-              checked={useCustomSchedule}
-              onChange={(event) => setUseCustomSchedule(event.target.checked)}
-              className="h-4 w-4 rounded border-[var(--border-subtle)]"
-            />
-            Использовать ручной график при обновлении
-          </label>
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            <label className="block">
-              <span className="app-card-caption mb-2 block">Начало</span>
-              <input
-                type="time"
-                value={scheduleStart}
-                onChange={(event) => setScheduleStart(event.target.value)}
-                className="app-input w-full rounded-xl px-3 py-2.5 text-sm"
-              />
-            </label>
-            <label className="block">
-              <span className="app-card-caption mb-2 block">Конец</span>
-              <input
-                type="time"
-                value={scheduleEnd}
-                onChange={(event) => setScheduleEnd(event.target.value)}
-                className="app-input w-full rounded-xl px-3 py-2.5 text-sm"
-              />
-            </label>
-            <label className="block">
-              <span className="app-card-caption mb-2 block">Норма</span>
-              <input
-                type="number"
-                step="0.01"
-                value={scheduleExpectedHours}
-                onChange={(event) => setScheduleExpectedHours(event.target.value)}
-                className="app-input w-full rounded-xl px-3 py-2.5 text-sm"
-              />
-            </label>
-          </div>
-
-          <div>
-            <p className="app-card-caption mb-2">Рабочие дни</p>
-            <div className="flex flex-wrap gap-2">
-              {scheduleWeekdays.map((day) => {
-                const active = scheduleWorkdays.includes(day.value);
-                return (
-                  <button
-                    key={day.value}
-                    type="button"
-                    onClick={() => toggleScheduleWorkday(day.value)}
-                    className={active
-                      ? "app-action-primary rounded-lg px-3 py-2 text-xs font-semibold"
-                      : "app-action-secondary rounded-lg px-3 py-2 text-xs font-semibold"
-                    }
-                  >
-                    {day.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <p className="app-text-muted text-xs">
-            Этот график применяется к следующему анализу LogStorm и не заменяет производственный календарь EUSRR.
-          </p>
-        </div>
-      </Modal>
     </>
   );
 }

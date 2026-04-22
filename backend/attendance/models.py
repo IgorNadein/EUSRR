@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from datetime import time
 
 
 class AttendanceAnalysisRun(models.Model):
@@ -49,6 +50,64 @@ class AttendanceAnalysisRun(models.Model):
 
     def __str__(self) -> str:
         return f"{self.employee_id}: {self.period_start} - {self.period_end}"
+
+
+class EmployeeWorkSchedule(models.Model):
+    DEFAULT_WORKDAYS = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+    ]
+
+    employee = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="work_schedule",
+        verbose_name="Сотрудник",
+    )
+    start_time = models.TimeField("Начало рабочего дня", default=time(8, 0))
+    end_time = models.TimeField("Конец рабочего дня", default=time(17, 0))
+    expected_hours = models.FloatField("Норма часов", default=9)
+    workdays = models.JSONField("Рабочие дни", default=list, blank=True)
+    date_overrides = models.JSONField(
+        "Календарные исключения",
+        default=list,
+        blank=True,
+    )
+    is_active = models.BooleanField("Использовать в анализе", default=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_work_schedules",
+        verbose_name="Изменил",
+    )
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+
+    class Meta:
+        verbose_name = "График работы сотрудника"
+        verbose_name_plural = "Графики работы сотрудников"
+
+    def save(self, *args, **kwargs):
+        if not self.workdays:
+            self.workdays = list(self.DEFAULT_WORKDAYS)
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.employee_id}: {self.start_time} - {self.end_time}"
+
+    def to_logstorm_payload(self) -> dict:
+        return {
+            "start_time": self.start_time.strftime("%H:%M"),
+            "end_time": self.end_time.strftime("%H:%M"),
+            "expected_hours": self.expected_hours,
+            "workdays": list(self.workdays or self.DEFAULT_WORKDAYS),
+            "date_overrides": list(self.date_overrides or []),
+        }
 
 
 class AttendanceRecord(models.Model):
