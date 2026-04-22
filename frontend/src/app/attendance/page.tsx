@@ -23,7 +23,7 @@ import type {
   MonthlyAttendanceMatrixCell,
   MonthlyAttendanceMatrixEmployee,
   MonthlyAttendanceMatrixRow,
-  LogStormSchedulePayload,
+  AttendanceSchedulePayload,
 } from "@/lib/api/attendance";
 import type { User } from "@/types/api";
 
@@ -339,7 +339,7 @@ export default function AttendancePage() {
     }
   }
 
-  function getSchedulePayload(): LogStormSchedulePayload | undefined {
+  function getSchedulePayload(): AttendanceSchedulePayload | undefined {
     if (!useManualSchedule) return undefined;
     return {
       start_time: scheduleStart,
@@ -365,7 +365,7 @@ export default function AttendancePage() {
     return true;
   }
 
-  async function loadStatistics(options?: { refreshFromLogStorm?: boolean }) {
+  async function loadStatistics(options?: { refreshFromAnalyzer?: boolean }) {
     setError(null);
     setMatrices([]);
     setSelectedCell(null);
@@ -378,8 +378,8 @@ export default function AttendancePage() {
       const employeeIds = selectedEmployees.map((employee) => employee.id).join(",");
 
       for (const employee of selectedEmployees) {
-        if (options?.refreshFromLogStorm) {
-          await apiClient.analyzeLogStormAttendance({
+        if (options?.refreshFromAnalyzer) {
+          await apiClient.analyzeAttendance({
             employee_id: employee.id,
             period_start: periodStart,
             period_end: periodEnd,
@@ -424,7 +424,7 @@ export default function AttendancePage() {
                 Посещаемость
               </h1>
               <p className="app-text-muted mt-1 text-xs sm:text-sm">
-                Выбор сотрудников и периода для статистики LogStorm
+                Выбор сотрудников и периода для статистики посещаемости
               </p>
             </div>
             <ChevronDown
@@ -677,7 +677,7 @@ export default function AttendancePage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => void loadStatistics({ refreshFromLogStorm: true })}
+                    onClick={() => void loadStatistics({ refreshFromAnalyzer: true })}
                     disabled={loadingStats || loadingEmployees}
                     className="app-action-primary inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                   >

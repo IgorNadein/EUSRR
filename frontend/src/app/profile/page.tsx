@@ -173,12 +173,6 @@ export default function ProfilePage() {
 
         <ProfileInfoCard items={infoItems} />
 
-        <ProfileWorkScheduleCard
-          canEdit={Boolean(user.auth?.is_staff || user.auth?.is_superuser)}
-          currentAction={currentAction}
-          employeeId={user.id}
-        />
-
         {user.departments?.length ? (
           <ProfileDepartmentsCard departments={user.departments} />
         ) : null}
@@ -193,6 +187,12 @@ export default function ProfilePage() {
           showCountLabel={false}
           truncateCommentLength={120}
           expandedCommentLength={240}
+        />
+
+        <ProfileWorkScheduleCard
+          canEdit={Boolean(user.auth?.is_staff || user.auth?.is_superuser)}
+          currentAction={currentAction}
+          employeeId={user.id}
         />
 
         <EmployeeAttendanceCard employeeActions={user.actions} employeeId={user.id} />
