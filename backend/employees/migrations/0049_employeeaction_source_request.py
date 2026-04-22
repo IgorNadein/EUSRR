@@ -59,6 +59,7 @@ def noop_reverse(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
+    atomic = False
 
     dependencies = [
         ("employees", "0048_alter_employeeaction_action_and_more"),
