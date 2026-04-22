@@ -35,7 +35,6 @@ import type {
   MonthlyAttendanceMatrixCell,
   MonthlyAttendanceMatrixEmployee,
   MonthlyAttendanceMatrixRow,
-  AttendanceSchedulePayload,
   AttendanceRecord,
   AttendanceAutoSyncSettings,
 } from "@/lib/api/attendance";
@@ -597,17 +596,6 @@ export default function AttendancePage() {
     }
   }
 
-  function getSchedulePayload(): AttendanceSchedulePayload | undefined {
-    return {
-      start_time: scheduleStart,
-      end_time: scheduleEnd,
-      expected_hours: Number(expectedHours),
-      workdays,
-      // TODO: Send date_overrides from EUSRR when schedule UI can store working/weekend days.
-      date_overrides: [],
-    };
-  }
-
   async function saveStandardSchedule() {
     const hours = Number(expectedHours);
     if (!scheduleStart || !scheduleEnd || !Number.isFinite(hours) || hours <= 0 || hours > 24) {
@@ -746,7 +734,6 @@ export default function AttendancePage() {
 
     try {
       setLoadingStats(true);
-      const schedule = getSchedulePayload();
       const employeeIds = selectedEmployees.map((employee) => employee.id).join(",");
 
       for (const employee of selectedEmployees) {
@@ -755,7 +742,6 @@ export default function AttendancePage() {
             employee_id: employee.id,
             period_start: periodStart,
             period_end: periodEnd,
-            schedule,
           });
         }
       }
