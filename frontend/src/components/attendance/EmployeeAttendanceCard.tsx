@@ -276,13 +276,15 @@ function issueLabels(record: LogStormAttendanceRecord, personnelMeta?: Personnel
     if (record.is_late) result.push("late");
     if (record.is_early_leave) result.push("early_leave");
     if (record.is_underwork) result.push("underwork");
+    if (record.is_overtime) result.push("overtime");
   }
-  if (record.is_overtime) result.push("overtime");
   return Array.from(new Set(result));
 }
 
 function getRecordTone(record: LogStormAttendanceRecord, personnelMeta?: PersonnelDayMeta | null) {
-  if (personnelMeta?.nonWorking && hasWorked(record)) {
+  const nonWorking = personnelMeta?.nonWorking || record.effective_is_workday === false || record.is_workday === false;
+
+  if (nonWorking && hasWorked(record)) {
     return {
       dotClassName: "bg-sky-500",
       pillClassName: "app-selected",
@@ -300,15 +302,7 @@ function getRecordTone(record: LogStormAttendanceRecord, personnelMeta?: Personn
     };
   }
 
-  if (record.is_workday === false && record.is_overtime) {
-    return {
-      dotClassName: "bg-sky-500",
-      pillClassName: "app-selected",
-      label: "Работа вне графика",
-    };
-  }
-
-  if (record.is_workday === false) {
+  if (nonWorking) {
     return {
       dotClassName: "bg-slate-400",
       pillClassName: "app-badge",
