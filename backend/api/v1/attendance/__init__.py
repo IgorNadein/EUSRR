@@ -1,0 +1,1 @@
+"""Attendance API integration endpoints."""

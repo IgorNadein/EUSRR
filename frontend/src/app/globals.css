@@ -310,10 +310,16 @@ html[data-bs-theme="dark"] .app-input::-webkit-calendar-picker-indicator {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
   border-radius: 9999px;
   border: 1px solid var(--border-subtle);
   background: var(--surface-secondary);
   color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+  text-align: center;
+  white-space: normal;
 }
 
 .app-badge-accent {
@@ -333,14 +339,18 @@ html[data-bs-theme="dark"] .app-input::-webkit-calendar-picker-indicator {
   align-items: center;
   justify-content: center;
   width: fit-content;
+  max-width: 100%;
+  min-width: 0;
   min-height: 1.75rem;
-  flex-shrink: 0;
+  flex-shrink: 1;
   border-radius: 9999px;
   padding: 0.25rem 0.75rem;
   font-size: 0.75rem;
   font-weight: 500;
-  line-height: 1;
-  white-space: nowrap;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  text-align: center;
+  white-space: normal;
 }
 
 .app-avatar-frame {
@@ -453,6 +463,11 @@ html[data-bs-theme="dark"] .app-input::-webkit-calendar-picker-indicator {
   border: 1px solid transparent;
   background: var(--surface-secondary);
   color: var(--foreground);
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: center;
+  white-space: normal;
 }
 
 .app-pill:hover {
@@ -463,6 +478,11 @@ html[data-bs-theme="dark"] .app-input::-webkit-calendar-picker-indicator {
   border-color: color-mix(in srgb, var(--accent-primary) 22%, var(--border-subtle));
   background: color-mix(in srgb, var(--accent-primary) 12%, var(--surface-primary));
   color: var(--foreground);
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: center;
+  white-space: normal;
 }
 
 .app-pill-count {

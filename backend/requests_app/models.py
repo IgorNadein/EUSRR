@@ -95,9 +95,7 @@ class Request(models.Model):
         verbose_name=_("Отделы-получатели"),
         blank=True,
         related_name="received_requests",
-        help_text=_(
-            "Заявка будет видна всем уполномоченным сотрудникам этих отделов"
-        ),
+        help_text=_("Заявка будет видна всем уполномоченным сотрудникам этих отделов"),
     )
 
     recipients = models.ManyToManyField(
@@ -113,9 +111,7 @@ class Request(models.Model):
         verbose_name=_("Копия (CC)"),
         blank=True,
         related_name="requests_cc",
-        help_text=_(
-            "Сотрудники в копии (уведомления без обязанности рассмотрения)"
-        ),
+        help_text=_("Сотрудники в копии (уведомления без обязанности рассмотрения)"),
     )
 
     sent_to_all_department = models.BooleanField(
@@ -153,9 +149,7 @@ class Request(models.Model):
 
     created_at = models.DateTimeField(_("Создано"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Обновлено"), auto_now=True)
-    decided_at = models.DateTimeField(
-        _("Решение принято"), null=True, blank=True
-    )
+    decided_at = models.DateTimeField(_("Решение принято"), null=True, blank=True)
 
     class Meta:
         permissions = [
@@ -203,9 +197,11 @@ class Request(models.Model):
         ]
 
     def clean(self):
-        if self.type in {RequestType.VACATION, RequestType.SICK_LEAVE} and not (
-            self.date_from and self.date_to
-        ):
+        if self.type in {
+            RequestType.VACATION,
+            RequestType.SICK_LEAVE,
+            RequestType.DAY_OFF,
+        } and not (self.date_from and self.date_to):
             raise ValidationError(
                 _("Для выбранного типа укажите даты начала и окончания.")
             )
@@ -213,14 +209,10 @@ class Request(models.Model):
             self.type in {RequestType.TRANSFER, RequestType.DISMISSAL}
             and not self.date_from
         ):
-            raise ValidationError(
-                _("Для перевода/увольнения укажите дату начала.")
-            )
+            raise ValidationError(_("Для перевода/увольнения укажите дату начала."))
 
         if self.approver_id and self.approver_id == self.employee_id:
-            raise ValidationError(
-                _("Согласующий не может совпадать с автором заявки.")
-            )
+            raise ValidationError(_("Согласующий не может совпадать с автором заявки."))
 
     @property
     def display_title(self) -> str:
@@ -281,26 +273,20 @@ class Request(models.Model):
         self.status = RequestStatus.APPROVED
         self.approver = by_user
         self.decided_at = timezone.now()
-        self.save(
-            update_fields=["status", "approver", "decided_at", "updated_at"]
-        )
+        self.save(update_fields=["status", "approver", "decided_at", "updated_at"])
 
     def reject(self, by_user):
         self.status = RequestStatus.REJECTED
         self.approver = by_user
         self.decided_at = timezone.now()
-        self.save(
-            update_fields=["status", "approver", "decided_at", "updated_at"]
-        )
+        self.save(update_fields=["status", "approver", "decided_at", "updated_at"])
 
     def cancel(self):
         self.status = RequestStatus.CANCELLED
         if self.approver_id is not None:
             self.approver = None
         self.decided_at = timezone.now()
-        self.save(
-            update_fields=["status", "approver", "decided_at", "updated_at"]
-        )
+        self.save(update_fields=["status", "approver", "decided_at", "updated_at"])
 
     def save(self, *args, **kwargs) -> None:
         """Синхронизация decided_at/approver с текущим статусом.
@@ -323,6 +309,6 @@ class Request(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.get_type_display()} — {self.employee} ({
-            self.get_status_display()
-        })"
+        return (
+            f"{self.get_type_display()} — {self.employee} ({self.get_status_display()})"
+        )

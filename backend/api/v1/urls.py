@@ -29,6 +29,14 @@ from .employees.views import (
 from .feed.views import PostViewSet
 from .requests_app.views import RequestViewSet
 from .search.views import search_api_view
+from .attendance.views import (
+    AttendanceMonthlyMatrixAPIView,
+    AttendanceRecordCommentDetailAPIView,
+    AttendanceRecordCommentsAPIView,
+    AttendanceRecordDetailAPIView,
+    AttendanceRecordListAPIView,
+    LogStormAttendanceAnalyzeAPIView,
+)
 
 app_name = "v1"
 
@@ -88,6 +96,36 @@ router.register(r"communications/polls", PollViewSet, basename="polls")
 
 urlpatterns = [
     path("auth/", include("api.auth.urls")),
+    path(
+        "attendance/logstorm/analyze/",
+        LogStormAttendanceAnalyzeAPIView.as_view(),
+        name="logstorm-attendance-analyze",
+    ),
+    path(
+        "attendance/records/",
+        AttendanceRecordListAPIView.as_view(),
+        name="attendance-records",
+    ),
+    path(
+        "attendance/monthly-matrix/",
+        AttendanceMonthlyMatrixAPIView.as_view(),
+        name="attendance-monthly-matrix",
+    ),
+    path(
+        "attendance/records/<int:record_id>/",
+        AttendanceRecordDetailAPIView.as_view(),
+        name="attendance-record-detail",
+    ),
+    path(
+        "attendance/records/<int:record_id>/comments/",
+        AttendanceRecordCommentsAPIView.as_view(),
+        name="attendance-record-comments",
+    ),
+    path(
+        "attendance/records/<int:record_id>/comments/<int:comment_id>/",
+        AttendanceRecordCommentDetailAPIView.as_view(),
+        name="attendance-record-comment-detail",
+    ),
     path("directory/", include("api.v1.directory.urls")),
     # Notifications API (из самого модуля notifications)
     path("notifications/", include("notifications.api.urls")),

@@ -4,6 +4,7 @@ import Image from "next/image";
 import { Mail, MessageCircle, Phone, RefreshCw } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
+import EmployeeAttendanceCard from "@/components/attendance/EmployeeAttendanceCard";
 import EmployeeActionsTimeline from "@/components/users/EmployeeActionsTimeline";
 import {
   ProfileContactsPanel,
@@ -186,6 +187,8 @@ export default function ProfilePage() {
           truncateCommentLength={120}
           expandedCommentLength={240}
         />
+
+        <EmployeeAttendanceCard employeeActions={user.actions} employeeId={user.id} />
       </div>
     </AppShell>
   );

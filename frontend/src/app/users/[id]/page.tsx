@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "../../../components/AppShell";
+import EmployeeAttendanceCard from "@/components/attendance/EmployeeAttendanceCard";
 import ChangeUserPositionModal from "@/components/users/ChangeUserPositionModal";
 import EditUserProfileModal from "@/components/users/EditUserProfileModal";
 import EmployeeActionModal from "@/components/users/EmployeeActionModal";
@@ -523,6 +524,8 @@ export default function UserDetailPage() {
               truncateCommentLength={120}
               expandedCommentLength={240}
             />
+
+            <EmployeeAttendanceCard employeeActions={person.actions} employeeId={person.id} />
           </>
         ) : null}
       </div>
