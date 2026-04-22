@@ -35,6 +35,7 @@ from .attendance.views import (
     AttendanceRecordCommentsAPIView,
     AttendanceRecordDetailAPIView,
     AttendanceRecordListAPIView,
+    EmployeeWorkScheduleAPIView,
     LogStormAttendanceAnalyzeAPIView,
 )
 
@@ -110,6 +111,11 @@ urlpatterns = [
         "attendance/monthly-matrix/",
         AttendanceMonthlyMatrixAPIView.as_view(),
         name="attendance-monthly-matrix",
+    ),
+    path(
+        "attendance/work-schedules/<int:employee_id>/",
+        EmployeeWorkScheduleAPIView.as_view(),
+        name="attendance-work-schedule",
     ),
     path(
         "attendance/records/<int:record_id>/",

@@ -1,6 +1,11 @@
 from rest_framework import serializers
 
-from attendance.models import AttendanceAnalysisRun, AttendanceRecord
+from attendance.models import (
+    AttendanceAnalysisRun,
+    AttendanceRecord,
+    EmployeeWorkSchedule,
+)
+from attendance.services import get_default_work_schedule_payload
 from api.v1.employees.serializers import EmployeeBriefSerializer
 
 
@@ -36,6 +41,71 @@ class LogStormAttendanceAnalyzeSerializer(serializers.Serializer):
                 "period_start must be less than or equal to period_end"
             )
         return attrs
+
+
+class EmployeeWorkScheduleSerializer(serializers.ModelSerializer):
+    employee_id = serializers.IntegerField(source="employee.id", read_only=True)
+    is_default = serializers.BooleanField(read_only=True, default=False)
+
+    class Meta:
+        model = EmployeeWorkSchedule
+        fields = (
+            "id",
+            "employee_id",
+            "start_time",
+            "end_time",
+            "expected_hours",
+            "workdays",
+            "date_overrides",
+            "is_active",
+            "is_default",
+            "updated_by",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "employee_id",
+            "is_default",
+            "updated_by",
+            "created_at",
+            "updated_at",
+        )
+
+    def validate_workdays(self, value):
+        allowed = set(EmployeeWorkSchedule.DEFAULT_WORKDAYS) | {"Saturday", "Sunday"}
+        if not isinstance(value, list):
+            raise serializers.ValidationError("workdays must be a list")
+        normalized = []
+        for item in value:
+            if item not in allowed:
+                raise serializers.ValidationError(f"Unknown weekday: {item}")
+            if item not in normalized:
+                normalized.append(item)
+        return normalized
+
+    def validate_expected_hours(self, value):
+        if value <= 0 or value > 24:
+            raise serializers.ValidationError("expected_hours must be between 0 and 24")
+        return value
+
+
+def default_work_schedule_response(employee_id: int) -> dict:
+    payload = get_default_work_schedule_payload()
+    return {
+        "id": None,
+        "employee_id": employee_id,
+        "start_time": payload["start_time"],
+        "end_time": payload["end_time"],
+        "expected_hours": payload["expected_hours"],
+        "workdays": payload["workdays"],
+        "date_overrides": payload["date_overrides"],
+        "is_active": False,
+        "is_default": True,
+        "updated_by": None,
+        "created_at": None,
+        "updated_at": None,
+    }
 
 
 class AttendanceMonthlyMatrixQuerySerializer(serializers.Serializer):

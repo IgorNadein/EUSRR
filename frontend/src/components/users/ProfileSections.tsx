@@ -1,9 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
-import { Crown, Link2, Plus, X } from "lucide-react";
-import type { EmployeeDepartment, Skill } from "@/types/api";
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  CalendarClock,
+  Check,
+  Clock3,
+  Crown,
+  Link2,
+  Loader2,
+  Pencil,
+  Plus,
+  Timer,
+  X,
+} from "lucide-react";
+import { apiClient } from "@/lib/api";
+import type { EmployeeWorkSchedule } from "@/lib/api/attendance";
+import type { EmployeeAction, EmployeeDepartment, Skill } from "@/types/api";
+import { getEmployeeActionTone } from "@/lib/users/userDetailUtils";
 
 export type ProfileContactRow = {
   key: string;
@@ -19,6 +33,47 @@ export type ProfileInfoItem = {
   label: string;
   value: string;
 };
+
+const workScheduleDays = [
+  { value: "Monday", label: "Пн" },
+  { value: "Tuesday", label: "Вт" },
+  { value: "Wednesday", label: "Ср" },
+  { value: "Thursday", label: "Чт" },
+  { value: "Friday", label: "Пт" },
+  { value: "Saturday", label: "Сб" },
+  { value: "Sunday", label: "Вс" },
+];
+
+const defaultWorkdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+function compactDays(days: string[]) {
+  const labels = workScheduleDays
+    .filter((day) => days.includes(day.value))
+    .map((day) => day.label);
+  return labels.length ? labels.join(", ") : "Не указаны";
+}
+
+function normalizeScheduleTime(value?: string) {
+  if (!value) return "";
+  return value.slice(0, 5);
+}
+
+function defaultSchedule(employeeId: number): EmployeeWorkSchedule {
+  return {
+    id: null,
+    employee_id: employeeId,
+    start_time: "08:00",
+    end_time: "17:00",
+    expected_hours: 9,
+    workdays: [...defaultWorkdays],
+    date_overrides: [],
+    is_active: false,
+    is_default: true,
+    updated_by: null,
+    created_at: null,
+    updated_at: null,
+  };
+}
 
 function SectionTitle({
   title,
@@ -187,6 +242,307 @@ export function ProfileInfoCard({
             </div>
           ))}
         </div>
+      </div>
+    </section>
+  );
+}
+
+export function ProfileWorkScheduleCard({
+  title = "График работы",
+  employeeId,
+  canEdit = false,
+  currentAction,
+}: {
+  title?: string;
+  employeeId: number;
+  canEdit?: boolean;
+  currentAction?: EmployeeAction | null;
+}) {
+  const [schedule, setSchedule] = useState<EmployeeWorkSchedule>(() =>
+    defaultSchedule(employeeId),
+  );
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    start_time: "08:00",
+    end_time: "17:00",
+    expected_hours: "9",
+    workdays: [...defaultWorkdays],
+  });
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadSchedule() {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await apiClient.getEmployeeWorkSchedule(employeeId);
+        if (!mounted) return;
+        setSchedule(data);
+        setForm({
+          start_time: normalizeScheduleTime(data.start_time) || "08:00",
+          end_time: normalizeScheduleTime(data.end_time) || "17:00",
+          expected_hours: String(data.expected_hours ?? 9),
+          workdays: data.workdays?.length ? [...data.workdays] : [...defaultWorkdays],
+        });
+      } catch (loadError) {
+        if (!mounted) return;
+        setError(String((loadError as Error)?.message || "Не удалось загрузить график"));
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadSchedule();
+
+    return () => {
+      mounted = false;
+    };
+  }, [employeeId]);
+
+  const startTime = normalizeScheduleTime(schedule.start_time) || "08:00";
+  const endTime = normalizeScheduleTime(schedule.end_time) || "17:00";
+  const expectedHours = Number(schedule.expected_hours || 0) || 9;
+  const workdays = schedule.workdays?.length ? schedule.workdays : defaultWorkdays;
+  const weekendDays = workScheduleDays
+    .map((day) => day.value)
+    .filter((day) => !workdays.includes(day));
+  const actionTone = currentAction
+    ? getEmployeeActionTone(currentAction.action)
+    : null;
+
+  const toggleFormWorkday = (day: string) => {
+    setForm((current) => ({
+      ...current,
+      workdays: current.workdays.includes(day)
+        ? current.workdays.filter((item) => item !== day)
+        : [...current.workdays, day],
+    }));
+  };
+
+  const saveSchedule = async () => {
+    if (saving) return;
+    try {
+      setSaving(true);
+      setError(null);
+      const updated = await apiClient.updateEmployeeWorkSchedule(employeeId, {
+        start_time: form.start_time,
+        end_time: form.end_time,
+        expected_hours: Number(form.expected_hours) || 0,
+        workdays: form.workdays,
+        date_overrides: schedule.date_overrides || [],
+        is_active: true,
+      });
+      setSchedule(updated);
+      setEditing(false);
+    } catch (saveError) {
+      setError(String((saveError as Error)?.message || "Не удалось сохранить график"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="app-surface rounded-2xl p-5">
+      <SectionTitle
+        title={title}
+        action={(
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {schedule.is_default ? (
+              <span className="app-status-pill app-feedback-warning">
+                По умолчанию
+              </span>
+            ) : currentAction ? (
+              <span className={`app-status-pill ${actionTone?.badgeClass || ""}`}>
+                {currentAction.action_display || currentAction.action}
+              </span>
+            ) : (
+              <span className="app-status-pill app-feedback-success">Активен</span>
+            )}
+            {canEdit ? (
+              <button
+                type="button"
+                onClick={() => setEditing((current) => !current)}
+                className="app-action-ghost flex h-8 w-8 items-center justify-center rounded-md"
+                title="Редактировать график"
+                aria-label="Редактировать график"
+              >
+                {editing ? <X size={15} /> : <Pencil size={15} />}
+              </button>
+            ) : null}
+          </div>
+        )}
+      />
+
+      <div className="app-surface-muted rounded-2xl p-4">
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+            <Loader2 size={16} className="animate-spin" />
+            Загружаем график...
+          </div>
+        ) : null}
+
+        {!loading && editing ? (
+          <div className="mb-4 space-y-3 rounded-xl border border-[var(--border-subtle)] p-3">
+            <div className="grid gap-2 sm:grid-cols-3">
+              <label className="block">
+                <span className="app-card-caption mb-1 block">Начало</span>
+                <input
+                  type="time"
+                  value={form.start_time}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, start_time: event.target.value }))
+                  }
+                  className="app-input w-full rounded-lg px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="app-card-caption mb-1 block">Конец</span>
+                <input
+                  type="time"
+                  value={form.end_time}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, end_time: event.target.value }))
+                  }
+                  className="app-input w-full rounded-lg px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="app-card-caption mb-1 block">Часов</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="24"
+                  step="0.25"
+                  value={form.expected_hours}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      expected_hours: event.target.value,
+                    }))
+                  }
+                  className="app-input w-full rounded-lg px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {workScheduleDays.map((day) => {
+                const active = form.workdays.includes(day.value);
+                return (
+                  <button
+                    key={day.value}
+                    type="button"
+                    onClick={() => toggleFormWorkday(day.value)}
+                    className={active
+                      ? "app-action-primary rounded-lg px-3 py-2 text-xs font-medium"
+                      : "app-action-secondary rounded-lg px-3 py-2 text-xs font-medium"
+                    }
+                  >
+                    {day.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                className="app-action-secondary rounded-xl px-4 py-2 text-sm font-medium"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveSchedule()}
+                disabled={saving}
+                className="app-action-primary inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-50"
+              >
+                {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+                Сохранить
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex items-start gap-3">
+            <span className="app-badge flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+              <Clock3 size={18} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[var(--foreground)]">
+                {startTime} — {endTime}
+              </p>
+              <p className="app-text-muted mt-1 text-sm">Рабочее время</p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <span className="app-badge flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+              <Timer size={18} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[var(--foreground)]">
+                {expectedHours.toLocaleString("ru-RU")} ч.
+              </p>
+              <p className="app-text-muted mt-1 text-sm">Норма в день</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {workScheduleDays.map((day) => {
+            const active = workdays.includes(day.value);
+            return (
+              <span
+                key={day.value}
+                className={[
+                  "inline-flex h-9 w-9 items-center justify-center rounded-xl border text-xs font-semibold",
+                  active
+                    ? "border-[color:color-mix(in_srgb,var(--accent-primary)_45%,var(--border-subtle))] bg-[color:color-mix(in_srgb,var(--accent-primary)_16%,transparent)] text-[var(--accent-primary)]"
+                    : "border-[var(--border-subtle)] bg-[var(--surface-secondary)] text-[var(--muted-foreground)]",
+                ].join(" ")}
+              >
+                {day.label}
+              </span>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+          <div className="rounded-xl border border-[var(--border-subtle)] px-3 py-2">
+            <p className="app-card-caption mb-1">Рабочие дни</p>
+            <p className="app-text-wrap text-[var(--foreground)]">
+              {compactDays(workdays)}
+            </p>
+          </div>
+          <div className="rounded-xl border border-[var(--border-subtle)] px-3 py-2">
+            <p className="app-card-caption mb-1">Выходные</p>
+            <p className="app-text-wrap text-[var(--foreground)]">
+              {compactDays(weekendDays)}
+            </p>
+          </div>
+        </div>
+
+        {currentAction ? (
+          <div className="mt-3 flex items-start gap-2 rounded-xl border border-[var(--border-subtle)] px-3 py-2 text-sm">
+            <CalendarClock size={16} className="mt-0.5 shrink-0 text-[var(--muted-foreground)]" />
+            <p className="app-text-muted app-text-wrap">
+              Кадровое состояние с {currentAction.date_display || currentAction.date}
+            </p>
+          </div>
+        ) : null}
+
+        {error ? (
+          <p className="mt-3 text-sm text-red-400">{error}</p>
+        ) : null}
       </div>
     </section>
   );
