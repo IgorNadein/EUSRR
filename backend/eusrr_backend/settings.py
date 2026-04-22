@@ -682,6 +682,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "employees.tasks.process_ldap_queue",
         "schedule": 60.0,  # Каждую минуту проверяем очередь LDAP retry
     },
+    "attendance-auto-sync-dispatcher": {
+        "task": "attendance.tasks.dispatch_attendance_auto_sync",
+        "schedule": 60.0,
+    },
 }
 
 # Опции по умолчанию для всех задач

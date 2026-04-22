@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CalendarCheck,
@@ -8,22 +8,36 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Download,
   Loader2,
+  MessageSquare,
   RefreshCw,
+  Save,
   Search,
 } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
+import {
+  AttendanceDayEventsModal,
+  type AttendanceDayEventsPreview,
+} from "@/components/attendance/AttendanceDayEventsModal";
+import {
+  AttendanceRecordCommentsModal,
+  type AttendanceRecordCommentsPreview,
+} from "@/components/attendance/AttendanceRecordCommentsModal";
 import { Modal } from "@/components/ui";
+import { useUser } from "@/contexts/UserContext";
 import { apiClient } from "@/lib/api";
-import { loadAllPages, displayUserName } from "@/lib/shared";
+import { loadAllPages, displayUserName, formatDateTime } from "@/lib/shared";
 import { resolveMediaUrl } from "@/lib/url";
 import type {
   MonthlyAttendanceMatrix,
   MonthlyAttendanceMatrixCell,
   MonthlyAttendanceMatrixEmployee,
   MonthlyAttendanceMatrixRow,
-  LogStormSchedulePayload,
+  AttendanceSchedulePayload,
+  AttendanceRecord,
+  AttendanceAutoSyncSettings,
 } from "@/lib/api/attendance";
 import type { User } from "@/types/api";
 
@@ -51,11 +65,29 @@ const periodPresets: Array<{ value: AttendancePeriodPreset; label: string }> = [
   { value: "custom", label: "Свой период" },
 ];
 
+const autoSyncFrequencyOptions = [
+  { value: 5, label: "5 минут" },
+  { value: 15, label: "15 минут" },
+  { value: 30, label: "30 минут" },
+  { value: 60, label: "1 час" },
+  { value: 1440, label: "1 сутки" },
+];
+
+const autoSyncLookbackOptions = [
+  { value: 1, label: "1 день" },
+  { value: 3, label: "3 дня" },
+  { value: 7, label: "7 дней" },
+];
+
 function toDateInputValue(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function toTimeInputValue(value: string | undefined) {
+  return (value || "").slice(0, 5);
 }
 
 function getPeriodStart(preset: Exclude<AttendancePeriodPreset, "custom">) {
@@ -89,6 +121,15 @@ function formatHours(value: unknown) {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return String((error as Error)?.message || fallback);
+}
+
+function formatOptionalDateTime(value?: string | null) {
+  return value ? formatDateTime(value) : "-";
+}
+
+function autoSyncStatusText(settings: AttendanceAutoSyncSettings | null) {
+  if (!settings) return "Не загружено";
+  return settings.last_status_label || settings.last_status || "Ожидание";
 }
 
 function monthKeyFromDate(value: string) {
@@ -125,6 +166,11 @@ function matrixCellTone(status: string) {
   return "bg-transparent text-[var(--muted-foreground)] hover:bg-[var(--surface-secondary)]";
 }
 
+function matrixCellSourceTone(cell: MonthlyAttendanceMatrixCell) {
+  if (!cell.is_manually_edited) return "";
+  return "ring-1 ring-inset ring-violet-400/70 shadow-[inset_0_0_0_9999px_rgba(139,92,246,0.10)]";
+}
+
 function matrixStatusLabel(status: string) {
   const labels: Record<string, string> = {
     empty: "Нет записи",
@@ -157,6 +203,7 @@ function formatAttendanceIssueLabel(label: string) {
 }
 
 function matrixCellIssueLabels(cell: MonthlyAttendanceMatrixCell) {
+  if (cell.status === "absent") return ["absence"];
   const result = [...cell.issues.map(String)];
   if (cell.effective_is_workday !== false && cell.is_workday !== false) {
     if (cell.is_absent) result.push("absence");
@@ -167,6 +214,90 @@ function matrixCellIssueLabels(cell: MonthlyAttendanceMatrixCell) {
   if (cell.is_overtime) result.push("overtime");
   return Array.from(new Set(result));
 }
+
+function attendanceRecordIssueLabels(record: AttendanceRecord) {
+  const result = [
+    ...(record.employee_issues || []),
+    ...(record.technical_issues || []),
+  ].map(String);
+  if (record.is_absent) result.push("absence");
+  if (record.is_late) result.push("late");
+  if (record.is_early_leave) result.push("early_leave");
+  if (record.is_underwork) result.push("underwork");
+  if (record.is_overtime) result.push("overtime");
+  return Array.from(new Set(result)).map(formatAttendanceIssueLabel);
+}
+
+function matrixCellDisplay(cell: MonthlyAttendanceMatrixCell) {
+  if (cell.display_text) return cell.display_text;
+  if (cell.short_label) return cell.short_label;
+  if (cell.status === "empty") return "";
+  return `${formatTime(cell.arrival_time)}/${formatTime(cell.departure_time)}`;
+}
+
+function attendanceRecordStatusLabel(record: AttendanceRecord) {
+  if (record.technical_issues?.length) return "Техсбой";
+  if (record.personnel_status_label) return record.personnel_status_label;
+  if (record.is_absent) return "Отсутствие";
+  if (record.is_underwork) return "Недоработка";
+  if (record.is_late) return "Опоздание";
+  if (record.is_overtime) return "Переработка";
+  if (record.effective_is_workday === false || record.is_workday === false) {
+    return "Нерабочий";
+  }
+  return "Норма";
+}
+
+function attendanceRecordDisplay(record: AttendanceRecord) {
+  const arrival = formatTime(record.arrival_time);
+  const departure = formatTime(record.departure_time);
+  if (arrival === "-" && departure === "-") {
+    if (record.is_absent) return "Отсутствие";
+    return record.non_working_reason || "Нет проходов";
+  }
+  return `${arrival}/${departure} · ${formatHours(record.work_hours)}ч`;
+}
+
+function attendanceRecordDetails(record: AttendanceRecord) {
+  const lines = [
+    `Статус: ${attendanceRecordStatusLabel(record)}`,
+    `Приход: ${formatTime(record.arrival_time)}`,
+    `Уход: ${formatTime(record.departure_time)}`,
+    `Часы: ${formatHours(record.work_hours)} / ${formatHours(record.expected_hours)}`,
+  ];
+  if (record.late_minutes) lines.push(`Опоздание: ${record.late_minutes} мин.`);
+  if (record.early_leave_minutes) {
+    lines.push(`Ранний уход: ${record.early_leave_minutes} мин.`);
+  }
+  if (record.underwork_hours) {
+    lines.push(`Недоработка: ${formatHours(record.underwork_hours)} ч.`);
+  }
+  if (record.overtime_hours) {
+    lines.push(`Переработка: ${formatHours(record.overtime_hours)} ч.`);
+  }
+  if (record.non_working_reason) {
+    lines.push(`Причина: ${record.non_working_reason}`);
+  }
+  if (record.comments_count) lines.push(`Комментарии: ${record.comments_count}`);
+  return lines;
+}
+
+function weekdayLabelFromDate(value?: string) {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "";
+  return DAYS_RU_FROM_INDEX[date.getDay()] || "";
+}
+
+const DAYS_RU_FROM_INDEX: Record<number, string> = {
+  0: "Вс",
+  1: "Пн",
+  2: "Вт",
+  3: "Ср",
+  4: "Чт",
+  5: "Пт",
+  6: "Сб",
+};
 
 function calculateMatrixEmployeesPerPage(width: number) {
   const availableWidth = Math.max(
@@ -180,21 +311,31 @@ function calculateMatrixEmployeesPerPage(width: number) {
 }
 
 export default function AttendancePage() {
+  const { user } = useUser();
   const [employees, setEmployees] = useState<User[]>([]);
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<number[]>([]);
   const [periodPreset, setPeriodPreset] = useState<AttendancePeriodPreset>("week");
   const [periodStart, setPeriodStart] = useState(() => getPeriodStart("week"));
   const [periodEnd, setPeriodEnd] = useState(() => toDateInputValue(new Date()));
-  const [useManualSchedule, setUseManualSchedule] = useState(false);
-  const [scheduleStart, setScheduleStart] = useState("09:00");
-  const [scheduleEnd, setScheduleEnd] = useState("18:00");
+  const [scheduleStart, setScheduleStart] = useState("08:00");
+  const [scheduleEnd, setScheduleEnd] = useState("17:00");
   const [expectedHours, setExpectedHours] = useState("9");
   const [workdays, setWorkdays] = useState<string[]>(defaultWorkdays);
-  const [selectorOpen, setSelectorOpen] = useState(true);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [loadingSchedule, setLoadingSchedule] = useState(true);
+  const [savingSchedule, setSavingSchedule] = useState(false);
   const [loadingStats, setLoadingStats] = useState(false);
+  const [downloadingReport, setDownloadingReport] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scheduleFeedback, setScheduleFeedback] = useState<string | null>(null);
+  const [autoSyncSettings, setAutoSyncSettings] =
+    useState<AttendanceAutoSyncSettings | null>(null);
+  const [autoSyncOpen, setAutoSyncOpen] = useState(false);
+  const [loadingAutoSync, setLoadingAutoSync] = useState(true);
+  const [savingAutoSync, setSavingAutoSync] = useState(false);
+  const [runningAutoSync, setRunningAutoSync] = useState(false);
+  const [autoSyncFeedback, setAutoSyncFeedback] = useState<string | null>(null);
   const [matrices, setMatrices] = useState<MonthlyAttendanceMatrix[]>([]);
   const [activeMonthIndex, setActiveMonthIndex] = useState(0);
   const [visibleEmployeePage, setVisibleEmployeePage] = useState(0);
@@ -204,12 +345,23 @@ export default function AttendancePage() {
     employee: MonthlyAttendanceMatrixEmployee;
     cell: MonthlyAttendanceMatrixCell;
   } | null>(null);
+  const [commentsRecordPreview, setCommentsRecordPreview] =
+    useState<AttendanceRecordCommentsPreview | null>(null);
+  const [dayEventsRecordPreview, setDayEventsRecordPreview] =
+    useState<AttendanceDayEventsPreview | null>(null);
+  const [openedRecordFromUrl, setOpenedRecordFromUrl] = useState(false);
   const [statsModalOpen, setStatsModalOpen] = useState(false);
+  const canManageAttendance = Boolean(user?.auth?.is_staff || user?.auth?.is_superuser);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadEmployees() {
+      if (!canManageAttendance) {
+        setLoadingEmployees(false);
+        return;
+      }
+
       try {
         setLoadingEmployees(true);
         setError(null);
@@ -235,7 +387,73 @@ export default function AttendancePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [canManageAttendance]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadStandardSchedule() {
+      if (!canManageAttendance) {
+        setLoadingSchedule(false);
+        return;
+      }
+
+      try {
+        setLoadingSchedule(true);
+        const schedule = await apiClient.getStandardWorkSchedule();
+        if (cancelled) return;
+        setScheduleStart(toTimeInputValue(schedule.start_time) || "08:00");
+        setScheduleEnd(toTimeInputValue(schedule.end_time) || "17:00");
+        setExpectedHours(String(schedule.expected_hours ?? 9));
+        setWorkdays(
+          Array.isArray(schedule.workdays) && schedule.workdays.length > 0
+            ? schedule.workdays
+            : defaultWorkdays,
+        );
+      } catch (scheduleError) {
+        if (!cancelled) {
+          setError(getErrorMessage(scheduleError, "Не удалось загрузить стандартный график"));
+        }
+      } finally {
+        if (!cancelled) setLoadingSchedule(false);
+      }
+    }
+
+    void loadStandardSchedule();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageAttendance]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAutoSyncSettings() {
+      if (!canManageAttendance) {
+        setLoadingAutoSync(false);
+        return;
+      }
+
+      try {
+        setLoadingAutoSync(true);
+        const settings = await apiClient.getAttendanceAutoSyncSettings();
+        if (!cancelled) setAutoSyncSettings(settings);
+      } catch (autoSyncError) {
+        if (!cancelled) {
+          setError(getErrorMessage(autoSyncError, "Не удалось загрузить автообновление"));
+        }
+      } finally {
+        if (!cancelled) setLoadingAutoSync(false);
+      }
+    }
+
+    void loadAutoSyncSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageAttendance]);
 
   useEffect(() => {
     function updateMatrixEmployeesPerPage() {
@@ -248,6 +466,45 @@ export default function AttendancePage() {
     window.addEventListener("resize", updateMatrixEmployeesPerPage);
     return () => window.removeEventListener("resize", updateMatrixEmployeesPerPage);
   }, []);
+
+  useEffect(() => {
+    if (!canManageAttendance || openedRecordFromUrl) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("events") !== "1") return;
+    const recordId = Number(params.get("record"));
+    if (!Number.isInteger(recordId) || recordId <= 0) return;
+
+    let cancelled = false;
+    setOpenedRecordFromUrl(true);
+
+    async function openRecordFromUrl() {
+      try {
+        setError(null);
+        const record = await apiClient.getAttendanceRecord(recordId);
+        if (cancelled) return;
+        setDayEventsRecordPreview({
+          recordId,
+          employeeName: record.display_name || `Сотрудник ${record.employee || record.employee_id || recordId}`,
+          date: `${record.date || ""}${record.date ? ` · ${weekdayLabelFromDate(record.date)}` : ""}`,
+          statusLabel: attendanceRecordStatusLabel(record),
+          displayText: attendanceRecordDisplay(record),
+          detailLines: attendanceRecordDetails(record),
+          issues: attendanceRecordIssueLabels(record),
+          isManuallyEdited: Boolean(record.is_manually_edited),
+        });
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(getErrorMessage(loadError, "Не удалось открыть запись посещаемости"));
+        }
+      }
+    }
+
+    void openRecordFromUrl();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageAttendance, openedRecordFromUrl]);
 
   const filteredEmployees = useMemo(() => {
     const query = employeeSearch.trim().toLowerCase();
@@ -322,6 +579,7 @@ export default function AttendancePage() {
   }
 
   function toggleWorkday(day: string) {
+    setScheduleFeedback(null);
     setWorkdays((current) =>
       current.includes(day)
         ? current.filter((currentDay) => currentDay !== day)
@@ -339,8 +597,7 @@ export default function AttendancePage() {
     }
   }
 
-  function getSchedulePayload(): LogStormSchedulePayload | undefined {
-    if (!useManualSchedule) return undefined;
+  function getSchedulePayload(): AttendanceSchedulePayload | undefined {
     return {
       start_time: scheduleStart,
       end_time: scheduleEnd,
@@ -351,7 +608,78 @@ export default function AttendancePage() {
     };
   }
 
-  function validateStatsRequest() {
+  async function saveStandardSchedule() {
+    const hours = Number(expectedHours);
+    if (!scheduleStart || !scheduleEnd || !Number.isFinite(hours) || hours <= 0 || hours > 24) {
+      setScheduleFeedback(null);
+      setError("Проверьте стандартный график");
+      return;
+    }
+    if (workdays.length === 0) {
+      setScheduleFeedback(null);
+      setError("Выберите хотя бы один рабочий день");
+      return;
+    }
+
+    try {
+      setSavingSchedule(true);
+      setError(null);
+      setScheduleFeedback(null);
+      const schedule = await apiClient.updateStandardWorkSchedule({
+        start_time: scheduleStart,
+        end_time: scheduleEnd,
+        expected_hours: hours,
+        workdays,
+        date_overrides: [],
+      });
+      setScheduleStart(toTimeInputValue(schedule.start_time) || scheduleStart);
+      setScheduleEnd(toTimeInputValue(schedule.end_time) || scheduleEnd);
+      setExpectedHours(String(schedule.expected_hours ?? hours));
+      setWorkdays(schedule.workdays?.length ? schedule.workdays : workdays);
+      setScheduleFeedback("Стандартный график сохранен");
+    } catch (saveError) {
+      setError(getErrorMessage(saveError, "Не удалось сохранить стандартный график"));
+    } finally {
+      setSavingSchedule(false);
+    }
+  }
+
+  async function saveAutoSyncSettings(
+    patch: Partial<Pick<
+      AttendanceAutoSyncSettings,
+      "enabled" | "frequency_minutes" | "lookback_days"
+    >>,
+  ) {
+    try {
+      setSavingAutoSync(true);
+      setError(null);
+      setAutoSyncFeedback(null);
+      const settings = await apiClient.updateAttendanceAutoSyncSettings(patch);
+      setAutoSyncSettings(settings);
+      setAutoSyncFeedback("Автообновление сохранено");
+    } catch (saveError) {
+      setError(getErrorMessage(saveError, "Не удалось сохранить автообновление"));
+    } finally {
+      setSavingAutoSync(false);
+    }
+  }
+
+  async function runAutoSyncNow() {
+    try {
+      setRunningAutoSync(true);
+      setError(null);
+      setAutoSyncFeedback(null);
+      const settings = await apiClient.runAttendanceAutoSyncNow();
+      setAutoSyncSettings(settings);
+      setAutoSyncFeedback("Автообновление выполнено");
+    } catch (runError) {
+      setError(getErrorMessage(runError, "Не удалось запустить автообновление"));
+    } finally {
+      setRunningAutoSync(false);
+    }
+  }
+
+  function validateSelectionAndPeriod() {
     if (selectedEmployees.length === 0) {
       setError("Выберите хотя бы одного сотрудника");
       return false;
@@ -365,7 +693,51 @@ export default function AttendancePage() {
     return true;
   }
 
-  async function loadStatistics(options?: { refreshFromLogStorm?: boolean }) {
+  function validateStatsRequest() {
+    if (!validateSelectionAndPeriod()) return false;
+
+    const hours = Number(expectedHours);
+    if (!scheduleStart || !scheduleEnd || !Number.isFinite(hours) || hours <= 0 || hours > 24) {
+      setError("Проверьте стандартный график");
+      return false;
+    }
+
+    if (workdays.length === 0) {
+      setError("Выберите хотя бы один рабочий день");
+      return false;
+    }
+
+    return true;
+  }
+
+  async function downloadReport() {
+    setError(null);
+    if (!validateSelectionAndPeriod()) return;
+
+    try {
+      setDownloadingReport(true);
+      const employeeIds = selectedEmployees.map((employee) => employee.id).join(",");
+      const file = await apiClient.downloadMonthlyAttendanceMatrix({
+        employee_ids: employeeIds,
+        period_start: periodStart,
+        period_end: periodEnd,
+      });
+      const url = URL.createObjectURL(file.blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file.filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (downloadError) {
+      setError(getErrorMessage(downloadError, "Не удалось скачать отчет посещаемости"));
+    } finally {
+      setDownloadingReport(false);
+    }
+  }
+
+  async function loadStatistics(options?: { refreshFromAnalyzer?: boolean }) {
     setError(null);
     setMatrices([]);
     setSelectedCell(null);
@@ -378,8 +750,8 @@ export default function AttendancePage() {
       const employeeIds = selectedEmployees.map((employee) => employee.id).join(",");
 
       for (const employee of selectedEmployees) {
-        if (options?.refreshFromLogStorm) {
-          await apiClient.analyzeLogStormAttendance({
+        if (options?.refreshFromAnalyzer) {
+          await apiClient.analyzeAttendance({
             employee_id: employee.id,
             period_start: periodStart,
             period_end: periodEnd,
@@ -409,33 +781,154 @@ export default function AttendancePage() {
     }
   }
 
+  function updateSelectedCellCommentCount(recordId: number, count: number) {
+    setSelectedCell((current) => {
+      if (!current || current.cell.record_id !== recordId) return current;
+      if (current.cell.comments_count === count) return current;
+      return {
+        ...current,
+        cell: {
+          ...current.cell,
+          comments_count: count,
+          detail_lines: [
+            ...(current.cell.detail_lines || []).filter(
+              (line) => !String(line).startsWith("Комментарии:"),
+            ),
+            ...(count ? [`Комментарии: ${count}`] : []),
+          ],
+        },
+      };
+    });
+    setMatrices((current) => {
+      let changed = false;
+      const nextMatrices = current.map((matrix) => ({
+        ...matrix,
+        rows: matrix.rows.map((row) => ({
+          ...row,
+          cells: Object.fromEntries(
+            Object.entries(row.cells).map(([employeeId, cell]) => {
+              if (cell.record_id !== recordId || cell.comments_count === count) {
+                return [employeeId, cell];
+              }
+              changed = true;
+              return [employeeId, { ...cell, comments_count: count }];
+            }),
+          ),
+        })),
+      }));
+      return changed ? nextMatrices : current;
+    });
+    setCommentsRecordPreview((current) => (
+      current?.recordId === recordId && current.commentsCount !== count
+        ? { ...current, commentsCount: count }
+        : current
+    ));
+  }
+
+  function openCellComments(
+    row: MonthlyAttendanceMatrixRow,
+    employee: MonthlyAttendanceMatrixEmployee,
+    cell: MonthlyAttendanceMatrixCell,
+  ) {
+    if (!cell.record_id) return;
+    setCommentsRecordPreview({
+      recordId: cell.record_id,
+      employeeName: employee.name,
+      date: `${row.date} · ${row.weekday}`,
+      statusLabel: cell.primary_label || matrixStatusLabel(cell.status),
+      displayText: matrixCellDisplay(cell) || "Нет записи",
+      detailLines: cell.detail_lines || [],
+      commentsCount: cell.comments_count,
+    });
+  }
+
+  function openSelectedCellComments() {
+    if (!selectedCell) return;
+    openCellComments(selectedCell.row, selectedCell.employee, selectedCell.cell);
+  }
+
+  function openCellDayEvents(
+    row: MonthlyAttendanceMatrixRow,
+    employee: MonthlyAttendanceMatrixEmployee,
+    cell: MonthlyAttendanceMatrixCell,
+  ) {
+    if (!cell.record_id) return;
+    setDayEventsRecordPreview({
+      recordId: cell.record_id,
+      employeeName: employee.name,
+      date: `${row.date} · ${row.weekday}`,
+      statusLabel: cell.primary_label || matrixStatusLabel(cell.status),
+      displayText: matrixCellDisplay(cell) || "Нет записи",
+      detailLines: cell.detail_lines || [],
+      issues: matrixCellIssueLabels(cell).map(formatAttendanceIssueLabel),
+      isManuallyEdited: Boolean(cell.is_manually_edited),
+    });
+  }
+
+  if (!canManageAttendance) {
+    return (
+      <AppShell>
+        <section className="app-surface mx-auto max-w-xl rounded-2xl p-6">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-400" />
+            <div>
+              <h1 className="text-base font-semibold text-[var(--foreground)]">
+                Посещаемость
+              </h1>
+              <p className="app-text-muted mt-2 text-sm">
+                Раздел доступен только сотрудникам с правами администрирования.
+                Личную посещаемость можно посмотреть в профиле.
+              </p>
+            </div>
+          </div>
+        </section>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell>
       <div className="mx-auto flex max-w-6xl flex-col gap-4">
-        <section className="app-surface overflow-hidden rounded-2xl">
-          <button
-            type="button"
-            onClick={() => setSelectorOpen((current) => !current)}
-            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-[var(--surface-secondary)] sm:px-5"
-            aria-expanded={selectorOpen}
-          >
-            <div className="min-w-0">
-              <h1 className="text-base font-semibold text-[var(--foreground)] sm:text-lg">
-                Посещаемость
-              </h1>
-              <p className="app-text-muted mt-1 text-xs sm:text-sm">
-                Выбор сотрудников и периода для статистики LogStorm
+        <section className="app-surface rounded-2xl p-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="app-text-muted text-sm font-semibold uppercase tracking-wide">Посещаемость</p>
+              <p className="app-text-muted mt-1 text-xs">
+                Выбор сотрудников и периода для статистики посещаемости
               </p>
             </div>
-            <ChevronDown
-              size={18}
-              className={`shrink-0 text-[var(--foreground-muted)] transition-transform ${selectorOpen ? "rotate-180" : ""}`}
-            />
-          </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void downloadReport()}
+                disabled={downloadingReport || loadingEmployees}
+                className="app-action-secondary inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {downloadingReport ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                Скачать
+              </button>
+              <button
+                type="button"
+                onClick={() => void loadStatistics()}
+                disabled={loadingStats || loadingEmployees || loadingSchedule}
+                className="app-action-secondary inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loadingStats ? <Loader2 size={16} className="animate-spin" /> : <CalendarCheck size={16} />}
+                Показать
+              </button>
+              <button
+                type="button"
+                onClick={() => void loadStatistics({ refreshFromAnalyzer: true })}
+                disabled={loadingStats || loadingEmployees || loadingSchedule}
+                className="app-action-primary inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loadingStats ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                Обновить
+              </button>
+            </div>
+          </div>
 
-          {selectorOpen ? (
-            <div className="border-t border-[var(--border-subtle)] px-4 py-4 sm:px-5">
-              <div className="max-w-[34rem]">
+          <div className="max-w-[34rem]">
                 <div className="app-surface-muted rounded-2xl p-3 sm:p-4">
                   <div className="relative">
                     <Search
@@ -598,103 +1091,256 @@ export default function AttendancePage() {
                 </div>
 
                 <div className="mt-4 app-surface-muted rounded-2xl p-3 sm:p-4">
-                  <label className="flex items-center gap-3 text-sm font-medium text-[var(--foreground)]">
-                    <input
-                      type="checkbox"
-                      checked={useManualSchedule}
-                      onChange={(event) => setUseManualSchedule(event.target.checked)}
-                      className="h-4 w-4 rounded border-[var(--border-subtle)]"
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--foreground)]">
+                        Стандартный график анализа
+                      </p>
+                      <p className="app-text-muted mt-1 text-xs">
+                        Сохраняется на сервере и применяется, если у сотрудника нет индивидуального графика.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void saveStandardSchedule()}
+                      disabled={loadingSchedule || savingSchedule}
+                      className="app-action-secondary inline-flex min-h-9 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {savingSchedule ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                      Сохранить
+                    </button>
+                  </div>
+
+                  {loadingSchedule ? (
+                    <p className="app-text-muted mt-3 flex items-center gap-2 text-xs">
+                      <Loader2 size={14} className="animate-spin" />
+                      Загрузка стандартного графика
+                    </p>
+                  ) : null}
+
+                  <div className="mt-3 grid gap-3">
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <label className="block">
+                        <span className="app-card-caption mb-2 block">Начало</span>
+                        <input
+                          type="time"
+                          value={scheduleStart}
+                          onChange={(event) => {
+                            setScheduleStart(event.target.value);
+                            setScheduleFeedback(null);
+                          }}
+                          className="app-input w-full rounded-lg px-3 py-2 text-sm"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="app-card-caption mb-2 block">Конец</span>
+                        <input
+                          type="time"
+                          value={scheduleEnd}
+                          onChange={(event) => {
+                            setScheduleEnd(event.target.value);
+                            setScheduleFeedback(null);
+                          }}
+                          className="app-input w-full rounded-lg px-3 py-2 text-sm"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="app-card-caption mb-2 block">Часы</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.25"
+                          value={expectedHours}
+                          onChange={(event) => {
+                            setExpectedHours(event.target.value);
+                            setScheduleFeedback(null);
+                          }}
+                          className="app-input w-full rounded-lg px-3 py-2 text-sm"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {weekdays.map((day) => {
+                        const active = workdays.includes(day.value);
+                        return (
+                          <button
+                            key={day.value}
+                            type="button"
+                            onClick={() => toggleWorkday(day.value)}
+                            className={`h-9 min-w-10 rounded-lg px-3 text-sm font-medium transition ${
+                              active
+                                ? "app-selected text-[var(--accent-primary)]"
+                                : "app-surface text-[var(--muted-foreground)] hover:bg-[var(--surface-tertiary)]"
+                            }`}
+                          >
+                            {day.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {scheduleFeedback ? (
+                      <p className="text-xs font-medium text-emerald-300">
+                        {scheduleFeedback}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="mt-4 app-surface-muted rounded-2xl p-3 sm:p-4">
+                  <button
+                    type="button"
+                    onClick={() => setAutoSyncOpen((current) => !current)}
+                    className="flex w-full items-start justify-between gap-3 text-left"
+                  >
+                    <span>
+                      <span className="text-sm font-semibold text-[var(--foreground)]">
+                        Автообновление
+                      </span>
+                      <span className="app-text-muted mt-1 block text-xs">
+                        {loadingAutoSync
+                          ? "Загрузка настроек"
+                          : autoSyncSettings?.enabled
+                            ? `Включено · ${autoSyncStatusText(autoSyncSettings)}`
+                            : "Выключено"}
+                      </span>
+                    </span>
+                    <ChevronDown
+                      size={16}
+                      className={`mt-1 shrink-0 text-[var(--muted-foreground)] transition ${
+                        autoSyncOpen ? "rotate-180" : ""
+                      }`}
                     />
-                    Ручной график
-                  </label>
+                  </button>
 
-                  {useManualSchedule ? (
-                    <div className="mt-3 grid gap-3">
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        <label className="block">
-                          <span className="app-card-caption mb-2 block">Начало</span>
-                          <input
-                            type="time"
-                            value={scheduleStart}
-                            onChange={(event) => setScheduleStart(event.target.value)}
-                            className="app-input w-full rounded-lg px-3 py-2 text-sm"
-                          />
-                        </label>
-                        <label className="block">
-                          <span className="app-card-caption mb-2 block">Конец</span>
-                          <input
-                            type="time"
-                            value={scheduleEnd}
-                            onChange={(event) => setScheduleEnd(event.target.value)}
-                            className="app-input w-full rounded-lg px-3 py-2 text-sm"
-                          />
-                        </label>
-                        <label className="block">
-                          <span className="app-card-caption mb-2 block">Часы</span>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.25"
-                            value={expectedHours}
-                            onChange={(event) => setExpectedHours(event.target.value)}
-                            className="app-input w-full rounded-lg px-3 py-2 text-sm"
-                          />
-                        </label>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        {weekdays.map((day) => {
-                          const active = workdays.includes(day.value);
-                          return (
+                  {autoSyncOpen ? (
+                    <div className="mt-4 grid gap-3">
+                      {loadingAutoSync ? (
+                        <p className="app-text-muted flex items-center gap-2 text-xs">
+                          <Loader2 size={14} className="animate-spin" />
+                          Загрузка автообновления
+                        </p>
+                      ) : autoSyncSettings ? (
+                        <>
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <label className="inline-flex items-center gap-2 text-sm text-[var(--foreground)]">
+                              <input
+                                type="checkbox"
+                                checked={autoSyncSettings.enabled}
+                                onChange={(event) => {
+                                  setAutoSyncSettings({
+                                    ...autoSyncSettings,
+                                    enabled: event.target.checked,
+                                  });
+                                  void saveAutoSyncSettings({
+                                    enabled: event.target.checked,
+                                  });
+                                }}
+                                disabled={savingAutoSync || runningAutoSync}
+                                className="h-4 w-4 accent-[var(--accent-primary)]"
+                              />
+                              Включить автообновление
+                            </label>
                             <button
-                              key={day.value}
                               type="button"
-                              onClick={() => toggleWorkday(day.value)}
-                              className={`h-9 min-w-10 rounded-lg px-3 text-sm font-medium transition ${
-                                active
-                                  ? "app-selected text-[var(--accent-primary)]"
-                                  : "app-surface text-[var(--muted-foreground)] hover:bg-[var(--surface-tertiary)]"
-                              }`}
+                              onClick={() => void runAutoSyncNow()}
+                              disabled={savingAutoSync || runningAutoSync}
+                              className="app-action-secondary inline-flex min-h-9 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                              {day.label}
+                              {runningAutoSync ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                              Запустить сейчас
                             </button>
-                          );
-                        })}
-                      </div>
+                          </div>
+
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <label className="block">
+                              <span className="app-card-caption mb-2 block">Частота</span>
+                              <select
+                                value={autoSyncSettings.frequency_minutes}
+                                onChange={(event) => {
+                                  const value = Number(event.target.value);
+                                  setAutoSyncSettings({
+                                    ...autoSyncSettings,
+                                    frequency_minutes: value,
+                                  });
+                                  void saveAutoSyncSettings({
+                                    frequency_minutes: value,
+                                  });
+                                }}
+                                disabled={savingAutoSync || runningAutoSync}
+                                className="app-input w-full rounded-lg px-3 py-2 text-sm"
+                              >
+                                {autoSyncFrequencyOptions.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="block">
+                              <span className="app-card-caption mb-2 block">Период</span>
+                              <select
+                                value={autoSyncSettings.lookback_days}
+                                onChange={(event) => {
+                                  const value = Number(event.target.value);
+                                  setAutoSyncSettings({
+                                    ...autoSyncSettings,
+                                    lookback_days: value,
+                                  });
+                                  void saveAutoSyncSettings({
+                                    lookback_days: value,
+                                  });
+                                }}
+                                disabled={savingAutoSync || runningAutoSync}
+                                className="app-input w-full rounded-lg px-3 py-2 text-sm"
+                              >
+                                {autoSyncLookbackOptions.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+
+                          <div className="grid gap-2 text-xs text-[var(--muted-foreground)] sm:grid-cols-2">
+                            <p>Статус: {autoSyncStatusText(autoSyncSettings)}</p>
+                            <p>Следующий запуск: {formatOptionalDateTime(autoSyncSettings.next_run_at)}</p>
+                            <p>Последний старт: {formatOptionalDateTime(autoSyncSettings.last_started_at)}</p>
+                            <p>Завершено: {formatOptionalDateTime(autoSyncSettings.last_finished_at)}</p>
+                            <p>Успешно: {autoSyncSettings.last_success_count}</p>
+                            <p>Ошибок: {autoSyncSettings.last_error_count}</p>
+                          </div>
+
+                          {autoSyncSettings.last_error ? (
+                            <p className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                              {autoSyncSettings.last_error}
+                            </p>
+                          ) : null}
+
+                          {autoSyncFeedback ? (
+                            <p className="text-xs font-medium text-emerald-300">
+                              {autoSyncFeedback}
+                            </p>
+                          ) : null}
+                        </>
+                      ) : (
+                        <p className="app-text-muted text-xs">
+                          Настройки автообновления недоступны
+                        </p>
+                      )}
                     </div>
                   ) : null}
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void loadStatistics()}
-                    disabled={loadingStats || loadingEmployees}
-                    className="app-action-secondary inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {loadingStats ? <Loader2 size={16} className="animate-spin" /> : <CalendarCheck size={16} />}
-                    Показать статистику
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void loadStatistics({ refreshFromLogStorm: true })}
-                    disabled={loadingStats || loadingEmployees}
-                    className="app-action-primary inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {loadingStats ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-                    Обновить и открыть
-                  </button>
-                </div>
-              </div>
-
               {error ? (
-                <div className="mt-4 flex max-w-[34rem] items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
                   <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                   <span>{error}</span>
                 </div>
               ) : null}
-            </div>
-          ) : null}
+          </div>
         </section>
       </div>
 
@@ -791,7 +1437,6 @@ export default function AttendancePage() {
                   <thead>
                     <tr className="bg-[var(--surface-secondary)] text-[var(--muted-foreground)]">
                       <th
-                        rowSpan={2}
                         className="sticky left-0 z-20 min-w-28 border-b border-r border-[var(--border-subtle)] bg-[var(--surface-secondary)] px-3 py-3 font-semibold"
                       >
                         Дата
@@ -799,27 +1444,10 @@ export default function AttendancePage() {
                       {visibleEmployees.map((employee) => (
                         <th
                           key={employee.id}
-                          colSpan={2}
-                          className="min-w-40 border-b border-r border-[var(--border-subtle)] px-3 py-2 text-center font-semibold text-[var(--foreground)]"
+                          className="min-w-40 border-b border-r border-[var(--border-subtle)] px-3 py-3 text-center font-semibold text-[var(--foreground)]"
                         >
                           <span className="block max-w-44 truncate">{employee.name}</span>
                         </th>
-                      ))}
-                    </tr>
-                    <tr className="bg-[var(--surface-secondary)] text-[var(--muted-foreground)]">
-                      {visibleEmployees.map((employee) => (
-                        <Fragment key={employee.id}>
-                          <th
-                            className="min-w-20 border-b border-r border-[var(--border-subtle)] px-2 py-2 text-center font-semibold"
-                          >
-                            Приход
-                          </th>
-                          <th
-                            className="min-w-20 border-b border-r border-[var(--border-subtle)] px-2 py-2 text-center font-semibold"
-                          >
-                            Уход
-                          </th>
-                        </Fragment>
                       ))}
                     </tr>
                   </thead>
@@ -838,36 +1466,60 @@ export default function AttendancePage() {
                           const active = selectedCell?.row.date === row.date
                             && selectedCell.employee.id === employee.id;
                           return (
-                            <Fragment key={`${row.date}-${employee.id}`}>
-                              <td
-                                className="border-b border-r border-[var(--border-subtle)] p-0"
-                              >
+                            <td
+                              key={`${row.date}-${employee.id}`}
+                              className="border-b border-r border-[var(--border-subtle)] p-0"
+                            >
+                              <div className="relative h-10">
                                 <button
                                   type="button"
-                                  onClick={() => setSelectedCell({ row, employee, cell })}
-                                  className={`h-10 w-full px-2 text-center transition ${matrixCellTone(cell.status)} ${
+                                  onClick={() => {
+                                    setSelectedCell({ row, employee, cell });
+                                    openCellDayEvents(row, employee, cell);
+                                  }}
+                                  className={`h-10 w-full px-2 text-center transition ${matrixCellTone(cell.status)} ${matrixCellSourceTone(cell)} ${
                                     active ? "ring-2 ring-inset ring-[var(--accent-primary)]" : ""
                                   }`}
-                                  title={matrixStatusLabel(cell.status)}
+                                  title={cell.primary_label || matrixStatusLabel(cell.status)}
                                 >
-                                  {formatTime(cell.arrival_time)}
+                                  <span className="block truncate font-medium">
+                                    {matrixCellDisplay(cell)}
+                                  </span>
                                 </button>
-                              </td>
-                              <td
-                                className="border-b border-r border-[var(--border-subtle)] p-0"
-                              >
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedCell({ row, employee, cell })}
-                                  className={`h-10 w-full px-2 text-center transition ${matrixCellTone(cell.status)} ${
-                                    active ? "ring-2 ring-inset ring-[var(--accent-primary)]" : ""
-                                  }`}
-                                  title={matrixStatusLabel(cell.status)}
-                                >
-                                  {formatTime(cell.departure_time)}
-                                </button>
-                              </td>
-                            </Fragment>
+                                {cell.comments_count ? (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setSelectedCell({ row, employee, cell });
+                                      openCellComments(row, employee, cell);
+                                    }}
+                                    className="absolute right-1 top-1 rounded border border-[var(--border-subtle)] bg-[var(--surface-primary)] px-1 text-[9px] leading-3 text-[var(--muted-foreground)] transition hover:border-[var(--accent-primary)] hover:text-[var(--foreground)]"
+                                    aria-label={`Открыть комментарии: ${cell.comments_count}`}
+                                    title="Открыть комментарии"
+                                  >
+                                    К:{cell.comments_count}
+                                  </button>
+                                ) : cell.record_id ? (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setSelectedCell({ row, employee, cell });
+                                      openCellComments(row, employee, cell);
+                                    }}
+                                    className="absolute bottom-1 left-1 inline-flex h-4 min-w-4 items-center justify-center rounded border border-[var(--border-subtle)] bg-[var(--surface-primary)] px-1 text-[10px] leading-3 text-[var(--muted-foreground)] transition hover:border-[var(--accent-primary)] hover:text-[var(--foreground)]"
+                                    aria-label="Добавить комментарий"
+                                    title="Добавить комментарий"
+                                  >
+                                    +
+                                  </button>
+                                ) : null}
+                                {cell.is_manually_edited ? (
+                                  <span className="absolute bottom-1 right-1 h-1.5 w-1.5 rounded-full bg-violet-300" />
+                                ) : null}
+                              </div>
+                            </td>
                           );
                         })}
                       </tr>
@@ -880,7 +1532,6 @@ export default function AttendancePage() {
                         {visibleEmployees.map((employee) => (
                           <td
                             key={`${summaryRow.key}-${employee.id}`}
-                            colSpan={2}
                             className="border-b border-r border-[var(--border-subtle)] px-2 py-2 text-center font-semibold text-[var(--foreground)]"
                           >
                             {summaryRow.values[String(employee.id)] ?? 0}
@@ -904,8 +1555,20 @@ export default function AttendancePage() {
                       </p>
                     </div>
                     <span className={`app-status-pill ${matrixCellTone(selectedCell.cell.status)}`}>
-                      {matrixStatusLabel(selectedCell.cell.status)}
+                      {selectedCell.cell.primary_label || matrixStatusLabel(selectedCell.cell.status)}
                     </span>
+                  </div>
+                  <div className="mt-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-primary)] px-3 py-2">
+                    <p className="text-sm font-semibold text-[var(--foreground)]">
+                      {matrixCellDisplay(selectedCell.cell) || "Нет записи"}
+                    </p>
+                    {selectedCell.cell.detail_lines?.length ? (
+                      <div className="mt-2 grid gap-1 text-xs text-[var(--muted-foreground)] sm:grid-cols-2">
+                        {selectedCell.cell.detail_lines.map((line) => (
+                          <p key={line}>{line}</p>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="mt-4 grid gap-3 text-sm sm:grid-cols-4">
                     <div>
@@ -945,6 +1608,28 @@ export default function AttendancePage() {
                       ))}
                     </div>
                   ) : null}
+                  {selectedCell.cell.is_manually_edited ? (
+                    <div className="mt-3 inline-flex rounded-lg border border-violet-400/30 bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-200">
+                      Ручная корректировка EUSRR
+                    </div>
+                  ) : null}
+                  {selectedCell.cell.record_id ? (
+                    <div className="mt-4 border-t border-[var(--border-subtle)] pt-4">
+                      <button
+                        type="button"
+                        onClick={openSelectedCellComments}
+                        className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
+                      >
+                        <MessageSquare size={16} />
+                        Комментарии
+                        {selectedCell.cell.comments_count ? (
+                          <span className="app-counter min-w-4 px-1 text-[10px] font-bold">
+                            {selectedCell.cell.comments_count}
+                          </span>
+                        ) : null}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <p className="app-text-muted text-sm">
@@ -955,6 +1640,18 @@ export default function AttendancePage() {
           )}
         </div>
       </Modal>
+      <AttendanceRecordCommentsModal
+        currentUserId={user?.id}
+        isOpen={Boolean(commentsRecordPreview)}
+        onClose={() => setCommentsRecordPreview(null)}
+        onCommentCountChange={updateSelectedCellCommentCount}
+        record={commentsRecordPreview}
+      />
+      <AttendanceDayEventsModal
+        isOpen={Boolean(dayEventsRecordPreview)}
+        onClose={() => setDayEventsRecordPreview(null)}
+        record={dayEventsRecordPreview}
+      />
     </AppShell>
   );
 }

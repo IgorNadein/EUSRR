@@ -1,12 +1,21 @@
 import logging
 from calendar import monthrange
 from datetime import date
+from urllib.parse import quote
 
-from attendance.models import AttendanceRecord, EmployeeWorkSchedule
+from attendance.models import (
+    AttendanceRecord,
+    EmployeeWorkSchedule,
+    StandardWorkSchedule,
+)
 from attendance.services import (
+    build_attendance_matrix_export_workbook,
     build_monthly_attendance_matrix,
+    get_attendance_auto_sync_settings,
     get_employee_work_schedule_payload,
+    get_standard_work_schedule_payload,
     normalize_attendance_record_manual_issues,
+    run_attendance_auto_sync,
     save_logstorm_attendance_result,
 )
 from communications import comments_helpers
@@ -17,6 +26,7 @@ from common.logstorm_attendance import (
 )
 from common.logstorm_client import LogStormClient, LogStormClientError
 from django.contrib.contenttypes.models import ContentType
+from django.http import HttpResponse
 from django.db.models import Count, IntegerField, OuterRef, Subquery, Value
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
@@ -30,13 +40,17 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .serializers import (
+    AttendanceAutoSyncSettingsSerializer,
+    AttendanceMonthlyMatrixExportQuerySerializer,
     AttendanceMonthlyMatrixQuerySerializer,
     AttendanceRecordCommentSerializer,
     AttendanceRecordSerializer,
     AttendanceRecordUpdateSerializer,
     EmployeeWorkScheduleSerializer,
     LogStormAttendanceAnalyzeSerializer,
+    StandardWorkScheduleSerializer,
     default_work_schedule_response,
+    default_standard_work_schedule_response,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,7 +65,11 @@ def _can_access_employee(user, employee_id) -> bool:
     return bool(
         user
         and user.is_authenticated
-        and (user.is_staff or normalized_employee_id == int(user.id))
+        and (
+            user.is_staff
+            or user.is_superuser
+            or normalized_employee_id == int(user.id)
+        )
     )
 
 
@@ -64,9 +82,14 @@ def _check_employee_access(user, employee_id) -> None:
 
 def _records_visible_to(user):
     queryset = AttendanceRecord.objects.all()
-    if user.is_staff:
+    if user.is_staff or user.is_superuser:
         return queryset
     return queryset.filter(employee_id=user.id)
+
+
+def _check_staff_access(user) -> None:
+    if not (user and user.is_authenticated and (user.is_staff or user.is_superuser)):
+        raise PermissionDenied("You don't have permission to manage attendance")
 
 
 def _comments_count_annotation():
@@ -90,6 +113,44 @@ def _comments_count_annotation():
     }
 
 
+def _comment_author_name(author) -> str:
+    if not author:
+        return "Сотрудник"
+    first_name = getattr(author, "first_name", "") or ""
+    last_name = getattr(author, "last_name", "") or ""
+    full_name = f"{last_name} {first_name}".strip()
+    return full_name or getattr(author, "email", "") or "Сотрудник"
+
+
+def _attendance_record_comments_map(record_ids: list[int]) -> dict[int, list[dict[str, str]]]:
+    if not record_ids:
+        return {}
+    record_ct = ContentType.objects.get_for_model(AttendanceRecord)
+    messages = (
+        Message.objects.filter(
+            chat__type="comments",
+            chat__context_content_type=record_ct,
+            chat__context_object_id__in=record_ids,
+            is_deleted=False,
+        )
+        .select_related("author", "chat")
+        .order_by("created_at", "id")
+    )
+    result: dict[int, list[dict[str, str]]] = {}
+    for message in messages:
+        record_id = int(message.chat.context_object_id)
+        result.setdefault(record_id, []).append(
+            {
+                "author": _comment_author_name(message.author),
+                "text": message.content,
+                "created_at": timezone.localtime(message.created_at).strftime(
+                    "%d.%m.%Y %H:%M"
+                ),
+            }
+        )
+    return result
+
+
 class LogStormAttendanceAnalyzeAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -109,7 +170,10 @@ class LogStormAttendanceAnalyzeAPIView(APIView):
 
         schedule_payload = data.get("schedule")
         if schedule_payload is None:
-            schedule_payload = get_employee_work_schedule_payload(employee)
+            schedule_payload = (
+                get_employee_work_schedule_payload(employee)
+                or get_standard_work_schedule_payload()
+            )
 
         try:
             result = analyze_employee_attendance(
@@ -163,7 +227,7 @@ class EmployeeWorkScheduleAPIView(APIView):
         return Response(EmployeeWorkScheduleSerializer(schedule).data)
 
     def patch(self, request, employee_id):
-        if not request.user.is_staff:
+        if not (request.user.is_staff or request.user.is_superuser):
             raise PermissionDenied("You don't have permission to edit schedules")
         employee = get_object_or_404(Employee, pk=employee_id)
         try:
@@ -178,6 +242,75 @@ class EmployeeWorkScheduleAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         instance = serializer.save(employee=employee, updated_by=request.user)
         return Response(EmployeeWorkScheduleSerializer(instance).data)
+
+
+class StandardWorkScheduleAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        _check_staff_access(request.user)
+        schedule = StandardWorkSchedule.objects.order_by("id").first()
+        if schedule is None:
+            return Response(default_standard_work_schedule_response())
+        return Response(StandardWorkScheduleSerializer(schedule).data)
+
+    def patch(self, request):
+        _check_staff_access(request.user)
+        schedule = StandardWorkSchedule.objects.order_by("id").first()
+        serializer = StandardWorkScheduleSerializer(
+            schedule,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save(updated_by=request.user)
+        return Response(StandardWorkScheduleSerializer(instance).data)
+
+
+class AttendanceAutoSyncSettingsAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        _check_staff_access(request.user)
+        return Response(
+            AttendanceAutoSyncSettingsSerializer(
+                get_attendance_auto_sync_settings()
+            ).data
+        )
+
+    def patch(self, request):
+        _check_staff_access(request.user)
+        settings = get_attendance_auto_sync_settings()
+        was_enabled = settings.enabled
+        old_frequency = settings.frequency_minutes
+        serializer = AttendanceAutoSyncSettingsSerializer(
+            settings,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save(updated_by=request.user)
+
+        update_fields = ["updated_by", "updated_at"]
+        if not instance.enabled:
+            instance.next_run_at = None
+            update_fields.append("next_run_at")
+        elif not was_enabled or old_frequency != instance.frequency_minutes:
+            instance.next_run_at = timezone.now()
+            update_fields.append("next_run_at")
+        if update_fields != ["updated_by", "updated_at"]:
+            instance.save(update_fields=update_fields)
+
+        return Response(AttendanceAutoSyncSettingsSerializer(instance).data)
+
+
+class AttendanceAutoSyncRunNowAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        _check_staff_access(request.user)
+        settings = run_attendance_auto_sync(force=True)
+        return Response(AttendanceAutoSyncSettingsSerializer(settings).data)
 
 
 class AttendanceRecordListAPIView(ListAPIView):
@@ -257,8 +390,71 @@ class AttendanceMonthlyMatrixAPIView(APIView):
         )
 
 
+class AttendanceMonthlyMatrixExportAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        _check_staff_access(request.user)
+        serializer = AttendanceMonthlyMatrixExportQuerySerializer(
+            data=request.query_params,
+        )
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        employee_ids = data["employee_ids"]
+        period_start = data["period_start"]
+        period_end = data["period_end"]
+
+        employees = list(Employee.objects.filter(id__in=employee_ids))
+        employees_by_id = {employee.id: employee for employee in employees}
+        employees = [
+            employees_by_id[employee_id]
+            for employee_id in employee_ids
+            if employee_id in employees_by_id
+        ]
+
+        records = list(
+            _records_visible_to(request.user)
+            .filter(
+                employee_id__in=[employee.id for employee in employees],
+                date__gte=period_start,
+                date__lte=period_end,
+            )
+            .select_related("employee")
+            .annotate(**_comments_count_annotation())
+            .order_by("employee_id", "date", "id")
+        )
+
+        content = build_attendance_matrix_export_workbook(
+            employees=employees,
+            records=records,
+            period_start=period_start,
+            period_end=period_end,
+            record_comments=_attendance_record_comments_map(
+                [record.id for record in records]
+            ),
+        )
+        filename = f"attendance-{period_start.isoformat()}_{period_end.isoformat()}.xlsx"
+        response = HttpResponse(
+            content,
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+
 class AttendanceRecordDetailAPIView(APIView):
     permission_classes = [IsAuthenticated]
+
+    def get(self, request, record_id):
+        record = get_object_or_404(
+            _records_visible_to(request.user)
+            .select_related("employee", "analysis_run")
+            .annotate(**_comments_count_annotation()),
+            pk=record_id,
+        )
+        return Response(AttendanceRecordSerializer(record).data)
 
     def patch(self, request, record_id):
         if not request.user.is_staff:
@@ -322,6 +518,101 @@ class AttendanceRecordDetailAPIView(APIView):
             .get(pk=record.pk)
         )
         return Response(AttendanceRecordSerializer(record).data)
+
+
+class AttendanceRecordDayEventsAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_record(self, request, record_id):
+        return get_object_or_404(
+            _records_visible_to(request.user).select_related("employee"),
+            pk=record_id,
+        )
+
+    def get(self, request, record_id):
+        record = self.get_record(request, record_id)
+        try:
+            events = LogStormClient().get_attendance_day_events(
+                employee_id=str(record.employee_id),
+                record_date=record.date,
+            )
+        except LogStormClientError as exc:
+            logger.warning("LogStorm attendance day events failed: %s", exc)
+            return Response(
+                {"detail": str(exc), "error": "logstorm_unavailable"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response(
+            [
+                self._with_proxy_photo_url(request, record, event)
+                for event in events
+                if isinstance(event, dict)
+            ]
+        )
+
+    @staticmethod
+    def _with_proxy_photo_url(request, record, event):
+        result = dict(event)
+        event_key = str(result.get("event_key") or "")
+        if result.get("has_photo") and event_key:
+            result["photo_url"] = (
+                f"/api/v1/attendance/records/{record.id}/day-events/"
+                f"{quote(event_key)}/photo/"
+            )
+        else:
+            result["photo_url"] = None
+        return result
+
+
+class AttendanceRecordDayEventPhotoAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_record(self, request, record_id):
+        return get_object_or_404(
+            _records_visible_to(request.user).select_related("employee"),
+            pk=record_id,
+        )
+
+    def get(self, request, record_id, event_key):
+        record = self.get_record(request, record_id)
+        client = LogStormClient()
+        try:
+            events = client.get_attendance_day_events(
+                employee_id=str(record.employee_id),
+                record_date=record.date,
+            )
+            event = next(
+                (
+                    item
+                    for item in events
+                    if isinstance(item, dict)
+                    and str(item.get("event_key")) == str(event_key)
+                ),
+                None,
+            )
+            if not event or not event.get("has_photo"):
+                return Response(
+                    {"detail": "Event photo not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            photo_response = client.get_attendance_event_photo(event_key)
+        except LogStormClientError as exc:
+            if exc.status_code == status.HTTP_404_NOT_FOUND:
+                return Response(
+                    {"detail": "Event photo not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            logger.warning("LogStorm attendance event photo failed: %s", exc)
+            return Response(
+                {"detail": str(exc), "error": "logstorm_unavailable"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return HttpResponse(
+            photo_response.content,
+            content_type=photo_response.headers.get("Content-Type", "image/jpeg"),
+        )
 
 
 class AttendanceRecordCommentsAPIView(APIView):

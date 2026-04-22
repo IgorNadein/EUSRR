@@ -11,6 +11,10 @@ from django.conf import settings
 class LogStormClientError(RuntimeError):
     """Raised when LogStorm cannot process an attendance request."""
 
+    def __init__(self, message: str, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+
 
 @dataclass(frozen=True)
 class LogStormConfig:
@@ -50,7 +54,8 @@ class LogStormClient:
         if not response.ok:
             raise LogStormClientError(
                 f"LogStorm API returned HTTP {response.status_code}: "
-                f"{response.text}"
+                f"{response.text}",
+                status_code=response.status_code,
             )
         try:
             return response.json()
@@ -73,12 +78,58 @@ class LogStormClient:
         if not response.ok:
             raise LogStormClientError(
                 f"LogStorm API returned HTTP {response.status_code}: "
-                f"{response.text}"
+                f"{response.text}",
+                status_code=response.status_code,
             )
         try:
             return response.json()
         except ValueError as exc:
             raise LogStormClientError("LogStorm API returned invalid JSON") from exc
+
+    def get_attendance_day_events(
+        self,
+        *,
+        employee_id: str,
+        record_date: date | str,
+    ) -> list[dict[str, Any]]:
+        response = self.session.get(
+            self._url("/attendance/events/day/"),
+            params={
+                "employee_id": str(employee_id),
+                "date": str(record_date),
+            },
+            headers=self._headers(),
+            timeout=self.config.timeout,
+        )
+        if not response.ok:
+            raise LogStormClientError(
+                f"LogStorm API returned HTTP {response.status_code}: "
+                f"{response.text}",
+                status_code=response.status_code,
+            )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise LogStormClientError("LogStorm API returned invalid JSON") from exc
+        if not isinstance(payload, list):
+            raise LogStormClientError("LogStorm API returned invalid events payload")
+        return payload
+
+    def get_attendance_event_photo(self, event_key: str) -> requests.Response:
+        headers = self._headers()
+        headers["Accept"] = "image/*"
+        response = self.session.get(
+            self._url(f"/attendance/events/photos/{event_key}/"),
+            headers=headers,
+            timeout=self.config.timeout,
+        )
+        if not response.ok:
+            raise LogStormClientError(
+                f"LogStorm API returned HTTP {response.status_code}: "
+                f"{response.text}",
+                status_code=response.status_code,
+            )
+        return response
 
     def health(self) -> bool:
         try:

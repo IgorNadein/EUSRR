@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   AlertTriangle,
-  CalendarCheck,
   ChevronDown,
   Clock,
   Edit3,
@@ -21,9 +20,9 @@ import { apiClient } from "@/lib/api";
 import { displayUserName, formatDate } from "@/lib/shared";
 import type {
   AttendanceRecordComment,
-  LogStormAttendanceRecord,
-  LogStormAttendanceRecordUpdatePayload,
-  LogStormAttendanceResponse,
+  AttendanceAnalysisResponse,
+  AttendanceRecord,
+  AttendanceRecordUpdatePayload,
 } from "@/lib/api/attendance";
 import type { EmployeeAction } from "@/types/api";
 
@@ -160,7 +159,7 @@ function formatAttendanceIssueLabel(label: string) {
   return attendanceIssueLabelMap[normalized] || label;
 }
 
-function hasWorked(record: LogStormAttendanceRecord) {
+function hasWorked(record: AttendanceRecord) {
   const hours = Number(record.work_hours || 0);
   return Boolean(record.arrival_time || record.departure_time || hours > 0);
 }
@@ -176,7 +175,7 @@ function getDateEnd(value: unknown) {
 function getPersonnelDayMeta(
   actions: EmployeeAction[] | null | undefined,
   dateValue: unknown,
-  record?: LogStormAttendanceRecord,
+  record?: AttendanceRecord,
 ): PersonnelDayMeta | null {
   if (record?.personnel_status && record.personnel_status !== "normal") {
     return {
@@ -255,7 +254,7 @@ function getPersonnelDayMeta(
   return null;
 }
 
-function issueLabels(record: LogStormAttendanceRecord, personnelMeta?: PersonnelDayMeta | null) {
+function issueLabels(record: AttendanceRecord, personnelMeta?: PersonnelDayMeta | null) {
   const labels = [
     ...(record.statuses || []),
     ...(record.employee_issues || []),
@@ -281,7 +280,7 @@ function issueLabels(record: LogStormAttendanceRecord, personnelMeta?: Personnel
   return Array.from(new Set(result));
 }
 
-function getRecordTone(record: LogStormAttendanceRecord, personnelMeta?: PersonnelDayMeta | null) {
+function getRecordTone(record: AttendanceRecord, personnelMeta?: PersonnelDayMeta | null) {
   const nonWorking = personnelMeta?.nonWorking || record.effective_is_workday === false || record.is_workday === false;
 
   if (nonWorking && hasWorked(record)) {
@@ -317,7 +316,7 @@ function getRecordTone(record: LogStormAttendanceRecord, personnelMeta?: Personn
   };
 }
 
-function getWorkdayMeta(record: LogStormAttendanceRecord, personnelMeta?: PersonnelDayMeta | null) {
+function getWorkdayMeta(record: AttendanceRecord, personnelMeta?: PersonnelDayMeta | null) {
   if (personnelMeta?.nonWorking) {
     return {
       className: personnelMeta.className,
@@ -357,7 +356,7 @@ function getErrorMessage(error: unknown, fallback: string) {
   return String((error as Error)?.message || fallback);
 }
 
-function getRecordId(record: LogStormAttendanceRecord) {
+function getRecordId(record: AttendanceRecord) {
   const value = Number(record.id);
   return Number.isFinite(value) && value > 0 ? value : null;
 }
@@ -367,7 +366,7 @@ function valueToEditString(value: unknown) {
   return String(value);
 }
 
-function recordToEditForm(record: LogStormAttendanceRecord): AttendanceRecordEditForm | null {
+function recordToEditForm(record: AttendanceRecord): AttendanceRecordEditForm | null {
   const recordId = getRecordId(record);
   if (!recordId) return null;
 
@@ -415,7 +414,7 @@ export default function EmployeeAttendanceCard({
   const [loadingMode, setLoadingMode] = useState<"saved" | "analyze" | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<LogStormAttendanceResponse | null>(null);
+  const [result, setResult] = useState<AttendanceAnalysisResponse | null>(null);
   const [expandedRecordKey, setExpandedRecordKey] = useState<string | null>(null);
   const [expandedComments, setExpandedComments] = useState<Record<number, boolean>>({});
   const [commentsMap, setCommentsMap] = useState<Record<number, AttendanceRecordComment[]>>({});
@@ -465,12 +464,12 @@ export default function EmployeeAttendanceCard({
     try {
       setLoading(true);
       setLoadingMode("analyze");
-      await apiClient.analyzeLogStormAttendance({
+      await apiClient.analyzeAttendance({
         employee_id: employeeId,
         period_start: periodStart,
         period_end: periodEnd,
       });
-      const savedRecords = await apiClient.getLogStormAttendanceRecords({
+      const savedRecords = await apiClient.getAttendanceRecords({
         employee_id: employeeId,
         date_from: periodStart,
         date_to: periodEnd,
@@ -514,7 +513,7 @@ export default function EmployeeAttendanceCard({
         setLoading(true);
         setLoadingMode("saved");
         setError(null);
-        const response = await apiClient.getLogStormAttendanceRecords({
+        const response = await apiClient.getAttendanceRecords({
           employee_id: employeeId,
           date_from: periodStart,
           date_to: periodEnd,
@@ -658,7 +657,7 @@ export default function EmployeeAttendanceCard({
   async function saveEditedRecord() {
     if (!editForm) return;
 
-    const payload: LogStormAttendanceRecordUpdatePayload = {
+    const payload: AttendanceRecordUpdatePayload = {
       arrival_time: nullableTime(editForm.arrival_time),
       departure_time: nullableTime(editForm.departure_time),
       work_hours: nullableNumber(editForm.work_hours),
@@ -704,11 +703,8 @@ export default function EmployeeAttendanceCard({
       <form onSubmit={handleSubmit} className="mb-4 space-y-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <div className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
-              <CalendarCheck size={18} />
-              Посещаемость
-            </div>
-            <p className="app-text-muted mt-1 text-sm">Анализ проходов LogStorm по сотруднику</p>
+            <h2 className="app-card-caption">Посещаемость</h2>
+            <p className="app-text-muted mt-2 text-sm">Анализ проходов по сотруднику</p>
           </div>
 
           <div className="flex items-center gap-2 sm:shrink-0">

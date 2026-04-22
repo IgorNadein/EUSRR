@@ -9,10 +9,12 @@ from common.logstorm_client import (
 
 
 class FakeResponse:
-    def __init__(self, status_code=200, payload=None, text=""):
+    def __init__(self, status_code=200, payload=None, text="", content=b""):
         self.status_code = status_code
         self._payload = payload
         self.text = text
+        self.content = content
+        self.headers = {"Content-Type": "image/jpeg"}
         self.ok = 200 <= status_code < 400
 
     def json(self):
@@ -116,3 +118,53 @@ def test_health_returns_boolean():
 
     assert ok_client.health() is True
     assert bad_client.health() is False
+
+
+def test_get_attendance_day_events_requests_employee_date():
+    session = FakeSession(FakeResponse(payload=[]))
+    client = LogStormClient(
+        LogStormConfig(base_url="http://logstorm:8000", token="secret"),
+        session=session,
+    )
+
+    result = client.get_attendance_day_events(
+        employee_id="100",
+        record_date="2026-04-20",
+    )
+
+    assert result == []
+    method, url, kwargs = session.requests[0]
+    assert method == "GET"
+    assert url == "http://logstorm:8000/attendance/events/day/"
+    assert kwargs["params"] == {"employee_id": "100", "date": "2026-04-20"}
+    assert kwargs["headers"]["Authorization"] == "Bearer secret"
+
+
+def test_get_attendance_day_events_rejects_invalid_payload():
+    client = LogStormClient(
+        LogStormConfig(base_url="http://logstorm:8000"),
+        session=FakeSession(FakeResponse(payload={"events": []})),
+    )
+
+    with pytest.raises(LogStormClientError, match="invalid events payload"):
+        client.get_attendance_day_events(
+            employee_id="100",
+            record_date="2026-04-20",
+        )
+
+
+def test_get_attendance_event_photo_returns_response():
+    session = FakeSession(FakeResponse(content=b"image"))
+    client = LogStormClient(
+        LogStormConfig(base_url="http://logstorm:8000", token="secret"),
+        session=session,
+    )
+
+    response = client.get_attendance_event_photo("abc")
+
+    assert response.content == b"image"
+    method, url, kwargs = session.requests[0]
+    assert method == "GET"
+    assert url == "http://logstorm:8000/attendance/events/photos/abc/"
+    assert kwargs["headers"]["Accept"] == "image/*"
+    assert kwargs["headers"]["Authorization"] == "Bearer secret"

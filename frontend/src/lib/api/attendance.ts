@@ -1,7 +1,7 @@
-import { buildQuery, type RequestFn } from './utils';
+import { buildQuery, type GetTokenFn, type RequestFn } from './utils';
 import type { User } from '@/types/api';
 
-export type LogStormDateOverridePayload = {
+export type AttendanceDateOverridePayload = {
     date: string;
     is_workday: boolean;
     reason?: string;
@@ -10,15 +10,15 @@ export type LogStormDateOverridePayload = {
     expected_hours?: number;
 };
 
-export type LogStormSchedulePayload = {
+export type AttendanceSchedulePayload = {
     start_time: string;
     end_time: string;
     expected_hours: number;
     workdays: string[];
-    date_overrides?: LogStormDateOverridePayload[];
+    date_overrides?: AttendanceDateOverridePayload[];
 };
 
-export type EmployeeWorkSchedule = LogStormSchedulePayload & {
+export type EmployeeWorkSchedule = AttendanceSchedulePayload & {
     id: number | null;
     employee_id: number;
     is_active: boolean;
@@ -28,14 +28,39 @@ export type EmployeeWorkSchedule = LogStormSchedulePayload & {
     updated_at?: string | null;
 };
 
-export type LogStormAttendanceAnalyzePayload = {
+export type StandardWorkSchedule = AttendanceSchedulePayload & {
+    id: number | null;
+    is_default: boolean;
+    updated_by?: number | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+};
+
+export type AttendanceAutoSyncSettings = {
+    id: number | null;
+    enabled: boolean;
+    frequency_minutes: number;
+    lookback_days: number;
+    next_run_at?: string | null;
+    last_started_at?: string | null;
+    last_finished_at?: string | null;
+    last_status: 'idle' | 'running' | 'success' | 'partial' | 'failed' | string;
+    last_status_label?: string;
+    last_error?: string;
+    last_success_count: number;
+    last_error_count: number;
+    updated_by?: number | null;
+    updated_at?: string | null;
+};
+
+export type AttendanceAnalyzePayload = {
     employee_id: number;
     period_start: string;
     period_end: string;
-    schedule?: LogStormSchedulePayload;
+    schedule?: AttendanceSchedulePayload;
 };
 
-export type LogStormAttendanceRecord = {
+export type AttendanceRecord = {
     id?: number;
     date?: string;
     employee_id?: string;
@@ -78,12 +103,24 @@ export type AttendanceRecordComment = {
     created_at: string;
 };
 
-export type LogStormAttendanceResponse = {
-    records?: LogStormAttendanceRecord[];
+export type AttendanceDayEvent = {
+    event_key: string;
+    time: string;
+    time_label: string;
+    caption: string;
+    device: string;
+    device_name: string;
+    serial_no: number;
+    has_photo: boolean;
+    photo_url: string | null;
+};
+
+export type AttendanceAnalysisResponse = {
+    records?: AttendanceRecord[];
     [key: string]: unknown;
 };
 
-export type LogStormAttendanceRecordsQuery = {
+export type AttendanceRecordsQuery = {
     employee_id?: number | string;
     date_from?: string;
     date_to?: string;
@@ -91,8 +128,8 @@ export type LogStormAttendanceRecordsQuery = {
     limit?: number;
 };
 
-export type LogStormAttendanceRecordUpdatePayload = Partial<Pick<
-    LogStormAttendanceRecord,
+export type AttendanceRecordUpdatePayload = Partial<Pick<
+    AttendanceRecord,
     | 'arrival_time'
     | 'departure_time'
     | 'work_hours'
@@ -110,11 +147,11 @@ export type LogStormAttendanceRecordUpdatePayload = Partial<Pick<
     | 'is_absent'
 >>;
 
-export type PaginatedLogStormAttendanceRecords = {
+export type PaginatedAttendanceRecords = {
     count: number;
     next: string | null;
     previous: string | null;
-    results: LogStormAttendanceRecord[];
+    results: AttendanceRecord[];
 };
 
 export type MonthlyAttendanceMatrixCell = {
@@ -124,6 +161,10 @@ export type MonthlyAttendanceMatrixCell = {
     work_hours: number | string | null;
     expected_hours: number | string | null;
     status: 'empty' | 'technical' | 'underwork' | 'late' | 'overtime' | 'absent' | 'non_working' | 'normal' | string;
+    short_label?: string;
+    display_text?: string;
+    primary_label?: string;
+    detail_lines?: string[];
     issues: string[];
     is_workday: boolean | null;
     effective_is_workday: boolean | null;
@@ -135,6 +176,8 @@ export type MonthlyAttendanceMatrixCell = {
     is_absent?: boolean;
     personnel_status?: string;
     personnel_status_label?: string;
+    is_manually_edited?: boolean;
+    manual_edited_at?: string | null;
     comments_count: number;
 };
 
@@ -171,34 +214,124 @@ export type MonthlyAttendanceMatrixQuery = {
     month: string;
 };
 
-export function createAttendanceApi(request: RequestFn) {
+export type MonthlyAttendanceMatrixExportQuery = {
+    employee_ids: string;
+    period_start: string;
+    period_end: string;
+};
+
+export type AttendanceMatrixExportFile = {
+    blob: Blob;
+    filename: string;
+};
+
+function filenameFromContentDisposition(value: string | null): string | null {
+    if (!value) return null;
+    const utfMatch = value.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utfMatch?.[1]) return decodeURIComponent(utfMatch[1].replace(/"/g, ''));
+    const match = value.match(/filename="?([^";]+)"?/i);
+    return match?.[1] || null;
+}
+
+export function createAttendanceApi(request: RequestFn, getToken: GetTokenFn) {
     return {
-        analyzeLogStormAttendance: (data: LogStormAttendanceAnalyzePayload) =>
+        analyzeAttendance: (data: AttendanceAnalyzePayload) =>
             request('/api/v1/attendance/logstorm/analyze/', {
                 method: 'POST',
                 body: JSON.stringify(data),
-            }) as Promise<LogStormAttendanceResponse>,
-        getLogStormAttendanceRecords: (params?: LogStormAttendanceRecordsQuery) =>
-            request(`/api/v1/attendance/records/${buildQuery(params)}`) as Promise<PaginatedLogStormAttendanceRecords>,
+            }) as Promise<AttendanceAnalysisResponse>,
+        getAttendanceRecords: (params?: AttendanceRecordsQuery) =>
+            request(`/api/v1/attendance/records/${buildQuery(params)}`) as Promise<PaginatedAttendanceRecords>,
+        getAttendanceRecord: (recordId: number) =>
+            request(`/api/v1/attendance/records/${recordId}/`) as Promise<AttendanceRecord>,
         getMonthlyAttendanceMatrix: (params: MonthlyAttendanceMatrixQuery) =>
             request(`/api/v1/attendance/monthly-matrix/${buildQuery(params)}`) as Promise<MonthlyAttendanceMatrix>,
+        downloadMonthlyAttendanceMatrix: async (
+            params: MonthlyAttendanceMatrixExportQuery,
+        ): Promise<AttendanceMatrixExportFile> => {
+            const token = getToken();
+            const headers: Record<string, string> = {};
+            if (token) headers.Authorization = `Bearer ${token}`;
+            const response = await fetch(`/api/v1/attendance/monthly-matrix/export/${buildQuery(params)}`, {
+                method: 'GET',
+                headers,
+            });
+            if (!response.ok) {
+                let detail = response.statusText;
+                try {
+                    const payload = await response.json();
+                    detail = payload.detail || JSON.stringify(payload);
+                } catch {
+                    detail = response.statusText;
+                }
+                throw new Error(`API Error: ${response.status} ${detail}`);
+            }
+            return {
+                blob: await response.blob(),
+                filename: filenameFromContentDisposition(
+                    response.headers.get('content-disposition'),
+                ) || `attendance-${params.period_start}_${params.period_end}.xlsx`,
+            };
+        },
+        getStandardWorkSchedule: () =>
+            request('/api/v1/attendance/standard-work-schedule/') as Promise<StandardWorkSchedule>,
+        updateStandardWorkSchedule: (data: Partial<AttendanceSchedulePayload>) =>
+            request('/api/v1/attendance/standard-work-schedule/', {
+                method: 'PATCH',
+                body: JSON.stringify(data),
+            }) as Promise<StandardWorkSchedule>,
+        getAttendanceAutoSyncSettings: () =>
+            request('/api/v1/attendance/auto-sync-settings/') as Promise<AttendanceAutoSyncSettings>,
+        updateAttendanceAutoSyncSettings: (
+            data: Partial<Pick<
+                AttendanceAutoSyncSettings,
+                'enabled' | 'frequency_minutes' | 'lookback_days'
+            >>,
+        ) =>
+            request('/api/v1/attendance/auto-sync-settings/', {
+                method: 'PATCH',
+                body: JSON.stringify(data),
+            }) as Promise<AttendanceAutoSyncSettings>,
+        runAttendanceAutoSyncNow: () =>
+            request('/api/v1/attendance/auto-sync/run-now/', {
+                method: 'POST',
+            }) as Promise<AttendanceAutoSyncSettings>,
         getEmployeeWorkSchedule: (employeeId: number | string) =>
             request(`/api/v1/attendance/work-schedules/${employeeId}/`) as Promise<EmployeeWorkSchedule>,
         updateEmployeeWorkSchedule: (
             employeeId: number | string,
-            data: Partial<LogStormSchedulePayload & { is_active: boolean }>,
+            data: Partial<AttendanceSchedulePayload & { is_active: boolean }>,
         ) =>
             request(`/api/v1/attendance/work-schedules/${employeeId}/`, {
                 method: 'PATCH',
                 body: JSON.stringify(data),
             }) as Promise<EmployeeWorkSchedule>,
-        updateAttendanceRecord: (recordId: number, data: LogStormAttendanceRecordUpdatePayload) =>
+        updateAttendanceRecord: (recordId: number, data: AttendanceRecordUpdatePayload) =>
             request(`/api/v1/attendance/records/${recordId}/`, {
                 method: 'PATCH',
                 body: JSON.stringify(data),
-            }) as Promise<LogStormAttendanceRecord>,
+            }) as Promise<AttendanceRecord>,
         getAttendanceRecordComments: (recordId: number) =>
             request(`/api/v1/attendance/records/${recordId}/comments/`) as Promise<AttendanceRecordComment[]>,
+        getAttendanceRecordDayEvents: (recordId: number) =>
+            request(`/api/v1/attendance/records/${recordId}/day-events/`) as Promise<AttendanceDayEvent[]>,
+        getAttendanceDayEventPhoto: async (photoUrl: string): Promise<Blob> => {
+            const token = getToken();
+            const headers: Record<string, string> = {};
+            if (token) headers.Authorization = `Bearer ${token}`;
+            const response = await fetch(photoUrl, { method: 'GET', headers });
+            if (!response.ok) {
+                let detail = response.statusText;
+                try {
+                    const payload = await response.json();
+                    detail = payload.detail || payload.error || JSON.stringify(payload);
+                } catch {
+                    detail = response.statusText;
+                }
+                throw new Error(`API Error: ${response.status} ${detail}`);
+            }
+            return response.blob();
+        },
         addAttendanceRecordComment: (recordId: number, text: string) =>
             request(`/api/v1/attendance/records/${recordId}/comments/`, {
                 method: 'POST',
