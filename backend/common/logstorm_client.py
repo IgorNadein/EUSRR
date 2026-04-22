@@ -1,6 +1,7 @@
 """Client for the external LogStorm attendance analyzer API."""
 
 from dataclasses import dataclass
+from datetime import date
 from typing import Any, Optional
 
 import requests
@@ -42,6 +43,29 @@ class LogStormClient:
     def analyze_attendance(self, payload: dict[str, Any]) -> dict[str, Any]:
         response = self.session.post(
             self._url("/attendance/analyze"),
+            json=payload,
+            headers=self._headers(),
+            timeout=self.config.timeout,
+        )
+        if not response.ok:
+            raise LogStormClientError(
+                f"LogStorm API returned HTTP {response.status_code}: "
+                f"{response.text}"
+            )
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise LogStormClientError("LogStorm API returned invalid JSON") from exc
+
+    def update_attendance_override(
+        self,
+        *,
+        employee_id: str,
+        record_date: date | str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        response = self.session.patch(
+            self._url(f"/attendance/overrides/{employee_id}/{record_date}"),
             json=payload,
             headers=self._headers(),
             timeout=self.config.timeout,

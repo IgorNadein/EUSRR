@@ -7,13 +7,18 @@
 """
 
 import logging
-from datetime import datetime
+from datetime import date, datetime, time
 
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
 
-from employees.constants import ACTION_HIRED
+from employees.constants import (
+    ACTION_HIRED,
+    ACTION_ON_DAY_OFF,
+    ACTION_ON_LEAVE,
+    ACTION_ON_SICK_LEAVE,
+)
 from employees.models import Employee, EmployeeAction
 
 logger = logging.getLogger(__name__)
@@ -25,14 +30,15 @@ logger = logging.getLogger(__name__)
 
 # Немедленные события (создаются сразу при одобрении)
 IMMEDIATE_ACTION_MAPPING = {
-    "transfer": "transferred",      # Перевод → Переведен
-    "dismissal": "dismissed",        # Увольнение → Уволен
+    "transfer": "transferred",  # Перевод → Переведен
+    "dismissal": "dismissed",  # Увольнение → Уволен
 }
 
 # Отложенные события (создаются по Celery в date_from)
 SCHEDULED_ACTION_MAPPING = {
-    "vacation": "on_leave",          # Отпуск → В отпуске
-    "sick_leave": "on_sick_leave",   # Больничный → На больничном
+    "vacation": ACTION_ON_LEAVE,  # Отпуск → В отпуске
+    "sick_leave": ACTION_ON_SICK_LEAVE,  # Больничный → На больничном
+    "day_off": ACTION_ON_DAY_OFF,  # Отгул → В отгуле
 }
 
 
@@ -54,7 +60,8 @@ def create_hired_action(sender, instance: Employee, created, **kwargs):
 # Обработчики заявок (requests_app)
 # ============================================================
 
-@receiver(pre_save, sender='requests_app.Request')
+
+@receiver(pre_save, sender="requests_app.Request")
 def track_request_status_change(sender, instance, **kwargs):
     """Сохраняем старый статус перед обновлением для отслеживания изменений."""
     if instance.pk:
@@ -66,7 +73,7 @@ def track_request_status_change(sender, instance, **kwargs):
             instance._old_status = None
 
 
-@receiver(post_save, sender='requests_app.Request')
+@receiver(post_save, sender="requests_app.Request")
 def create_action_on_request_approval(sender, instance, created, **kwargs):
     """
     Автоматически создает EmployeeAction при одобрении заявок.
@@ -87,7 +94,7 @@ def create_action_on_request_approval(sender, instance, created, **kwargs):
         return
 
     # Проверяем изменение статуса
-    old_status = getattr(instance, '_old_status', None)
+    old_status = getattr(instance, "_old_status", None)
     if old_status == RequestStatus.APPROVED:
         return  # Уже была одобрена
 
@@ -117,16 +124,15 @@ def _create_immediate_action(request):
 
     # Проверяем дубли
     if EmployeeAction.objects.filter(
-        extra__request_id=request.id,
-        action=action_type
+        extra__request_id=request.id, action=action_type
     ).exists():
-        logger.warning(
-            f"EmployeeAction already exists for Request #{request.id}"
-        )
+        logger.warning(f"EmployeeAction already exists for Request #{request.id}")
         return
 
     # Создаем событие
-    action_date = request.date_from or request.decided_at or timezone.now()
+    action_date = _as_action_datetime(
+        request.date_from or request.decided_at or timezone.now()
+    )
     action_comment = f"Заявление #{request.id}"
     if request.comment:
         action_comment += f": {request.comment[:200]}"
@@ -138,12 +144,10 @@ def _create_immediate_action(request):
             date=action_date,
             comment=action_comment,
             extra={
-                'request_id': request.id,
-                'approved_by': (
-                    request.approver.id if request.approver else None
-                ),
-                'immediate': True
-            }
+                "request_id": request.id,
+                "approved_by": (request.approver.id if request.approver else None),
+                "immediate": True,
+            },
         )
 
         # Применяем эффекты (деактивация, LDAP sync)
@@ -157,7 +161,7 @@ def _create_immediate_action(request):
     except Exception as e:
         logger.error(
             f"Failed to create EmployeeAction for Request #{request.id}: {e}",
-            exc_info=True
+            exc_info=True,
         )
 
 
@@ -188,34 +192,37 @@ def _schedule_delayed_action(request):
         return
 
     # Иначе планируем на date_from в 00:00
-    eta = timezone.make_aware(
-        datetime.combine(request.date_from, datetime.min.time())
-    )
+    eta = timezone.make_aware(datetime.combine(request.date_from, datetime.min.time()))
 
     try:
-        task = create_scheduled_action.apply_async(
-            args=[request.id],
-            eta=eta
-        )
+        task = create_scheduled_action.apply_async(args=[request.id], eta=eta)
         logger.info(
             f"Scheduled EmployeeAction creation for Request #{request.id} "
             f"at {eta} (task_id={task.id})"
         )
     except Exception as e:
         logger.error(
-            f"Failed to schedule action for Request #{request.id}: {e}",
-            exc_info=True
+            f"Failed to schedule action for Request #{request.id}: {e}", exc_info=True
         )
+
+
+def _as_action_datetime(value):
+    if isinstance(value, datetime):
+        return value if timezone.is_aware(value) else timezone.make_aware(value)
+    if isinstance(value, date):
+        return timezone.make_aware(datetime.combine(value, time(hour=12)))
+    return value
 
 
 def _apply_action_effects(action):
     """Применяет эффекты кадрового события (как в EmployeeActionViewSet)."""
     try:
         from api.v1.employees.views.actions import EmployeeActionViewSet
+
         viewset = EmployeeActionViewSet()
         viewset._apply_effects(action)
     except Exception as e:
         logger.error(
             f"Failed to apply effects for EmployeeAction #{action.id}: {e}",
-            exc_info=True
+            exc_info=True,
         )

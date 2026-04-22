@@ -22,14 +22,31 @@ def _payload(employee_id, **overrides):
     return payload
 
 
-def test_logstorm_attendance_api_requires_staff(
+def test_logstorm_attendance_api_allows_user_self_analysis(
     auth_client_factory,
     user_factory,
 ):
     user = user_factory(staff=False)
     client = auth_client_factory(user)
 
-    response = client.post(_url(), _payload(user.id), format="json")
+    with patch(
+        "api.v1.attendance.views.analyze_employee_attendance",
+        return_value={"records": []},
+    ):
+        response = client.post(_url(), _payload(user.id), format="json")
+
+    assert response.status_code == 200
+
+
+def test_logstorm_attendance_api_rejects_other_employee_for_user(
+    auth_client_factory,
+    user_factory,
+):
+    user = user_factory(staff=False)
+    other = user_factory()
+    client = auth_client_factory(user)
+
+    response = client.post(_url(), _payload(other.id), format="json")
 
     assert response.status_code == 403
 
@@ -84,9 +101,9 @@ def test_logstorm_attendance_api_passes_schedule(
 
     assert response.status_code == 200
     assert analyze.call_args.kwargs["schedule"]["start_time"] == "09:00"
-    assert analyze.call_args.kwargs["schedule"]["date_overrides"][0][
-        "is_workday"
-    ] is False
+    assert (
+        analyze.call_args.kwargs["schedule"]["date_overrides"][0]["is_workday"] is False
+    )
 
 
 def test_logstorm_attendance_api_rejects_invalid_period(

@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     "scheduling.apps.SchedulingConfig",
     "documents.apps.DocumentsConfig",
     "requests_app.apps.RequestsAppConfig",
+    "attendance.apps.AttendanceConfig",
     "feed.apps.FeedConfig",
     "realtime.apps.RealtimeConfig",  # WebSocket consumers для real-time
     "communications.apps.CommunicationsConfig",
@@ -204,7 +205,7 @@ LOGIN_REDIRECT_URL = "/admin/"
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:9000/api")
 
 # LogStorm attendance analyzer integration.
-LOGSTORM_API_URL = os.getenv("LOGSTORM_API_URL", "http://127.0.0.1:8000")
+LOGSTORM_API_URL = os.getenv("LOGSTORM_API_URL", "http://127.0.0.1:8010")
 LOGSTORM_API_TOKEN = os.getenv("LOGSTORM_API_TOKEN", "")
 LOGSTORM_TIMEOUT_SECONDS = int(os.getenv("LOGSTORM_TIMEOUT_SECONDS", "30"))
 

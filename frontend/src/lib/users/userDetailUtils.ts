@@ -42,6 +42,10 @@ export const employeeActionTypes = [
   { value: "dismissed", label: "Уволен" },
   { value: "on_leave", label: "В отпуске" },
   { value: "returned_from_leave", label: "Вернулся из отпуска" },
+  { value: "on_sick_leave", label: "На больничном" },
+  { value: "returned_from_sick_leave", label: "Вернулся с больничного" },
+  { value: "on_day_off", label: "В отгуле" },
+  { value: "returned_from_day_off", label: "Вернулся из отгула" },
   { value: "on_maternity", label: "В декрете" },
   { value: "returned_from_maternity", label: "Вернулся из декрета" },
   { value: "transferred", label: "Переведен" },
@@ -217,6 +221,8 @@ export function getEmployeeActionTone(actionType?: string): {
 } {
   switch (actionType) {
     case "on_leave":
+    case "on_sick_leave":
+    case "on_day_off":
     case "on_maternity":
       return {
         badgeClass: "app-feedback-warning",

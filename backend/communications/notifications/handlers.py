@@ -15,6 +15,7 @@ from django.contrib.auth import get_user_model
 # Опциональная зависимость от notifications (graceful degradation)
 try:
     from notifications.signals import notify
+
     NOTIFICATIONS_AVAILABLE = True
 except ImportError:
     NOTIFICATIONS_AVAILABLE = False
@@ -61,13 +62,12 @@ def get_users_with_notifications_enabled(chat, users) -> dict[int, bool]:
     user_ids = [u.id for u in users]
 
     # Один запрос для всех пользователей
-    settings = ChatUserSettings.objects.filter(
-        chat=chat,
-        user_id__in=user_ids
-    ).values('user_id', 'notifications_enabled')
+    settings = ChatUserSettings.objects.filter(chat=chat, user_id__in=user_ids).values(
+        "user_id", "notifications_enabled"
+    )
 
     # Создаем словарь для быстрого доступа
-    settings_dict = {s['user_id']: s['notifications_enabled'] for s in settings}
+    settings_dict = {s["user_id"]: s["notifications_enabled"] for s in settings}
 
     # Для пользователей без настроек - по умолчанию True
     return {uid: settings_dict.get(uid, True) for uid in user_ids}
@@ -94,12 +94,12 @@ def notify_new_message(message):
     content = message.content
 
     # Специальная обработка для чатов комментариев
-    if chat.type == 'comments':
+    if chat.type == "comments":
         _notify_comment(message)
         return
 
     # Получаем всех участников чата кроме автора
-    if chat.type in ['announcement', 'channel', 'global']:
+    if chat.type in ["announcement", "channel", "global"]:
         participants = chat.get_participants().exclude(id=author.id)
     else:
         participants = chat.participants.exclude(id=author.id)
@@ -110,7 +110,8 @@ def notify_new_message(message):
         return  # Нет получателей
 
     notification_settings = get_users_with_notifications_enabled(
-        chat, participants_list)
+        chat, participants_list
+    )
 
     # Отслеживаем, кому уже отправили уведомления
     notified_user_ids = set()
@@ -133,12 +134,12 @@ def notify_new_message(message):
                             description=truncate_message(content, 100),
                             action_url=ActionURLs.chat_detail(chat.id),
                             data={
-                                'title': MessageTemplates.mention(author_name),
-                                'chat_id': chat.id,
-                                'chat_name': get_chat_name(chat),
-                                'message_id': message.id,
-                                'author_id': author.id,
-                            }
+                                "title": MessageTemplates.mention(author_name),
+                                "chat_id": chat.id,
+                                "chat_name": get_chat_name(chat),
+                                "message_id": message.id,
+                                "author_id": author.id,
+                            },
                         )
                     notified_user_ids.add(user.id)
             except User.DoesNotExist:
@@ -158,29 +159,28 @@ def notify_new_message(message):
                     description=truncate_message(content, 100),
                     action_url=ActionURLs.chat_detail(chat.id),
                     data={
-                        'title': MessageTemplates.reply(author_name),
-                        'chat_id': chat.id,
-                        'chat_name': get_chat_name(chat),
-                        'message_id': message.id,
-                        'reply_to_id': message.reply_to.id,
-                        'author_id': author.id,
-                    }
+                        "title": MessageTemplates.reply(author_name),
+                        "chat_id": chat.id,
+                        "chat_name": get_chat_name(chat),
+                        "message_id": message.id,
+                        "reply_to_id": message.reply_to.id,
+                        "author_id": author.id,
+                    },
                 )
             notified_user_ids.add(original_author.id)
 
     # 3. ОБЫЧНЫЕ УВЕДОМЛЕНИЯ О НОВОМ СООБЩЕНИИ
-    if chat.type == 'announcement':
+    if chat.type == "announcement":
         notification_verb = NotificationVerbs.ANNOUNCEMENT
         title = MessageTemplates.announcement(author_name)
         max_length = 150
         is_announcement = True
     else:
         notification_verb = NotificationVerbs.NEW_MESSAGE
-        if chat.type == 'private':
+        if chat.type == "private":
             title = MessageTemplates.private_message(author_name)
         else:
-            title = MessageTemplates.group_message(
-                author_name, get_chat_name(chat))
+            title = MessageTemplates.group_message(author_name, get_chat_name(chat))
         max_length = 100
         is_announcement = False
 
@@ -194,13 +194,13 @@ def notify_new_message(message):
             continue
 
         metadata = {
-            'chat_id': chat.id,
-            'chat_name': get_chat_name(chat),
-            'message_id': message.id,
-            'author_id': author.id,
+            "chat_id": chat.id,
+            "chat_name": get_chat_name(chat),
+            "message_id": message.id,
+            "author_id": author.id,
         }
         if is_announcement:
-            metadata['is_announcement'] = True
+            metadata["is_announcement"] = True
 
         _send_notification(
             sender=author,
@@ -209,7 +209,7 @@ def notify_new_message(message):
             action_object=message,
             description=truncate_message(content, max_length),
             action_url=ActionURLs.chat_detail(chat.id),
-            data={**metadata, 'title': title},
+            data={**metadata, "title": title},
         )
 
 
@@ -244,15 +244,15 @@ def _notify_comment(message):
     # Проверяем тип объекта через модель
     model_name = context_obj.__class__.__name__
 
-    if model_name == 'Post':
-        object_author = getattr(context_obj, 'author', None)
+    if model_name == "Post":
+        object_author = getattr(context_obj, "author", None)
         object_url = f"/?post={context_obj.id}"
         object_type = "публикации"
-    elif model_name == 'Document':
-        object_author = getattr(context_obj, 'uploaded_by', None)
+    elif model_name == "Document":
+        object_author = getattr(context_obj, "uploaded_by", None)
         object_url = f"/documents?document={context_obj.id}"
         object_type = "документа"
-    elif model_name == 'Department':
+    elif model_name == "Department":
         from employees.models import EmployeeDepartment, RoleAssignment
 
         object_url = ActionURLs.chat_detail(chat.id)
@@ -269,19 +269,19 @@ def _notify_comment(message):
             is_active=True,
         ).values_list("employee_id", flat=True)
         recipient_ids.update(role_only_ids)
-    elif hasattr(context_obj, 'employee'):  # Request
-        object_author = getattr(context_obj, 'employee', None)
+    elif model_name == "AttendanceRecord":
+        object_author = getattr(context_obj, "employee", None)
+        object_url = f"/users/{context_obj.employee_id}"
+        object_type = "записи посещаемости"
+    elif hasattr(context_obj, "employee"):  # Request
+        object_author = getattr(context_obj, "employee", None)
         object_url = f"/requests?request={context_obj.id}"
         object_type = "заявки"
         recipient_ids.update(
-            context_obj.recipients.filter(is_active=True).values_list(
-                "id", flat=True
-            )
+            context_obj.recipients.filter(is_active=True).values_list("id", flat=True)
         )
         recipient_ids.update(
-            context_obj.cc_users.filter(is_active=True).values_list(
-                "id", flat=True
-            )
+            context_obj.cc_users.filter(is_active=True).values_list("id", flat=True)
         )
         if getattr(context_obj, "approver_id", None):
             recipient_ids.add(context_obj.approver_id)
@@ -316,19 +316,19 @@ def _notify_comment(message):
         _send_notification(
             sender=author,
             recipient=recipient,
-            verb='commented',
+            verb="commented",
             action_object=message,
             target=context_obj,
             description=truncate_message(content, 100),
             action_url=object_url or f"/chat/{chat.id}/",
             data={
-                'title': f'{author_name} оставил комментарий к {object_type}',
-                'chat_id': chat.id,
-                'message_id': message.id,
-                'author_id': author.id,
-                'object_type': model_name,
-                'object_id': context_obj.id,
-            }
+                "title": f"{author_name} оставил комментарий к {object_type}",
+                "chat_id": chat.id,
+                "message_id": message.id,
+                "author_id": author.id,
+                "object_type": model_name,
+                "object_id": context_obj.id,
+            },
         )
 
 
@@ -342,8 +342,7 @@ def notify_chat_added(chat, new_users, added_by=None):
         added_by: Пользователь, который добавил (опционально)
     """
     # ОПТИМИЗАЦИЯ: Загружаем настройки одним запросом
-    notification_settings = get_users_with_notifications_enabled(
-        chat, new_users)
+    notification_settings = get_users_with_notifications_enabled(chat, new_users)
 
     # Создаем уведомления для новых участников
     for user in new_users:
@@ -363,9 +362,9 @@ def notify_chat_added(chat, new_users, added_by=None):
             description=MessageTemplates.added_to_chat(get_chat_name(chat)),
             action_url=ActionURLs.chat_detail(chat.id),
             data={
-                'title': MessageTemplates.added_to_chat_title(),
-                'chat_id': chat.id,
-                'chat_name': get_chat_name(chat),
-                'added_by_id': added_by.id if added_by else None,
-            }
+                "title": MessageTemplates.added_to_chat_title(),
+                "chat_id": chat.id,
+                "chat_name": get_chat_name(chat),
+                "added_by_id": added_by.id if added_by else None,
+            },
         )

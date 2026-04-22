@@ -1,6 +1,7 @@
 """
 Celery tasks для автоматизации кадровых событий из заявок.
 """
+
 import logging
 from datetime import date, timedelta
 
@@ -15,13 +16,18 @@ def create_scheduled_action(self, request_id):
     """
     Создать кадровое событие для заявки по расписанию.
 
-    Вызывается в date_from для vacation/sick_leave.
+    Вызывается в date_from для vacation/sick_leave/day_off.
 
     Args:
         request_id: ID заявки
     """
     from .models import Request
     from .enums import RequestStatus
+    from employees.constants import (
+        ACTION_ON_DAY_OFF,
+        ACTION_ON_LEAVE,
+        ACTION_ON_SICK_LEAVE,
+    )
     from employees.models import EmployeeAction
 
     try:
@@ -37,8 +43,9 @@ def create_scheduled_action(self, request_id):
 
         # Определяем тип события
         action_mapping = {
-            'vacation': 'on_leave',
-            'sick_leave': 'on_sick_leave',
+            "vacation": ACTION_ON_LEAVE,
+            "sick_leave": ACTION_ON_SICK_LEAVE,
+            "day_off": ACTION_ON_DAY_OFF,
         }
 
         action_type = action_mapping.get(request.type)
@@ -51,12 +58,9 @@ def create_scheduled_action(self, request_id):
 
         # Проверяем, что событие еще не создано
         if EmployeeAction.objects.filter(
-            extra__request_id=request_id,
-            action=action_type
+            extra__request_id=request_id, action=action_type
         ).exists():
-            logger.info(
-                f"Action already exists for Request #{request_id}, skipping"
-            )
+            logger.info(f"Action already exists for Request #{request_id}, skipping")
             return
 
         # Создаем событие
@@ -70,12 +74,10 @@ def create_scheduled_action(self, request_id):
             date=timezone.now(),
             comment=action_comment,
             extra={
-                'request_id': request.id,
-                'approved_by': (
-                    request.approver.id if request.approver else None
-                ),
-                'scheduled': True
-            }
+                "request_id": request.id,
+                "approved_by": (request.approver.id if request.approver else None),
+                "scheduled": True,
+            },
         )
 
         logger.info(
@@ -90,9 +92,9 @@ def create_scheduled_action(self, request_id):
                 eta=timezone.make_aware(
                     timezone.datetime.combine(
                         request.date_to + timedelta(days=1),
-                        timezone.datetime.min.time()
+                        timezone.datetime.min.time(),
                     )
-                )
+                ),
             )
 
         return f"Created action {action.id}"
@@ -103,7 +105,7 @@ def create_scheduled_action(self, request_id):
     except Exception as e:
         logger.error(
             f"Failed to create scheduled action for Request #{request_id}: {e}",
-            exc_info=True
+            exc_info=True,
         )
         # Retry через 5 минут
         raise self.retry(exc=e, countdown=300)
@@ -112,7 +114,7 @@ def create_scheduled_action(self, request_id):
 @shared_task(bind=True, max_retries=3)
 def schedule_auto_return(self, request_id):
     """
-    Автоматически создать событие возврата из отпуска/больничного.
+    Автоматически создать событие возврата из отпуска/больничного/отгула.
 
     Вызывается в date_to + 1 день.
 
@@ -121,6 +123,11 @@ def schedule_auto_return(self, request_id):
     """
     from .models import Request
     from .enums import RequestStatus
+    from employees.constants import (
+        ACTION_RETURNED_FROM_DAY_OFF,
+        ACTION_RETURNED_FROM_LEAVE,
+        ACTION_RETURNED_FROM_SICK_LEAVE,
+    )
     from employees.models import EmployeeAction
 
     try:
@@ -129,15 +136,15 @@ def schedule_auto_return(self, request_id):
         # Проверяем, что заявка все еще одобрена
         if request.status != RequestStatus.APPROVED:
             logger.info(
-                f"Request #{request_id} is no longer approved, "
-                f"skipping auto-return"
+                f"Request #{request_id} is no longer approved, skipping auto-return"
             )
             return
 
         # Определяем тип возврата
         return_mapping = {
-            'vacation': 'returned_from_leave',
-            'sick_leave': 'returned_from_leave',
+            "vacation": ACTION_RETURNED_FROM_LEAVE,
+            "sick_leave": ACTION_RETURNED_FROM_SICK_LEAVE,
+            "day_off": ACTION_RETURNED_FROM_DAY_OFF,
         }
 
         return_action = return_mapping.get(request.type)
@@ -150,12 +157,9 @@ def schedule_auto_return(self, request_id):
 
         # Проверяем, что событие возврата еще не создано
         if EmployeeAction.objects.filter(
-            extra__request_id=request_id,
-            action=return_action
+            extra__request_id=request_id, action=return_action
         ).exists():
-            logger.info(
-                f"Return action already exists for Request #{request_id}"
-            )
+            logger.info(f"Return action already exists for Request #{request_id}")
             return
 
         # Создаем событие возврата
@@ -170,10 +174,7 @@ def schedule_auto_return(self, request_id):
             action=return_action,
             date=timezone.now(),
             comment=return_comment,
-            extra={
-                'request_id': request.id,
-                'auto_return': True
-            }
+            extra={"request_id": request.id, "auto_return": True},
         )
 
         logger.info(
@@ -189,7 +190,7 @@ def schedule_auto_return(self, request_id):
     except Exception as e:
         logger.error(
             f"Failed to create auto-return for Request #{request_id}: {e}",
-            exc_info=True
+            exc_info=True,
         )
         raise self.retry(exc=e, countdown=300)
 
@@ -214,9 +215,9 @@ def cleanup_missed_returns():
     # Ищем одобренные заявки, которые закончились вчера или раньше
     ended_requests = Request.objects.filter(
         status=RequestStatus.APPROVED,
-        type__in=['vacation', 'sick_leave'],
+        type__in=["vacation", "sick_leave", "day_off"],
         date_to__lt=today,
-        date_to__gte=yesterday - timedelta(days=7)  # За последнюю неделю
+        date_to__gte=yesterday - timedelta(days=7),  # За последнюю неделю
     )
 
     created_count = 0
@@ -224,8 +225,9 @@ def cleanup_missed_returns():
     for req in ended_requests:
         # Определяем тип возврата
         return_action = {
-            'vacation': 'returned_from_leave',
-            'sick_leave': 'returned_from_leave',
+            "vacation": "returned_from_leave",
+            "sick_leave": "returned_from_sick_leave",
+            "day_off": "returned_from_day_off",
         }.get(req.type)
 
         if not return_action:
@@ -233,8 +235,7 @@ def cleanup_missed_returns():
 
         # Проверяем, что события возврата нет
         if EmployeeAction.objects.filter(
-            extra__request_id=req.id,
-            action=return_action
+            extra__request_id=req.id, action=return_action
         ).exists():
             continue
 
@@ -248,23 +249,14 @@ def cleanup_missed_returns():
                     f"Автоматически восстановлено: окончание "
                     f"{req.get_type_display().lower()} (заявка #{req.id})"
                 ),
-                extra={
-                    'request_id': req.id,
-                    'auto_return': True,
-                    'cleanup': True
-                }
+                extra={"request_id": req.id, "auto_return": True, "cleanup": True},
             )
             created_count += 1
             logger.info(
-                f"Cleanup: created return action #{action.id} "
-                f"for Request #{req.id}"
+                f"Cleanup: created return action #{action.id} for Request #{req.id}"
             )
         except Exception as e:
-            logger.error(
-                f"Cleanup: failed to create return for Request #{req.id}: {e}"
-            )
+            logger.error(f"Cleanup: failed to create return for Request #{req.id}: {e}")
 
-    logger.info(
-        f"cleanup_missed_returns completed: {created_count} actions created"
-    )
+    logger.info(f"cleanup_missed_returns completed: {created_count} actions created")
     return created_count
