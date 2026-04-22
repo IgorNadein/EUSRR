@@ -30,13 +30,17 @@ from .feed.views import PostViewSet
 from .requests_app.views import RequestViewSet
 from .search.views import search_api_view
 from .attendance.views import (
+    AttendanceMonthlyMatrixExportAPIView,
     AttendanceMonthlyMatrixAPIView,
+    AttendanceRecordDayEventPhotoAPIView,
+    AttendanceRecordDayEventsAPIView,
     AttendanceRecordCommentDetailAPIView,
     AttendanceRecordCommentsAPIView,
     AttendanceRecordDetailAPIView,
     AttendanceRecordListAPIView,
     EmployeeWorkScheduleAPIView,
     LogStormAttendanceAnalyzeAPIView,
+    StandardWorkScheduleAPIView,
 )
 
 app_name = "v1"
@@ -113,14 +117,34 @@ urlpatterns = [
         name="attendance-monthly-matrix",
     ),
     path(
+        "attendance/monthly-matrix/export/",
+        AttendanceMonthlyMatrixExportAPIView.as_view(),
+        name="attendance-monthly-matrix-export",
+    ),
+    path(
         "attendance/work-schedules/<int:employee_id>/",
         EmployeeWorkScheduleAPIView.as_view(),
         name="attendance-work-schedule",
     ),
     path(
+        "attendance/standard-work-schedule/",
+        StandardWorkScheduleAPIView.as_view(),
+        name="attendance-standard-work-schedule",
+    ),
+    path(
         "attendance/records/<int:record_id>/",
         AttendanceRecordDetailAPIView.as_view(),
         name="attendance-record-detail",
+    ),
+    path(
+        "attendance/records/<int:record_id>/day-events/",
+        AttendanceRecordDayEventsAPIView.as_view(),
+        name="attendance-record-day-events",
+    ),
+    path(
+        "attendance/records/<int:record_id>/day-events/<str:event_key>/photo/",
+        AttendanceRecordDayEventPhotoAPIView.as_view(),
+        name="attendance-record-day-event-photo",
     ),
     path(
         "attendance/records/<int:record_id>/comments/",

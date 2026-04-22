@@ -317,8 +317,14 @@ function Header({ mobileNavPlacement, suppressMobileChrome = false, onOpenLeftNa
 
 function LeftNavContent({ onNavigate }: LeftNavContentProps) {
   const pathname = usePathname();
+  const { user } = useUser();
   const { notifications: notificationsData, markCategoryAsRead } = useNotifications();
   const notifications = useMemo(() => Array.isArray(notificationsData) ? notificationsData : [], [notificationsData]);
+  const canManageAttendance = Boolean(user?.auth?.is_staff || user?.auth?.is_superuser);
+  const visibleNavItems = useMemo(
+    () => navItems.filter((item) => item.href !== "/attendance" || canManageAttendance),
+    [canManageAttendance],
+  );
 
   // Подсчет уведомлений по категориям
   const categoryCounts = useMemo(() => {
@@ -355,7 +361,7 @@ function LeftNavContent({ onNavigate }: LeftNavContentProps) {
   return (
     <div className="app-surface rounded-2xl p-5">
       <div className="space-y-2 text-sm">
-        {navItems.map(({ href, label, icon: Icon, category }) => {
+        {visibleNavItems.map(({ href, label, icon: Icon, category }) => {
           const count = category ? categoryCounts[category] || 0 : 0;
           
           return (

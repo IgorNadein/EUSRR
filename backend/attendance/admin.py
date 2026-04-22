@@ -4,6 +4,7 @@ from attendance.models import (
     AttendanceAnalysisRun,
     AttendanceRecord,
     EmployeeWorkSchedule,
+    StandardWorkSchedule,
 )
 
 
@@ -63,5 +64,17 @@ class EmployeeWorkScheduleAdmin(admin.ModelAdmin):
         "employee__last_name",
         "employee__first_name",
         "employee__email",
+    )
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(StandardWorkSchedule)
+class StandardWorkScheduleAdmin(admin.ModelAdmin):
+    list_display = (
+        "start_time",
+        "end_time",
+        "expected_hours",
+        "updated_by",
+        "updated_at",
     )
     readonly_fields = ("created_at", "updated_at")

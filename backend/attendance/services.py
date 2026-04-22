@@ -1,17 +1,24 @@
 from __future__ import annotations
 
+from io import BytesIO
 from dataclasses import dataclass
 from datetime import date
 from calendar import monthrange
 from typing import Any
 
+from django.conf import settings
 from django.db import transaction
 from django.utils.dateparse import parse_date
+from openpyxl import Workbook
+from openpyxl.comments import Comment
+from openpyxl.styles import Alignment, Font, PatternFill, Side, Border
+from openpyxl.utils import get_column_letter
 
 from attendance.models import (
     AttendanceAnalysisRun,
     AttendanceRecord,
     EmployeeWorkSchedule,
+    StandardWorkSchedule,
 )
 from employees.constants import (
     ACTION_DISMISSED,
@@ -47,6 +54,55 @@ DAYS_RU = {
     4: "Пт",
     5: "Сб",
     6: "Вс",
+}
+
+MATRIX_STATUS_LABELS = {
+    "empty": "Нет записи",
+    "technical": "Техсбой",
+    "underwork": "Недоработка",
+    "late": "Опоздание",
+    "overtime": "Переработка",
+    "absent": "Отсутствие",
+    "non_working": "Нерабочий",
+    "normal": "Норма",
+}
+
+MATRIX_STATUS_SHORT_LABELS = {
+    "empty": "",
+    "technical": "Тех",
+    "underwork": "НД",
+    "late": "ОП",
+    "overtime": "ПР",
+    "absent": "Н",
+    "non_working": "Нер",
+    "normal": "OK",
+}
+
+PERSONNEL_STATUS_SHORT_LABELS = {
+    ACTION_ON_LEAVE: "ОТП",
+    ACTION_ON_SICK_LEAVE: "БЛ",
+    ACTION_ON_DAY_OFF: "ОТГ",
+    ACTION_ON_MATERNITY: "ДЕКР",
+    ACTION_DISMISSED: "Вне штата",
+}
+
+PERSONNEL_STATUS_LEGEND = {
+    ACTION_ON_LEAVE: "Отпуск",
+    ACTION_ON_SICK_LEAVE: "Больничный",
+    ACTION_ON_DAY_OFF: "Отгул",
+    ACTION_ON_MATERNITY: "Декрет",
+    ACTION_DISMISSED: "Уволен / вне штата",
+}
+
+MATRIX_STATUS_FILLS = {
+    "empty": "F1F5F9",
+    "technical": "FEE2E2",
+    "underwork": "FEF3C7",
+    "late": "FEF3C7",
+    "absent": "FEF3C7",
+    "overtime": "DCFCE7",
+    "non_working": "E2E8F0",
+    "normal": "E0F2FE",
 }
 
 NON_WORKING_PERSONNEL_ACTIONS = {
@@ -184,6 +240,17 @@ def get_default_work_schedule_payload() -> dict[str, Any]:
     }
 
 
+def get_standard_work_schedule() -> StandardWorkSchedule | None:
+    return StandardWorkSchedule.objects.order_by("id").first()
+
+
+def get_standard_work_schedule_payload() -> dict[str, Any]:
+    schedule = get_standard_work_schedule()
+    if schedule is None:
+        return get_default_work_schedule_payload()
+    return schedule.to_logstorm_payload()
+
+
 def build_monthly_attendance_matrix(
     *,
     employees,
@@ -256,6 +323,235 @@ def build_monthly_attendance_matrix(
         "rows": rows,
         "summary": summary,
     }
+
+
+def build_attendance_matrix_export_workbook(
+    *,
+    employees,
+    records,
+    period_start: date,
+    period_end: date,
+    record_comments: dict[int, list[dict[str, str]]] | None = None,
+) -> bytes:
+    employees = list(employees)
+    records_by_month: dict[tuple[int, int], list[AttendanceRecord]] = {}
+    for record in records:
+        records_by_month.setdefault((record.date.year, record.date.month), []).append(
+            record
+        )
+
+    workbook = Workbook()
+    workbook.remove(workbook.active)
+
+    for year, month in _month_pairs_between(period_start, period_end):
+        matrix = build_monthly_attendance_matrix(
+            employees=employees,
+            records=records_by_month.get((year, month), []),
+            year=year,
+            month=month,
+        )
+        _append_attendance_matrix_sheet(
+            workbook,
+            matrix,
+            record_comments=record_comments or {},
+        )
+
+    _append_attendance_matrix_legend_sheet(workbook)
+
+    if not workbook.worksheets:
+        workbook.create_sheet("Посещаемость")
+
+    stream = BytesIO()
+    workbook.save(stream)
+    return stream.getvalue()
+
+
+def _month_pairs_between(
+    period_start: date,
+    period_end: date,
+) -> list[tuple[int, int]]:
+    result = []
+    year = period_start.year
+    month = period_start.month
+    while year < period_end.year or (year == period_end.year and month <= period_end.month):
+        result.append((year, month))
+        month += 1
+        if month > 12:
+            month = 1
+            year += 1
+    return result
+
+
+def _append_attendance_matrix_sheet(
+    workbook: Workbook,
+    matrix: dict[str, Any],
+    *,
+    record_comments: dict[int, list[dict[str, str]]],
+) -> None:
+    sheet = workbook.create_sheet(_safe_sheet_title(matrix["month_label"]))
+    header_fill = PatternFill("solid", fgColor="E2E8F0")
+    summary_fill = PatternFill("solid", fgColor="DBEAFE")
+    thin = Side(style="thin", color="CBD5E1")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    sheet.append(["Дата", "День", *[employee["name"] for employee in matrix["employees"]]])
+    for cell in sheet[1]:
+        cell.font = Font(bold=True, color="0F172A")
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = border
+
+    for row in matrix["rows"]:
+        sheet.append(
+            [
+                row["date"],
+                row["weekday"],
+                *[
+                    _format_matrix_export_cell(row["cells"][str(employee["id"])])
+                    for employee in matrix["employees"]
+                ],
+            ]
+        )
+        excel_row = sheet.max_row
+        for index, excel_cell in enumerate(sheet[excel_row], start=1):
+            excel_cell.border = border
+            excel_cell.alignment = Alignment(vertical="top", wrap_text=True)
+            if index > 2:
+                matrix_cell = row["cells"][str(matrix["employees"][index - 3]["id"])]
+                status = matrix_cell["status"]
+                excel_cell.fill = PatternFill(
+                    "solid",
+                    fgColor=MATRIX_STATUS_FILLS.get(status, MATRIX_STATUS_FILLS["empty"]),
+                )
+                note = _format_matrix_export_note(
+                    row=row,
+                    cell=matrix_cell,
+                    comments=record_comments.get(matrix_cell.get("record_id") or 0, []),
+                )
+                if note:
+                    excel_cell.comment = Comment(note, "EUSRR")
+                record_id = matrix_cell.get("record_id")
+                if record_id:
+                    excel_cell.hyperlink = _attendance_record_day_events_url(record_id)
+                    excel_cell.font = Font(color="0563C1", underline="single")
+
+    if matrix["summary"]:
+        sheet.append([])
+    for summary_row in matrix["summary"]:
+        sheet.append(
+            [
+                summary_row["label"],
+                "",
+                *[
+                    summary_row["values"].get(str(employee["id"]), 0)
+                    for employee in matrix["employees"]
+                ],
+            ]
+        )
+        excel_row = sheet.max_row
+        for cell in sheet[excel_row]:
+            cell.font = Font(bold=True, color="0F172A")
+            cell.fill = summary_fill
+            cell.border = border
+
+    sheet.freeze_panes = "C2"
+    sheet.column_dimensions["A"].width = 14
+    sheet.column_dimensions["B"].width = 10
+    for column_index in range(3, len(matrix["employees"]) + 3):
+        sheet.column_dimensions[get_column_letter(column_index)].width = 18
+
+
+def _append_attendance_matrix_legend_sheet(workbook: Workbook) -> None:
+    sheet = workbook.create_sheet("Легенда")
+    header_fill = PatternFill("solid", fgColor="E2E8F0")
+    thin = Side(style="thin", color="CBD5E1")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    rows = [
+        ("Код", "Расшифровка"),
+        ("OK", "Норма"),
+        ("ОП", "Опоздание"),
+        ("НД", "Недоработка"),
+        ("ПР", "Переработка"),
+        ("Н", "Отсутствие"),
+        ("Вых", "Выходной по графику/календарю"),
+        ("Тех", "Технический сбой"),
+        ("ОТП", "Отпуск"),
+        ("БЛ", "Больничный"),
+        ("ОТГ", "Отгул"),
+        ("ДЕКР", "Декрет"),
+        ("Вне штата", "Уволен или еще не принят в выбранный день"),
+        ("+ Nч", "Зафиксирована работа в нерабочий день"),
+        ("К: N", "Количество комментариев EUSRR к записи"),
+        ("Ссылка", "Клик по ячейке записи открывает модал событий LogStorm в EUSRR"),
+    ]
+    for row in rows:
+        sheet.append(row)
+    for row_index, row in enumerate(sheet.iter_rows(), start=1):
+        for cell in row:
+            cell.border = border
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+            if row_index == 1:
+                cell.font = Font(bold=True, color="0F172A")
+                cell.fill = header_fill
+    sheet.column_dimensions["A"].width = 16
+    sheet.column_dimensions["B"].width = 56
+
+
+def _attendance_record_day_events_url(record_id: int) -> str:
+    site_url = getattr(settings, "SITE_URL", "https://corp.robotail.pro").rstrip("/")
+    return f"{site_url}/attendance?record={record_id}&events=1"
+
+
+def _safe_sheet_title(value: str) -> str:
+    forbidden = str.maketrans({char: " " for char in "[]:*?/\\\""})
+    return value.translate(forbidden)[:31] or "Посещаемость"
+
+
+def _format_matrix_export_cell(cell: dict[str, Any]) -> str:
+    if cell["status"] == "empty":
+        return ""
+    return str(cell.get("display_text") or cell.get("short_label") or "")
+
+
+def _format_matrix_export_note(
+    *,
+    row: dict[str, Any],
+    cell: dict[str, Any],
+    comments: list[dict[str, str]],
+) -> str:
+    if cell["status"] == "empty" and not comments:
+        return ""
+
+    lines = [
+        f"Дата: {row['date']} ({row['weekday']})",
+        f"Статус: {cell.get('primary_label') or MATRIX_STATUS_LABELS.get(cell['status'], cell['status'])}",
+    ]
+    details = [str(item) for item in cell.get("detail_lines", []) if item]
+    if details:
+        lines.extend(details)
+
+    if comments:
+        lines.append("")
+        lines.append("Комментарии EUSRR:")
+        for comment in comments:
+            author = comment.get("author") or "Сотрудник"
+            created_at = comment.get("created_at") or ""
+            text = comment.get("text") or ""
+            prefix = f"- {author}"
+            if created_at:
+                prefix = f"{prefix}, {created_at}"
+            lines.append(f"{prefix}: {text}")
+
+    return "\n".join(lines)
+
+
+def _format_export_number(value: Any) -> str:
+    if value is None or value == "":
+        return "0"
+    numeric = float(value)
+    if numeric.is_integer():
+        return str(int(numeric))
+    return f"{numeric:.2f}".rstrip("0").rstrip(".")
 
 
 def resolve_employee_day_state(
@@ -506,10 +802,16 @@ def _monthly_matrix_cell(record: AttendanceRecord | None) -> dict[str, Any]:
             "work_hours": None,
             "expected_hours": None,
             "status": "empty",
+            "short_label": "",
+            "display_text": "",
+            "primary_label": MATRIX_STATUS_LABELS["empty"],
+            "detail_lines": [],
             "issues": [],
             "is_workday": None,
             "effective_is_workday": None,
             "non_working_reason": "",
+            "is_manually_edited": False,
+            "manual_edited_at": None,
             "comments_count": 0,
         }
 
@@ -519,13 +821,21 @@ def _monthly_matrix_cell(record: AttendanceRecord | None) -> dict[str, Any]:
         *record.technical_issues,
     ]
     comments_count = getattr(record, "comments_count", 0) or 0
+    status = _monthly_matrix_status(record)
+    presentation = _monthly_matrix_cell_presentation(
+        record=record,
+        status=status,
+        issues=issues,
+        comments_count=comments_count,
+    )
     return {
         "record_id": record.id,
         "arrival_time": record.arrival_time,
         "departure_time": record.departure_time,
         "work_hours": record.work_hours,
         "expected_hours": record.expected_hours,
-        "status": _monthly_matrix_status(record),
+        "status": status,
+        **presentation,
         "issues": issues,
         "is_workday": record.is_workday,
         "effective_is_workday": record.effective_is_workday,
@@ -538,8 +848,159 @@ def _monthly_matrix_cell(record: AttendanceRecord | None) -> dict[str, Any]:
         "is_absent": record.is_absent,
         "personnel_status": record.personnel_status,
         "personnel_status_label": record.personnel_status_label,
+        "is_manually_edited": record.is_manually_edited,
+        "manual_edited_at": record.manual_edited_at,
         "comments_count": comments_count,
     }
+
+
+def _monthly_matrix_cell_presentation(
+    *,
+    record: AttendanceRecord,
+    status: str,
+    issues: list[Any],
+    comments_count: int,
+) -> dict[str, Any]:
+    primary_label = _matrix_primary_label(record, status)
+    short_label = _matrix_short_label(record, status)
+    display_text = _matrix_display_text(record, status, short_label)
+    detail_lines = _matrix_detail_lines(
+        record=record,
+        status=status,
+        issues=issues,
+        comments_count=comments_count,
+    )
+    return {
+        "short_label": short_label,
+        "display_text": display_text,
+        "primary_label": primary_label,
+        "detail_lines": detail_lines,
+    }
+
+
+def _matrix_primary_label(record: AttendanceRecord, status: str) -> str:
+    if record.personnel_status != PERSONNEL_STATUS_NORMAL:
+        return (
+            PERSONNEL_STATUS_LEGEND.get(record.personnel_status)
+            or record.personnel_status_label
+            or "Кадровое событие"
+        )
+    if not record.effective_is_workday:
+        return _record_non_working_reason(record) or MATRIX_STATUS_LABELS["non_working"]
+    return MATRIX_STATUS_LABELS.get(status, status)
+
+
+def _matrix_short_label(record: AttendanceRecord, status: str) -> str:
+    if record.personnel_status != PERSONNEL_STATUS_NORMAL:
+        return (
+            PERSONNEL_STATUS_SHORT_LABELS.get(record.personnel_status)
+            or record.personnel_status_label
+            or MATRIX_STATUS_SHORT_LABELS.get(status, status)
+        )
+    if not record.effective_is_workday:
+        if not record.is_workday:
+            return "Вых"
+        return MATRIX_STATUS_SHORT_LABELS["non_working"]
+    return MATRIX_STATUS_SHORT_LABELS.get(status, status)
+
+
+def _matrix_display_text(
+    record: AttendanceRecord,
+    status: str,
+    short_label: str,
+) -> str:
+    if not record.effective_is_workday:
+        if record.work_hours:
+            return f"{short_label} + {_format_export_number(record.work_hours)}ч"
+        return short_label
+
+    if status == "normal":
+        time_part = f"{record.arrival_time or '-'}/{record.departure_time or '-'}"
+        return f"{time_part} · {_format_export_number(record.work_hours)}ч"
+    time_part = f"{record.arrival_time or '-'}/{record.departure_time or '-'}"
+    if status == "late":
+        suffix = f" {record.late_minutes}м" if record.late_minutes else ""
+        return f"{short_label}{suffix} · {time_part}"
+    if status == "underwork":
+        suffix = (
+            f" {_format_export_number(record.underwork_hours)}ч"
+            if record.underwork_hours
+            else ""
+        )
+        return f"{short_label}{suffix} · {time_part}"
+    if status == "overtime":
+        suffix = (
+            f" +{_format_export_number(record.overtime_hours)}ч"
+            if record.overtime_hours
+            else ""
+        )
+        return f"{short_label}{suffix} · {time_part}"
+    if status == "technical":
+        issue_count = len(record.technical_issues)
+        label = f"{short_label} ({issue_count})" if issue_count else short_label
+        return f"{label} · {time_part}" if record.arrival_time or record.departure_time else label
+    return short_label
+
+
+def _matrix_detail_lines(
+    *,
+    record: AttendanceRecord,
+    status: str,
+    issues: list[Any],
+    comments_count: int,
+) -> list[str]:
+    lines = [
+        f"Приход: {record.arrival_time or '-'}",
+        f"Уход: {record.departure_time or '-'}",
+        (
+            "Часы: "
+            f"{_format_export_number(record.work_hours)} / "
+            f"{_format_export_number(record.expected_hours)}"
+        ),
+        f"Рабочий день: {'да' if record.effective_is_workday else 'нет'}",
+    ]
+    if record.personnel_status != PERSONNEL_STATUS_NORMAL:
+        lines.append(f"Кадровое событие: {_matrix_primary_label(record, status)}")
+    elif not record.effective_is_workday:
+        reason = _record_non_working_reason(record)
+        if reason:
+            lines.append(f"Причина нерабочего дня: {reason}")
+    if record.is_manually_edited:
+        lines.append("Источник: ручная корректировка EUSRR")
+
+    if record.is_late and record.late_minutes:
+        lines.append(f"Опоздание: {record.late_minutes} мин.")
+    if record.is_early_leave and record.early_leave_minutes:
+        lines.append(f"Ранний уход: {record.early_leave_minutes} мин.")
+    if status != "absent" and record.is_underwork and record.underwork_hours:
+        lines.append(f"Недоработка: {_format_export_number(record.underwork_hours)} ч.")
+    if record.is_overtime and record.overtime_hours:
+        lines.append(f"Переработка: {_format_export_number(record.overtime_hours)} ч.")
+    if record.is_absent:
+        lines.append("Отсутствие: да")
+    if record.technical_issues:
+        lines.append(
+            "Технические проблемы: "
+            + "; ".join(str(issue) for issue in record.technical_issues)
+        )
+    employee_issues = [
+        str(issue)
+        for issue in record.employee_issues
+        if not (status == "absent" and "underwork" in str(issue).lower())
+    ]
+    if employee_issues:
+        lines.append("Проблемы сотрудника: " + "; ".join(employee_issues))
+    extra_issues = [
+        str(issue)
+        for issue in issues
+        if issue not in record.technical_issues and issue not in record.employee_issues
+        and not (status == "absent" and "underwork" in str(issue).lower())
+    ]
+    if extra_issues:
+        lines.append("Статусы анализа: " + "; ".join(extra_issues))
+    if comments_count:
+        lines.append(f"Комментарии: {comments_count}")
+    return lines
 
 
 def _monthly_matrix_status(record: AttendanceRecord) -> str:
@@ -549,6 +1010,8 @@ def _monthly_matrix_status(record: AttendanceRecord) -> str:
         return "non_working"
     if record.technical_issues:
         return "technical"
+    if record.is_absent and not record.arrival_time and not record.departure_time:
+        return "absent"
     if record.is_underwork:
         return "underwork"
     if record.is_late:

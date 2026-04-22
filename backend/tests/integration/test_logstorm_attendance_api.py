@@ -51,7 +51,7 @@ def test_logstorm_attendance_api_rejects_other_employee_for_user(
     assert response.status_code == 403
 
 
-def test_logstorm_attendance_api_calls_builder_without_schedule(
+def test_logstorm_attendance_api_uses_default_schedule_when_schedule_omitted(
     auth_client_factory,
     user_factory,
 ):
@@ -69,7 +69,13 @@ def test_logstorm_attendance_api_calls_builder_without_schedule(
     assert response.json() == {"records": []}
     kwargs = analyze.call_args.kwargs
     assert kwargs["employee"] == employee
-    assert kwargs["schedule"] is None
+    assert kwargs["schedule"] == {
+        "start_time": "08:00",
+        "end_time": "17:00",
+        "expected_hours": 9,
+        "workdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "date_overrides": [],
+    }
 
 
 def test_logstorm_attendance_api_passes_schedule(

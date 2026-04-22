@@ -85,25 +85,25 @@ async function proxyRequest(request: NextRequest, method: string) {
             });
         }
 
-        // response.text() уже декодирует gzip/br/deflate.
-        // Удаляем encoding-заголовки, иначе браузер попытается
-        // распаковать повторно → ERR_CONTENT_DECODING_FAILED.
+        // arrayBuffer сохраняет бинарные ответы (.xlsx, изображения) и работает
+        // для JSON/текста без потери заголовков.
         responseHeaders.delete('content-encoding');
         responseHeaders.delete('content-length');
         responseHeaders.delete('transfer-encoding');
 
         // Возвращаем ответ от backend
-        const responseBody = await response.text();
+        const responseBody = await response.arrayBuffer();
 
         return new NextResponse(responseBody, {
             status: response.status,
             statusText: response.statusText,
             headers: responseHeaders,
         });
-    } catch (error: any) {
-        console.error('[Proxy Error]', error.message);
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[Proxy Error]', message);
         return NextResponse.json(
-            { error: 'Ошибка при обращении к backend', message: error.message },
+            { error: 'Ошибка при обращении к backend', message },
             { status: 502 }
         );
     }

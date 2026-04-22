@@ -4,8 +4,9 @@ from attendance.models import (
     AttendanceAnalysisRun,
     AttendanceRecord,
     EmployeeWorkSchedule,
+    StandardWorkSchedule,
 )
-from attendance.services import get_default_work_schedule_payload
+from attendance.services import get_standard_work_schedule_payload
 from api.v1.employees.serializers import EmployeeBriefSerializer
 
 
@@ -90,8 +91,51 @@ class EmployeeWorkScheduleSerializer(serializers.ModelSerializer):
         return value
 
 
+class StandardWorkScheduleSerializer(serializers.ModelSerializer):
+    is_default = serializers.BooleanField(read_only=True, default=False)
+
+    class Meta:
+        model = StandardWorkSchedule
+        fields = (
+            "id",
+            "start_time",
+            "end_time",
+            "expected_hours",
+            "workdays",
+            "date_overrides",
+            "is_default",
+            "updated_by",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "is_default",
+            "updated_by",
+            "created_at",
+            "updated_at",
+        )
+
+    def validate_workdays(self, value):
+        allowed = set(StandardWorkSchedule.DEFAULT_WORKDAYS) | {"Saturday", "Sunday"}
+        if not isinstance(value, list):
+            raise serializers.ValidationError("workdays must be a list")
+        normalized = []
+        for item in value:
+            if item not in allowed:
+                raise serializers.ValidationError(f"Unknown weekday: {item}")
+            if item not in normalized:
+                normalized.append(item)
+        return normalized
+
+    def validate_expected_hours(self, value):
+        if value <= 0 or value > 24:
+            raise serializers.ValidationError("expected_hours must be between 0 and 24")
+        return value
+
+
 def default_work_schedule_response(employee_id: int) -> dict:
-    payload = get_default_work_schedule_payload()
+    payload = get_standard_work_schedule_payload()
     return {
         "id": None,
         "employee_id": employee_id,
@@ -101,6 +145,22 @@ def default_work_schedule_response(employee_id: int) -> dict:
         "workdays": payload["workdays"],
         "date_overrides": payload["date_overrides"],
         "is_active": False,
+        "is_default": True,
+        "updated_by": None,
+        "created_at": None,
+        "updated_at": None,
+    }
+
+
+def default_standard_work_schedule_response() -> dict:
+    payload = get_standard_work_schedule_payload()
+    return {
+        "id": None,
+        "start_time": payload["start_time"],
+        "end_time": payload["end_time"],
+        "expected_hours": payload["expected_hours"],
+        "workdays": payload["workdays"],
+        "date_overrides": payload["date_overrides"],
         "is_default": True,
         "updated_by": None,
         "created_at": None,
@@ -136,6 +196,38 @@ class AttendanceMonthlyMatrixQuerySerializer(serializers.Serializer):
         if month < 1 or month > 12:
             raise serializers.ValidationError("month must be between 01 and 12")
         return value
+
+
+class AttendanceMonthlyMatrixExportQuerySerializer(serializers.Serializer):
+    employee_ids = serializers.CharField()
+    period_start = serializers.DateField()
+    period_end = serializers.DateField()
+
+    def validate_employee_ids(self, value):
+        employee_ids = []
+        for raw_item in value.split(","):
+            item = raw_item.strip()
+            if not item:
+                continue
+            try:
+                employee_id = int(item)
+            except ValueError as exc:
+                raise serializers.ValidationError(
+                    "employee_ids must be a comma-separated list of integers"
+                ) from exc
+            if employee_id not in employee_ids:
+                employee_ids.append(employee_id)
+
+        if not employee_ids:
+            raise serializers.ValidationError("employee_ids is required")
+        return employee_ids
+
+    def validate(self, attrs):
+        if attrs["period_start"] > attrs["period_end"]:
+            raise serializers.ValidationError(
+                "period_start must be less than or equal to period_end"
+            )
+        return attrs
 
 
 class AttendanceAnalysisRunSerializer(serializers.ModelSerializer):
