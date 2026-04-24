@@ -11,6 +11,7 @@
 """
 
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 
 # Опциональная зависимость от notifications (graceful degradation)
 try:
@@ -240,6 +241,7 @@ def _notify_comment(message):
     object_author = None
     object_url = None
     object_type = "объекта"
+    extra_data = {}
 
     # Проверяем тип объекта через модель
     model_name = context_obj.__class__.__name__
@@ -271,8 +273,21 @@ def _notify_comment(message):
         recipient_ids.update(role_only_ids)
     elif model_name == "AttendanceRecord":
         object_author = getattr(context_obj, "employee", None)
-        object_url = f"/users/{context_obj.employee_id}"
+        object_url = f"/attendance?record={context_obj.id}&comments=1"
         object_type = "записи посещаемости"
+        admin_ids = User.objects.filter(
+            is_active=True,
+        ).filter(
+            Q(is_staff=True) | Q(is_superuser=True)
+        ).values_list("id", flat=True)
+        recipient_ids.update(admin_ids)
+        extra_data = {
+            "attendance_record_id": context_obj.id,
+            "employee_id": context_obj.employee_id,
+            "record_date": context_obj.date.isoformat()
+            if getattr(context_obj, "date", None)
+            else None,
+        }
     elif hasattr(context_obj, "employee"):  # Request
         object_author = getattr(context_obj, "employee", None)
         object_url = f"/requests?request={context_obj.id}"
@@ -328,6 +343,7 @@ def _notify_comment(message):
                 "author_id": author.id,
                 "object_type": model_name,
                 "object_id": context_obj.id,
+                **extra_data,
             },
         )
 

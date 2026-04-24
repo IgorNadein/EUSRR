@@ -535,9 +535,11 @@ export default function AttendancePage() {
   }, []);
 
   useEffect(() => {
-    if (!canManageAttendance || openedRecordFromUrl) return;
+    if (openedRecordFromUrl) return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get("events") !== "1") return;
+    const shouldOpenEvents = params.get("events") === "1";
+    const shouldOpenComments = params.get("comments") === "1";
+    if (!shouldOpenEvents && !shouldOpenComments) return;
     const recordId = Number(params.get("record"));
     if (!Number.isInteger(recordId) || recordId <= 0) return;
 
@@ -549,13 +551,23 @@ export default function AttendancePage() {
         setError(null);
         const record = await apiClient.getAttendanceRecord(recordId);
         if (cancelled) return;
-        setDayEventsRecordPreview({
+        const preview = {
           recordId,
           employeeName: record.display_name || `Сотрудник ${record.employee || record.employee_id || recordId}`,
           date: `${record.date || ""}${record.date ? ` · ${weekdayLabelFromDate(record.date)}` : ""}`,
           statusLabel: attendanceRecordStatusLabel(record),
           displayText: attendanceRecordDisplay(record),
           detailLines: attendanceRecordDetails(record),
+        };
+        if (shouldOpenComments) {
+          setCommentsRecordPreview({
+            ...preview,
+            commentsCount: Number(record.comments_count || 0),
+          });
+          return;
+        }
+        setDayEventsRecordPreview({
+          ...preview,
           issues: attendanceRecordIssueLabels(record),
           isManuallyEdited: Boolean(record.is_manually_edited),
         });
@@ -571,7 +583,7 @@ export default function AttendancePage() {
     return () => {
       cancelled = true;
     };
-  }, [canManageAttendance, openedRecordFromUrl]);
+  }, [openedRecordFromUrl]);
 
   const filteredEmployees = useMemo(() => {
     const query = employeeSearch.trim().toLowerCase();
@@ -933,6 +945,23 @@ export default function AttendancePage() {
     });
   }
 
+  const attendanceRecordModals = (
+    <>
+      <AttendanceRecordCommentsModal
+        currentUserId={user?.id}
+        isOpen={Boolean(commentsRecordPreview)}
+        onClose={() => setCommentsRecordPreview(null)}
+        onCommentCountChange={updateSelectedCellCommentCount}
+        record={commentsRecordPreview}
+      />
+      <AttendanceDayEventsModal
+        isOpen={Boolean(dayEventsRecordPreview)}
+        onClose={() => setDayEventsRecordPreview(null)}
+        record={dayEventsRecordPreview}
+      />
+    </>
+  );
+
   if (!canManageAttendance) {
     return (
       <AppShell>
@@ -950,6 +979,7 @@ export default function AttendancePage() {
             </div>
           </div>
         </section>
+        {attendanceRecordModals}
       </AppShell>
     );
   }
@@ -1787,18 +1817,7 @@ export default function AttendancePage() {
           )}
         </div>
       </Modal>
-      <AttendanceRecordCommentsModal
-        currentUserId={user?.id}
-        isOpen={Boolean(commentsRecordPreview)}
-        onClose={() => setCommentsRecordPreview(null)}
-        onCommentCountChange={updateSelectedCellCommentCount}
-        record={commentsRecordPreview}
-      />
-      <AttendanceDayEventsModal
-        isOpen={Boolean(dayEventsRecordPreview)}
-        onClose={() => setDayEventsRecordPreview(null)}
-        record={dayEventsRecordPreview}
-      />
+      {attendanceRecordModals}
     </AppShell>
   );
 }
