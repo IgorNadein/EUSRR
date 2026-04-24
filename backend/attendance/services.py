@@ -1046,10 +1046,12 @@ def _matrix_display_text(
             return f"{short_label} + {_format_export_number(record.work_hours)}ч"
         return short_label
 
+    time_part = (
+        f"{_format_matrix_time(record.arrival_time)}/"
+        f"{_format_matrix_time(record.departure_time)}"
+    )
     if status == "normal":
-        time_part = f"{record.arrival_time or '-'}/{record.departure_time or '-'}"
         return f"{time_part} · {_format_export_number(record.work_hours)}ч"
-    time_part = f"{record.arrival_time or '-'}/{record.departure_time or '-'}"
     if status == "late":
         suffix = f" {record.late_minutes}м" if record.late_minutes else ""
         return f"{short_label}{suffix} · {time_part}"
@@ -1072,6 +1074,17 @@ def _matrix_display_text(
         label = f"{short_label} ({issue_count})" if issue_count else short_label
         return f"{label} · {time_part}" if record.arrival_time or record.departure_time else label
     return short_label
+
+
+def _format_matrix_time(value: Any) -> str:
+    if not value:
+        return "-"
+    text = str(value)
+    if "T" in text:
+        text = text.split("T", 1)[1]
+    if len(text) >= 5 and text[2] == ":":
+        return text[:5]
+    return text
 
 
 def _matrix_detail_lines(
