@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CalendarCheck,
@@ -55,12 +55,10 @@ const matrixDateColumnWidth = 140;
 const matrixEmployeeColumnWidth = 160;
 const matrixModalHorizontalPadding = 96;
 
-type AttendancePeriodPreset = "week" | "month" | "year" | "custom";
+type AttendancePeriodPreset = "month" | "custom";
 
 const periodPresets: Array<{ value: AttendancePeriodPreset; label: string }> = [
-  { value: "week", label: "За неделю" },
   { value: "month", label: "За месяц" },
-  { value: "year", label: "За год" },
   { value: "custom", label: "Свой период" },
 ];
 
@@ -89,12 +87,34 @@ function toTimeInputValue(value: string | undefined) {
   return (value || "").slice(0, 5);
 }
 
-function getPeriodStart(preset: Exclude<AttendancePeriodPreset, "custom">) {
+function getCurrentMonthKey() {
   const date = new Date();
-  if (preset === "week") date.setDate(date.getDate() - 6);
-  if (preset === "month") date.setMonth(date.getMonth() - 1);
-  if (preset === "year") date.setFullYear(date.getFullYear() - 1);
-  return toDateInputValue(date);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getMonthRange(monthKey: string) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const start = new Date(year, month - 1, 1);
+  const end = new Date(year, month, 0);
+  return {
+    start: toDateInputValue(start),
+    end: toDateInputValue(end),
+  };
+}
+
+function shiftMonthKey(monthKey: string, delta: number) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const date = new Date(year, month - 1 + delta, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatMonthKeyLabel(monthKey: string) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const date = new Date(year, month - 1, 1);
+  return new Intl.DateTimeFormat("ru-RU", {
+    month: "long",
+    year: "numeric",
+  }).format(date);
 }
 
 function getInitials(employee: User) {
@@ -107,6 +127,13 @@ function getInitials(employee: User) {
 function formatTime(value: unknown) {
   if (!value) return "-";
   return String(value);
+}
+
+function formatMatrixTime(value: unknown) {
+  const text = formatTime(value);
+  if (text === "-") return text;
+  const timeText = text.includes("T") ? text.split("T", 2)[1] : text;
+  return timeText.length >= 5 && timeText[2] === ":" ? timeText.slice(0, 5) : timeText;
 }
 
 function formatHours(value: unknown) {
@@ -231,7 +258,7 @@ function matrixCellDisplay(cell: MonthlyAttendanceMatrixCell) {
   if (cell.display_text) return cell.display_text;
   if (cell.short_label) return cell.short_label;
   if (cell.status === "empty") return "";
-  return `${formatTime(cell.arrival_time)}/${formatTime(cell.departure_time)}`;
+  return `${formatMatrixTime(cell.arrival_time)}/${formatMatrixTime(cell.departure_time)}`;
 }
 
 function attendanceRecordStatusLabel(record: AttendanceRecord) {
@@ -313,10 +340,16 @@ export default function AttendancePage() {
   const { user } = useUser();
   const [employees, setEmployees] = useState<User[]>([]);
   const [employeeSearch, setEmployeeSearch] = useState("");
+  const [showInactiveEmployees, setShowInactiveEmployees] = useState(false);
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<number[]>([]);
-  const [periodPreset, setPeriodPreset] = useState<AttendancePeriodPreset>("week");
-  const [periodStart, setPeriodStart] = useState(() => getPeriodStart("week"));
-  const [periodEnd, setPeriodEnd] = useState(() => toDateInputValue(new Date()));
+  const [periodPreset, setPeriodPreset] = useState<AttendancePeriodPreset>("month");
+  const [selectedMonth, setSelectedMonth] = useState(() => getCurrentMonthKey());
+  const [periodStart, setPeriodStart] = useState(
+    () => getMonthRange(getCurrentMonthKey()).start,
+  );
+  const [periodEnd, setPeriodEnd] = useState(
+    () => getMonthRange(getCurrentMonthKey()).end,
+  );
   const [scheduleStart, setScheduleStart] = useState("08:00");
   const [scheduleEnd, setScheduleEnd] = useState("17:00");
   const [expectedHours, setExpectedHours] = useState("9");
@@ -350,6 +383,8 @@ export default function AttendancePage() {
     useState<AttendanceDayEventsPreview | null>(null);
   const [openedRecordFromUrl, setOpenedRecordFromUrl] = useState(false);
   const [statsModalOpen, setStatsModalOpen] = useState(false);
+  const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
+  const actionsMenuRef = useRef<HTMLDivElement>(null);
   const canManageAttendance = Boolean(user?.auth?.is_staff || user?.auth?.is_superuser);
 
   useEffect(() => {
@@ -367,7 +402,7 @@ export default function AttendancePage() {
         const nextEmployees = await loadAllPages<User>((params) =>
           apiClient.getEmployees({
             ...params,
-            is_active: true,
+            is_active: showInactiveEmployees ? undefined : true,
             ordering: "last_name",
           }),
         );
@@ -386,7 +421,40 @@ export default function AttendancePage() {
     return () => {
       cancelled = true;
     };
-  }, [canManageAttendance]);
+  }, [canManageAttendance, showInactiveEmployees]);
+
+  useEffect(() => {
+    const availableIds = new Set(employees.map((employee) => employee.id));
+    setSelectedEmployeeIds((current) =>
+      current.filter((employeeId) => availableIds.has(employeeId)),
+    );
+  }, [employees]);
+
+  useEffect(() => {
+    if (!actionsMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (actionsMenuRef.current && !actionsMenuRef.current.contains(event.target as Node)) {
+        setActionsMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActionsMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [actionsMenuOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -537,6 +605,8 @@ export default function AttendancePage() {
     visibleEmployeeStart + visibleEmployees.length,
     activeMatrix?.employees.length || 0,
   );
+  const matrixTableWidth =
+    matrixDateColumnWidth + visibleEmployees.length * matrixEmployeeColumnWidth;
   const hasPreviousEmployeePage = visibleEmployeePage > 0;
   const hasNextEmployeePage = activeMatrix
     ? visibleEmployeeEnd < activeMatrix.employees.length
@@ -590,10 +660,22 @@ export default function AttendancePage() {
     setPeriodPreset(nextPreset);
     setMatrices([]);
     setSelectedCell(null);
-    if (nextPreset !== "custom") {
-      setPeriodStart(getPeriodStart(nextPreset));
-      setPeriodEnd(toDateInputValue(new Date()));
+    if (nextPreset === "month") {
+      const range = getMonthRange(selectedMonth);
+      setPeriodStart(range.start);
+      setPeriodEnd(range.end);
     }
+  }
+
+  function shiftSelectedMonth(delta: number) {
+    const nextMonth = shiftMonthKey(selectedMonth, delta);
+    const range = getMonthRange(nextMonth);
+    setPeriodPreset("month");
+    setSelectedMonth(nextMonth);
+    setPeriodStart(range.start);
+    setPeriodEnd(range.end);
+    setMatrices([]);
+    setSelectedCell(null);
   }
 
   async function saveStandardSchedule() {
@@ -879,38 +961,71 @@ export default function AttendancePage() {
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="app-text-muted text-sm font-semibold uppercase tracking-wide">Посещаемость</p>
-              <p className="app-text-muted mt-1 text-xs">
-                Выбор сотрудников и периода для статистики посещаемости
-              </p>
+              
             </div>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => void downloadReport()}
-                disabled={downloadingReport || loadingEmployees}
-                className="app-action-secondary inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {downloadingReport ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                Скачать
-              </button>
-              <button
-                type="button"
                 onClick={() => void loadStatistics()}
                 disabled={loadingStats || loadingEmployees || loadingSchedule}
-                className="app-action-secondary inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                className="app-action-primary inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loadingStats ? <Loader2 size={16} className="animate-spin" /> : <CalendarCheck size={16} />}
                 Показать
               </button>
-              <button
-                type="button"
-                onClick={() => void loadStatistics({ refreshFromAnalyzer: true })}
-                disabled={loadingStats || loadingEmployees || loadingSchedule}
-                className="app-action-primary inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {loadingStats ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-                Обновить
-              </button>
+              <div ref={actionsMenuRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setActionsMenuOpen((current) => !current)}
+                  className="app-action-ghost flex h-8 w-8 items-center justify-center rounded-md"
+                  aria-label="Дополнительные действия"
+                  aria-expanded={actionsMenuOpen}
+                  aria-haspopup="menu"
+                  title="Дополнительные действия"
+                >
+                  <ChevronRight
+                    size={15}
+                    className={`transition-transform duration-200 ${actionsMenuOpen ? "rotate-90" : ""}`}
+                  />
+                </button>
+
+                {actionsMenuOpen ? (
+                  <div className="app-menu absolute right-0 top-full z-20 mt-2 w-48 rounded-xl py-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionsMenuOpen(false);
+                        void downloadReport();
+                      }}
+                      disabled={downloadingReport || loadingEmployees}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)] disabled:opacity-50"
+                    >
+                      {downloadingReport ? (
+                        <Loader2 size={14} className="app-text-muted shrink-0 animate-spin" />
+                      ) : (
+                        <Download size={14} className="app-text-muted shrink-0" />
+                      )}
+                      <span>Скачать</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionsMenuOpen(false);
+                        void loadStatistics({ refreshFromAnalyzer: true });
+                      }}
+                      disabled={loadingStats || loadingEmployees || loadingSchedule}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)] disabled:opacity-50"
+                    >
+                      {loadingStats ? (
+                        <Loader2 size={14} className="app-text-muted shrink-0 animate-spin" />
+                      ) : (
+                        <RefreshCw size={14} className="app-text-muted shrink-0" />
+                      )}
+                      <span>Обновить</span>
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
 
@@ -957,6 +1072,16 @@ export default function AttendancePage() {
                     </span>
                   </div>
 
+                  <label className="app-choice-label mt-3 px-1 text-xs text-[var(--muted-foreground)]">
+                    <input
+                      type="checkbox"
+                      checked={showInactiveEmployees}
+                      onChange={(event) => setShowInactiveEmployees(event.target.checked)}
+                      className="app-checkbox"
+                    />
+                    <span>Показывать неактивных сотрудников</span>
+                  </label>
+
                   <div className="app-surface mt-3 max-h-72 space-y-2 overflow-y-auto rounded-2xl p-2">
                     {loadingEmployees ? (
                       <div className="app-surface-muted flex items-center justify-center gap-2 rounded-xl p-5 text-sm text-[var(--muted-foreground)]">
@@ -1002,8 +1127,11 @@ export default function AttendancePage() {
                             </span>
                           )}
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-semibold text-[var(--foreground)]">
-                              {fullName}
+                            <span className="flex items-center gap-2">
+                              <span className="block truncate text-sm font-semibold text-[var(--foreground)]">
+                                {fullName}
+                              </span>
+                              
                             </span>
                             <span className="app-text-muted block truncate text-xs">{subtitle}</span>
                           </span>
@@ -1039,6 +1167,30 @@ export default function AttendancePage() {
                       );
                     })}
                   </div>
+
+                  {periodPreset === "month" ? (
+                    <div className="mt-3 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => shiftSelectedMonth(-1)}
+                        className="app-icon-button rounded-lg p-2"
+                        aria-label="Предыдущий месяц"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <span className="min-w-36 text-center text-sm font-semibold capitalize text-[var(--foreground)]">
+                        {formatMonthKeyLabel(selectedMonth)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => shiftSelectedMonth(1)}
+                        className="app-icon-button rounded-lg p-2"
+                        aria-label="Следующий месяц"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  ) : null}
 
                   <p className="app-text-muted mt-2 px-1 text-xs">
                     {periodStart} — {periodEnd}
@@ -1418,21 +1570,30 @@ export default function AttendancePage() {
                 </div>
               </div>
 
-              <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
-                <table className="min-w-max border-separate border-spacing-0 text-left text-xs">
+              <div className="max-w-full overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+                <table
+                  className="table-fixed border-separate border-spacing-0 text-left text-xs"
+                  style={{ width: matrixTableWidth }}
+                >
+                  <colgroup>
+                    <col style={{ width: matrixDateColumnWidth }} />
+                    {visibleEmployees.map((employee) => (
+                      <col key={employee.id} style={{ width: matrixEmployeeColumnWidth }} />
+                    ))}
+                  </colgroup>
                   <thead>
                     <tr className="bg-[var(--surface-secondary)] text-[var(--muted-foreground)]">
                       <th
-                        className="sticky left-0 z-20 min-w-28 border-b border-r border-[var(--border-subtle)] bg-[var(--surface-secondary)] px-3 py-3 font-semibold"
+                        className="sticky left-0 z-20 border-b border-r border-[var(--border-subtle)] bg-[var(--surface-secondary)] px-3 py-3 font-semibold"
                       >
                         Дата
                       </th>
                       {visibleEmployees.map((employee) => (
                         <th
                           key={employee.id}
-                          className="min-w-40 border-b border-r border-[var(--border-subtle)] px-3 py-3 text-center font-semibold text-[var(--foreground)]"
+                          className="border-b border-r border-[var(--border-subtle)] px-3 py-3 text-center font-semibold text-[var(--foreground)]"
                         >
-                          <span className="block max-w-44 truncate">{employee.name}</span>
+                          <span className="block truncate">{employee.name}</span>
                         </th>
                       ))}
                     </tr>
@@ -1463,7 +1624,7 @@ export default function AttendancePage() {
                                     setSelectedCell({ row, employee, cell });
                                     openCellDayEvents(row, employee, cell);
                                   }}
-                                  className={`h-10 w-full px-2 text-center transition ${matrixCellTone(cell.status)} ${matrixCellSourceTone(cell)} ${
+                                  className={`h-10 w-full overflow-hidden px-2 text-center transition ${matrixCellTone(cell.status)} ${matrixCellSourceTone(cell)} ${
                                     active ? "ring-2 ring-inset ring-[var(--accent-primary)]" : ""
                                   }`}
                                   title={cell.primary_label || matrixStatusLabel(cell.status)}
