@@ -1029,8 +1029,66 @@ def test_monthly_matrix_prioritizes_absence_when_no_times_and_no_personnel_reaso
     )
     matrix_cell = matrix_row["cells"][str(employee.id)]
     assert matrix_cell["status"] == "absent"
-    assert matrix_cell["display_text"] == "Н"
+    assert matrix_cell["display_text"] == "Отс."
     assert matrix_cell["primary_label"] == "Отсутствие"
+
+
+def test_monthly_matrix_infers_absence_from_issue_when_logstorm_omits_flag(
+    auth_client_factory,
+    user_factory,
+):
+    staff = user_factory(staff=True)
+    employee = user_factory()
+    client = auth_client_factory(staff)
+    result = {
+        "records": [
+            {
+                "date": "2026-04-20",
+                "employee_id": str(employee.id),
+                "display_name": "Absent User",
+                "arrival_time": None,
+                "departure_time": None,
+                "work_hours": 0,
+                "expected_hours": 9,
+                "is_workday": True,
+                "is_underwork": True,
+                "underwork_hours": 9,
+                "employee_issues": ["Отсутствие"],
+                "technical_issues": [],
+            }
+        ]
+    }
+
+    with patch(
+        "api.v1.attendance.views.analyze_employee_attendance",
+        return_value=result,
+    ):
+        response = client.post(
+            _analyze_url(),
+            _payload(employee.id, period_start="2026-04-20", period_end="2026-04-20"),
+            format="json",
+        )
+    assert response.status_code == 200
+
+    record = AttendanceRecord.objects.get(employee=employee, date="2026-04-20")
+    assert record.is_absent is True
+    assert record.is_underwork is False
+
+    matrix_response = client.get(
+        _monthly_matrix_url(),
+        {
+            "employee_ids": str(employee.id),
+            "month": "2026-04",
+        },
+    )
+    matrix_row = next(
+        row for row in matrix_response.json()["rows"] if row["date"] == "2026-04-20"
+    )
+    matrix_cell = matrix_row["cells"][str(employee.id)]
+    assert matrix_cell["status"] == "absent"
+    assert matrix_cell["display_text"] == "Отс."
+    assert matrix_cell["primary_label"] == "Отсутствие"
+    assert "Недоработка" not in " ".join(matrix_cell["detail_lines"])
 
 
 def test_non_staff_cannot_export_monthly_matrix_xlsx(
@@ -1127,7 +1185,7 @@ def test_monthly_matrix_xlsx_export_keeps_full_month_but_limits_records_to_perio
     assert april["A21"].value == "2026-04-20"
     assert april["A22"].value == "2026-04-21"
     assert april["C21"].value is None
-    assert april["C22"].value == "Н"
+    assert april["C22"].value == "Отс."
     assert april["C33"].value == 1
     assert april["C35"].value == 0
 
