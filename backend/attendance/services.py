@@ -61,6 +61,7 @@ DAYS_RU = {
 MATRIX_STATUS_LABELS = {
     "empty": "Нет записи",
     "technical": "Техсбой",
+    "personnel_issue": "Кадровое событие",
     "underwork": "Недоработка",
     "late": "Опоздание",
     "overtime": "Переработка",
@@ -72,6 +73,7 @@ MATRIX_STATUS_LABELS = {
 MATRIX_STATUS_SHORT_LABELS = {
     "empty": "",
     "technical": "Тех",
+    "personnel_issue": "Кадр",
     "underwork": "НД",
     "late": "ОП",
     "overtime": "ПР",
@@ -99,6 +101,7 @@ PERSONNEL_STATUS_LEGEND = {
 MATRIX_STATUS_FILLS = {
     "empty": "F1F5F9",
     "technical": "FEE2E2",
+    "personnel_issue": "FEF3C7",
     "underwork": "FEF3C7",
     "late": "FEF3C7",
     "absent": "FEF3C7",
@@ -262,6 +265,10 @@ def get_attendance_auto_sync_settings() -> AttendanceAutoSyncSettings:
     return settings
 
 
+def get_attendance_auto_sync_employees():
+    return Employee.objects.prefetch_related("actions").order_by("-id")
+
+
 def run_attendance_auto_sync(*, force: bool = False) -> AttendanceAutoSyncSettings:
     from common.logstorm_attendance import (
         analyze_employee_attendance,
@@ -316,7 +323,7 @@ def run_attendance_auto_sync(*, force: bool = False) -> AttendanceAutoSyncSettin
     error_count = 0
     errors: list[str] = []
 
-    for employee in Employee.objects.get_active():
+    for employee in get_attendance_auto_sync_employees():
         schedule_payload = (
             get_employee_work_schedule_payload(employee)
             or get_standard_work_schedule_payload()
@@ -614,6 +621,7 @@ def _append_attendance_matrix_legend_sheet(workbook: Workbook) -> None:
         ("ОТГ", "Отгул"),
         ("ДЕКР", "Декрет"),
         ("Вне штата", "Уволен или еще не принят в выбранный день"),
+        ("Кадровое событие", "Проход при кадровом статусе вне штата"),
         ("+ Nч", "Зафиксирована работа в нерабочий день"),
         ("К: N", "Количество комментариев EUSRR к записи"),
         ("Ссылка", "Клик по ячейке записи открывает модал событий LogStorm в EUSRR"),
@@ -1172,6 +1180,8 @@ def _matrix_detail_lines(
 
 def _monthly_matrix_status(record: AttendanceRecord) -> str:
     if not record.effective_is_workday:
+        if record.personnel_status == ACTION_DISMISSED and record.is_overtime:
+            return "personnel_issue"
         if record.is_overtime:
             return "overtime"
         return "non_working"
