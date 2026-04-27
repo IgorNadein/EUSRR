@@ -75,7 +75,7 @@ MATRIX_STATUS_SHORT_LABELS = {
     "underwork": "НД",
     "late": "ОП",
     "overtime": "ПР",
-    "absent": "Н",
+    "absent": "Отс.",
     "non_working": "Нер",
     "normal": "OK",
 }
@@ -126,6 +126,8 @@ SUPPRESSED_EMPLOYEE_ISSUE_MARKERS = (
     "ранн",
     "недоработ",
 )
+
+ABSENCE_ISSUE_MARKERS = ("absence", "absent", "отсутств")
 
 DEFAULT_WORK_SCHEDULE_PAYLOAD = {
     "start_time": "08:00",
@@ -604,7 +606,7 @@ def _append_attendance_matrix_legend_sheet(workbook: Workbook) -> None:
         ("ОП", "Опоздание"),
         ("НД", "Недоработка"),
         ("ПР", "Переработка"),
-        ("Н", "Отсутствие"),
+        ("Отс.", "Отсутствие"),
         ("Вых", "Выходной по графику/календарю"),
         ("Тех", "Технический сбой"),
         ("ОТП", "Отпуск"),
@@ -745,6 +747,18 @@ def build_attendance_record_defaults(
         personnel_state=personnel_state,
     )
 
+    if (
+        effective_is_workday
+        and not has_work
+        and not is_absent
+        and _has_absence_issue([*statuses, *employee_issues])
+    ):
+        is_absent = True
+
+    if is_absent and not has_work:
+        is_underwork = False
+        underwork_hours = None
+
     if not effective_is_workday:
         is_late = False
         late_minutes = None
@@ -871,6 +885,14 @@ def _normalize_issues_after_manual_payload(
                 for item in _list_value(defaults.get(field))
                 if not any(marker in str(item).lower() for marker in markers)
             ]
+
+
+def _has_absence_issue(values: list[Any]) -> bool:
+    return any(
+        marker in str(value).lower()
+        for value in values
+        for marker in ABSENCE_ISSUE_MARKERS
+    )
 
 
 def _parse_record_date(value: Any) -> date | None:
@@ -1155,7 +1177,7 @@ def _monthly_matrix_status(record: AttendanceRecord) -> str:
         return "non_working"
     if record.technical_issues:
         return "technical"
-    if record.is_absent and not record.arrival_time and not record.departure_time:
+    if _record_has_absence(record):
         return "absent"
     if record.is_underwork:
         return "underwork"
@@ -1163,9 +1185,19 @@ def _monthly_matrix_status(record: AttendanceRecord) -> str:
         return "late"
     if record.is_overtime:
         return "overtime"
-    if record.is_absent:
-        return "absent"
     return "normal"
+
+
+def _record_has_absence(record: AttendanceRecord) -> bool:
+    return bool(
+        record.is_absent
+        or _has_absence_issue(
+            [
+                *record.statuses,
+                *record.employee_issues,
+            ]
+        )
+    )
 
 
 def _non_working_reason(
@@ -1231,7 +1263,11 @@ def _summary_overtime_days(records: list[AttendanceRecord]) -> int:
 
 
 def _summary_absent_days(records: list[AttendanceRecord]) -> int:
-    return sum(1 for record in records if _is_valid_workday_record(record) and record.is_absent)
+    return sum(
+        1
+        for record in records
+        if _is_valid_workday_record(record) and _record_has_absence(record)
+    )
 
 
 def _employee_display_name(employee: Employee) -> str:

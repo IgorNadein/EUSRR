@@ -228,6 +228,25 @@ function formatAttendanceIssueLabel(label: string) {
   return attendanceIssueLabelMap[normalized] || label;
 }
 
+function hasAbsenceIssue(values: Array<unknown> | undefined) {
+  return Boolean(values?.some((value) => {
+    const normalized = String(value).trim().toLowerCase();
+    return (
+      normalized.includes("absence")
+      || normalized.includes("absent")
+      || normalized.includes("отсутств")
+    );
+  }));
+}
+
+function attendanceRecordHasAbsence(record: AttendanceRecord) {
+  return Boolean(
+    record.is_absent
+    || hasAbsenceIssue(record.employee_issues)
+    || hasAbsenceIssue(record.statuses),
+  );
+}
+
 function matrixCellIssueLabels(cell: MonthlyAttendanceMatrixCell) {
   if (cell.status === "absent") return ["absence"];
   const result = [...cell.issues.map(String)];
@@ -246,10 +265,10 @@ function attendanceRecordIssueLabels(record: AttendanceRecord) {
     ...(record.employee_issues || []),
     ...(record.technical_issues || []),
   ].map(String);
-  if (record.is_absent) result.push("absence");
+  if (attendanceRecordHasAbsence(record)) result.push("absence");
   if (record.is_late) result.push("late");
   if (record.is_early_leave) result.push("early_leave");
-  if (record.is_underwork) result.push("underwork");
+  if (record.is_underwork && !attendanceRecordHasAbsence(record)) result.push("underwork");
   if (record.is_overtime) result.push("overtime");
   return Array.from(new Set(result)).map(formatAttendanceIssueLabel);
 }
@@ -264,7 +283,7 @@ function matrixCellDisplay(cell: MonthlyAttendanceMatrixCell) {
 function attendanceRecordStatusLabel(record: AttendanceRecord) {
   if (record.technical_issues?.length) return "Техсбой";
   if (record.personnel_status_label) return record.personnel_status_label;
-  if (record.is_absent) return "Отсутствие";
+  if (attendanceRecordHasAbsence(record)) return "Отсутствие";
   if (record.is_underwork) return "Недоработка";
   if (record.is_late) return "Опоздание";
   if (record.is_overtime) return "Переработка";
@@ -278,7 +297,7 @@ function attendanceRecordDisplay(record: AttendanceRecord) {
   const arrival = formatTime(record.arrival_time);
   const departure = formatTime(record.departure_time);
   if (arrival === "-" && departure === "-") {
-    if (record.is_absent) return "Отсутствие";
+    if (attendanceRecordHasAbsence(record)) return "Отсутствие";
     return record.non_working_reason || "Нет проходов";
   }
   return `${arrival}/${departure} · ${formatHours(record.work_hours)}ч`;
@@ -295,7 +314,7 @@ function attendanceRecordDetails(record: AttendanceRecord) {
   if (record.early_leave_minutes) {
     lines.push(`Ранний уход: ${record.early_leave_minutes} мин.`);
   }
-  if (record.underwork_hours) {
+  if (record.underwork_hours && !attendanceRecordHasAbsence(record)) {
     lines.push(`Недоработка: ${formatHours(record.underwork_hours)} ч.`);
   }
   if (record.overtime_hours) {
