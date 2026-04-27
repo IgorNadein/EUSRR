@@ -15,7 +15,11 @@ from attendance.models import (
     StandardWorkSchedule,
 )
 from common.logstorm_client import LogStormClientError
-from employees.constants import ACTION_ON_LEAVE, ACTION_RETURNED_FROM_LEAVE
+from employees.constants import (
+    ACTION_DISMISSED,
+    ACTION_ON_LEAVE,
+    ACTION_RETURNED_FROM_LEAVE,
+)
 from employees.models import EmployeeAction
 
 pytestmark = pytest.mark.django_db
@@ -482,12 +486,18 @@ def test_auto_sync_disabled_settings_do_not_run_analysis(user_factory):
     assert settings.last_status == "idle"
 
 
-def test_auto_sync_updates_due_active_employees_and_uses_schedules(user_factory):
+def test_auto_sync_updates_due_employees_and_uses_schedules(user_factory):
     from attendance.services import run_attendance_auto_sync
 
     employee = user_factory(first_name="Ivan", last_name="Petrov")
     other = user_factory(first_name="Anna", last_name="Sidorova")
-    user_factory(active=False)
+    inactive = user_factory(first_name="Inactive", last_name="User", active=False)
+    dismissed = user_factory(first_name="Dismissed", last_name="User", active=False)
+    EmployeeAction.objects.create(
+        employee=dismissed,
+        action=ACTION_DISMISSED,
+        date=timezone.now() - timedelta(days=10),
+    )
     EmployeeWorkSchedule.objects.create(
         employee=employee,
         start_time="10:00",
@@ -519,22 +529,28 @@ def test_auto_sync_updates_due_active_employees_and_uses_schedules(user_factory)
     ) as analyze:
         settings = run_attendance_auto_sync(force=False)
 
-    assert analyze.call_count == 2
+    assert analyze.call_count == 4
     calls_by_employee_id = {
         call.kwargs["employee"].id: call.kwargs
         for call in analyze.call_args_list
     }
     employee_call = calls_by_employee_id[employee.id]
     other_call = calls_by_employee_id[other.id]
+    inactive_call = calls_by_employee_id[inactive.id]
+    dismissed_call = calls_by_employee_id[dismissed.id]
     assert employee_call["period_start"] == today - timedelta(days=2)
     assert employee_call["period_end"] == today
     assert employee_call["schedule"]["start_time"] == "10:00"
     assert other_call["schedule"]["start_time"] == "07:30"
+    assert inactive_call["schedule"]["start_time"] == "07:30"
+    assert dismissed_call["schedule"]["start_time"] == "07:30"
     assert settings.last_status == "success"
-    assert settings.last_success_count == 2
+    assert settings.last_success_count == 4
     assert settings.last_error_count == 0
     assert settings.next_run_at > settings.last_finished_at
-    assert AttendanceRecord.objects.filter(employee__in=[employee, other]).count() == 2
+    assert AttendanceRecord.objects.filter(
+        employee__in=[employee, other, inactive, dismissed],
+    ).count() == 4
 
 
 def test_auto_sync_continues_after_employee_error(user_factory):
@@ -1479,6 +1495,50 @@ def test_personnel_non_working_state_counts_work_as_overtime(
     assert worked_record.overtime_hours == worked_record.work_hours
     assert worked_record.employee_issues == []
     assert worked_record.statuses == ["work_outside_personnel_schedule"]
+
+
+def test_dismissed_employee_work_is_highlighted_as_personnel_issue(
+    auth_client_factory,
+    user_factory,
+):
+    staff = user_factory(staff=True)
+    employee = user_factory(active=False)
+    _move_auto_hired_before_test_period(employee)
+    client = auth_client_factory(staff)
+    EmployeeAction.objects.create(
+        employee=employee,
+        action=ACTION_DISMISSED,
+        date=_aware_datetime(2026, 4, 20),
+    )
+
+    with patch(
+        "api.v1.attendance.views.analyze_employee_attendance",
+        return_value=_logstorm_result(),
+    ):
+        response = client.post(_analyze_url(), _payload(employee.id), format="json")
+
+    assert response.status_code == 200
+    worked_record = AttendanceRecord.objects.get(employee=employee, date="2026-04-20")
+    assert worked_record.personnel_status == ACTION_DISMISSED
+    assert worked_record.effective_is_workday is False
+    assert worked_record.is_overtime is True
+    assert worked_record.statuses == ["work_outside_personnel_schedule"]
+
+    matrix_response = client.get(
+        _monthly_matrix_url(),
+        {
+            "employee_ids": str(employee.id),
+            "month": "2026-04",
+        },
+    )
+    matrix_row = next(
+        row for row in matrix_response.json()["rows"] if row["date"] == "2026-04-20"
+    )
+    matrix_cell = matrix_row["cells"][str(employee.id)]
+    assert matrix_cell["status"] == "personnel_issue"
+    assert matrix_cell["short_label"] == "Вне штата"
+    assert matrix_cell["display_text"] == "Вне штата + 8.75ч"
+    assert matrix_cell["primary_label"] == "Уволен / вне штата"
 
 
 def test_personnel_state_is_recalculated_when_actions_change(

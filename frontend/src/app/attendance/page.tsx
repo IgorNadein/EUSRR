@@ -183,7 +183,12 @@ function getMonthKeysBetween(start: string, end: string) {
 
 function matrixCellTone(status: string) {
   if (status === "technical") return "bg-red-500/15 text-red-200 hover:bg-red-500/20";
-  if (status === "underwork" || status === "late" || status === "absent") {
+  if (
+    status === "personnel_issue"
+    || status === "underwork"
+    || status === "late"
+    || status === "absent"
+  ) {
     return "bg-amber-500/15 text-amber-100 hover:bg-amber-500/20";
   }
   if (status === "overtime") return "bg-emerald-500/15 text-emerald-100 hover:bg-emerald-500/20";
@@ -201,6 +206,7 @@ function matrixStatusLabel(status: string) {
   const labels: Record<string, string> = {
     empty: "Нет записи",
     technical: "Техсбой",
+    personnel_issue: "Кадровое событие",
     underwork: "Недоработка",
     late: "Опоздание",
     overtime: "Переработка",
