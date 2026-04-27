@@ -1507,6 +1507,59 @@ def test_attendance_record_comments_use_communications(
     assert target["comments_count"] == 1
 
 
+def test_attendance_record_comment_notifies_employee_and_admins(
+    auth_client_factory,
+    monkeypatch,
+    user_factory,
+):
+    author = user_factory(staff=True, first_name="Admin", last_name="Author")
+    other_staff = user_factory(staff=True)
+    superuser = user_factory(superuser=True)
+    employee = user_factory()
+    inactive_staff = user_factory(staff=True, active=False)
+    client = auth_client_factory(author)
+
+    with patch(
+        "api.v1.attendance.views.analyze_employee_attendance",
+        return_value=_logstorm_result(),
+    ):
+        client.post(_analyze_url(), _payload(employee.id), format="json")
+
+    record = AttendanceRecord.objects.get(employee=employee, date="2026-04-20")
+    sent_notifications = []
+
+    def capture_notification(**kwargs):
+        sent_notifications.append(kwargs)
+
+    monkeypatch.setattr(
+        "communications.notifications.handlers._send_notification",
+        capture_notification,
+    )
+
+    response = client.post(
+        _record_comments_url(record.id),
+        {"text": "Проверить причину опоздания"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    recipient_ids = {payload["recipient"].id for payload in sent_notifications}
+    assert recipient_ids == {employee.id, other_staff.id, superuser.id}
+    assert author.id not in recipient_ids
+    assert inactive_staff.id not in recipient_ids
+    assert sent_notifications
+
+    for payload in sent_notifications:
+        assert payload["verb"] == "commented"
+        assert payload["action_url"] == f"/attendance?record={record.id}&comments=1"
+        assert payload["target"] == record
+        assert payload["data"]["object_type"] == "AttendanceRecord"
+        assert payload["data"]["object_id"] == record.id
+        assert payload["data"]["attendance_record_id"] == record.id
+        assert payload["data"]["employee_id"] == employee.id
+        assert payload["data"]["record_date"] == "2026-04-20"
+
+
 def test_attendance_record_comment_delete_is_author_only(
     auth_client_factory,
     user_factory,
@@ -1566,6 +1619,48 @@ def test_user_can_comment_own_attendance_record(auth_client_factory, user_factor
     assert create_response.json()["author"]["id"] == user.id
     assert client.get(_record_comments_url(record.id)).json()[0]["text"] == (
         "Мой комментарий"
+    )
+
+
+def test_own_attendance_record_comment_notifies_admins_but_not_author(
+    auth_client_factory,
+    monkeypatch,
+    user_factory,
+):
+    user = user_factory(staff=False)
+    staff = user_factory(staff=True)
+    staff_client = auth_client_factory(staff)
+    client = auth_client_factory(user)
+
+    with patch(
+        "api.v1.attendance.views.analyze_employee_attendance",
+        return_value=_logstorm_result(),
+    ):
+        staff_client.post(_analyze_url(), _payload(user.id), format="json")
+
+    record = AttendanceRecord.objects.get(employee=user, date="2026-04-20")
+    sent_notifications = []
+
+    def capture_notification(**kwargs):
+        sent_notifications.append(kwargs)
+
+    monkeypatch.setattr(
+        "communications.notifications.handlers._send_notification",
+        capture_notification,
+    )
+
+    response = client.post(
+        _record_comments_url(record.id),
+        {"text": "Мой комментарий"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    recipient_ids = {payload["recipient"].id for payload in sent_notifications}
+    assert recipient_ids == {staff.id}
+    assert user.id not in recipient_ids
+    assert sent_notifications[0]["action_url"] == (
+        f"/attendance?record={record.id}&comments=1"
     )
 
 

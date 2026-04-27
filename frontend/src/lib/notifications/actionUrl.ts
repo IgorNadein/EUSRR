@@ -99,6 +99,13 @@ export function resolveNotificationActionUrl(
     return buildUrl("/", { post: postId });
   }
 
+  if (objectType === "attendancerecord") {
+    const attendanceRecordId = parseNumericId(data?.attendance_record_id) ?? objectId;
+    if (attendanceRecordId !== null) {
+      return buildUrl("/attendance", { record: attendanceRecordId, comments: 1 });
+    }
+  }
+
   if (chatId !== null) {
     return buildUrl(`/messages/${chatId}`, { message: messageId });
   }
@@ -144,6 +151,17 @@ export function resolveNotificationActionUrl(
     if (url.pathname === "/calendar") {
       const rawLinkedEventId = parseNumericId(url.searchParams.get("event"));
       return buildUrl("/calendar", { event: rawLinkedEventId });
+    }
+
+    if (url.pathname === "/attendance") {
+      const rawLinkedRecordId = parseNumericId(url.searchParams.get("record"));
+      const openComments = url.searchParams.get("comments") === "1";
+      const openEvents = url.searchParams.get("events") === "1";
+      return buildUrl("/attendance", {
+        record: rawLinkedRecordId,
+        comments: openComments ? 1 : null,
+        events: openEvents ? 1 : null,
+      });
     }
 
     if (url.pathname === "/") {
