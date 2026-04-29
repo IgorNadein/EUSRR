@@ -46,9 +46,6 @@ export function RequestStatisticsPanel({
     }
 
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-
     const query = new URLSearchParams({
       employee_id: String(employeeId),
       period,
@@ -58,9 +55,16 @@ export function RequestStatisticsPanel({
       query.set("date_to", dateTo);
     }
 
-    apiClient.request<RequestEmployeeStatistics>(
-      `/api/v1/requests/statistics/?${query.toString()}`
-    )
+    void Promise.resolve()
+      .then(() => {
+        if (!cancelled) {
+          setLoading(true);
+          setError(null);
+        }
+        return apiClient.request<RequestEmployeeStatistics>(
+          `/api/v1/requests/statistics/?${query.toString()}`
+        );
+      })
       .then((response) => {
         if (!cancelled) {
           setStats(response);
@@ -102,8 +106,10 @@ export function RequestStatisticsPanel({
     { label: "Всего заявлений", value: stats.total_submitted_requests },
     { label: "Больничных", value: stats.sick_leave_requests_count },
     { label: "Отгулов", value: stats.day_off_requests_count },
+    { label: "Декретных", value: stats.maternity_requests_count },
     { label: "Дней на больничном", value: stats.sick_leave_days },
     { label: "Дней на отгулах", value: stats.day_off_days },
+    { label: "Дней в декрете", value: stats.maternity_days },
     { label: "Оплачиваемый отпуск, дней", value: stats.paid_vacation_days },
     { label: "За свой счёт, дней", value: stats.unpaid_vacation_days },
   ] : [];

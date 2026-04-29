@@ -353,16 +353,16 @@ export default function UserDetailPage() {
             <ProfileHeroCard
               caption="Профиль сотрудника"
               statusBadge={
-                (latestAction || canEdit || canManageActions) ? (
+                (person.personnel_state || latestAction || canEdit || canManageActions) ? (
                   <div
                     ref={profileMenuOpen ? profileMenuRef : null}
                     className="relative flex items-center gap-2"
                   >
-                    {latestAction ? (
+                    {person.personnel_state ? (
                       <span
-                        className={`app-status-pill ${getEmployeeActionTone(latestAction.action).badgeClass}`}
+                        className={`app-status-pill ${getEmployeeActionTone(person.personnel_state.status).badgeClass}`}
                       >
-                        {latestAction.action_display || latestAction.action}
+                        {person.personnel_state.label || person.personnel_state.status}
                       </span>
                     ) : null}
                     {(canEdit || canManageActions) ? (
@@ -517,10 +517,11 @@ export default function UserDetailPage() {
               actionLoading={actionLoading}
               canManageActions={canManageActions}
               canViewActions={canViewActions}
-              latestActionId={latestAction?.id ?? null}
+              latestActionId={person.personnel_state?.action_id ?? latestAction?.id ?? null}
               onAddAction={handleOpenActionModal}
               onDeleteAction={handleDeleteAction}
               onEditAction={handleEditAction}
+              personnelState={person.personnel_state}
               sortedActions={sortedActions}
               truncateCommentLength={120}
               expandedCommentLength={240}
@@ -528,8 +529,8 @@ export default function UserDetailPage() {
 
             <ProfileWorkScheduleCard
               canEdit={Boolean(currentUser?.auth?.is_staff || currentUser?.auth?.is_superuser)}
-              currentAction={latestAction}
               employeeId={person.id}
+              personnelState={person.personnel_state}
             />
 
             <EmployeeAttendanceCard employeeActions={person.actions} employeeId={person.id} />

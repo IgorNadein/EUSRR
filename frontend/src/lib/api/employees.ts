@@ -40,9 +40,9 @@ export function createEmployeesApi(request: RequestFn) {
             const fd = new FormData(); fd.append('avatar', file);
             return request(`/api/v1/employees/${id}/`, { method: 'PATCH', body: fd });
         },
-        createEmployeeAction: (data: { employee: number; action: string; date: string; comment?: string }) =>
+        createEmployeeAction: (data: { employee: number; action: string; date: string; date_to?: string | null; comment?: string }) =>
             request('/api/v1/employee-actions/', { method: 'POST', body: JSON.stringify(data) }),
-        updateEmployeeAction: (actionId: number, data: { action?: string; date?: string; comment?: string }) =>
+        updateEmployeeAction: (actionId: number, data: { action?: string; date?: string; date_to?: string | null; comment?: string }) =>
             request(`/api/v1/employee-actions/${actionId}/`, { method: 'PATCH', body: JSON.stringify(data) }),
         deleteEmployeeAction: (actionId: number) =>
             request(`/api/v1/employee-actions/${actionId}/`, { method: 'DELETE' }),

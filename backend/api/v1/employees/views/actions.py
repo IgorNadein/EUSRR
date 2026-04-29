@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import logging
 
-from django.db import transaction
+from django.db import connection, transaction
 from django.utils import timezone
-from employees.constants import ACTION_DISMISSED
-from employees.models import Department, EmployeeAction, EmployeeDepartment
+from employees.constants import (
+    ACTION_DISMISSED,
+    ACTIVATING_MARKER_ACTIONS,
+    PERMANENT_ACTIONS,
+)
+from employees.models import Department, Employee, EmployeeAction, EmployeeDepartment
+from employees.services.personnel_state import resolve_employee_personnel_state
 from rest_framework import filters, viewsets
 from rest_framework.permissions import IsAuthenticated
 
@@ -38,7 +43,14 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
     ordering_fields = ["date", "id"]
     ordering = ["-date"]
     pagination_class = None
-    history_diff_fields = ["action", "date", "comment", "extra", "employee_id"]
+    history_diff_fields = [
+        "action",
+        "date",
+        "date_to",
+        "comment",
+        "extra",
+        "employee_id",
+    ]
 
     def get_queryset(self):
         qs = EmployeeAction.objects.select_related("employee").order_by(
@@ -81,15 +93,29 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
 
     # --- бизнес-эффекты после записи события ---
     def _apply_effects(self, action_obj: EmployeeAction):
-        """Применяет эффекты кадрового события.
+        """Синхронизирует эффекты аккаунта по текущему кадровому состоянию.
 
         Работает только с БД. LDAP синхронизация через сигналы:
         - sync_employee_to_ldap_on_save: активация/деактивация в LDAP
         - sync_department_member_to_ldap: удаление из отделов в LDAP
         """
-        emp = action_obj.employee
+        if not self._action_affects_account(action_obj.action):
+            return
 
-        if action_obj.action == ACTION_DISMISSED:
+        self._sync_employee_account_state(action_obj.employee)
+
+    @staticmethod
+    def _action_affects_account(action: str) -> bool:
+        return action in PERMANENT_ACTIONS or action in ACTIVATING_MARKER_ACTIONS
+
+    def _sync_employee_account_state(self, emp: Employee):
+        today = timezone.localdate()
+        current_state = resolve_employee_personnel_state(emp, today)
+        should_be_active = current_state.status != ACTION_DISMISSED
+
+        emp.refresh_from_db(fields=["is_active"])
+
+        if not should_be_active:
             # Снимаем с должности руководителя (до деактивации!)
             headed_depts = list(Department.objects.filter(head=emp))
             if headed_depts:
@@ -113,7 +139,6 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
             # Деактивируем связи с отделами (сигналы синхронизируют в LDAP)
             # ВАЖНО: используем save() для каждой записи, чтобы сработали
             # сигналы
-            today = timezone.now().date()
             for emp_dept in EmployeeDepartment.objects.filter(
                 employee=emp, is_active=True
             ):
@@ -121,8 +146,9 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
                 emp_dept.date_to = today
                 emp_dept.save(update_fields=["is_active", "date_to"])
         else:
-            # Любое иное событие делает сотрудника активным
-            # (сигнал синхронизирует в LDAP)
+            # Активность учетной записи определяется текущим постоянным
+            # кадровым состоянием; временные события сами по себе не меняют
+            # LDAP/DB-активацию.
             if not emp.is_active:
                 emp.is_active = True
                 emp._ldap_changes = {"is_active": True}
@@ -132,6 +158,13 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
         # Покрывает: восстановление, увольнение без отделов, множественные
         # отделы
         self._ensure_ldap_dn_location(emp)
+
+    def _sync_employee_account_state_by_id(self, employee_id: int | None):
+        if not employee_id:
+            return
+        emp = Employee.objects.filter(id=employee_id).first()
+        if emp:
+            self._sync_employee_account_state(emp)
 
     @staticmethod
     def _ensure_ldap_dn_location(emp):
@@ -232,5 +265,43 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
 
     @transaction.atomic
     def perform_update(self, serializer):
+        old_employee_id = serializer.instance.employee_id
+        old_action = serializer.instance.action
         obj = serializer.save()
-        self._apply_effects(obj)
+        affected_employee_ids = set()
+        if self._action_affects_account(old_action):
+            affected_employee_ids.add(old_employee_id)
+        if self._action_affects_account(obj.action):
+            affected_employee_ids.add(obj.employee_id)
+        for employee_id in affected_employee_ids:
+            self._sync_employee_account_state_by_id(employee_id)
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        employee_id = instance.employee_id
+        action = instance.action
+        self._clear_legacy_state_references(instance.id)
+        super().perform_destroy(instance)
+        if self._action_affects_account(action):
+            self._sync_employee_account_state_by_id(employee_id)
+
+    @staticmethod
+    def _clear_legacy_state_references(action_id: int):
+        """Remove stale references from abandoned normalized-state tables."""
+        legacy_tables = (
+            "employees_employeebasestatusevent",
+            "employees_employeestatusinterval",
+        )
+        existing_tables = set(connection.introspection.table_names())
+        tables_to_clean = [
+            table for table in legacy_tables if table in existing_tables
+        ]
+        if not tables_to_clean:
+            return
+
+        with connection.cursor() as cursor:
+            for table in tables_to_clean:
+                cursor.execute(
+                    f'DELETE FROM "{table}" WHERE source_action_id = %s',
+                    [action_id],
+                )

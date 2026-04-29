@@ -10,7 +10,11 @@ import logging
 from common.emails import send_templated_mail
 from django.db.models import Exists, Max, OuterRef, Prefetch, Q, Subquery
 from django.utils.crypto import get_random_string
-from employees.constants import ACTION_DISMISSED
+from employees.constants import (
+    ACTION_DISMISSED,
+    ACTIVATING_MARKER_ACTIONS,
+    PERMANENT_ACTIONS,
+)
 from employees.models import (
     Department,
     EmployeeAction,
@@ -84,8 +88,10 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def get_queryset(self):
+        status_action_codes = PERMANENT_ACTIONS | ACTIVATING_MARKER_ACTIONS
         last_action_code_sq = Subquery(
             EmployeeAction.objects.filter(employee_id=OuterRef("pk"))
+            .filter(action__in=status_action_codes)
             .order_by("-date")
             .values("action")[:1]
         )

@@ -9,6 +9,7 @@ from attendance.models import (
 )
 from attendance.services import get_standard_work_schedule_payload
 from api.v1.employees.serializers import EmployeeBriefSerializer
+from employees.constants import ACTION_REMOTE
 
 
 class DateOverrideSerializer(serializers.Serializer):
@@ -349,7 +350,7 @@ class AttendanceRecordSerializer(serializers.ModelSerializer):
     def get_non_working_reason(self, obj):
         if obj.effective_is_workday:
             return ""
-        if obj.personnel_status_label:
+        if obj.personnel_status_label and obj.personnel_status != ACTION_REMOTE:
             return obj.personnel_status_label
         if not obj.is_workday:
             return "Выходной по графику/календарю"

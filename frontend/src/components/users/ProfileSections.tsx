@@ -16,7 +16,11 @@ import {
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import type { EmployeeWorkSchedule } from "@/lib/api/attendance";
-import type { EmployeeAction, EmployeeDepartment, Skill } from "@/types/api";
+import type {
+  EmployeeDepartment,
+  EmployeePersonnelState,
+  Skill,
+} from "@/types/api";
 import { getEmployeeActionTone } from "@/lib/users/userDetailUtils";
 
 export type ProfileContactRow = {
@@ -73,6 +77,39 @@ function defaultSchedule(employeeId: number): EmployeeWorkSchedule {
     created_at: null,
     updated_at: null,
   };
+}
+
+type WorkScheduleApiClient = typeof apiClient & {
+  request: <T>(endpoint: string, options?: RequestInit) => Promise<T>;
+  getEmployeeWorkSchedule?: unknown;
+  updateEmployeeWorkSchedule?: unknown;
+};
+
+function getEmployeeWorkSchedule(employeeId: number) {
+  const client = apiClient as WorkScheduleApiClient;
+  if (typeof client.getEmployeeWorkSchedule === "function") {
+    return client.getEmployeeWorkSchedule(employeeId) as Promise<EmployeeWorkSchedule>;
+  }
+  return client.request<EmployeeWorkSchedule>(
+    `/api/v1/attendance/work-schedules/${employeeId}/`,
+  );
+}
+
+function updateEmployeeWorkSchedule(
+  employeeId: number,
+  data: Partial<EmployeeWorkSchedule>,
+) {
+  const client = apiClient as WorkScheduleApiClient;
+  if (typeof client.updateEmployeeWorkSchedule === "function") {
+    return client.updateEmployeeWorkSchedule(employeeId, data) as Promise<EmployeeWorkSchedule>;
+  }
+  return client.request<EmployeeWorkSchedule>(
+    `/api/v1/attendance/work-schedules/${employeeId}/`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
+  );
 }
 
 function SectionTitle({
@@ -251,12 +288,12 @@ export function ProfileWorkScheduleCard({
   title = "График работы",
   employeeId,
   canEdit = false,
-  currentAction,
+  personnelState,
 }: {
   title?: string;
   employeeId: number;
   canEdit?: boolean;
-  currentAction?: EmployeeAction | null;
+  personnelState?: EmployeePersonnelState | null;
 }) {
   const [schedule, setSchedule] = useState<EmployeeWorkSchedule>(() =>
     defaultSchedule(employeeId),
@@ -279,7 +316,7 @@ export function ProfileWorkScheduleCard({
       try {
         setLoading(true);
         setError(null);
-        const data = await apiClient.getEmployeeWorkSchedule(employeeId);
+        const data = await getEmployeeWorkSchedule(employeeId);
         if (!mounted) return;
         setSchedule(data);
         setForm({
@@ -312,8 +349,8 @@ export function ProfileWorkScheduleCard({
   const weekendDays = workScheduleDays
     .map((day) => day.value)
     .filter((day) => !workdays.includes(day));
-  const actionTone = currentAction
-    ? getEmployeeActionTone(currentAction.action)
+  const stateTone = personnelState
+    ? getEmployeeActionTone(personnelState.status)
     : null;
 
   const toggleFormWorkday = (day: string) => {
@@ -330,7 +367,7 @@ export function ProfileWorkScheduleCard({
     try {
       setSaving(true);
       setError(null);
-      const updated = await apiClient.updateEmployeeWorkSchedule(employeeId, {
+      const updated = await updateEmployeeWorkSchedule(employeeId, {
         start_time: form.start_time,
         end_time: form.end_time,
         expected_hours: Number(form.expected_hours) || 0,
@@ -357,9 +394,9 @@ export function ProfileWorkScheduleCard({
               <span className="app-status-pill app-feedback-warning">
                 По умолчанию
               </span>
-            ) : currentAction ? (
-              <span className={`app-status-pill ${actionTone?.badgeClass || ""}`}>
-                {currentAction.action_display || currentAction.action}
+            ) : personnelState ? (
+              <span className={`app-status-pill ${stateTone?.badgeClass || ""}`}>
+                {personnelState.label || personnelState.status}
               </span>
             ) : (
               <span className="app-status-pill app-feedback-success">Активен</span>
@@ -531,11 +568,12 @@ export function ProfileWorkScheduleCard({
           </div>
         </div>
 
-        {currentAction ? (
+        {personnelState?.date_from ? (
           <div className="mt-3 flex items-start gap-2 rounded-xl border border-[var(--border-subtle)] px-3 py-2 text-sm">
             <CalendarClock size={16} className="mt-0.5 shrink-0 text-[var(--muted-foreground)]" />
             <p className="app-text-muted app-text-wrap">
-              Кадровое состояние с {currentAction.date_display || currentAction.date}
+              Кадровое состояние с {personnelState.date_from}
+              {personnelState.date_to ? ` по ${personnelState.date_to}` : ""}
             </p>
           </div>
         ) : null}

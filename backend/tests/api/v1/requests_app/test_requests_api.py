@@ -64,6 +64,14 @@ def test_statistics_counts_all_employee_requests_for_admin(
         type_=RequestType.DAY_OFF,
         status=RequestStatus.PENDING,
     )
+    maternity = make_request(
+        employee=employee,
+        type_=RequestType.MATERNITY,
+        status=RequestStatus.APPROVED,
+    )
+    maternity.date_from = datetime(2026, 4, 1).date()
+    maternity.date_to = datetime(2026, 4, 10).date()
+    maternity.save(update_fields=["date_from", "date_to"])
 
     resp = auth_client(admin_user).get(
         f"{API_BASE}statistics/?employee_id={employee.id}&period=all"
@@ -75,9 +83,11 @@ def test_statistics_counts_all_employee_requests_for_admin(
     assert payload["period"] == "all"
     assert payload["date_from"] is None
     assert payload["date_to"] is None
-    assert payload["total_submitted_requests"] == 2
+    assert payload["total_submitted_requests"] == 3
     assert payload["sick_leave_requests_count"] == 1
     assert payload["day_off_requests_count"] == 1
+    assert payload["maternity_requests_count"] == 1
+    assert payload["maternity_days"] == 10
 
 
 def test_statistics_custom_period_filters_request_counts_and_absence_days(
@@ -299,6 +309,56 @@ def test_create_regular_user_and_admin_forced_to_self(
         RequestStatus.DRAFT,
         RequestStatus.PENDING,
     )
+
+
+def test_maternity_request_requires_and_accepts_period(
+    auth_client, regular_user: models.Model, make_user
+) -> None:
+    recipient = make_user(email="maternity-recipient@example.com")
+
+    missing_date_resp = auth_client(regular_user).post(
+        API_BASE,
+        data={
+            "type": RequestType.MATERNITY,
+            "date_from": "2026-04-20",
+            "recipient_ids": [recipient.id],
+        },
+        format="json",
+    )
+    assert missing_date_resp.status_code == 400
+    assert "date_to" in missing_date_resp.json()
+
+    ok_resp = auth_client(regular_user).post(
+        API_BASE,
+        data={
+            "type": RequestType.MATERNITY,
+            "date_from": "2026-04-20",
+            "date_to": "2026-09-06",
+            "recipient_ids": [recipient.id],
+        },
+        format="json",
+    )
+    assert ok_resp.status_code == 201
+    assert ok_resp.json()["type"] == RequestType.MATERNITY
+
+
+def test_day_off_request_requires_full_period(
+    auth_client, regular_user: models.Model, make_user
+) -> None:
+    recipient = make_user(email="day-off-recipient@example.com")
+
+    resp = auth_client(regular_user).post(
+        API_BASE,
+        data={
+            "type": RequestType.DAY_OFF,
+            "date_from": "2026-04-20",
+            "recipient_ids": [recipient.id],
+        },
+        format="json",
+    )
+
+    assert resp.status_code == 400
+    assert "date_to" in resp.json()
 
 
 def test_create_request_sends_notification_to_cc_users(

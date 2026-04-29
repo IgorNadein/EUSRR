@@ -6,7 +6,7 @@ import {
   getEmployeeActionTone,
   truncateText,
 } from "@/lib/users/userDetailUtils";
-import type { EmployeeAction } from "@/types/api";
+import type { EmployeeAction, EmployeePersonnelState } from "@/types/api";
 
 type EmployeeActionsTimelineProps = {
   actionLoading: string | null;
@@ -16,6 +16,7 @@ type EmployeeActionsTimelineProps = {
   onAddAction?: () => void;
   onDeleteAction?: (actionId: number) => void;
   onEditAction?: (action: EmployeeAction) => void;
+  personnelState?: EmployeePersonnelState | null;
   sortedActions: EmployeeAction[];
   initialVisibleCount?: number;
   showCountLabel?: boolean;
@@ -33,6 +34,11 @@ function formatActionDate(value: string) {
   });
 }
 
+function formatStateDate(value?: string | null) {
+  if (!value) return "";
+  return formatActionDate(value);
+}
+
 export default function EmployeeActionsTimeline({
   actionLoading,
   canManageActions,
@@ -41,6 +47,7 @@ export default function EmployeeActionsTimeline({
   onAddAction,
   onDeleteAction,
   onEditAction,
+  personnelState,
   sortedActions,
   initialVisibleCount,
   showCountLabel = true,
@@ -48,6 +55,12 @@ export default function EmployeeActionsTimeline({
   expandedCommentLength = truncateCommentLength,
 }: EmployeeActionsTimelineProps) {
   const [showAll, setShowAll] = useState(false);
+  const currentActionId = personnelState ? personnelState.action_id : latestActionId;
+  const showCurrentStateCard = Boolean(
+    personnelState
+    && personnelState.status
+    && personnelState.status !== "normal"
+  );
   const canCollapse = Boolean(
     initialVisibleCount && sortedActions.length > initialVisibleCount,
   );
@@ -59,7 +72,7 @@ export default function EmployeeActionsTimeline({
     [canCollapse, initialVisibleCount, showAll, sortedActions],
   );
 
-  if (!canViewActions || sortedActions.length === 0) {
+  if (!canViewActions || (sortedActions.length === 0 && !showCurrentStateCard)) {
     return null;
   }
 
@@ -105,9 +118,40 @@ export default function EmployeeActionsTimeline({
         </p>
       ) : null}
 
+      {showCurrentStateCard && personnelState ? (
+        <div className="mb-4 rounded-xl border border-[var(--accent-primary)]/30 bg-[var(--accent-primary)]/10 px-4 py-3">
+          {(() => {
+            const tone = getEmployeeActionTone(personnelState.status);
+            const dateFrom = formatStateDate(personnelState.date_from);
+            const dateTo = formatStateDate(personnelState.date_to);
+            return (
+              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                <div className="min-w-0">
+                  <p className="app-card-caption mb-2">Текущее состояние</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`app-status-pill ${tone.badgeClass}`}>
+                      {personnelState.label || personnelState.status}
+                    </span>
+                    <span className="app-text-muted text-xs font-medium">
+                      активно сейчас
+                    </span>
+                  </div>
+                </div>
+                {dateFrom ? (
+                  <time className="app-text-muted shrink-0 pt-1 text-sm">
+                    {dateFrom}
+                    {dateTo ? ` - ${dateTo}` : ""}
+                  </time>
+                ) : null}
+              </div>
+            );
+          })()}
+        </div>
+      ) : null}
+
       <div className="space-y-3">
         {visibleActions.map((action) => {
-          const isCurrent = latestActionId === action.id;
+          const isCurrent = currentActionId === action.id;
           const deleteKey = `delete-${action.id}`;
           const tone = getEmployeeActionTone(action.action);
           const commentText = truncateCommentLength
@@ -148,6 +192,7 @@ export default function EmployeeActionsTimeline({
                   <div className="flex shrink-0 items-start gap-2">
                     <time className="app-text-muted pt-1 text-sm">
                       {formatActionDate(action.date)}
+                      {action.date_to ? ` - ${formatActionDate(action.date_to)}` : ""}
                     </time>
                     {canManageActions && onEditAction && onDeleteAction ? (
                       <div className="flex gap-1">

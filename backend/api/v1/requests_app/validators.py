@@ -5,7 +5,7 @@ from typing import Any, Mapping
 from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import ValidationError
 
-# VACATION/SICK_LEAVE/TRANSFER/DISMISSAL/OTHER
+# VACATION/SICK_LEAVE/DAY_OFF/MATERNITY/TRANSFER/DISMISSAL/OTHER
 from requests_app.enums import RequestType
 from requests_app.enums import RequestStatus
 
@@ -16,8 +16,8 @@ class RequestDatesByTypeValidator:
     Правила:
             - Проверяем ТОЛЬКО если в payload присутствуют date_from/date_to
                 ИЛИ меняется type.
-            - Для VACATION/SICK_LEAVE: если хотя бы одна дата передана,
-                требуются обе; date_to >= date_from.
+            - Для VACATION/SICK_LEAVE/DAY_OFF/MATERNITY: если хотя бы одна
+                дата передана, требуются обе; date_to >= date_from.
       - Для TRANSFER/DISMISSAL: если даты трогают — обязателен date_from.
       - Для OTHER: дат можно не указывать.
     """
@@ -57,7 +57,12 @@ class RequestDatesByTypeValidator:
         if not (touches_dates or touches_type):
             return
 
-        if type_ in (RequestType.VACATION, RequestType.SICK_LEAVE):
+        if type_ in (
+            RequestType.VACATION,
+            RequestType.SICK_LEAVE,
+            RequestType.DAY_OFF,
+            RequestType.MATERNITY,
+        ):
             # Если пользователь прислал хотя бы одно из полей даты — должны быть
             # обе
             if touches_dates and (not date_from or not date_to):

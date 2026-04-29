@@ -1,9 +1,10 @@
 "use client";
 
 import { Modal } from "@/components/ui";
-import type {
-  EmployeeActionField,
-  EmployeeActionForm,
+import {
+  isTemporaryEmployeeAction,
+  type EmployeeActionField,
+  type EmployeeActionForm,
 } from "@/lib/users/userDetailUtils";
 
 type EmployeeActionOption = {
@@ -31,6 +32,8 @@ export default function EmployeeActionModal({
   onSave,
 }: EmployeeActionModalProps) {
   const isSaving = actionLoading === "action";
+  const showDateTo = isTemporaryEmployeeAction(form.type);
+  const canSave = Boolean(form.type && form.date && (!showDateTo || form.dateTo));
 
   const footerContent = (
     <div className="flex gap-3">
@@ -45,7 +48,7 @@ export default function EmployeeActionModal({
       <button
         type="button"
         onClick={onSave}
-        disabled={isSaving || !form.type || !form.date}
+        disabled={isSaving || !canSave}
         className="app-action-primary flex-1 rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-50"
       >
         {isSaving ? "Сохранение..." : "Сохранить"}
@@ -98,6 +101,24 @@ export default function EmployeeActionModal({
             />
           </label>
         </section>
+
+        {showDateTo ? (
+          <section className="app-surface-muted rounded-xl p-4">
+            <label htmlFor="action-date-to" className="block">
+              <span className="mb-2 block text-sm font-medium text-[var(--foreground)]">
+                Дата окончания *
+              </span>
+              <input
+                id="action-date-to"
+                type="date"
+                value={form.dateTo}
+                min={form.date}
+                onChange={(event) => onFieldChange("dateTo", event.target.value)}
+                className="app-input w-full rounded-lg px-4 py-2.5 text-sm"
+              />
+            </label>
+          </section>
+        ) : null}
 
         <section className="app-surface-muted rounded-xl p-4">
           <label htmlFor="action-comment" className="block">

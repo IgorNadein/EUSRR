@@ -201,6 +201,7 @@ class Request(models.Model):
             RequestType.VACATION,
             RequestType.SICK_LEAVE,
             RequestType.DAY_OFF,
+            RequestType.MATERNITY,
         } and not (self.date_from and self.date_to):
             raise ValidationError(
                 _("Для выбранного типа укажите даты начала и окончания.")

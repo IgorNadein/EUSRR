@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   AlertTriangle,
+  Camera,
   ChevronDown,
   Clock,
   Edit3,
@@ -13,6 +14,10 @@ import {
   RefreshCw,
 } from "lucide-react";
 
+import {
+  AttendanceDayEventsModal,
+  type AttendanceDayEventsPreview,
+} from "@/components/attendance/AttendanceDayEventsModal";
 import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
 import { Modal } from "@/components/ui";
 import { useUser } from "@/contexts/UserContext";
@@ -23,6 +28,7 @@ import type {
   AttendanceAnalysisResponse,
   AttendanceRecord,
   AttendanceRecordUpdatePayload,
+  PaginatedAttendanceRecords,
 } from "@/lib/api/attendance";
 import type { EmployeeAction } from "@/types/api";
 
@@ -178,15 +184,20 @@ function getPersonnelDayMeta(
   record?: AttendanceRecord,
 ): PersonnelDayMeta | null {
   if (record?.personnel_status && record.personnel_status !== "normal") {
+    const personnelStatus = String(record.personnel_status);
     return {
       action: {
         id: Number(record.personnel_action || 0),
         employee: 0,
-        action: record.personnel_status,
+        action: personnelStatus,
         action_display: record.personnel_status_label || record.personnel_status,
         date: String(dateValue || ""),
       },
-      className: record.personnel_status === "dismissed" ? "text-red-400" : "text-amber-500",
+      className: personnelStatus === "dismissed"
+        ? "text-red-400"
+        : personnelStatus === "remote"
+          ? "text-sky-400"
+          : "text-amber-500",
       label: record.personnel_status_label || record.personnel_status,
       nonWorking: record.effective_is_workday === false,
     };
@@ -251,7 +262,24 @@ function getPersonnelDayMeta(
     };
   }
 
+  if (activeAction.action === "remote") {
+    return {
+      action: activeAction,
+      className: "text-sky-400",
+      label: activeAction.action_display || "На удалёнке",
+      nonWorking: false,
+    };
+  }
+
   return null;
+}
+
+function isRemotePersonnelMeta(personnelMeta?: PersonnelDayMeta | null) {
+  return personnelMeta?.action.action === "remote";
+}
+
+function isRemoteNonWorkingReason(value?: string) {
+  return String(value || "").toLowerCase().replaceAll("ё", "е").includes("удален");
 }
 
 function issueLabels(record: AttendanceRecord, personnelMeta?: PersonnelDayMeta | null) {
@@ -270,7 +298,7 @@ function issueLabels(record: AttendanceRecord, personnelMeta?: PersonnelDayMeta 
     : labels;
 
   const result = [...effectiveLabels];
-  if (!nonWorking) {
+  if (!nonWorking && !isRemotePersonnelMeta(personnelMeta)) {
     if (record.is_absent) result.push("absence");
     if (record.is_late) result.push("late");
     if (record.is_early_leave) result.push("early_leave");
@@ -309,6 +337,14 @@ function getRecordTone(record: AttendanceRecord, personnelMeta?: PersonnelDayMet
     };
   }
 
+  if (isRemotePersonnelMeta(personnelMeta)) {
+    return {
+      dotClassName: "bg-sky-500",
+      pillClassName: "app-selected",
+      label: personnelMeta?.label || "На удалёнке",
+    };
+  }
+
   return {
     dotClassName: "bg-emerald-500",
     pillClassName: "app-feedback-success",
@@ -317,6 +353,17 @@ function getRecordTone(record: AttendanceRecord, personnelMeta?: PersonnelDayMet
 }
 
 function getWorkdayMeta(record: AttendanceRecord, personnelMeta?: PersonnelDayMeta | null) {
+  if (personnelMeta?.nonWorking && isRemotePersonnelMeta(personnelMeta) && !record.is_workday) {
+    const reason = !isRemoteNonWorkingReason(record.non_working_reason)
+      ? record.non_working_reason
+      : "";
+    return {
+      className: "text-gray-500",
+      label: "Нерабочий день",
+      reason: reason || "Выходной по графику/календарю",
+    };
+  }
+
   if (personnelMeta?.nonWorking) {
     return {
       className: personnelMeta.className,
@@ -333,10 +380,14 @@ function getWorkdayMeta(record: AttendanceRecord, personnelMeta?: PersonnelDayMe
     };
   }
 
+  const nonWorkingReason = isRemotePersonnelMeta(personnelMeta)
+    ? ""
+    : record.non_working_reason;
+
   return {
     className: "text-gray-500",
     label: "Нерабочий день",
-    reason: record.non_working_reason || "Выходной по графику/календарю",
+    reason: nonWorkingReason || "Выходной по графику/календарю",
   };
 }
 
@@ -359,6 +410,17 @@ function getErrorMessage(error: unknown, fallback: string) {
 function getRecordId(record: AttendanceRecord) {
   const value = Number(record.id);
   return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function attendanceRecordDetails(record: AttendanceRecord, workdayMeta: ReturnType<typeof getWorkdayMeta>) {
+  return [
+    `Приход: ${formatTime(record.arrival_time)}`,
+    `Уход: ${formatTime(record.departure_time)}`,
+    `Часы: ${formatHours(record.work_hours)} / ${formatHours(record.expected_hours)}`,
+    `Рабочий день: ${record.effective_is_workday === false || record.is_workday === false ? "нет" : "да"}`,
+    ...(workdayMeta.reason ? [`Причина: ${workdayMeta.reason}`] : []),
+    ...(record.comments_count ? [`Комментарии: ${record.comments_count}`] : []),
+  ];
 }
 
 function valueToEditString(value: unknown) {
@@ -401,6 +463,111 @@ function nullableTime(value: string) {
   return trimmed || null;
 }
 
+type AttendanceCardApiClient = typeof apiClient & {
+  request: <T>(endpoint: string, options?: RequestInit) => Promise<T>;
+  addAttendanceRecordComment?: unknown;
+  analyzeAttendance?: unknown;
+  deleteAttendanceRecordComment?: unknown;
+  getAttendanceRecordComments?: unknown;
+  getAttendanceRecords?: unknown;
+  updateAttendanceRecord?: unknown;
+};
+
+function buildAttendanceQuery(params?: Record<string, string | number | undefined>) {
+  if (!params) return "";
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") query.append(key, String(value));
+  });
+  const serialized = query.toString();
+  return serialized ? `?${serialized}` : "";
+}
+
+function attendanceApiClient() {
+  return apiClient as AttendanceCardApiClient;
+}
+
+function analyzeEmployeeAttendance(data: {
+  employee_id: number;
+  period_start: string;
+  period_end: string;
+}) {
+  const client = attendanceApiClient();
+  if (typeof client.analyzeAttendance === "function") {
+    return client.analyzeAttendance(data) as Promise<AttendanceAnalysisResponse>;
+  }
+  return client.request<AttendanceAnalysisResponse>(
+    "/api/v1/attendance/logstorm/analyze/",
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+function getAttendanceRecords(params: {
+  employee_id: number;
+  date_from: string;
+  date_to: string;
+}) {
+  const client = attendanceApiClient();
+  if (typeof client.getAttendanceRecords === "function") {
+    return client.getAttendanceRecords(params) as Promise<PaginatedAttendanceRecords>;
+  }
+  return client.request<PaginatedAttendanceRecords>(
+    `/api/v1/attendance/records/${buildAttendanceQuery(params)}`,
+  );
+}
+
+function getAttendanceRecordComments(recordId: number) {
+  const client = attendanceApiClient();
+  if (typeof client.getAttendanceRecordComments === "function") {
+    return client.getAttendanceRecordComments(recordId) as Promise<AttendanceRecordComment[]>;
+  }
+  return client.request<AttendanceRecordComment[]>(
+    `/api/v1/attendance/records/${recordId}/comments/`,
+  );
+}
+
+function addAttendanceRecordComment(recordId: number, text: string) {
+  const client = attendanceApiClient();
+  if (typeof client.addAttendanceRecordComment === "function") {
+    return client.addAttendanceRecordComment(recordId, text) as Promise<AttendanceRecordComment>;
+  }
+  return client.request<AttendanceRecordComment>(
+    `/api/v1/attendance/records/${recordId}/comments/`,
+    {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    },
+  );
+}
+
+function deleteAttendanceRecordComment(recordId: number, commentId: number) {
+  const client = attendanceApiClient();
+  if (typeof client.deleteAttendanceRecordComment === "function") {
+    return client.deleteAttendanceRecordComment(recordId, commentId) as Promise<void>;
+  }
+  return client.request<void>(
+    `/api/v1/attendance/records/${recordId}/comments/${commentId}/`,
+    { method: "DELETE" },
+  );
+}
+
+function updateAttendanceRecord(recordId: number, data: AttendanceRecordUpdatePayload) {
+  const client = attendanceApiClient();
+  if (typeof client.updateAttendanceRecord === "function") {
+    return client.updateAttendanceRecord(recordId, data) as Promise<AttendanceRecord>;
+  }
+  return client.request<AttendanceRecord>(
+    `/api/v1/attendance/records/${recordId}/`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
+  );
+}
+
 export default function EmployeeAttendanceCard({
   employeeActions,
   employeeId,
@@ -420,6 +587,8 @@ export default function EmployeeAttendanceCard({
   const [commentsMap, setCommentsMap] = useState<Record<number, AttendanceRecordComment[]>>({});
   const [commentsLoadingMap, setCommentsLoadingMap] = useState<Record<number, boolean>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
+  const [dayEventsRecordPreview, setDayEventsRecordPreview] =
+    useState<AttendanceDayEventsPreview | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState<AttendanceRecordEditForm | null>(null);
 
@@ -464,12 +633,12 @@ export default function EmployeeAttendanceCard({
     try {
       setLoading(true);
       setLoadingMode("analyze");
-      await apiClient.analyzeAttendance({
+      await analyzeEmployeeAttendance({
         employee_id: employeeId,
         period_start: periodStart,
         period_end: periodEnd,
       });
-      const savedRecords = await apiClient.getAttendanceRecords({
+      const savedRecords = await getAttendanceRecords({
         employee_id: employeeId,
         date_from: periodStart,
         date_to: periodEnd,
@@ -513,7 +682,7 @@ export default function EmployeeAttendanceCard({
         setLoading(true);
         setLoadingMode("saved");
         setError(null);
-        const response = await apiClient.getAttendanceRecords({
+        const response = await getAttendanceRecords({
           employee_id: employeeId,
           date_from: periodStart,
           date_to: periodEnd,
@@ -566,7 +735,7 @@ export default function EmployeeAttendanceCard({
 
     try {
       setCommentsLoadingMap((current) => ({ ...current, [recordId]: true }));
-      const comments = await apiClient.getAttendanceRecordComments(recordId);
+      const comments = await getAttendanceRecordComments(recordId);
       setCommentsMap((current) => ({ ...current, [recordId]: comments }));
       updateRecordCommentCount(recordId, comments.length);
     } catch (commentError) {
@@ -585,13 +754,38 @@ export default function EmployeeAttendanceCard({
     }
   }
 
+  async function openCommentsFromDayEvents(record: AttendanceDayEventsPreview) {
+    setExpandedComments((current) => ({ ...current, [record.recordId]: true }));
+    await ensureCommentsLoaded(record.recordId);
+  }
+
+  function openDayEvents(record: AttendanceRecord, recordId: number, key: string) {
+    const personnelMeta = getPersonnelDayMeta(employeeActions, record.date, record);
+    const tone = getRecordTone(record, personnelMeta);
+    const workdayMeta = getWorkdayMeta(record, personnelMeta);
+    setExpandedRecordKey(key);
+    setDayEventsRecordPreview({
+      recordId,
+      employeeName: record.display_name || displayUserName(currentUser) || `Сотрудник ${employeeId}`,
+      date: `${record.date || "Дата не указана"} · ${formatDateLabel(record.date)}`,
+      statusLabel: tone.label,
+      displayText: hasWorked(record)
+        ? `${formatTime(record.arrival_time)}/${formatTime(record.departure_time)} · ${formatHours(record.work_hours)} ч.`
+        : "Нет проходов",
+      detailLines: attendanceRecordDetails(record, workdayMeta),
+      issues: issueLabels(record, personnelMeta).map(formatAttendanceIssueLabel),
+      isManuallyEdited: Boolean(record.is_manually_edited),
+      commentsCount: Number(record.comments_count || 0),
+    });
+  }
+
   async function addComment(recordId: number) {
     const text = (commentDrafts[recordId] || "").trim();
     if (!text) return;
 
     try {
       setBusyKey(`comment-${recordId}`);
-      const saved = await apiClient.addAttendanceRecordComment(recordId, text);
+      const saved = await addAttendanceRecordComment(recordId, text);
       const nextCount = (commentsMap[recordId]?.length || 0) + 1;
       setCommentsMap((current) => {
         return { ...current, [recordId]: [...(current[recordId] || []), saved] };
@@ -608,7 +802,7 @@ export default function EmployeeAttendanceCard({
   async function deleteComment(recordId: number, commentId: number) {
     try {
       setBusyKey(`delete-comment-${commentId}`);
-      await apiClient.deleteAttendanceRecordComment(recordId, commentId);
+      await deleteAttendanceRecordComment(recordId, commentId);
       const nextCount = Math.max((commentsMap[recordId]?.length || 1) - 1, 0);
       setCommentsMap((current) => {
         return {
@@ -677,7 +871,7 @@ export default function EmployeeAttendanceCard({
 
     try {
       setBusyKey("edit-record");
-      const saved = await apiClient.updateAttendanceRecord(editForm.recordId, payload);
+      const saved = await updateAttendanceRecord(editForm.recordId, payload);
       setResult((current) => {
         if (!current?.records) return current;
         return {
@@ -828,6 +1022,7 @@ export default function EmployeeAttendanceCard({
               const recordId = getRecordId(record);
               const key = recordId ? `record-${recordId}` : `${record.date || "record"}-${index}`;
               const personnelMeta = getPersonnelDayMeta(employeeActions, record.date, record);
+              const suppressAttendanceIssues = personnelMeta?.nonWorking || isRemotePersonnelMeta(personnelMeta);
               const labels = issueLabels(record, personnelMeta);
               const tone = getRecordTone(record, personnelMeta);
               const workdayMeta = getWorkdayMeta(record, personnelMeta);
@@ -975,10 +1170,22 @@ export default function EmployeeAttendanceCard({
 
                       {expanded ? (
                         <div className="app-surface mt-3 rounded-lg p-3">
-                          <p className="app-card-caption mb-3">Детали</p>
+                          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                            <p className="app-card-caption">Детали</p>
+                            {recordId ? (
+                              <button
+                                type="button"
+                                onClick={() => openDayEvents(record, recordId, key)}
+                                className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold"
+                              >
+                                <Camera size={14} />
+                                Подробности события
+                              </button>
+                            ) : null}
+                          </div>
                           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                             <div className="grid gap-2 sm:grid-cols-2">
-                              {personnelMeta?.nonWorking ? (
+                              {personnelMeta ? (
                                 <div className="sm:col-span-2">
                                   <p className="app-text-muted text-xs">Кадровое состояние</p>
                                   <p className={`mt-1 text-sm font-medium ${personnelMeta.className}`}>
@@ -989,19 +1196,19 @@ export default function EmployeeAttendanceCard({
                               <div>
                                 <p className="app-text-muted text-xs">Опоздание</p>
                                 <p className="mt-1 text-sm text-[var(--foreground)]">
-                                  {record.is_late && !personnelMeta?.nonWorking ? `${record.late_minutes ?? 0} мин.` : "Нет"}
+                                  {record.is_late && !suppressAttendanceIssues ? `${record.late_minutes ?? 0} мин.` : "Нет"}
                                 </p>
                               </div>
                               <div>
                                 <p className="app-text-muted text-xs">Ранний уход</p>
                                 <p className="mt-1 text-sm text-[var(--foreground)]">
-                                  {record.is_early_leave && !personnelMeta?.nonWorking ? `${record.early_leave_minutes ?? 0} мин.` : "Нет"}
+                                  {record.is_early_leave && !suppressAttendanceIssues ? `${record.early_leave_minutes ?? 0} мин.` : "Нет"}
                                 </p>
                               </div>
                               <div>
                                 <p className="app-text-muted text-xs">Недоработка</p>
                                 <p className="mt-1 text-sm text-[var(--foreground)]">
-                                  {record.is_underwork && !personnelMeta?.nonWorking ? `${formatHours(record.underwork_hours)} ч.` : "Нет"}
+                                  {record.is_underwork && !suppressAttendanceIssues ? `${formatHours(record.underwork_hours)} ч.` : "Нет"}
                                 </p>
                               </div>
                               <div>
@@ -1035,6 +1242,13 @@ export default function EmployeeAttendanceCard({
         ) : null}
       </div>
       </section>
+
+      <AttendanceDayEventsModal
+        isOpen={Boolean(dayEventsRecordPreview)}
+        onClose={() => setDayEventsRecordPreview(null)}
+        onOpenComments={(record) => void openCommentsFromDayEvents(record)}
+        record={dayEventsRecordPreview}
+      />
 
       <Modal
         isOpen={editModalOpen}

@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Loader2, MessageSquare, Send } from "lucide-react";
+import { Camera, Loader2, MessageSquare, Send } from "lucide-react";
 
+import { AttendanceRecordHeader } from "@/components/attendance/AttendanceRecordHeader";
 import { CommentDeleteButton } from "@/components/shared/CommentControls";
 import { RequestAvatar } from "@/components/requests/RequestAvatar";
 import { Modal } from "@/components/ui/Modal";
@@ -17,6 +18,8 @@ export type AttendanceRecordCommentsPreview = {
   statusLabel: string;
   displayText: string;
   detailLines?: string[];
+  issues?: string[];
+  isManuallyEdited?: boolean;
   commentsCount?: number;
 };
 
@@ -25,11 +28,68 @@ type AttendanceRecordCommentsModalProps = {
   isOpen: boolean;
   onClose: () => void;
   onCommentCountChange?: (recordId: number, count: number) => void;
+  onOpenDayEvents?: (record: AttendanceRecordCommentsPreview) => void;
   record: AttendanceRecordCommentsPreview | null;
 };
 
 function getErrorMessage(error: unknown, fallback: string) {
   return String((error as Error)?.message || fallback);
+}
+
+function getAttendanceRecordComments(recordId: number) {
+  const client = apiClient as typeof apiClient & {
+    getAttendanceRecordComments?: (recordId: number) => Promise<AttendanceRecordComment[]>;
+    request?: <T>(endpoint: string, options?: RequestInit) => Promise<T>;
+  };
+
+  if (typeof client.getAttendanceRecordComments === "function") {
+    return client.getAttendanceRecordComments(recordId);
+  }
+
+  return client.request?.<AttendanceRecordComment[]>(
+    `/api/v1/attendance/records/${recordId}/comments/`,
+  ) ?? Promise.reject(new Error("Attendance comments API is unavailable"));
+}
+
+function addAttendanceRecordComment(recordId: number, text: string) {
+  const client = apiClient as typeof apiClient & {
+    addAttendanceRecordComment?: (
+      recordId: number,
+      text: string,
+    ) => Promise<AttendanceRecordComment>;
+    request?: <T>(endpoint: string, options?: RequestInit) => Promise<T>;
+  };
+
+  if (typeof client.addAttendanceRecordComment === "function") {
+    return client.addAttendanceRecordComment(recordId, text);
+  }
+
+  return client.request?.<AttendanceRecordComment>(
+    `/api/v1/attendance/records/${recordId}/comments/`,
+    {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    },
+  ) ?? Promise.reject(new Error("Attendance comments API is unavailable"));
+}
+
+function deleteAttendanceRecordComment(recordId: number, commentId: number) {
+  const client = apiClient as typeof apiClient & {
+    deleteAttendanceRecordComment?: (
+      recordId: number,
+      commentId: number,
+    ) => Promise<void>;
+    request?: <T>(endpoint: string, options?: RequestInit) => Promise<T>;
+  };
+
+  if (typeof client.deleteAttendanceRecordComment === "function") {
+    return client.deleteAttendanceRecordComment(recordId, commentId);
+  }
+
+  return client.request?.<void>(
+    `/api/v1/attendance/records/${recordId}/comments/${commentId}/`,
+    { method: "DELETE" },
+  ) ?? Promise.reject(new Error("Attendance comments API is unavailable"));
 }
 
 function commentAuthorName(comment: AttendanceRecordComment) {
@@ -50,9 +110,11 @@ export function AttendanceRecordCommentsModal({
   isOpen,
   onClose,
   onCommentCountChange,
+  onOpenDayEvents,
   record,
 }: AttendanceRecordCommentsModalProps) {
   const [comments, setComments] = useState<AttendanceRecordComment[]>([]);
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -73,6 +135,7 @@ export function AttendanceRecordCommentsModal({
     setDraft("");
     setError(null);
     setActionId(null);
+    setCommentsLoaded(false);
   }, []);
 
   const scrollToBottom = useCallback((smooth = true) => {
@@ -87,9 +150,11 @@ export function AttendanceRecordCommentsModal({
   const loadComments = useCallback(async (recordId: number) => {
     try {
       setLoading(true);
+      setCommentsLoaded(false);
       setError(null);
-      const nextComments = await apiClient.getAttendanceRecordComments(recordId);
+      const nextComments = await getAttendanceRecordComments(recordId);
       setComments(nextComments);
+      setCommentsLoaded(true);
       onCommentCountChangeRef.current?.(recordId, nextComments.length);
     } catch (loadError) {
       setComments([]);
@@ -133,9 +198,10 @@ export function AttendanceRecordCommentsModal({
     try {
       setSending(true);
       setError(null);
-      const saved = await apiClient.addAttendanceRecordComment(record.recordId, text);
+      const saved = await addAttendanceRecordComment(record.recordId, text);
       const nextComments = [...comments, saved];
       setComments(nextComments);
+      setCommentsLoaded(true);
       setDraft("");
       onCommentCountChange?.(record.recordId, nextComments.length);
       scrollToBottom();
@@ -151,9 +217,10 @@ export function AttendanceRecordCommentsModal({
       if (!record) return;
       try {
         setActionId(comment.id);
-        await apiClient.deleteAttendanceRecordComment(record.recordId, comment.id);
+        await deleteAttendanceRecordComment(record.recordId, comment.id);
         const nextComments = comments.filter((item) => item.id !== comment.id);
         setComments(nextComments);
+        setCommentsLoaded(true);
         onCommentCountChange?.(record.recordId, nextComments.length);
       } catch (deleteError) {
         setError(getErrorMessage(deleteError, "Не удалось удалить комментарий"));
@@ -163,6 +230,19 @@ export function AttendanceRecordCommentsModal({
     },
     [comments, onCommentCountChange, record],
   );
+
+  const displayedCommentsCount = commentsLoaded
+    ? comments.length
+    : record?.commentsCount ?? comments.length;
+
+  function openDayEvents() {
+    if (!record || !onOpenDayEvents) return;
+    onClose();
+    onOpenDayEvents({
+      ...record,
+      commentsCount: displayedCommentsCount,
+    });
+  }
 
   return (
     <Modal
@@ -175,34 +255,22 @@ export function AttendanceRecordCommentsModal({
       {record ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="shrink-0 space-y-4 px-4 pb-4 sm:px-6">
-            <section className="app-surface-muted rounded-xl p-4">
-              <p className="app-card-caption">Запись посещения</p>
-              <div className="mt-2 space-y-2">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h3 className="app-text-wrap text-base font-semibold text-[var(--foreground)]">
-                      {record.employeeName}
-                    </h3>
-                    <p className="app-text-muted mt-1 text-sm">
-                      {record.date} · {record.displayText || "Нет записи"}
-                    </p>
-                  </div>
-                  <span className="app-status-pill bg-[var(--surface-primary)] text-[var(--foreground)]">
-                    {record.statusLabel}
-                  </span>
-                </div>
-                {record.detailLines?.length ? (
-                  <div className="grid gap-1 text-xs text-[var(--muted-foreground)] sm:grid-cols-2">
-                    {record.detailLines.slice(0, 6).map((line) => (
-                      <p key={line}>{line}</p>
-                    ))}
-                  </div>
-                ) : null}
-                <div className="app-text-muted flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                  <span>Комментариев: {Math.max(comments.length, record.commentsCount || 0)}</span>
-                </div>
-              </div>
-            </section>
+            <AttendanceRecordHeader
+              actions={onOpenDayEvents ? (
+                <button
+                  type="button"
+                  onClick={openDayEvents}
+                  className="app-action-ghost inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
+                >
+                  <Camera size={15} />
+                  Подробности события
+                </button>
+              ) : null}
+              record={{
+                ...record,
+                commentsCount: displayedCommentsCount,
+              }}
+            />
 
             {error ? (
               <div className="app-feedback-danger rounded-xl p-3 text-sm">

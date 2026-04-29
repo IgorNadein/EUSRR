@@ -279,10 +279,15 @@ class Employee(AbstractUser):
 
     @property
     def employment_status(self):
-        last_action = self.actions.order_by("-date").first()
-        if last_action:
-            return last_action.get_action_display()
-        return "Нет данных"
+        from employees.services.personnel_state import (
+            PERSONNEL_STATUS_NORMAL,
+            resolve_employee_personnel_state,
+        )
+
+        state = resolve_employee_personnel_state(self, timezone.localdate())
+        if state.status == PERSONNEL_STATUS_NORMAL:
+            return "Работает"
+        return state.label or "Нет данных"
 
     @property
     def departments(self):
@@ -302,10 +307,16 @@ class Employee(AbstractUser):
     def is_actually_active(self):
         if not self.email_verified:
             return False  # Неактивен без подтверждения email
-        last_action = self.actions.order_by("-date").first()
-        if not last_action:
+
+        from employees.services.personnel_state import (
+            PERSONNEL_STATUS_NORMAL,
+            resolve_employee_personnel_state,
+        )
+
+        state = resolve_employee_personnel_state(self, timezone.localdate())
+        if state.status == PERSONNEL_STATUS_NORMAL:
             return self.is_active
-        return last_action.action != ACTION_DISMISSED
+        return state.status != ACTION_DISMISSED
 
     def verify_email(self, code):
         if self.email_activation_code == code:
@@ -346,6 +357,11 @@ class EmployeeAction(models.Model):
         verbose_name="Источник-заявление",
     )
     date = models.DateTimeField("Дата действия")
+    date_to = models.DateField(
+        "Дата окончания временного события",
+        null=True,
+        blank=True,
+    )
     comment = models.TextField("Комментарий/причина", blank=True)
     extra = models.JSONField("Дополнительно", blank=True, null=True)
     history = HistoricalRecords()

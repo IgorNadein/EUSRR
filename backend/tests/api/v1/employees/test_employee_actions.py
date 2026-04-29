@@ -1,4 +1,6 @@
 import pytest
+from datetime import timedelta
+from django.db import connection
 from django.urls import reverse
 from django.utils import timezone
 from django.contrib.auth.models import Permission
@@ -6,7 +8,14 @@ from rest_framework import status
 from unittest.mock import patch, Mock
 
 from employees.models import Employee, Department, EmployeeDepartment, EmployeeAction
-from employees.constants import ACTION_DISMISSED, ACTION_CHOICES, ACTION_HIRED
+from employees.constants import (
+    ACTION_CHOICES,
+    ACTION_DISMISSED,
+    ACTION_HIRED,
+    ACTION_ON_LEAVE,
+    ACTION_REHIRED,
+    ACTION_WORKING,
+)
 
 # helpers
 _seq = 1
@@ -145,6 +154,95 @@ def test_create_requires_perm_or_staff(api_client):
 
 
 @pytest.mark.django_db
+def test_temporary_action_accepts_date_to(api_client):
+    staff = _user(staff=True)
+    target = _user()
+    api_client.force_authenticate(user=staff)
+    url = reverse("api:v1:employee-actions-list")
+
+    resp = api_client.post(
+        url,
+        {
+            "employee": target.id,
+            "action": ACTION_ON_LEAVE,
+            "date": "2026-04-20T12:00:00Z",
+            "date_to": "2026-04-25",
+        },
+        format="json",
+    )
+
+    assert resp.status_code == 201
+    action = EmployeeAction.objects.get(id=resp.data["id"])
+    assert action.date_to.isoformat() == "2026-04-25"
+    assert resp.data["date_to"] == "2026-04-25"
+
+
+@pytest.mark.django_db
+def test_temporary_action_requires_date_to(api_client):
+    staff = _user(staff=True)
+    target = _user()
+    api_client.force_authenticate(user=staff)
+    url = reverse("api:v1:employee-actions-list")
+
+    resp = api_client.post(
+        url,
+        {
+            "employee": target.id,
+            "action": ACTION_ON_LEAVE,
+            "date": "2026-04-20T12:00:00Z",
+        },
+        format="json",
+    )
+
+    assert resp.status_code == 400
+    assert "date_to" in resp.data
+
+
+@pytest.mark.django_db
+def test_permanent_action_rejects_date_to(api_client):
+    staff = _user(staff=True)
+    target = _user()
+    api_client.force_authenticate(user=staff)
+    url = reverse("api:v1:employee-actions-list")
+
+    resp = api_client.post(
+        url,
+        {
+            "employee": target.id,
+            "action": ACTION_HIRED,
+            "date": "2026-04-20T12:00:00Z",
+            "date_to": "2026-04-25",
+        },
+        format="json",
+    )
+
+    assert resp.status_code == 400
+    assert "date_to" in resp.data
+
+
+@pytest.mark.django_db
+def test_temporary_action_rejects_date_to_before_start(api_client):
+    staff = _user(staff=True)
+    target = _user()
+    api_client.force_authenticate(user=staff)
+    url = reverse("api:v1:employee-actions-list")
+
+    resp = api_client.post(
+        url,
+        {
+            "employee": target.id,
+            "action": ACTION_ON_LEAVE,
+            "date": "2026-04-20T12:00:00Z",
+            "date_to": "2026-04-19",
+        },
+        format="json",
+    )
+
+    assert resp.status_code == 400
+    assert "date_to" in resp.data
+
+
+@pytest.mark.django_db
 def test_dismissal_deactivates_employee_and_links(api_client):
     staff = _user(staff=True)
     api_client.force_authenticate(user=staff)
@@ -171,7 +269,8 @@ def test_dismissal_deactivates_employee_and_links(api_client):
 
 
 @pytest.mark.django_db
-def test_non_dismissal_activates_employee(api_client):
+@pytest.mark.parametrize("action", [ACTION_WORKING, ACTION_HIRED, ACTION_REHIRED])
+def test_working_and_activation_markers_activate_employee(api_client, action):
     staff = _user(staff=True)
     api_client.force_authenticate(user=staff)
     emp = _user()
@@ -183,7 +282,7 @@ def test_non_dismissal_activates_employee(api_client):
         url,
         {
             "employee": emp.id,
-            "action": _any_non_dismissed(),
+            "action": action,
             "date": timezone.now().isoformat(),
         },
         format="json",
@@ -191,6 +290,30 @@ def test_non_dismissal_activates_employee(api_client):
     assert resp.status_code == 201
     emp.refresh_from_db()
     assert emp.is_active is True
+
+
+@pytest.mark.django_db
+def test_temporary_action_does_not_activate_employee(api_client):
+    staff = _user(staff=True)
+    api_client.force_authenticate(user=staff)
+    emp = _user()
+    emp.is_active = False
+    emp.save(update_fields=["is_active"])
+
+    url = reverse("api:v1:employee-actions-list")
+    resp = api_client.post(
+        url,
+        {
+            "employee": emp.id,
+            "action": ACTION_ON_LEAVE,
+            "date": "2026-04-20T12:00:00Z",
+            "date_to": "2026-04-25",
+        },
+        format="json",
+    )
+    assert resp.status_code == 201
+    emp.refresh_from_db()
+    assert emp.is_active is False
 
 
 @pytest.mark.django_db
@@ -213,6 +336,35 @@ def test_update_to_dismissed_applies_effects(api_client):
 
 
 @pytest.mark.django_db
+def test_update_historical_dismissal_uses_current_state(api_client):
+    actor = _user()
+    api_client.force_authenticate(user=actor)
+    _grant(actor, "employees.change_employeeaction")
+    emp = _user(is_active=True)
+    old_dismissal = EmployeeAction.objects.create(
+        employee=emp,
+        action=ACTION_DISMISSED,
+        date=timezone.now() - timedelta(days=30),
+    )
+    EmployeeAction.objects.create(
+        employee=emp,
+        action=ACTION_WORKING,
+        date=timezone.now() - timedelta(days=10),
+    )
+
+    url_det = reverse("api:v1:employee-actions-detail", args=[old_dismissal.id])
+    resp = api_client.patch(
+        url_det,
+        {"comment": "Уточнили старое событие"},
+        format="json",
+    )
+
+    assert resp.status_code == 200
+    emp.refresh_from_db()
+    assert emp.is_active is True
+
+
+@pytest.mark.django_db
 def test_delete_requires_perm_or_staff(api_client):
     actor = _user()
     api_client.force_authenticate(user=actor)
@@ -228,6 +380,67 @@ def test_delete_requires_perm_or_staff(api_client):
     # grant -> 204
     _grant(actor, "employees.delete_employeeaction")
     assert api_client.delete(url_det).status_code == 204
+
+
+@pytest.mark.django_db
+def test_delete_current_dismissal_recalculates_active_state(api_client):
+    actor = _user()
+    api_client.force_authenticate(user=actor)
+    _grant(actor, "employees.delete_employeeaction")
+    emp = _user(is_active=False)
+    EmployeeAction.objects.create(
+        employee=emp,
+        action=ACTION_WORKING,
+        date=timezone.now() - timedelta(days=10),
+    )
+    dismissal = EmployeeAction.objects.create(
+        employee=emp,
+        action=ACTION_DISMISSED,
+        date=timezone.now() - timedelta(days=1),
+    )
+
+    url_det = reverse("api:v1:employee-actions-detail", args=[dismissal.id])
+    assert api_client.delete(url_det).status_code == 204
+
+    emp.refresh_from_db()
+    assert emp.is_active is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_delete_clears_legacy_state_table_references(api_client):
+    actor = _user()
+    api_client.force_authenticate(user=actor)
+    _grant(actor, "employees.delete_employeeaction")
+    emp = _user()
+    act = EmployeeAction.objects.create(
+        employee=emp, action=_any_non_dismissed(), date=timezone.now()
+    )
+
+    table = "employees_employeebasestatusevent"
+    with connection.cursor() as cursor:
+        cursor.execute(f'DROP TABLE IF EXISTS "{table}"')
+        cursor.execute(
+            f"""
+            CREATE TABLE "{table}" (
+                "id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
+                "source_action_id" bigint NULL UNIQUE
+                    REFERENCES "employees_employeeaction" ("id")
+                    DEFERRABLE INITIALLY DEFERRED
+            )
+            """
+        )
+        cursor.execute(
+            f'INSERT INTO "{table}" ("source_action_id") VALUES (%s)',
+            [act.id],
+        )
+
+    try:
+        url_det = reverse("api:v1:employee-actions-detail", args=[act.id])
+        assert api_client.delete(url_det).status_code == 204
+        assert not EmployeeAction.objects.filter(id=act.id).exists()
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute(f'DROP TABLE IF EXISTS "{table}"')
 
 
 @pytest.mark.django_db
@@ -361,7 +574,7 @@ def test_non_dismissal_syncs_activation_to_ldap(
         url,
         {
             "employee": emp.id,
-            "action": _any_non_dismissed(),
+            "action": ACTION_HIRED,
             "date": timezone.now().isoformat(),
         },
         format="json",
@@ -537,7 +750,7 @@ def test_restoration_moves_from_dismissed_to_users(
         url,
         {
             "employee": emp.id,
-            "action": _any_non_dismissed(),
+            "action": ACTION_REHIRED,
             "date": timezone.now().isoformat(),
         },
         format="json",

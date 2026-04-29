@@ -53,6 +53,7 @@ def create_request_action(
     request,
     action_type: str,
     action_date: date | datetime | None,
+    date_to: date | None = None,
     comment: str,
     extra: dict[str, Any] | None = None,
 ) -> tuple[EmployeeAction, bool]:
@@ -78,6 +79,9 @@ def create_request_action(
             current_extra = legacy.extra if isinstance(legacy.extra, dict) else {}
             legacy.extra = {**current_extra, "request_id": request.id}
             updates.append("extra")
+        if date_to is not None and legacy.date_to is None:
+            legacy.date_to = date_to
+            updates.append("date_to")
         if updates:
             try:
                 legacy.save(update_fields=updates)
@@ -92,6 +96,7 @@ def create_request_action(
     defaults = {
         "employee": request.employee,
         "date": as_action_datetime(action_date),
+        "date_to": date_to,
         "comment": comment,
         "extra": extra_data,
     }

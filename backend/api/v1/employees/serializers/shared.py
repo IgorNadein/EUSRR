@@ -2,7 +2,7 @@
 
 from drf_spectacular.utils import extend_schema_field
 from django.contrib.auth.models import Group
-from employees.constants import ACTION_CHOICES
+from employees.constants import ACTION_CHOICES, TEMPORARY_START_ACTIONS
 from employees.models import EmployeeAction, Position, Skill
 from rest_framework import serializers
 
@@ -64,11 +64,56 @@ class EmployeeActionSerializer(serializers.ModelSerializer):
             "action",
             "action_display",
             "date",
+            "date_to",
             "date_display",
             "comment",
             "extra",
             "history",
         ]
+
+    def validate(self, attrs):
+        action = attrs.get(
+            "action",
+            getattr(self.instance, "action", None),
+        )
+        date = attrs.get("date", getattr(self.instance, "date", None))
+        date_to = attrs.get("date_to", getattr(self.instance, "date_to", None))
+
+        if date_to is not None and action not in TEMPORARY_START_ACTIONS:
+            raise serializers.ValidationError(
+                {
+                    "date_to": (
+                        "Дата окончания доступна только для временных "
+                        "кадровых событий."
+                    )
+                }
+            )
+
+        if (
+            action in TEMPORARY_START_ACTIONS
+            and date_to is None
+            and (
+                self.instance is None
+                or "action" in attrs
+                or "date" in attrs
+                or "date_to" in attrs
+            )
+        ):
+            raise serializers.ValidationError(
+                {
+                    "date_to": (
+                        "Дата окончания обязательна для временных "
+                        "кадровых событий."
+                    )
+                }
+            )
+
+        if date and date_to and date_to < date.date():
+            raise serializers.ValidationError(
+                {"date_to": "Дата окончания не может быть раньше даты начала."}
+            )
+
+        return attrs
 
     @extend_schema_field(serializers.CharField())
     def get_action_display(self, obj):
@@ -91,7 +136,7 @@ class EmployeeActionSerializer(serializers.ModelSerializer):
 
         action_labels = dict(ACTION_CHOICES)
         history_type_labels = {"+": "Создано", "~": "Изменено", "-": "Удалено"}
-        diff_fields = ["action", "comment", "extra"]
+        diff_fields = ["action", "date", "date_to", "comment", "extra"]
 
         out = []
         for i, cur in enumerate(items):
@@ -102,7 +147,7 @@ class EmployeeActionSerializer(serializers.ModelSerializer):
                 new = getattr(cur, name, None)
                 old = getattr(prev, name, None) if prev else None
 
-                if name == "date":
+                if name in {"date", "date_to"}:
                     new_fmt = new.isoformat() if new else None
                     old_fmt = old.isoformat() if old else None
                     if new_fmt != old_fmt:

@@ -76,19 +76,20 @@ class TestRequestSignals:
         assert action.action == "transferred"
         assert action.extra["immediate"] is True
 
-    @patch("employees.signals.common._schedule_delayed_action")
-    def test_scheduled_action_vacation(self, mock_schedule, user_factory):
-        """Отпуск запускает планирование через Celery."""
+    @patch("requests_app.tasks.schedule_auto_return.apply_async")
+    def test_scheduled_action_vacation(self, mock_auto_return, user_factory):
+        """Отпуск создаёт интервальное EmployeeAction сразу при одобрении."""
         employee = user_factory()
         approver = user_factory()
         future_date = date.today() + timedelta(days=7)
+        end_date = future_date + timedelta(days=10)
 
         request = Request.objects.create(
             employee=employee,
             type="vacation",
             status=RequestStatus.PENDING,
             date_from=future_date,
-            date_to=future_date + timedelta(days=10),
+            date_to=end_date,
         )
 
         # Одобряем
@@ -96,30 +97,69 @@ class TestRequestSignals:
         request.approver = approver
         request.save()
 
-        # Проверяем что вызвалась функция планирования
-        mock_schedule.assert_called_once()
-        called_request = mock_schedule.call_args[0][0]
-        assert called_request.id == request.id
+        action = EmployeeAction.objects.get(
+            employee=employee,
+            action="on_leave",
+            source_request=request,
+        )
+        assert action.date.date() == future_date
+        assert action.date_to == end_date
+        assert action.extra["interval"] is True
+        mock_auto_return.assert_not_called()
 
-    @patch("employees.signals.common._schedule_delayed_action")
-    def test_scheduled_action_sick_leave(self, mock_schedule, user_factory):
-        """Больничный запускает планирование через Celery."""
+    def test_scheduled_action_sick_leave(self, user_factory):
+        """Больничный создаёт интервальное EmployeeAction."""
         employee = user_factory()
         approver = user_factory()
         future_date = date.today() + timedelta(days=3)
+        end_date = future_date + timedelta(days=2)
 
         request = Request.objects.create(
             employee=employee,
             type="sick_leave",
             status=RequestStatus.PENDING,
             date_from=future_date,
+            date_to=end_date,
         )
 
         request.status = RequestStatus.APPROVED
         request.approver = approver
         request.save()
 
-        mock_schedule.assert_called_once()
+        action = EmployeeAction.objects.get(
+            employee=employee,
+            action="on_sick_leave",
+            source_request=request,
+        )
+        assert action.date.date() == future_date
+        assert action.date_to == end_date
+
+    def test_scheduled_action_maternity(self, user_factory):
+        """Декрет создаёт интервальное EmployeeAction."""
+        employee = user_factory()
+        approver = user_factory()
+        start_date = date.today() + timedelta(days=14)
+        end_date = start_date + timedelta(days=140)
+
+        request = Request.objects.create(
+            employee=employee,
+            type="maternity",
+            status=RequestStatus.PENDING,
+            date_from=start_date,
+            date_to=end_date,
+        )
+
+        request.status = RequestStatus.APPROVED
+        request.approver = approver
+        request.save()
+
+        action = EmployeeAction.objects.get(
+            employee=employee,
+            action="on_maternity",
+            source_request=request,
+        )
+        assert action.date.date() == start_date
+        assert action.date_to == end_date
 
     def test_no_duplicate_actions(self, user_factory):
         """Повторное сохранение одобренной заявки не создаёт дубликаты."""
@@ -280,6 +320,7 @@ class TestRequestMappings:
             "vacation": "on_leave",
             "sick_leave": "on_sick_leave",
             "day_off": "on_day_off",
+            "maternity": "on_maternity",
         }
 
     def test_no_overlap_in_mappings(self):

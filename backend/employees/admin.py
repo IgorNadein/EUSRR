@@ -1190,7 +1190,7 @@ class PositionAdmin(SimpleHistoryAdmin):
 
 @admin.register(EmployeeAction)
 class EmployeeActionAdmin(SimpleHistoryAdmin):
-    list_display = ("employee", "action", "date")
+    list_display = ("employee", "action", "date", "date_to")
     list_filter = ("action",)
     search_fields = ("employee__first_name", "employee__last_name", "comment")
     autocomplete_fields = ("employee",)

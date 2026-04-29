@@ -384,7 +384,12 @@ class RequestWriteSerializer(serializers.ModelSerializer):
                     {"recipient_ids": "Автор не может быть получателем"}
                 )
 
-        if type_ in (RequestType.VACATION, RequestType.SICK_LEAVE):
+        if type_ in (
+            RequestType.VACATION,
+            RequestType.SICK_LEAVE,
+            RequestType.DAY_OFF,
+            RequestType.MATERNITY,
+        ):
             if not (date_from and date_to):
                 raise serializers.ValidationError(
                     {

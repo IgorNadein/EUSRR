@@ -11,11 +11,21 @@ export interface EmployeeAction {
   action: string;
   action_display?: string;
   date: string;
+  date_to?: string | null;
   date_display?: string;
   comment?: string;
-  extra?: Record<string, any>;
-  history?: any;
+  extra?: Record<string, unknown>;
+  history?: unknown;
   created_at?: string;
+}
+
+export interface EmployeePersonnelState {
+  status: string;
+  label: string;
+  action_id: number | null;
+  date_from: string | null;
+  date_to: string | null;
+  expects_attendance: boolean;
 }
 
 export interface EmployeeDepartment {
@@ -46,6 +56,7 @@ export interface User {
   birth_date?: string;
   skills?: Skill[];
   actions?: EmployeeAction[];
+  personnel_state?: EmployeePersonnelState;
   email_verified?: boolean;
   is_ldap_managed?: boolean;
   created_at?: string;
@@ -302,7 +313,7 @@ export interface DocumentVersion {
   created_at: string;
   user: string;
   comment: string;
-  changes: Record<string, any>;
+  changes: Record<string, unknown>;
 }
 
 export interface DocumentActivity {
@@ -311,7 +322,7 @@ export interface DocumentActivity {
   user: string;
   action: string;
   description: string;
-  related_object?: any;
+  related_object?: unknown;
 }
 
 export interface RevertDocumentData {
@@ -331,7 +342,7 @@ export interface RelatedDocument {
 export interface Request {
   id: number;
   title: string;
-  type?: 'vacation' | 'sick_leave' | 'day_off' | 'transfer' | 'dismissal' | 'other';
+  type?: 'vacation' | 'sick_leave' | 'day_off' | 'maternity' | 'transfer' | 'dismissal' | 'other';
   request_type?: string;
   display_title?: string;
   description?: string;
@@ -378,8 +389,10 @@ export interface RequestEmployeeStatistics {
   total_submitted_requests: number;
   sick_leave_requests_count: number;
   day_off_requests_count: number;
+  maternity_requests_count: number;
   sick_leave_days: number;
   day_off_days: number;
+  maternity_days: number;
   paid_vacation_days: number;
   unpaid_vacation_days: number;
 }
@@ -598,8 +611,8 @@ export interface Chat {
   is_blocked?: boolean;
   blocked_at?: string | null;
   blocked_by?: number | null;
-  flags?: Record<string, any>;
-  extra_data?: Record<string, any>;
+  flags?: Record<string, unknown>;
+  extra_data?: Record<string, unknown>;
   context_object_id?: number | null;
   context_type?: string | null;
   context_app?: string | null;
@@ -805,7 +818,7 @@ export interface Notification {
   unread: boolean;
   timestamp: string;
   action_url?: string;
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
   // Optional actor/target
   actor?: {
     type: string;
@@ -875,7 +888,7 @@ export interface SearchResult {
   object_id: number;
   title: string;
   description?: string;
-  meta?: Record<string, any>;
+  meta?: Record<string, unknown>;
 }
 
 export interface SearchResponse {

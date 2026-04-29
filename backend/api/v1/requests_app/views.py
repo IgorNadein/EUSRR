@@ -182,6 +182,7 @@ def _build_employee_statistics(
 
     sick_leave_days = 0
     day_off_days = 0
+    maternity_days = 0
     paid_vacation_days = 0
     unpaid_vacation_days = 0
 
@@ -197,6 +198,8 @@ def _build_employee_statistics(
             sick_leave_days += duration
         elif req.type == RequestType.DAY_OFF:
             day_off_days += duration
+        elif req.type == RequestType.MATERNITY:
+            maternity_days += duration
         elif req.type == RequestType.VACATION:
             if _is_unpaid_vacation(req):
                 unpaid_vacation_days += duration
@@ -216,8 +219,12 @@ def _build_employee_statistics(
         "day_off_requests_count": base_qs.filter(
             type=RequestType.DAY_OFF
         ).count(),
+        "maternity_requests_count": base_qs.filter(
+            type=RequestType.MATERNITY
+        ).count(),
         "sick_leave_days": sick_leave_days,
         "day_off_days": day_off_days,
+        "maternity_days": maternity_days,
         "paid_vacation_days": paid_vacation_days,
         "unpaid_vacation_days": unpaid_vacation_days,
     }

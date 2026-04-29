@@ -18,6 +18,7 @@ from common.logstorm_client import LogStormClientError
 from employees.constants import (
     ACTION_DISMISSED,
     ACTION_ON_LEAVE,
+    ACTION_REMOTE,
     ACTION_RETURNED_FROM_LEAVE,
 )
 from employees.models import EmployeeAction
@@ -1355,6 +1356,7 @@ def test_personnel_non_working_state_is_saved_and_suppresses_absence(
         employee=employee,
         action=ACTION_ON_LEAVE,
         date=_aware_datetime(2026, 4, 20),
+        date_to=datetime(2026, 4, 25).date(),
     )
 
     with patch(
@@ -1465,6 +1467,151 @@ def test_calendar_non_working_day_suppresses_absence_without_personnel_state(
     assert matrix_cell["issues"] == []
 
 
+def test_remote_personnel_state_is_saved_and_suppresses_attendance_issues(
+    auth_client_factory,
+    user_factory,
+):
+    staff = user_factory(staff=True)
+    employee = user_factory()
+    _move_auto_hired_before_test_period(employee)
+    client = auth_client_factory(staff)
+    remote_action = EmployeeAction.objects.create(
+        employee=employee,
+        action=ACTION_REMOTE,
+        date=_aware_datetime(2026, 4, 1),
+    )
+
+    with patch(
+        "api.v1.attendance.views.analyze_employee_attendance",
+        return_value=_logstorm_result(),
+    ):
+        response = client.post(_analyze_url(), _payload(employee.id), format="json")
+
+    assert response.status_code == 200
+
+    late_record = AttendanceRecord.objects.get(employee=employee, date="2026-04-20")
+    assert late_record.personnel_status == ACTION_REMOTE
+    assert late_record.personnel_status_label == "На удалёнке"
+    assert late_record.personnel_action == remote_action
+    assert late_record.effective_is_workday is True
+    assert late_record.is_late is False
+    assert late_record.is_underwork is False
+    assert late_record.employee_issues == []
+    assert late_record.statuses == []
+
+    absent_record = AttendanceRecord.objects.get(employee=employee, date="2026-04-21")
+    assert absent_record.personnel_status == ACTION_REMOTE
+    assert absent_record.effective_is_workday is True
+    assert absent_record.is_absent is False
+    assert absent_record.employee_issues == []
+    assert absent_record.statuses == []
+
+    matrix_response = client.get(
+        _monthly_matrix_url(),
+        {
+            "employee_ids": str(employee.id),
+            "month": "2026-04",
+        },
+    )
+    matrix_row = next(
+        row for row in matrix_response.json()["rows"] if row["date"] == "2026-04-21"
+    )
+    matrix_cell = matrix_row["cells"][str(employee.id)]
+    assert matrix_cell["status"] == "normal"
+    assert matrix_cell["short_label"] == "УД"
+    assert matrix_cell["display_text"] == "УД"
+    assert matrix_cell["primary_label"] == "Удаленка"
+    assert matrix_cell["issues"] == []
+
+
+def test_remote_personnel_state_does_not_replace_calendar_weekend(
+    auth_client_factory,
+    user_factory,
+):
+    staff = user_factory(staff=True)
+    employee = user_factory()
+    _move_auto_hired_before_test_period(employee)
+    client = auth_client_factory(staff)
+    EmployeeAction.objects.create(
+        employee=employee,
+        action=ACTION_REMOTE,
+        date=_aware_datetime(2026, 4, 1),
+    )
+    weekend_result = {
+        "records": [
+            {
+                "date": "2026-04-19",
+                "employee_id": str(employee.id),
+                "display_name": "Ivan Petrov",
+                "arrival_time": None,
+                "departure_time": None,
+                "work_hours": 0,
+                "expected_hours": 0,
+                "is_workday": False,
+                "is_late": False,
+                "late_minutes": None,
+                "is_early_leave": False,
+                "early_leave_minutes": None,
+                "is_underwork": False,
+                "underwork_hours": None,
+                "is_overtime": False,
+                "overtime_hours": None,
+                "is_absent": True,
+                "statuses": ["absence"],
+                "employee_issues": ["absence"],
+                "technical_issues": [],
+            }
+        ]
+    }
+
+    with patch(
+        "api.v1.attendance.views.analyze_employee_attendance",
+        return_value=weekend_result,
+    ):
+        response = client.post(
+            _analyze_url(),
+            _payload(employee.id, period_start="2026-04-19", period_end="2026-04-19"),
+            format="json",
+        )
+
+    assert response.status_code == 200
+    record = AttendanceRecord.objects.get(employee=employee, date="2026-04-19")
+    assert record.personnel_status == ACTION_REMOTE
+    assert record.personnel_status_label
+    assert record.effective_is_workday is False
+    assert record.raw_data["non_working_reason"] == "Выходной по графику/календарю"
+
+    records_response = client.get(
+        _records_url(),
+        {
+            "employee_id": employee.id,
+            "date_from": "2026-04-19",
+            "date_to": "2026-04-19",
+        },
+    )
+    assert records_response.status_code == 200
+    assert records_response.json()["results"][0]["non_working_reason"] == (
+        "Выходной по графику/календарю"
+    )
+
+    matrix_response = client.get(
+        _monthly_matrix_url(),
+        {
+            "employee_ids": str(employee.id),
+            "month": "2026-04",
+        },
+    )
+    matrix_row = next(
+        row for row in matrix_response.json()["rows"] if row["date"] == "2026-04-19"
+    )
+    matrix_cell = matrix_row["cells"][str(employee.id)]
+    assert matrix_cell["status"] == "non_working"
+    assert matrix_cell["short_label"] == "Вых"
+    assert matrix_cell["display_text"] == "Вых"
+    assert matrix_cell["primary_label"] == "Выходной по графику/календарю"
+    assert matrix_cell["non_working_reason"] == "Выходной по графику/календарю"
+
+
 def test_personnel_non_working_state_counts_work_as_overtime(
     auth_client_factory,
     user_factory,
@@ -1477,6 +1624,7 @@ def test_personnel_non_working_state_counts_work_as_overtime(
         employee=employee,
         action=ACTION_ON_LEAVE,
         date=_aware_datetime(2026, 4, 20),
+        date_to=datetime(2026, 4, 25).date(),
     )
 
     with patch(
@@ -1549,10 +1697,11 @@ def test_personnel_state_is_recalculated_when_actions_change(
     employee = user_factory()
     _move_auto_hired_before_test_period(employee)
     client = auth_client_factory(staff)
-    EmployeeAction.objects.create(
+    leave_action = EmployeeAction.objects.create(
         employee=employee,
         action=ACTION_ON_LEAVE,
         date=_aware_datetime(2026, 4, 20),
+        date_to=datetime(2026, 4, 25).date(),
     )
 
     with patch(
@@ -1565,6 +1714,8 @@ def test_personnel_state_is_recalculated_when_actions_change(
     assert first_record.personnel_status == ACTION_ON_LEAVE
     assert first_record.is_absent is False
 
+    leave_action.date_to = datetime(2026, 4, 20).date()
+    leave_action.save(update_fields=["date_to"])
     EmployeeAction.objects.create(
         employee=employee,
         action=ACTION_RETURNED_FROM_LEAVE,

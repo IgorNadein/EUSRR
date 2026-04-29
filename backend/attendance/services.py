@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from io import BytesIO
-from dataclasses import dataclass
 from datetime import date, timedelta
 from calendar import monthrange
 from typing import Any
@@ -28,10 +27,14 @@ from employees.constants import (
     ACTION_ON_LEAVE,
     ACTION_ON_MATERNITY,
     ACTION_ON_SICK_LEAVE,
+    ACTION_REMOTE,
 )
 from employees.models import Employee
-
-PERSONNEL_STATUS_NORMAL = "normal"
+from employees.services.personnel_state import (
+    EmployeePersonnelState,
+    PERSONNEL_STATUS_NORMAL,
+    resolve_employee_personnel_state,
+)
 
 MONTHS_RU = {
     1: "Январь",
@@ -88,6 +91,7 @@ PERSONNEL_STATUS_SHORT_LABELS = {
     ACTION_ON_DAY_OFF: "ОТГ",
     ACTION_ON_MATERNITY: "ДЕКР",
     ACTION_DISMISSED: "Вне штата",
+    ACTION_REMOTE: "УД",
 }
 
 PERSONNEL_STATUS_LEGEND = {
@@ -96,6 +100,7 @@ PERSONNEL_STATUS_LEGEND = {
     ACTION_ON_DAY_OFF: "Отгул",
     ACTION_ON_MATERNITY: "Декрет",
     ACTION_DISMISSED: "Уволен / вне штата",
+    ACTION_REMOTE: "Удаленка",
 }
 
 MATRIX_STATUS_FILLS = {
@@ -108,14 +113,6 @@ MATRIX_STATUS_FILLS = {
     "overtime": "DCFCE7",
     "non_working": "E2E8F0",
     "normal": "E0F2FE",
-}
-
-NON_WORKING_PERSONNEL_ACTIONS = {
-    ACTION_ON_LEAVE,
-    ACTION_ON_SICK_LEAVE,
-    ACTION_ON_DAY_OFF,
-    ACTION_ON_MATERNITY,
-    ACTION_DISMISSED,
 }
 
 SUPPRESSED_EMPLOYEE_ISSUE_MARKERS = (
@@ -139,14 +136,6 @@ DEFAULT_WORK_SCHEDULE_PAYLOAD = {
     "workdays": list(EmployeeWorkSchedule.DEFAULT_WORKDAYS),
     "date_overrides": [],
 }
-
-
-@dataclass(frozen=True)
-class PersonnelDayState:
-    status: str = PERSONNEL_STATUS_NORMAL
-    label: str = ""
-    action_id: int | None = None
-    is_non_working: bool = False
 
 
 def save_logstorm_attendance_result(
@@ -699,31 +688,22 @@ def _format_export_number(value: Any) -> str:
 def resolve_employee_day_state(
     personnel_actions,
     record_date: date,
-) -> PersonnelDayState:
-    day_actions = [
-        action
-        for action in personnel_actions
-        if action.date and action.date.date() <= record_date
-    ]
-    if not day_actions:
-        return PersonnelDayState()
-
-    action = day_actions[-1]
-    if action.action not in NON_WORKING_PERSONNEL_ACTIONS:
-        return PersonnelDayState(action_id=action.id)
-
-    return PersonnelDayState(
-        status=action.action,
-        label=action.get_action_display(),
-        action_id=action.id,
-        is_non_working=True,
+) -> EmployeePersonnelState:
+    employee = personnel_actions[0].employee if personnel_actions else None
+    if employee is None:
+        return EmployeePersonnelState()
+    return resolve_employee_personnel_state(
+        employee,
+        record_date,
+        actions=personnel_actions,
     )
 
 
 def build_attendance_record_defaults(
     raw_record: dict[str, Any],
-    personnel_state: PersonnelDayState,
+    personnel_state: EmployeePersonnelState,
 ) -> dict[str, Any]:
+    is_remote_personnel_state = personnel_state.status == ACTION_REMOTE
     work_hours = _nullable_float(raw_record.get("work_hours"))
     has_work = bool(
         _nullable_string(raw_record.get("arrival_time"))
@@ -757,6 +737,7 @@ def build_attendance_record_defaults(
 
     if (
         effective_is_workday
+        and not is_remote_personnel_state
         and not has_work
         and not is_absent
         and _has_absence_issue([*statuses, *employee_issues])
@@ -766,6 +747,18 @@ def build_attendance_record_defaults(
     if is_absent and not has_work:
         is_underwork = False
         underwork_hours = None
+
+    if is_remote_personnel_state:
+        is_late = False
+        late_minutes = None
+        is_early_leave = False
+        early_leave_minutes = None
+        is_underwork = False
+        underwork_hours = None
+        is_absent = False
+        statuses = _suppress_personnel_non_working_issues(statuses)
+        employee_issues = _suppress_personnel_non_working_issues(employee_issues)
+        technical_issues = _suppress_personnel_non_working_issues(technical_issues)
 
     if not effective_is_workday:
         is_late = False
@@ -805,9 +798,21 @@ def build_attendance_record_defaults(
         "statuses": statuses,
         "employee_issues": employee_issues,
         "technical_issues": technical_issues,
-        "personnel_status": personnel_state.status,
-        "personnel_status_label": personnel_state.label,
-        "personnel_action_id": personnel_state.action_id,
+        "personnel_status": (
+            personnel_state.status
+            if personnel_state.is_non_working or is_remote_personnel_state
+            else PERSONNEL_STATUS_NORMAL
+        ),
+        "personnel_status_label": (
+            personnel_state.label
+            if personnel_state.is_non_working or is_remote_personnel_state
+            else ""
+        ),
+        "personnel_action_id": (
+            personnel_state.action_id
+            if personnel_state.is_non_working or is_remote_personnel_state
+            else None
+        ),
         "is_manually_edited": bool(raw_record.get("manual_edited", False)),
         "manual_edit_payload": (
             raw_record.get("manual_edit_payload")
@@ -990,6 +995,9 @@ def _monthly_matrix_cell(record: AttendanceRecord | None) -> dict[str, Any]:
         issues=issues,
         comments_count=comments_count,
     )
+    raw_non_working_reason = record.raw_data.get("non_working_reason")
+    if _is_remote_calendar_non_working_day(record):
+        raw_non_working_reason = ""
     return {
         "record_id": record.id,
         "arrival_time": record.arrival_time,
@@ -1001,7 +1009,7 @@ def _monthly_matrix_cell(record: AttendanceRecord | None) -> dict[str, Any]:
         "issues": issues,
         "is_workday": record.is_workday,
         "effective_is_workday": record.effective_is_workday,
-        "non_working_reason": record.raw_data.get("non_working_reason")
+        "non_working_reason": raw_non_working_reason
         or _record_non_working_reason(record),
         "is_late": record.is_late,
         "is_early_leave": record.is_early_leave,
@@ -1041,7 +1049,10 @@ def _monthly_matrix_cell_presentation(
 
 
 def _matrix_primary_label(record: AttendanceRecord, status: str) -> str:
-    if record.personnel_status != PERSONNEL_STATUS_NORMAL:
+    if (
+        record.personnel_status != PERSONNEL_STATUS_NORMAL
+        and not _is_remote_calendar_non_working_day(record)
+    ):
         return (
             PERSONNEL_STATUS_LEGEND.get(record.personnel_status)
             or record.personnel_status_label
@@ -1053,7 +1064,10 @@ def _matrix_primary_label(record: AttendanceRecord, status: str) -> str:
 
 
 def _matrix_short_label(record: AttendanceRecord, status: str) -> str:
-    if record.personnel_status != PERSONNEL_STATUS_NORMAL:
+    if (
+        record.personnel_status != PERSONNEL_STATUS_NORMAL
+        and not _is_remote_calendar_non_working_day(record)
+    ):
         return (
             PERSONNEL_STATUS_SHORT_LABELS.get(record.personnel_status)
             or record.personnel_status_label
@@ -1071,15 +1085,24 @@ def _matrix_display_text(
     status: str,
     short_label: str,
 ) -> str:
+    time_part = (
+        f"{_format_matrix_time(record.arrival_time)}/"
+        f"{_format_matrix_time(record.departure_time)}"
+    )
+
     if not record.effective_is_workday:
         if record.work_hours:
             return f"{short_label} + {_format_export_number(record.work_hours)}ч"
         return short_label
 
-    time_part = (
-        f"{_format_matrix_time(record.arrival_time)}/"
-        f"{_format_matrix_time(record.departure_time)}"
-    )
+    if record.personnel_status == ACTION_REMOTE:
+        if record.arrival_time or record.departure_time or record.work_hours:
+            return (
+                f"{short_label} · {time_part} · "
+                f"{_format_export_number(record.work_hours)}ч"
+            )
+        return short_label
+
     if status == "normal":
         return f"{time_part} · {_format_export_number(record.work_hours)}ч"
     if status == "late":
@@ -1135,7 +1158,10 @@ def _matrix_detail_lines(
         f"Рабочий день: {'да' if record.effective_is_workday else 'нет'}",
     ]
     if record.personnel_status != PERSONNEL_STATUS_NORMAL:
-        lines.append(f"Кадровое событие: {_matrix_primary_label(record, status)}")
+        lines.append(
+            "Кадровое событие: "
+            f"{record.personnel_status_label or _matrix_primary_label(record, status)}"
+        )
     elif not record.effective_is_workday:
         reason = _record_non_working_reason(record)
         if reason:
@@ -1214,7 +1240,7 @@ def _non_working_reason(
     *,
     is_workday: bool,
     effective_is_workday: bool,
-    personnel_state: PersonnelDayState,
+    personnel_state: EmployeePersonnelState,
 ) -> str:
     if effective_is_workday:
         return ""
@@ -1228,11 +1254,19 @@ def _non_working_reason(
 def _record_non_working_reason(record: AttendanceRecord) -> str:
     if record.effective_is_workday:
         return ""
-    if record.personnel_status_label:
+    if record.personnel_status_label and record.personnel_status != ACTION_REMOTE:
         return record.personnel_status_label
     if not record.is_workday:
         return "Выходной по графику/календарю"
     return "Нерабочий день"
+
+
+def _is_remote_calendar_non_working_day(record: AttendanceRecord) -> bool:
+    return bool(
+        record.personnel_status == ACTION_REMOTE
+        and not record.effective_is_workday
+        and not record.is_workday
+    )
 
 
 def _is_valid_workday_record(record: AttendanceRecord) -> bool:

@@ -17,6 +17,7 @@ from employees.constants import (
     ACTION_HIRED,
     ACTION_ON_DAY_OFF,
     ACTION_ON_LEAVE,
+    ACTION_ON_MATERNITY,
     ACTION_ON_SICK_LEAVE,
 )
 from employees.models import Employee, EmployeeAction
@@ -38,11 +39,12 @@ IMMEDIATE_ACTION_MAPPING = {
     "dismissal": "dismissed",  # Увольнение → Уволен
 }
 
-# Отложенные события (создаются по Celery в date_from)
+# Интервальные события (создаются сразу при одобрении с датами заявки)
 SCHEDULED_ACTION_MAPPING = {
     "vacation": ACTION_ON_LEAVE,  # Отпуск → В отпуске
     "sick_leave": ACTION_ON_SICK_LEAVE,  # Больничный → На больничном
     "day_off": ACTION_ON_DAY_OFF,  # Отгул → В отгуле
+    "maternity": ACTION_ON_MATERNITY,  # Декрет → В декрете
 }
 
 
@@ -84,7 +86,7 @@ def create_action_on_request_approval(sender, instance, created, **kwargs):
 
     Две стратегии:
     1. НЕМЕДЛЕННО (transfer, dismissal) - сразу при одобрении
-    2. ОТЛОЖЕННО (vacation, sick_leave) - через Celery в date_from
+    2. ИНТЕРВАЛЬНО (vacation, sick_leave, day_off) - сразу с date_to
     """
     # Пропускаем если это новая заявка
     if created:
@@ -109,9 +111,9 @@ def create_action_on_request_approval(sender, instance, created, **kwargs):
     if instance.type in IMMEDIATE_ACTION_MAPPING:
         _create_immediate_action(instance)
 
-    # === СТРАТЕГИЯ 2: Отложенное создание через Celery ===
+    # === СТРАТЕГИЯ 2: Интервальное событие сразу после одобрения ===
     elif instance.type in SCHEDULED_ACTION_MAPPING:
-        _schedule_delayed_action(instance)
+        _create_interval_action(instance)
 
     else:
         logger.debug(
@@ -194,6 +196,40 @@ def _schedule_delayed_action(request):
     except Exception as e:
         logger.error(
             f"Failed to schedule action for Request #{request.id}: {e}", exc_info=True
+        )
+
+
+def _create_interval_action(request):
+    """Создать временное кадровое событие сразу после одобрения заявки."""
+    action_type = SCHEDULED_ACTION_MAPPING.get(request.type)
+    if not action_type:
+        return
+
+    try:
+        action, created = create_request_action(
+            request=request,
+            action_type=action_type,
+            action_date=request.date_from,
+            date_to=request.date_to,
+            comment=build_request_action_comment(request),
+            extra={
+                "approved_by": (request.approver.id if request.approver else None),
+                "interval": True,
+            },
+        )
+        if not created:
+            logger.warning(f"EmployeeAction already exists for Request #{request.id}")
+            return
+
+        logger.info(
+            f"Created interval EmployeeAction #{action.id} ({action_type}) "
+            f"from Request #{request.id}"
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Failed to create interval EmployeeAction for Request #{request.id}: {e}",
+            exc_info=True,
         )
 
 

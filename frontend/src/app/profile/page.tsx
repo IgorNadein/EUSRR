@@ -116,11 +116,11 @@ export default function ProfilePage() {
         <ProfileHeroCard
           caption="Мой профиль"
           statusBadge={
-            currentAction ? (
+            user.personnel_state ? (
               <span
-                className={`app-status-pill ${getEmployeeActionTone(currentAction.action).badgeClass}`}
+                className={`app-status-pill ${getEmployeeActionTone(user.personnel_state.status).badgeClass}`}
               >
-                {currentAction.action_display || currentAction.action}
+                {user.personnel_state.label || user.personnel_state.status}
               </span>
             ) : null
           }
@@ -181,7 +181,8 @@ export default function ProfilePage() {
           actionLoading={null}
           canManageActions={false}
           canViewActions
-          latestActionId={currentAction?.id ?? null}
+          latestActionId={user.personnel_state?.action_id ?? currentAction?.id ?? null}
+          personnelState={user.personnel_state}
           sortedActions={sortedActions}
           initialVisibleCount={3}
           showCountLabel={false}
@@ -191,8 +192,8 @@ export default function ProfilePage() {
 
         <ProfileWorkScheduleCard
           canEdit={Boolean(user.auth?.is_staff || user.auth?.is_superuser)}
-          currentAction={currentAction}
           employeeId={user.id}
+          personnelState={user.personnel_state}
         />
 
         <EmployeeAttendanceCard employeeActions={user.actions} employeeId={user.id} />

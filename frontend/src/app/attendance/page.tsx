@@ -28,15 +28,20 @@ import {
 import { Modal } from "@/components/ui";
 import { useUser } from "@/contexts/UserContext";
 import { apiClient } from "@/lib/api";
+import { buildQuery } from "@/lib/api/utils";
 import { loadAllPages, displayUserName, formatDateTime } from "@/lib/shared";
 import { resolveMediaUrl } from "@/lib/url";
 import type {
+  AttendanceAnalysisResponse,
   MonthlyAttendanceMatrix,
   MonthlyAttendanceMatrixCell,
   MonthlyAttendanceMatrixEmployee,
   MonthlyAttendanceMatrixRow,
   AttendanceRecord,
   AttendanceAutoSyncSettings,
+  AttendanceMatrixExportFile,
+  AttendanceSchedulePayload,
+  StandardWorkSchedule,
 } from "@/lib/api/attendance";
 import type { User } from "@/types/api";
 
@@ -56,6 +61,31 @@ const matrixEmployeeColumnWidth = 160;
 const matrixModalHorizontalPadding = 96;
 
 type AttendancePeriodPreset = "month" | "custom";
+type EmployeeQuery = {
+  search?: string;
+  department?: string;
+  page?: number;
+  limit?: number;
+  is_active?: boolean;
+  ordering?: string;
+};
+type PaginatedEmployees = { results?: User[]; next?: string | null } | User[];
+type AutoSyncSettingsPatch = Partial<Pick<
+  AttendanceAutoSyncSettings,
+  "enabled" | "frequency_minutes" | "lookback_days"
+>>;
+type AttendanceMatrixExportQuery = {
+  employee_ids: string;
+  period_start: string;
+  period_end: string;
+};
+type AttendanceAnalyzeRequest = {
+  employee_id: number;
+  period_start: string;
+  period_end: string;
+  schedule?: AttendanceSchedulePayload;
+};
+type MonthlyMatrixRequest = { employee_ids: string; month: string };
 
 const periodPresets: Array<{ value: AttendancePeriodPreset; label: string }> = [
   { value: "month", label: "За месяц" },
@@ -147,6 +177,201 @@ function formatHours(value: unknown) {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return String((error as Error)?.message || fallback);
+}
+
+function getEmployees(params?: EmployeeQuery): Promise<PaginatedEmployees> {
+  const client = apiClient as typeof apiClient & {
+    getEmployees?: (params?: EmployeeQuery) => Promise<PaginatedEmployees>;
+  };
+
+  if (typeof client.getEmployees === "function") {
+    return client.getEmployees(params);
+  }
+
+  const searchParams = new URLSearchParams();
+  if (params?.search) searchParams.set("search", params.search);
+  if (params?.department) searchParams.set("department", params.department);
+  if (params?.page) searchParams.set("page", String(params.page));
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  if (params?.is_active !== undefined) {
+    searchParams.set("active", String(params.is_active));
+  }
+  if (params?.ordering) searchParams.set("ordering", params.ordering);
+  const query = searchParams.toString();
+  return apiClient.request<PaginatedEmployees>(
+    `/api/v1/employees/${query ? `?${query}` : ""}`,
+  );
+}
+
+function getStandardWorkSchedule() {
+  const client = apiClient as typeof apiClient & {
+    getStandardWorkSchedule?: () => Promise<StandardWorkSchedule>;
+  };
+
+  if (typeof client.getStandardWorkSchedule === "function") {
+    return client.getStandardWorkSchedule();
+  }
+
+  return apiClient.request<StandardWorkSchedule>(
+    "/api/v1/attendance/standard-work-schedule/",
+  );
+}
+
+function updateStandardWorkSchedule(data: Partial<AttendanceSchedulePayload>) {
+  const client = apiClient as typeof apiClient & {
+    updateStandardWorkSchedule?: (
+      data: Partial<AttendanceSchedulePayload>,
+    ) => Promise<StandardWorkSchedule>;
+  };
+
+  if (typeof client.updateStandardWorkSchedule === "function") {
+    return client.updateStandardWorkSchedule(data);
+  }
+
+  return apiClient.request<StandardWorkSchedule>(
+    "/api/v1/attendance/standard-work-schedule/",
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+function getAttendanceAutoSyncSettings() {
+  const client = apiClient as typeof apiClient & {
+    getAttendanceAutoSyncSettings?: () => Promise<AttendanceAutoSyncSettings>;
+  };
+
+  if (typeof client.getAttendanceAutoSyncSettings === "function") {
+    return client.getAttendanceAutoSyncSettings();
+  }
+
+  return apiClient.request<AttendanceAutoSyncSettings>(
+    "/api/v1/attendance/auto-sync-settings/",
+  );
+}
+
+function updateAttendanceAutoSyncSettings(
+  data: AutoSyncSettingsPatch,
+) {
+  const client = apiClient as typeof apiClient & {
+    updateAttendanceAutoSyncSettings?: (
+      data: AutoSyncSettingsPatch,
+    ) => Promise<AttendanceAutoSyncSettings>;
+  };
+
+  if (typeof client.updateAttendanceAutoSyncSettings === "function") {
+    return client.updateAttendanceAutoSyncSettings(data);
+  }
+
+  return apiClient.request<AttendanceAutoSyncSettings>(
+    "/api/v1/attendance/auto-sync-settings/",
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+function runAttendanceAutoSyncNow() {
+  const client = apiClient as typeof apiClient & {
+    runAttendanceAutoSyncNow?: () => Promise<AttendanceAutoSyncSettings>;
+  };
+
+  if (typeof client.runAttendanceAutoSyncNow === "function") {
+    return client.runAttendanceAutoSyncNow();
+  }
+
+  return apiClient.request<AttendanceAutoSyncSettings>(
+    "/api/v1/attendance/auto-sync/run-now/",
+    { method: "POST" },
+  );
+}
+
+async function downloadMonthlyAttendanceMatrix(
+  params: AttendanceMatrixExportQuery,
+): Promise<AttendanceMatrixExportFile> {
+  const client = apiClient as typeof apiClient & {
+    downloadMonthlyAttendanceMatrix?: (
+      params: AttendanceMatrixExportQuery,
+    ) => Promise<AttendanceMatrixExportFile>;
+    getToken?: () => string | null;
+  };
+
+  if (typeof client.downloadMonthlyAttendanceMatrix === "function") {
+    return client.downloadMonthlyAttendanceMatrix(params);
+  }
+
+  const headers: Record<string, string> = {};
+  const token = typeof client.getToken === "function" ? client.getToken() : null;
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(
+    `/api/v1/attendance/monthly-matrix/export/${buildQuery(params)}`,
+    { method: "GET", headers },
+  );
+  if (!response.ok) {
+    let detail = response.statusText;
+    try {
+      const payload = await response.json();
+      detail = payload.detail || JSON.stringify(payload);
+    } catch {
+      detail = response.statusText;
+    }
+    throw new Error(`API Error: ${response.status} ${detail}`);
+  }
+  const contentDisposition = response.headers.get("content-disposition");
+  const filename = contentDisposition?.match(/filename="?([^";]+)"?/i)?.[1]
+    || `attendance-${params.period_start}_${params.period_end}.xlsx`;
+  return {
+    blob: await response.blob(),
+    filename,
+  };
+}
+
+function analyzeAttendance(data: AttendanceAnalyzeRequest) {
+  const client = apiClient as typeof apiClient & {
+    analyzeAttendance?: (data: AttendanceAnalyzeRequest) => Promise<AttendanceAnalysisResponse>;
+  };
+
+  if (typeof client.analyzeAttendance === "function") {
+    return client.analyzeAttendance(data);
+  }
+
+  return apiClient.request<AttendanceAnalysisResponse>(
+    "/api/v1/attendance/logstorm/analyze/",
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+function getMonthlyAttendanceMatrix(params: MonthlyMatrixRequest) {
+  const client = apiClient as typeof apiClient & {
+    getMonthlyAttendanceMatrix?: (
+      params: MonthlyMatrixRequest,
+    ) => Promise<MonthlyAttendanceMatrix>;
+  };
+
+  if (typeof client.getMonthlyAttendanceMatrix === "function") {
+    return client.getMonthlyAttendanceMatrix(params);
+  }
+
+  return apiClient.request<MonthlyAttendanceMatrix>(
+    `/api/v1/attendance/monthly-matrix/${buildQuery(params)}`,
+  );
+}
+
+function getAttendanceRecord(recordId: number) {
+  const client = apiClient as typeof apiClient & {
+    getAttendanceRecord?: (recordId: number) => Promise<AttendanceRecord>;
+  };
+
+  if (typeof client.getAttendanceRecord === "function") {
+    return client.getAttendanceRecord(recordId);
+  }
+
+  return apiClient.request<AttendanceRecord>(`/api/v1/attendance/records/${recordId}/`);
 }
 
 function formatOptionalDateTime(value?: string | null) {
@@ -406,7 +631,7 @@ export default function AttendancePage() {
     useState<AttendanceRecordCommentsPreview | null>(null);
   const [dayEventsRecordPreview, setDayEventsRecordPreview] =
     useState<AttendanceDayEventsPreview | null>(null);
-  const [openedRecordFromUrl, setOpenedRecordFromUrl] = useState(false);
+  const [openedRecordFromUrl, setOpenedRecordFromUrl] = useState<string | null>(null);
   const [statsModalOpen, setStatsModalOpen] = useState(false);
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
@@ -425,7 +650,7 @@ export default function AttendancePage() {
         setLoadingEmployees(true);
         setError(null);
         const nextEmployees = await loadAllPages<User>((params) =>
-          apiClient.getEmployees({
+          getEmployees({
             ...params,
             is_active: showInactiveEmployees ? undefined : true,
             ordering: "last_name",
@@ -492,7 +717,7 @@ export default function AttendancePage() {
 
       try {
         setLoadingSchedule(true);
-        const schedule = await apiClient.getStandardWorkSchedule();
+        const schedule = await getStandardWorkSchedule();
         if (cancelled) return;
         setScheduleStart(toTimeInputValue(schedule.start_time) || "08:00");
         setScheduleEnd(toTimeInputValue(schedule.end_time) || "17:00");
@@ -529,7 +754,7 @@ export default function AttendancePage() {
 
       try {
         setLoadingAutoSync(true);
-        const settings = await apiClient.getAttendanceAutoSyncSettings();
+        const settings = await getAttendanceAutoSyncSettings();
         if (!cancelled) setAutoSyncSettings(settings);
       } catch (autoSyncError) {
         if (!cancelled) {
@@ -560,7 +785,6 @@ export default function AttendancePage() {
   }, []);
 
   useEffect(() => {
-    if (openedRecordFromUrl) return;
     const params = new URLSearchParams(window.location.search);
     const shouldOpenEvents = params.get("events") === "1";
     const shouldOpenComments = params.get("comments") === "1";
@@ -568,13 +792,16 @@ export default function AttendancePage() {
     const recordId = Number(params.get("record"));
     if (!Number.isInteger(recordId) || recordId <= 0) return;
 
+    const mode = shouldOpenComments ? "comments" : "events";
+    const openKey = `${recordId}:${mode}`;
+    if (openedRecordFromUrl === openKey) return;
+
     let cancelled = false;
-    setOpenedRecordFromUrl(true);
 
     async function openRecordFromUrl() {
       try {
         setError(null);
-        const record = await apiClient.getAttendanceRecord(recordId);
+        const record = await getAttendanceRecord(recordId);
         if (cancelled) return;
         const preview = {
           recordId,
@@ -583,19 +810,17 @@ export default function AttendancePage() {
           statusLabel: attendanceRecordStatusLabel(record),
           displayText: attendanceRecordDisplay(record),
           detailLines: attendanceRecordDetails(record),
-        };
-        if (shouldOpenComments) {
-          setCommentsRecordPreview({
-            ...preview,
-            commentsCount: Number(record.comments_count || 0),
-          });
-          return;
-        }
-        setDayEventsRecordPreview({
-          ...preview,
           issues: attendanceRecordIssueLabels(record),
           isManuallyEdited: Boolean(record.is_manually_edited),
-        });
+          commentsCount: Number(record.comments_count || 0),
+        };
+        if (shouldOpenComments) {
+          setCommentsRecordPreview(preview);
+          setOpenedRecordFromUrl(openKey);
+          return;
+        }
+        setDayEventsRecordPreview(preview);
+        setOpenedRecordFromUrl(openKey);
       } catch (loadError) {
         if (!cancelled) {
           setError(getErrorMessage(loadError, "Не удалось открыть запись посещаемости"));
@@ -608,7 +833,7 @@ export default function AttendancePage() {
     return () => {
       cancelled = true;
     };
-  }, [openedRecordFromUrl]);
+  }, [openedRecordFromUrl, user?.id]);
 
   const filteredEmployees = useMemo(() => {
     const query = employeeSearch.trim().toLowerCase();
@@ -732,7 +957,7 @@ export default function AttendancePage() {
       setSavingSchedule(true);
       setError(null);
       setScheduleFeedback(null);
-      const schedule = await apiClient.updateStandardWorkSchedule({
+      const schedule = await updateStandardWorkSchedule({
         start_time: scheduleStart,
         end_time: scheduleEnd,
         expected_hours: hours,
@@ -761,7 +986,7 @@ export default function AttendancePage() {
       setSavingAutoSync(true);
       setError(null);
       setAutoSyncFeedback(null);
-      const settings = await apiClient.updateAttendanceAutoSyncSettings(patch);
+      const settings = await updateAttendanceAutoSyncSettings(patch);
       setAutoSyncSettings(settings);
       setAutoSyncFeedback("Автообновление сохранено");
     } catch (saveError) {
@@ -776,7 +1001,7 @@ export default function AttendancePage() {
       setRunningAutoSync(true);
       setError(null);
       setAutoSyncFeedback(null);
-      const settings = await apiClient.runAttendanceAutoSyncNow();
+      const settings = await runAttendanceAutoSyncNow();
       setAutoSyncSettings(settings);
       setAutoSyncFeedback("Автообновление выполнено");
     } catch (runError) {
@@ -824,7 +1049,7 @@ export default function AttendancePage() {
     try {
       setDownloadingReport(true);
       const employeeIds = selectedEmployees.map((employee) => employee.id).join(",");
-      const file = await apiClient.downloadMonthlyAttendanceMatrix({
+      const file = await downloadMonthlyAttendanceMatrix({
         employee_ids: employeeIds,
         period_start: periodStart,
         period_end: periodEnd,
@@ -857,7 +1082,7 @@ export default function AttendancePage() {
 
       for (const employee of selectedEmployees) {
         if (options?.refreshFromAnalyzer) {
-          await apiClient.analyzeAttendance({
+          await analyzeAttendance({
             employee_id: employee.id,
             period_start: periodStart,
             period_end: periodEnd,
@@ -868,7 +1093,7 @@ export default function AttendancePage() {
       const monthKeys = getMonthKeysBetween(periodStart, periodEnd);
       const nextMatrices = await Promise.all(
         monthKeys.map((month) =>
-          apiClient.getMonthlyAttendanceMatrix({
+          getMonthlyAttendanceMatrix({
             employee_ids: employeeIds,
             month,
           }),
@@ -943,6 +1168,8 @@ export default function AttendancePage() {
       statusLabel: cell.primary_label || matrixStatusLabel(cell.status),
       displayText: matrixCellDisplay(cell) || "Нет записи",
       detailLines: cell.detail_lines || [],
+      issues: matrixCellIssueLabels(cell).map(formatAttendanceIssueLabel),
+      isManuallyEdited: Boolean(cell.is_manually_edited),
       commentsCount: cell.comments_count,
     });
   }
@@ -967,6 +1194,35 @@ export default function AttendancePage() {
       detailLines: cell.detail_lines || [],
       issues: matrixCellIssueLabels(cell).map(formatAttendanceIssueLabel),
       isManuallyEdited: Boolean(cell.is_manually_edited),
+      commentsCount: cell.comments_count,
+    });
+  }
+
+  function openDayEventsFromComments(record: AttendanceRecordCommentsPreview) {
+    setDayEventsRecordPreview({
+      recordId: record.recordId,
+      employeeName: record.employeeName,
+      date: record.date,
+      statusLabel: record.statusLabel,
+      displayText: record.displayText,
+      detailLines: record.detailLines,
+      issues: record.issues,
+      isManuallyEdited: record.isManuallyEdited,
+      commentsCount: record.commentsCount,
+    });
+  }
+
+  function openCommentsFromDayEvents(record: AttendanceDayEventsPreview) {
+    setCommentsRecordPreview({
+      recordId: record.recordId,
+      employeeName: record.employeeName,
+      date: record.date,
+      statusLabel: record.statusLabel,
+      displayText: record.displayText,
+      detailLines: record.detailLines,
+      issues: record.issues,
+      isManuallyEdited: record.isManuallyEdited,
+      commentsCount: record.commentsCount,
     });
   }
 
@@ -977,11 +1233,13 @@ export default function AttendancePage() {
         isOpen={Boolean(commentsRecordPreview)}
         onClose={() => setCommentsRecordPreview(null)}
         onCommentCountChange={updateSelectedCellCommentCount}
+        onOpenDayEvents={openDayEventsFromComments}
         record={commentsRecordPreview}
       />
       <AttendanceDayEventsModal
         isOpen={Boolean(dayEventsRecordPreview)}
         onClose={() => setDayEventsRecordPreview(null)}
+        onOpenComments={openCommentsFromDayEvents}
         record={dayEventsRecordPreview}
       />
     </>

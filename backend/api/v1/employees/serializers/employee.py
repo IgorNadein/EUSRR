@@ -6,7 +6,9 @@ from typing import Any, Dict
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from employees.models import EmployeeDepartment, Position, Skill
+from employees.services.personnel_state import resolve_employee_personnel_state
 from eusrr_backend.auth_backends import PHONE_FIELD as DETECTED_PHONE_FIELD
 from rest_framework import serializers
 
@@ -37,6 +39,15 @@ class EmployeeDepartmentRelationSerializer(serializers.Serializer):
     role_names = serializers.ListField(child=serializers.CharField())
 
 
+class EmployeePersonnelStateSerializer(serializers.Serializer):
+    status = serializers.CharField()
+    label = serializers.CharField(allow_blank=True)
+    action_id = serializers.IntegerField(allow_null=True)
+    date_from = serializers.DateField(allow_null=True)
+    date_to = serializers.DateField(allow_null=True)
+    expects_attendance = serializers.BooleanField()
+
+
 class EmployeeSerializer(serializers.ModelSerializer):
     """Полная версия сотрудника для /employees/."""
 
@@ -61,6 +72,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
     departments = serializers.SerializerMethodField()
     auth = serializers.SerializerMethodField(read_only=True)
+    personnel_state = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Employee
@@ -93,6 +105,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "last_activity_at",
             "date_joined",
             "auth",
+            "personnel_state",
         )
         read_only_fields = (
             "is_ldap_managed",
@@ -104,6 +117,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "last_activity_at",
             "date_joined",
             "auth",
+            "personnel_state",
         )
         extra_kwargs = {
             "password": {"write_only": True, "required": False},
@@ -243,6 +257,18 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "groups": list(u.groups.values_list("name", flat=True)),
             "permissions": perms,
             "permissions_by_app": perms_by_app,
+        }
+
+    @extend_schema_field(EmployeePersonnelStateSerializer())
+    def get_personnel_state(self, obj):
+        state = resolve_employee_personnel_state(obj, timezone.localdate())
+        return {
+            "status": state.status,
+            "label": state.label or "Работает",
+            "action_id": state.action_id,
+            "date_from": state.date_from,
+            "date_to": state.date_to,
+            "expects_attendance": state.expects_attendance,
         }
 
 

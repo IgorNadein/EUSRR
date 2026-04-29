@@ -11,6 +11,7 @@ import {
   getLatestEmployeeAction,
   getUserFullName,
   getUserInitials,
+  isTemporaryEmployeeAction,
   type EmployeeActionField,
   type EmployeeActionForm,
   type UserProfileEditForm,
@@ -142,7 +143,8 @@ export function useUserDetailPage(userId: number, currentUser: User | null) {
     setActionForm({
       editingId: action.id,
       type: action.action,
-      date: action.date,
+      date: action.date.split("T")[0],
+      dateTo: action.date_to || "",
       comment: action.comment || "",
     });
     setIsActionModalOpen(true);
@@ -172,6 +174,9 @@ export function useUserDetailPage(userId: number, currentUser: User | null) {
         await apiClient.updateEmployeeAction(actionForm.editingId, {
           action: actionForm.type,
           date: actionForm.date,
+          date_to: isTemporaryEmployeeAction(actionForm.type)
+            ? actionForm.dateTo || null
+            : null,
           comment: actionForm.comment.trim() || undefined,
         });
       } else {
@@ -179,6 +184,9 @@ export function useUserDetailPage(userId: number, currentUser: User | null) {
           employee: userId,
           action: actionForm.type,
           date: actionForm.date,
+          date_to: isTemporaryEmployeeAction(actionForm.type)
+            ? actionForm.dateTo || null
+            : null,
           comment: actionForm.comment.trim() || undefined,
         });
       }
@@ -275,7 +283,13 @@ export function useUserDetailPage(userId: number, currentUser: User | null) {
   }, []);
 
   const setActionField = useCallback(<K extends EmployeeActionField>(field: K, value: EmployeeActionForm[K]) => {
-    setActionForm((current) => ({ ...current, [field]: value }));
+    setActionForm((current) => {
+      const next = { ...current, [field]: value };
+      if (field === "type" && !isTemporaryEmployeeAction(String(value))) {
+        next.dateTo = "";
+      }
+      return next;
+    });
   }, []);
 
   const handleSaveEdit = useCallback(async () => {

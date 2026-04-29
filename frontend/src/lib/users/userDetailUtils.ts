@@ -28,16 +28,19 @@ export type UserProfileEditForm = {
   avatarPreview: string | null;
 };
 
-export type EmployeeActionField = "type" | "date" | "comment";
+export type EmployeeActionField = "type" | "date" | "dateTo" | "comment";
 
 export type EmployeeActionForm = {
   type: string;
   date: string;
+  dateTo: string;
   comment: string;
   editingId: number | null;
 };
 
 export const employeeActionTypes = [
+  { value: "working", label: "Работает" },
+  { value: "remote", label: "На удалёнке" },
   { value: "hired", label: "Принят" },
   { value: "dismissed", label: "Уволен" },
   { value: "on_leave", label: "В отпуске" },
@@ -52,9 +55,17 @@ export const employeeActionTypes = [
   { value: "rehired", label: "Восстановлен" },
 ] as const;
 
+export const temporaryEmployeeActionTypes = new Set([
+  "on_leave",
+  "on_sick_leave",
+  "on_day_off",
+  "on_maternity",
+]);
+
 export const createEmptyActionForm = (): EmployeeActionForm => ({
   type: "",
   date: new Date().toISOString().split("T")[0],
+  dateTo: "",
   comment: "",
   editingId: null,
 });
@@ -127,6 +138,10 @@ export function sortEmployeeActions(actions?: EmployeeAction[] | null): Employee
   return [...actions].sort((left, right) => (
     new Date(right.date).getTime() - new Date(left.date).getTime()
   ));
+}
+
+export function isTemporaryEmployeeAction(actionType?: string): boolean {
+  return Boolean(actionType && temporaryEmployeeActionTypes.has(actionType));
 }
 
 export function formatPhoneForLink(phone: string): string {
@@ -229,6 +244,7 @@ export function getEmployeeActionTone(actionType?: string): {
         lineColor: "#f59e0b",
       };
     case "transferred":
+    case "remote":
       return {
         badgeClass: "app-selected",
         lineColor: "#38bdf8",
@@ -239,9 +255,12 @@ export function getEmployeeActionTone(actionType?: string): {
         lineColor: "#ef4444",
       };
     case "returned_from_leave":
+    case "returned_from_sick_leave":
+    case "returned_from_day_off":
     case "returned_from_maternity":
     case "rehired":
     case "hired":
+    case "working":
     default:
       return {
         badgeClass: "app-feedback-success",

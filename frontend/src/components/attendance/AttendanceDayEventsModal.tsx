@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Camera, Clock3, ImageOff, Loader2 } from "lucide-react";
+import { Camera, Clock3, ImageOff, Loader2, MessageSquare } from "lucide-react";
 
+import { AttendanceRecordHeader } from "@/components/attendance/AttendanceRecordHeader";
 import { Modal } from "@/components/ui/Modal";
 import { apiClient } from "@/lib/api";
 import type { AttendanceDayEvent } from "@/lib/api/attendance";
@@ -16,16 +17,59 @@ export type AttendanceDayEventsPreview = {
   detailLines?: string[];
   issues?: string[];
   isManuallyEdited?: boolean;
+  commentsCount?: number;
 };
 
 type AttendanceDayEventsModalProps = {
   isOpen: boolean;
   onClose: () => void;
+  onOpenComments?: (record: AttendanceDayEventsPreview) => void;
   record: AttendanceDayEventsPreview | null;
 };
 
 function getErrorMessage(error: unknown, fallback: string) {
   return String((error as Error)?.message || fallback);
+}
+
+function getAttendanceRecordDayEvents(recordId: number) {
+  const client = apiClient as typeof apiClient & {
+    getAttendanceRecordDayEvents?: (recordId: number) => Promise<AttendanceDayEvent[]>;
+  };
+
+  if (typeof client.getAttendanceRecordDayEvents === "function") {
+    return client.getAttendanceRecordDayEvents(recordId);
+  }
+
+  return apiClient.request<AttendanceDayEvent[]>(
+    `/api/v1/attendance/records/${recordId}/day-events/`,
+  );
+}
+
+async function getAttendanceDayEventPhoto(photoUrl: string) {
+  const client = apiClient as typeof apiClient & {
+    getAttendanceDayEventPhoto?: (photoUrl: string) => Promise<Blob>;
+    getToken?: () => string | null;
+  };
+
+  if (typeof client.getAttendanceDayEventPhoto === "function") {
+    return client.getAttendanceDayEventPhoto(photoUrl);
+  }
+
+  const headers: Record<string, string> = {};
+  const token = typeof client.getToken === "function" ? client.getToken() : null;
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(photoUrl, { method: "GET", headers });
+  if (!response.ok) {
+    let detail = response.statusText;
+    try {
+      const payload = await response.json();
+      detail = payload.detail || payload.error || JSON.stringify(payload);
+    } catch {
+      detail = response.statusText;
+    }
+    throw new Error(`API Error: ${response.status} ${detail}`);
+  }
+  return response.blob();
 }
 
 function revokePhotoUrls(urls: Record<string, string>) {
@@ -35,6 +79,7 @@ function revokePhotoUrls(urls: Record<string, string>) {
 export function AttendanceDayEventsModal({
   isOpen,
   onClose,
+  onOpenComments,
   record,
 }: AttendanceDayEventsModalProps) {
   const [events, setEvents] = useState<AttendanceDayEvent[]>([]);
@@ -62,7 +107,7 @@ export function AttendanceDayEventsModal({
       setLoadingPhotos(false);
 
       try {
-        const nextEvents = await apiClient.getAttendanceRecordDayEvents(recordId);
+        const nextEvents = await getAttendanceRecordDayEvents(recordId);
         if (cancelled) return;
         setEvents(nextEvents);
 
@@ -74,7 +119,7 @@ export function AttendanceDayEventsModal({
         setLoadingPhotos(true);
         const loadedEntries = await Promise.all(
           eventsWithPhotos.map(async (event) => {
-            const blob = await apiClient.getAttendanceDayEventPhoto(event.photo_url as string);
+            const blob = await getAttendanceDayEventPhoto(event.photo_url as string);
             return [event.event_key, URL.createObjectURL(blob)] as const;
           }),
         );
@@ -114,6 +159,12 @@ export function AttendanceDayEventsModal({
     onClose();
   };
 
+  function openComments() {
+    if (!record || !onOpenComments) return;
+    close();
+    onOpenComments(record);
+  }
+
   return (
     <Modal
       isOpen={isOpen && !!record}
@@ -123,49 +174,25 @@ export function AttendanceDayEventsModal({
     >
       {record ? (
         <div className="space-y-4">
-          <section className="app-surface-muted rounded-xl p-4">
-            <p className="app-card-caption">Запись посещения</p>
-            <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h3 className="app-text-wrap text-base font-semibold text-[var(--foreground)]">
-                  {record.employeeName}
-                </h3>
-                <p className="app-text-muted mt-1 text-sm">
-                  {record.date} · {record.displayText || "Нет записи"}
-                </p>
-              </div>
-              <span className="app-status-pill bg-[var(--surface-primary)] text-[var(--foreground)]">
-                {record.statusLabel}
-              </span>
-            </div>
-            {record.detailLines?.length ? (
-              <div className="mt-3 grid gap-1 text-xs text-[var(--muted-foreground)] sm:grid-cols-2">
-                {record.detailLines.slice(0, 8).map((line) => (
-                  <p key={line}>{line}</p>
-                ))}
-              </div>
+          <AttendanceRecordHeader
+            actions={onOpenComments ? (
+              <button
+                type="button"
+                onClick={openComments}
+                className="app-action-ghost inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
+              >
+                <MessageSquare size={15} />
+                Комментарии{record.commentsCount !== undefined ? ` (${record.commentsCount})` : ""}
+              </button>
             ) : null}
-            {record.issues?.length ? (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {record.issues.map((issue) => (
-                  <span key={issue} className="app-status-pill bg-amber-500/15 text-amber-300">
-                    {issue}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-            {record.isManuallyEdited ? (
-              <div className="mt-3 inline-flex rounded-lg border border-violet-400/30 bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-200">
-                Ручная корректировка EUSRR
-              </div>
-            ) : null}
-          </section>
+            record={record}
+          />
 
           <section className="app-surface rounded-xl p-4">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Camera size={16} className="app-text-muted" />
-                <p className="app-card-caption">События LogStorm за день</p>
+                <p className="app-card-caption">Подробности события за день</p>
               </div>
               {loadingPhotos ? (
                 <span className="app-text-muted inline-flex items-center gap-2 text-xs">
@@ -190,7 +217,7 @@ export function AttendanceDayEventsModal({
                   Событий за день нет
                 </p>
                 <p className="app-text-muted mt-2 text-sm">
-                  LogStorm не вернул проходы для этой даты.
+                  Проходы за эту дату не найдены.
                 </p>
               </div>
             ) : (

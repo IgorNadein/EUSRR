@@ -49,6 +49,7 @@ export const requestTypeLabels: Record<string, string> = {
   vacation: "Отпуск",
   sick_leave: "Больничный",
   day_off: "Отгул",
+  maternity: "Декрет",
   transfer: "Перевод",
   dismissal: "Увольнение",
   other: "Другое",
@@ -66,6 +67,8 @@ export function getRequestDateMode(type: string): "range" | "single" | "optional
   switch (String(type || "").toLowerCase()) {
     case "vacation":
     case "sick_leave":
+    case "day_off":
+    case "maternity":
       return "range";
     case "transfer":
     case "dismissal":

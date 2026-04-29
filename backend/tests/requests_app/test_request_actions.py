@@ -43,6 +43,7 @@ def test_scheduled_task_is_idempotent(user_factory):
         employee=employee,
         approver=approver,
         date_from=start_date,
+        date_to=start_date + timedelta(days=5),
     )
 
     create_scheduled_action.apply(args=[request.id])
@@ -58,9 +59,34 @@ def test_scheduled_task_is_idempotent(user_factory):
     assert action.extra["request_id"] == request.id
     assert action.extra["scheduled"] is True
     assert action.date.date() == start_date
+    assert action.date_to == start_date + timedelta(days=5)
 
 
-def test_auto_return_task_is_idempotent(user_factory):
+def test_scheduled_task_supports_maternity(user_factory):
+    employee = user_factory()
+    approver = user_factory()
+    start_date = date(2026, 4, 20)
+    end_date = date(2026, 9, 6)
+    request = _approved_request(
+        employee=employee,
+        approver=approver,
+        type_="maternity",
+        date_from=start_date,
+        date_to=end_date,
+    )
+
+    create_scheduled_action.apply(args=[request.id])
+
+    action = EmployeeAction.objects.get(
+        source_request=request,
+        action="on_maternity",
+    )
+    assert action.date.date() == start_date
+    assert action.date_to == end_date
+    assert action.extra["scheduled"] is True
+
+
+def test_auto_return_task_is_legacy_noop(user_factory):
     employee = user_factory()
     approver = user_factory()
     end_date = date(2026, 4, 25)
@@ -71,19 +97,15 @@ def test_auto_return_task_is_idempotent(user_factory):
         date_to=end_date,
     )
 
-    schedule_auto_return.apply(args=[request.id])
-    schedule_auto_return.apply(args=[request.id])
+    first = schedule_auto_return.apply(args=[request.id])
+    second = schedule_auto_return.apply(args=[request.id])
 
-    actions = EmployeeAction.objects.filter(
+    assert first.result == "Auto-return disabled"
+    assert second.result == "Auto-return disabled"
+    assert not EmployeeAction.objects.filter(
         source_request=request,
         action="returned_from_leave",
-    )
-    assert actions.count() == 1
-
-    action = actions.get()
-    assert action.extra["request_id"] == request.id
-    assert action.extra["auto_return"] is True
-    assert action.date.date() == end_date + timedelta(days=1)
+    ).exists()
 
 
 def test_immediate_approval_is_idempotent(user_factory):
@@ -223,13 +245,23 @@ def test_migration_0049_backfills_source_request_and_removes_duplicates():
             extra={"request_id": request.id},
         )
 
-        migrate_to([("employees", "0049_employeeaction_source_request")])
+        apps_0049 = migrate_to(
+            [("employees", "0049_employeeaction_source_request")]
+        )
+        EmployeeAction0049 = apps_0049.get_model("employees", "EmployeeAction")
 
-        actions = EmployeeAction.objects.filter(
+        actions = EmployeeAction0049.objects.filter(
             source_request_id=request.id,
             action="on_leave",
         )
         assert actions.count() == 1
         assert actions.get().id == first.id
+
+        migrate_to_latest()
+        action = EmployeeAction.objects.get(
+            source_request_id=request.id,
+            action="on_leave",
+        )
+        assert action.date_to == date(2026, 4, 25)
     finally:
         migrate_to_latest()
