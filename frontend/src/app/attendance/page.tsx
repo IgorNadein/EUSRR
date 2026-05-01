@@ -84,6 +84,7 @@ type AttendanceAnalyzeRequest = {
   period_start: string;
   period_end: string;
   schedule?: AttendanceSchedulePayload;
+  aliases?: string[];
 };
 type MonthlyMatrixRequest = { employee_ids: string; month: string };
 

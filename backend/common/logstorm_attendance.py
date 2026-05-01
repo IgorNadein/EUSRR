@@ -24,6 +24,7 @@ def build_logstorm_attendance_payload(
     period_end: date,
     schedule: Optional[dict[str, Any]] = None,
     date_overrides: Optional[list[dict[str, Any]]] = None,
+    aliases: Optional[list[Any]] = None,
 ) -> dict[str, Any]:
     """
     Build a LogStorm attendance analysis payload.
@@ -43,6 +44,10 @@ def build_logstorm_attendance_payload(
             schedule,
             date_overrides=date_overrides,
         )
+
+    normalized_aliases = _normalize_aliases(aliases)
+    if normalized_aliases:
+        payload["aliases"] = normalized_aliases
 
     return payload
 
@@ -75,6 +80,7 @@ def analyze_employee_attendance(
     period_end: date,
     schedule: Optional[dict[str, Any]] = None,
     date_overrides: Optional[list[dict[str, Any]]] = None,
+    aliases: Optional[list[Any]] = None,
     client: Optional[LogStormClient] = None,
 ) -> dict[str, Any]:
     payload = build_logstorm_attendance_payload(
@@ -83,6 +89,7 @@ def analyze_employee_attendance(
         period_end=period_end,
         schedule=schedule,
         date_overrides=date_overrides,
+        aliases=aliases,
     )
     return (client or LogStormClient()).analyze_attendance(payload)
 
@@ -102,6 +109,15 @@ def _format_date(value: Any) -> str:
     if isinstance(value, date):
         return value.isoformat()
     return str(value)
+
+
+def _normalize_aliases(aliases: Optional[list[Any]]) -> list[str]:
+    result: list[str] = []
+    for alias in aliases or []:
+        alias_value = str(alias).strip()
+        if alias_value and alias_value not in result:
+            result.append(alias_value)
+    return result
 
 
 def _employee_display_name(employee: Employee) -> str:

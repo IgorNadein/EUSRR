@@ -79,6 +79,19 @@ def test_payload_includes_schedule_and_date_overrides(user_factory):
     }
 
 
+def test_payload_includes_aliases(user_factory):
+    employee = user_factory(first_name="Ivan", last_name="Petrov")
+
+    payload = build_logstorm_attendance_payload(
+        employee=employee,
+        period_start=date(2026, 4, 20),
+        period_end=date(2026, 4, 20),
+        aliases=["200", "200", " 300 "],
+    )
+
+    assert payload["aliases"] == ["200", "300"]
+
+
 def test_schedule_defaults_to_regular_workweek():
     schedule = normalize_logstorm_schedule({
         "start_time": "09:00",

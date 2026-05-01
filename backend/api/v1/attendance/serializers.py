@@ -37,6 +37,10 @@ class LogStormAttendanceAnalyzeSerializer(serializers.Serializer):
     period_start = serializers.DateField()
     period_end = serializers.DateField()
     schedule = LogStormScheduleSerializer(required=False)
+    aliases = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+    )
 
     def validate(self, attrs):
         if attrs["period_start"] > attrs["period_end"]:

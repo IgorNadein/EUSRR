@@ -112,6 +112,28 @@ def test_logstorm_attendance_api_passes_schedule(
     )
 
 
+def test_logstorm_attendance_api_passes_aliases(
+    auth_client_factory,
+    user_factory,
+):
+    staff = user_factory(staff=True)
+    employee = user_factory()
+    client = auth_client_factory(staff)
+
+    with patch(
+        "api.v1.attendance.views.analyze_employee_attendance",
+        return_value={"records": []},
+    ) as analyze:
+        response = client.post(
+            _url(),
+            _payload(employee.id, aliases=["200", "300"]),
+            format="json",
+        )
+
+    assert response.status_code == 200
+    assert analyze.call_args.kwargs["aliases"] == ["200", "300"]
+
+
 def test_logstorm_attendance_api_rejects_invalid_period(
     auth_client_factory,
     user_factory,

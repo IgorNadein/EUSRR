@@ -174,6 +174,7 @@ class LogStormAttendanceAnalyzeAPIView(APIView):
                 get_employee_work_schedule_payload(employee)
                 or get_standard_work_schedule_payload()
             )
+        aliases = data.get("aliases")
 
         try:
             result = analyze_employee_attendance(
@@ -181,6 +182,7 @@ class LogStormAttendanceAnalyzeAPIView(APIView):
                 period_start=data["period_start"],
                 period_end=data["period_end"],
                 schedule=schedule_payload,
+                aliases=aliases,
                 client=None,
             )
         except LogStormClientError as exc:
@@ -195,6 +197,7 @@ class LogStormAttendanceAnalyzeAPIView(APIView):
             period_start=data["period_start"],
             period_end=data["period_end"],
             schedule=schedule_payload,
+            aliases=aliases,
         )
         save_logstorm_attendance_result(
             employee=employee,
