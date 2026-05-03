@@ -117,6 +117,14 @@ def _has_absence_marker(record: AttendanceRecord) -> bool:
     )
 
 
+def _employee_attendance_aliases(record: AttendanceRecord) -> list[str]:
+    return [
+        str(alias).strip()
+        for alias in (getattr(record.employee, "attendance_aliases", None) or [])
+        if str(alias).strip()
+    ]
+
+
 def _comments_count_annotation():
     record_ct = ContentType.objects.get_for_model(AttendanceRecord)
     comments_subquery = (
@@ -639,6 +647,7 @@ class AttendanceRecordDayEventsAPIView(APIView):
             events = LogStormClient().get_attendance_day_events(
                 employee_id=str(record.employee_id),
                 record_date=record.date,
+                aliases=_employee_attendance_aliases(record),
             )
         except LogStormClientError as exc:
             logger.warning("LogStorm attendance day events failed: %s", exc)
@@ -685,6 +694,7 @@ class AttendanceRecordDayEventPhotoAPIView(APIView):
             events = client.get_attendance_day_events(
                 employee_id=str(record.employee_id),
                 record_date=record.date,
+                aliases=_employee_attendance_aliases(record),
             )
             event = next(
                 (

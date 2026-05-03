@@ -140,6 +140,27 @@ def test_get_attendance_day_events_requests_employee_date():
     assert kwargs["headers"]["Authorization"] == "Bearer secret"
 
 
+def test_get_attendance_day_events_includes_aliases():
+    session = FakeSession(FakeResponse(payload=[]))
+    client = LogStormClient(
+        LogStormConfig(base_url="http://logstorm:8000"),
+        session=session,
+    )
+
+    client.get_attendance_day_events(
+        employee_id="100",
+        record_date="2026-04-20",
+        aliases=[" 200 ", "200", "300"],
+    )
+
+    _, _, kwargs = session.requests[0]
+    assert kwargs["params"] == {
+        "employee_id": "100",
+        "date": "2026-04-20",
+        "aliases": ["200", "300"],
+    }
+
+
 def test_get_attendance_day_events_rejects_invalid_payload():
     client = LogStormClient(
         LogStormConfig(base_url="http://logstorm:8000"),

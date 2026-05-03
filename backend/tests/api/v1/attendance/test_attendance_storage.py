@@ -779,7 +779,7 @@ def test_staff_can_load_attendance_day_events(
     user_factory,
 ):
     staff = user_factory(staff=True)
-    employee = user_factory()
+    employee = user_factory(attendance_aliases=["200", "300"])
     client = auth_client_factory(staff)
 
     with patch(
@@ -822,6 +822,7 @@ def test_staff_can_load_attendance_day_events(
     logstorm_events.assert_called_once_with(
         employee_id=str(employee.id),
         record_date=record.date,
+        aliases=["200", "300"],
     )
     events = response.json()
     assert [event["caption"] for event in events] == ["Успешный вход", "Успешный выход"]
@@ -884,7 +885,7 @@ def test_staff_can_proxy_attendance_day_event_photo(
     user_factory,
 ):
     staff = user_factory(staff=True)
-    employee = user_factory()
+    employee = user_factory(attendance_aliases=["200"])
     client = auth_client_factory(staff)
 
     with patch(
@@ -898,7 +899,7 @@ def test_staff_can_proxy_attendance_day_event_photo(
         patch(
             "api.v1.attendance.views.LogStormClient.get_attendance_day_events",
             return_value=[{"event_key": "abc", "has_photo": True}],
-        ),
+        ) as logstorm_events,
         patch(
             "api.v1.attendance.views.LogStormClient.get_attendance_event_photo",
             return_value=_PhotoResponse(),
@@ -909,6 +910,11 @@ def test_staff_can_proxy_attendance_day_event_photo(
     assert response.status_code == 200
     assert response.content == b"fake-image"
     assert response["Content-Type"] == "image/jpeg"
+    logstorm_events.assert_called_once_with(
+        employee_id=str(employee.id),
+        record_date=record.date,
+        aliases=["200"],
+    )
     logstorm_photo.assert_called_once_with("abc")
 
 

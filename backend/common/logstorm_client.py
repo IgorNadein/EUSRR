@@ -91,13 +91,18 @@ class LogStormClient:
         *,
         employee_id: str,
         record_date: date | str,
+        aliases: Optional[list[Any]] = None,
     ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {
+            "employee_id": str(employee_id),
+            "date": str(record_date),
+        }
+        normalized_aliases = _normalize_aliases(aliases)
+        if normalized_aliases:
+            params["aliases"] = normalized_aliases
         response = self.session.get(
             self._url("/attendance/events/day/"),
-            params={
-                "employee_id": str(employee_id),
-                "date": str(record_date),
-            },
+            params=params,
             headers=self._headers(),
             timeout=self.config.timeout,
         )
@@ -150,3 +155,12 @@ class LogStormClient:
         if self.config.token:
             headers["Authorization"] = f"Bearer {self.config.token}"
         return headers
+
+
+def _normalize_aliases(aliases: Optional[list[Any]]) -> list[str]:
+    result = []
+    for alias in aliases or []:
+        alias_value = str(alias).strip()
+        if alias_value and alias_value not in result:
+            result.append(alias_value)
+    return result
