@@ -125,6 +125,17 @@ def _employee_attendance_aliases(record: AttendanceRecord) -> list[str]:
     ]
 
 
+def _attendance_employee_summary(employee: Employee) -> dict[str, str | int]:
+    full_name = f"{employee.last_name or ''} {employee.first_name or ''}".strip()
+    if getattr(employee, "patronymic", ""):
+        full_name = f"{full_name} {employee.patronymic}".strip()
+    return {
+        "id": employee.id,
+        "name": full_name or employee.email or f"Сотрудник #{employee.id}",
+        "email": employee.email or "",
+    }
+
+
 def _comments_count_annotation():
     record_ct = ContentType.objects.get_for_model(AttendanceRecord)
     comments_subquery = (
@@ -396,8 +407,14 @@ class AttendanceWeeklySummaryAPIView(APIView):
                 date__gte=week_start,
                 date__lte=week_end,
             )
+            .select_related("employee")
             .only(
                 "employee_id",
+                "employee__id",
+                "employee__first_name",
+                "employee__last_name",
+                "employee__patronymic",
+                "employee__email",
                 "date",
                 "arrival_time",
                 "departure_time",
@@ -411,8 +428,8 @@ class AttendanceWeeklySummaryAPIView(APIView):
 
         by_date = {
             week_start + timedelta(days=day_offset): {
-                "present": set(),
-                "absent": set(),
+                "present": {},
+                "absent": {},
             }
             for day_offset in range(7)
         }
@@ -421,11 +438,13 @@ class AttendanceWeeklySummaryAPIView(APIView):
             bucket = by_date.get(record.date)
             if bucket is None:
                 continue
+            employee_summary = _attendance_employee_summary(record.employee)
             if _has_attendance_pass(record):
-                bucket["present"].add(record.employee_id)
-                bucket["absent"].discard(record.employee_id)
+                bucket["present"][record.employee_id] = employee_summary
+                bucket["absent"].pop(record.employee_id, None)
             elif _has_absence_marker(record):
-                bucket["absent"].add(record.employee_id)
+                if record.employee_id not in bucket["present"]:
+                    bucket["absent"][record.employee_id] = employee_summary
 
         return Response(
             {
@@ -437,6 +456,8 @@ class AttendanceWeeklySummaryAPIView(APIView):
                         "weekday": day.strftime("%A"),
                         "present": len(counts["present"]),
                         "absent": len(counts["absent"]),
+                        "present_people": list(counts["present"].values()),
+                        "absent_people": list(counts["absent"].values()),
                     }
                     for day, counts in by_date.items()
                 ],

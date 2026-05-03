@@ -233,6 +233,20 @@ def test_weekly_summary_counts_present_and_absent_people(
     assert monday["date"] == "2026-04-20"
     assert monday["present"] == 1
     assert monday["absent"] == 1
+    assert monday["present_people"] == [
+        {
+            "id": present_employee.id,
+            "name": f"{present_employee.last_name} {present_employee.first_name}",
+            "email": present_employee.email,
+        }
+    ]
+    assert monday["absent_people"] == [
+        {
+            "id": absent_employee.id,
+            "name": f"{absent_employee.last_name} {absent_employee.first_name}",
+            "email": absent_employee.email,
+        }
+    ]
     assert response.data["days"][6]["date"] == "2026-04-26"
 
 

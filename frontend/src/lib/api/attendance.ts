@@ -226,6 +226,14 @@ export type AttendanceWeeklySummaryDay = {
     weekday: string;
     present: number;
     absent: number;
+    present_people: AttendanceWeeklySummaryPerson[];
+    absent_people: AttendanceWeeklySummaryPerson[];
+};
+
+export type AttendanceWeeklySummaryPerson = {
+    id: number;
+    name: string;
+    email: string;
 };
 
 export type AttendanceWeeklySummary = {

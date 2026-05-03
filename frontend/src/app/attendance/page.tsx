@@ -42,6 +42,8 @@ import type {
   AttendanceMatrixExportFile,
   AttendanceSchedulePayload,
   AttendanceWeeklySummary,
+  AttendanceWeeklySummaryDay,
+  AttendanceWeeklySummaryPerson,
   StandardWorkSchedule,
 } from "@/lib/api/attendance";
 import type { User } from "@/types/api";
@@ -89,6 +91,11 @@ type AttendanceAnalyzeRequest = {
 };
 type MonthlyMatrixRequest = { employee_ids: string; month: string };
 type AttendanceWeeklySummaryRequest = { week_start?: string };
+type WeeklySummaryPeopleModalState = {
+  date: string;
+  title: string;
+  people: AttendanceWeeklySummaryPerson[];
+} | null;
 
 const periodPresets: Array<{ value: AttendancePeriodPreset; label: string }> = [
   { value: "month", label: "За месяц" },
@@ -639,6 +646,8 @@ export default function AttendancePage() {
   const [weeklySummary, setWeeklySummary] =
     useState<AttendanceWeeklySummary | null>(null);
   const [weeklySummaryOpen, setWeeklySummaryOpen] = useState(false);
+  const [weeklyPeopleModal, setWeeklyPeopleModal] =
+    useState<WeeklySummaryPeopleModalState>(null);
   const [loadingStats, setLoadingStats] = useState(false);
   const [downloadingReport, setDownloadingReport] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1287,6 +1296,18 @@ export default function AttendancePage() {
     });
   }
 
+  function openWeeklyPeople(
+    day: AttendanceWeeklySummaryDay,
+    type: "present" | "absent",
+  ) {
+    const isPresent = type === "present";
+    setWeeklyPeopleModal({
+      date: `${weekdayLabelFromDate(day.date)} ${formatWeeklyDateLabel(day.date)}`,
+      title: isPresent ? "Пришли" : "Отсутствовали",
+      people: isPresent ? day.present_people : day.absent_people,
+    });
+  }
+
   const attendanceRecordModals = (
     <>
       <AttendanceRecordCommentsModal
@@ -1455,13 +1476,25 @@ export default function AttendancePage() {
                         {total}
                       </span>
                       <span className="min-w-0 truncate text-emerald-300">Пришли</span>
-                      <span className="text-right font-semibold text-[var(--foreground)]">
+                      <button
+                        type="button"
+                        onClick={() => openWeeklyPeople(day, "present")}
+                        disabled={day.present === 0}
+                        className="text-right font-semibold text-[var(--foreground)] transition hover:text-[var(--accent-primary)] disabled:cursor-default disabled:hover:text-[var(--foreground)]"
+                        title="Показать сотрудников"
+                      >
                         {day.present}
-                      </span>
+                      </button>
                       <span className="min-w-0 truncate text-amber-300">Отсутствовали</span>
-                      <span className="text-right font-semibold text-[var(--foreground)]">
+                      <button
+                        type="button"
+                        onClick={() => openWeeklyPeople(day, "absent")}
+                        disabled={day.absent === 0}
+                        className="text-right font-semibold text-[var(--foreground)] transition hover:text-[var(--accent-primary)] disabled:cursor-default disabled:hover:text-[var(--foreground)]"
+                        title="Показать сотрудников"
+                      >
                         {day.absent}
-                      </span>
+                      </button>
                     </div>
                   );
                 })}
@@ -1926,6 +1959,37 @@ export default function AttendancePage() {
           </div>
         </section>
       </div>
+
+      <Modal
+        isOpen={Boolean(weeklyPeopleModal)}
+        onClose={() => setWeeklyPeopleModal(null)}
+        title={
+          weeklyPeopleModal
+            ? `${weeklyPeopleModal.title}: ${weeklyPeopleModal.date}`
+            : "Участники"
+        }
+        size="sm"
+      >
+        {weeklyPeopleModal?.people.length ? (
+          <div className="space-y-2">
+            {weeklyPeopleModal.people.map((person) => (
+              <div
+                key={person.id}
+                className="app-surface-muted rounded-xl px-3 py-2"
+              >
+                <p className="text-sm font-semibold text-[var(--foreground)]">
+                  {person.name}
+                </p>
+                {person.email ? (
+                  <p className="app-text-muted mt-0.5 text-xs">{person.email}</p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="app-text-muted text-sm">Сотрудников нет</p>
+        )}
+      </Modal>
 
       <Modal
         isOpen={statsModalOpen}
