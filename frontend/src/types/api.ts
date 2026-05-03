@@ -52,6 +52,7 @@ export interface User {
   telegram?: string;
   whatsapp?: string;
   wechat?: string;
+  attendance_aliases?: string[];
   gender?: string | number; // 1 - мужской, 2 - женский, 0 - не указан
   birth_date?: string;
   skills?: Skill[];

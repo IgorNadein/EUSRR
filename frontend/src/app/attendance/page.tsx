@@ -41,6 +41,7 @@ import type {
   AttendanceAutoSyncSettings,
   AttendanceMatrixExportFile,
   AttendanceSchedulePayload,
+  AttendanceWeeklySummary,
   StandardWorkSchedule,
 } from "@/lib/api/attendance";
 import type { User } from "@/types/api";
@@ -87,6 +88,7 @@ type AttendanceAnalyzeRequest = {
   aliases?: string[];
 };
 type MonthlyMatrixRequest = { employee_ids: string; month: string };
+type AttendanceWeeklySummaryRequest = { week_start?: string };
 
 const periodPresets: Array<{ value: AttendancePeriodPreset; label: string }> = [
   { value: "month", label: "За месяц" },
@@ -375,6 +377,22 @@ function getAttendanceRecord(recordId: number) {
   return apiClient.request<AttendanceRecord>(`/api/v1/attendance/records/${recordId}/`);
 }
 
+function getAttendanceWeeklySummary(params?: AttendanceWeeklySummaryRequest) {
+  const client = apiClient as typeof apiClient & {
+    getAttendanceWeeklySummary?: (
+      params?: AttendanceWeeklySummaryRequest,
+    ) => Promise<AttendanceWeeklySummary>;
+  };
+
+  if (typeof client.getAttendanceWeeklySummary === "function") {
+    return client.getAttendanceWeeklySummary(params);
+  }
+
+  return apiClient.request<AttendanceWeeklySummary>(
+    `/api/v1/attendance/weekly-summary/${buildQuery(params)}`,
+  );
+}
+
 function formatOptionalDateTime(value?: string | null) {
   return value ? formatDateTime(value) : "-";
 }
@@ -566,6 +584,15 @@ function weekdayLabelFromDate(value?: string) {
   return DAYS_RU_FROM_INDEX[date.getDay()] || "";
 }
 
+function formatWeeklyDateLabel(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "short",
+  });
+}
+
 const DAYS_RU_FROM_INDEX: Record<number, string> = {
   0: "Вс",
   1: "Пн",
@@ -608,6 +635,10 @@ export default function AttendancePage() {
   const [loadingEmployees, setLoadingEmployees] = useState(true);
   const [loadingSchedule, setLoadingSchedule] = useState(true);
   const [savingSchedule, setSavingSchedule] = useState(false);
+  const [loadingWeeklySummary, setLoadingWeeklySummary] = useState(true);
+  const [weeklySummary, setWeeklySummary] =
+    useState<AttendanceWeeklySummary | null>(null);
+  const [weeklySummaryOpen, setWeeklySummaryOpen] = useState(false);
   const [loadingStats, setLoadingStats] = useState(false);
   const [downloadingReport, setDownloadingReport] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -680,6 +711,35 @@ export default function AttendancePage() {
       current.filter((employeeId) => availableIds.has(employeeId)),
     );
   }, [employees]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadWeeklySummary() {
+      if (!canManageAttendance) {
+        setLoadingWeeklySummary(false);
+        return;
+      }
+
+      try {
+        setLoadingWeeklySummary(true);
+        const summary = await getAttendanceWeeklySummary();
+        if (!cancelled) setWeeklySummary(summary);
+      } catch (summaryError) {
+        if (!cancelled) {
+          setError(getErrorMessage(summaryError, "Не удалось загрузить недельную статистику"));
+        }
+      } finally {
+        if (!cancelled) setLoadingWeeklySummary(false);
+      }
+    }
+
+    void loadWeeklySummary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageAttendance]);
 
   useEffect(() => {
     if (!actionsMenuOpen) {
@@ -1341,6 +1401,77 @@ export default function AttendancePage() {
                 ) : null}
               </div>
             </div>
+          </div>
+
+          <div className="mb-4 app-surface-muted rounded-2xl p-3 sm:p-4">
+            <button
+              type="button"
+              onClick={() => setWeeklySummaryOpen((current) => !current)}
+              className="flex w-full items-start gap-3 text-left"
+              aria-expanded={weeklySummaryOpen}
+            >
+              <span className="app-action-secondary mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
+                <ChevronDown
+                  size={15}
+                  className={`transition ${weeklySummaryOpen ? "rotate-180" : ""}`}
+                />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-[var(--foreground)]">
+                  Неделя по посещаемости
+                </span>
+                <span className="app-text-muted mt-1 block text-xs">
+                  {weeklySummary
+                    ? `${weeklySummary.week_start} — ${weeklySummary.week_end}`
+                    : "Текущая неделя"}
+                </span>
+              </span>
+              {loadingWeeklySummary ? (
+                <span className="app-text-muted inline-flex items-center gap-2 text-xs">
+                  <Loader2 size={14} className="animate-spin" />
+                  Загрузка
+                </span>
+              ) : null}
+            </button>
+
+            {weeklySummaryOpen ? (
+              <div className="mt-3 divide-y divide-[var(--border-subtle)]">
+                {(weeklySummary?.days || []).map((day) => {
+                  const total = day.present + day.absent;
+                  return (
+                    <div
+                      key={day.date}
+                      className="grid grid-cols-[3.25rem_2.25rem_minmax(0,1fr)_2rem_minmax(0,1fr)_2rem] items-center gap-2 py-1.5 text-xs"
+                    >
+                      <span className="min-w-0">
+                        <span className="font-semibold text-[var(--foreground)]">
+                          {weekdayLabelFromDate(day.date)}
+                        </span>
+                        <span className="app-text-muted ml-1">
+                          {formatWeeklyDateLabel(day.date).replace(".", "")}
+                        </span>
+                      </span>
+                      <span className="app-status-pill app-badge justify-center">
+                        {total}
+                      </span>
+                      <span className="min-w-0 truncate text-emerald-300">Пришли</span>
+                      <span className="text-right font-semibold text-[var(--foreground)]">
+                        {day.present}
+                      </span>
+                      <span className="min-w-0 truncate text-amber-300">Отсутствовали</span>
+                      <span className="text-right font-semibold text-[var(--foreground)]">
+                        {day.absent}
+                      </span>
+                    </div>
+                  );
+                })}
+                {!loadingWeeklySummary && !weeklySummary?.days.length ? (
+                  <div className="rounded-xl p-2 text-sm text-[var(--muted-foreground)]">
+                    За текущую неделю сохранённых записей пока нет.
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           <div className="max-w-[34rem]">

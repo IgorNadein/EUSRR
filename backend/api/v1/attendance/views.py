@@ -1,6 +1,6 @@
 import logging
 from calendar import monthrange
-from datetime import date
+from datetime import date, timedelta
 from urllib.parse import quote
 
 from attendance.models import (
@@ -92,6 +92,31 @@ def _check_staff_access(user) -> None:
         raise PermissionDenied("You don't have permission to manage attendance")
 
 
+def _has_attendance_pass(record: AttendanceRecord) -> bool:
+    return bool(
+        record.arrival_time
+        or record.departure_time
+        or (record.work_hours is not None and record.work_hours > 0)
+    )
+
+
+def _has_absence_marker(record: AttendanceRecord) -> bool:
+    values = [
+        record.statuses,
+        record.employee_issues,
+    ]
+    return bool(
+        record.is_absent
+        or any(
+            "absent" in normalized
+            or "absence" in normalized
+            or "отсутств" in normalized
+            for items in values
+            for normalized in [str(item).strip().lower() for item in (items or [])]
+        )
+    )
+
+
 def _comments_count_annotation():
     record_ct = ContentType.objects.get_for_model(AttendanceRecord)
     comments_subquery = (
@@ -174,7 +199,11 @@ class LogStormAttendanceAnalyzeAPIView(APIView):
                 get_employee_work_schedule_payload(employee)
                 or get_standard_work_schedule_payload()
             )
-        aliases = data.get("aliases")
+        aliases = (
+            data["aliases"]
+            if "aliases" in data
+            else list(getattr(employee, "attendance_aliases", None) or [])
+        )
 
         try:
             result = analyze_employee_attendance(
@@ -343,6 +372,78 @@ class AttendanceRecordListAPIView(ListAPIView):
             queryset = queryset.filter(date__lte=date_to)
 
         return queryset
+
+
+class AttendanceWeeklySummaryAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        _check_staff_access(request.user)
+        week_start = self._week_start(request.query_params.get("week_start"))
+        week_end = week_start + timedelta(days=6)
+        records = (
+            _records_visible_to(request.user)
+            .filter(
+                employee__is_active=True,
+                date__gte=week_start,
+                date__lte=week_end,
+            )
+            .only(
+                "employee_id",
+                "date",
+                "arrival_time",
+                "departure_time",
+                "work_hours",
+                "is_absent",
+                "statuses",
+                "employee_issues",
+            )
+            .order_by("date", "employee_id")
+        )
+
+        by_date = {
+            week_start + timedelta(days=day_offset): {
+                "present": set(),
+                "absent": set(),
+            }
+            for day_offset in range(7)
+        }
+
+        for record in records:
+            bucket = by_date.get(record.date)
+            if bucket is None:
+                continue
+            if _has_attendance_pass(record):
+                bucket["present"].add(record.employee_id)
+                bucket["absent"].discard(record.employee_id)
+            elif _has_absence_marker(record):
+                bucket["absent"].add(record.employee_id)
+
+        return Response(
+            {
+                "week_start": week_start,
+                "week_end": week_end,
+                "days": [
+                    {
+                        "date": day.isoformat(),
+                        "weekday": day.strftime("%A"),
+                        "present": len(counts["present"]),
+                        "absent": len(counts["absent"]),
+                    }
+                    for day, counts in by_date.items()
+                ],
+            }
+        )
+
+    def _week_start(self, value: str | None) -> date:
+        if value:
+            try:
+                parsed = date.fromisoformat(value)
+            except ValueError:
+                parsed = timezone.localdate()
+        else:
+            parsed = timezone.localdate()
+        return parsed - timedelta(days=parsed.weekday())
 
 
 class AttendanceMonthlyMatrixAPIView(APIView):

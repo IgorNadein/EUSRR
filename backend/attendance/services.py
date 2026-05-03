@@ -318,11 +318,13 @@ def run_attendance_auto_sync(*, force: bool = False) -> AttendanceAutoSyncSettin
             or get_standard_work_schedule_payload()
         )
         try:
+            aliases = list(getattr(employee, "attendance_aliases", None) or [])
             result = analyze_employee_attendance(
                 employee=employee,
                 period_start=period_start,
                 period_end=period_end,
                 schedule=schedule_payload,
+                aliases=aliases,
                 client=None,
             )
             request_payload = build_logstorm_attendance_payload(
@@ -330,6 +332,7 @@ def run_attendance_auto_sync(*, force: bool = False) -> AttendanceAutoSyncSettin
                 period_start=period_start,
                 period_end=period_end,
                 schedule=schedule_payload,
+                aliases=aliases,
             )
             save_logstorm_attendance_result(
                 employee=employee,

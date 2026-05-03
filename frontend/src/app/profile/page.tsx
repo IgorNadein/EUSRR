@@ -196,7 +196,11 @@ export default function ProfilePage() {
           personnelState={user.personnel_state}
         />
 
-        <EmployeeAttendanceCard employeeActions={user.actions} employeeId={user.id} />
+        <EmployeeAttendanceCard
+          attendanceAliases={user.attendance_aliases}
+          employeeActions={user.actions}
+          employeeId={user.id}
+        />
       </div>
     </AppShell>
   );

@@ -102,6 +102,24 @@ def test_retrieve_ok(api_client: APIClient):
     assert data["id"] == e.id
     assert data["email"] == e.email
 
+
+def test_update_attendance_aliases_normalizes_values(api_client: APIClient):
+    staff = make_user("staff@example.com", staff=True)
+    employee = make_user("alias@example.com")
+    api_client.force_authenticate(user=staff)
+
+    url = reverse("api:v1:employees-detail", args=[employee.pk])
+    resp = api_client.patch(
+        url,
+        {"attendance_aliases": [" 200 ", "200", "", "300"]},
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["attendance_aliases"] == ["200", "300"]
+    employee.refresh_from_db()
+    assert employee.attendance_aliases == ["200", "300"]
+
 # ---------- search & ordering ----------
 
 def test_search_by_email_and_last_name(api_client: APIClient):

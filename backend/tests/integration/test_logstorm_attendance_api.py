@@ -134,6 +134,24 @@ def test_logstorm_attendance_api_passes_aliases(
     assert analyze.call_args.kwargs["aliases"] == ["200", "300"]
 
 
+def test_logstorm_attendance_api_uses_employee_aliases_when_omitted(
+    auth_client_factory,
+    user_factory,
+):
+    staff = user_factory(staff=True)
+    employee = user_factory(attendance_aliases=["200", "300"])
+    client = auth_client_factory(staff)
+
+    with patch(
+        "api.v1.attendance.views.analyze_employee_attendance",
+        return_value={"records": []},
+    ) as analyze:
+        response = client.post(_url(), _payload(employee.id), format="json")
+
+    assert response.status_code == 200
+    assert analyze.call_args.kwargs["aliases"] == ["200", "300"]
+
+
 def test_logstorm_attendance_api_rejects_invalid_period(
     auth_client_factory,
     user_factory,

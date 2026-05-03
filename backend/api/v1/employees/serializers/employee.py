@@ -52,6 +52,11 @@ class EmployeeSerializer(serializers.ModelSerializer):
     """Полная версия сотрудника для /employees/."""
 
     avatar = Base64ImageField(required=False, allow_null=True)
+    attendance_aliases = serializers.ListField(
+        child=serializers.CharField(allow_blank=True),
+        required=False,
+        allow_empty=True,
+    )
     actions = EmployeeActionSerializer(many=True, read_only=True)
     username = serializers.CharField(read_only=True, allow_blank=True)
     last_activity_at = serializers.SerializerMethodField()
@@ -95,6 +100,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "telegram",
             "whatsapp",
             "wechat",
+            "attendance_aliases",
             "skills",
             "skills_ids",
             "is_active",
@@ -131,6 +137,14 @@ class EmployeeSerializer(serializers.ModelSerializer):
         if value == "":
             return None
         return value
+
+    def validate_attendance_aliases(self, value):
+        result = []
+        for alias in value or []:
+            alias_value = str(alias).strip()
+            if alias_value and alias_value not in result:
+                result.append(alias_value)
+        return result
 
     def update(self, instance, validated_data):
         skills = validated_data.pop("skills_ids", None)

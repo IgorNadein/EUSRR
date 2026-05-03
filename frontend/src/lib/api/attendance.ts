@@ -58,6 +58,7 @@ export type AttendanceAnalyzePayload = {
     period_start: string;
     period_end: string;
     schedule?: AttendanceSchedulePayload;
+    aliases?: string[];
 };
 
 export type AttendanceRecord = {
@@ -220,6 +221,23 @@ export type MonthlyAttendanceMatrixExportQuery = {
     period_end: string;
 };
 
+export type AttendanceWeeklySummaryDay = {
+    date: string;
+    weekday: string;
+    present: number;
+    absent: number;
+};
+
+export type AttendanceWeeklySummary = {
+    week_start: string;
+    week_end: string;
+    days: AttendanceWeeklySummaryDay[];
+};
+
+export type AttendanceWeeklySummaryQuery = {
+    week_start?: string;
+};
+
 export type AttendanceMatrixExportFile = {
     blob: Blob;
     filename: string;
@@ -242,6 +260,8 @@ export function createAttendanceApi(request: RequestFn, getToken: GetTokenFn) {
             }) as Promise<AttendanceAnalysisResponse>,
         getAttendanceRecords: (params?: AttendanceRecordsQuery) =>
             request(`/api/v1/attendance/records/${buildQuery(params)}`) as Promise<PaginatedAttendanceRecords>,
+        getAttendanceWeeklySummary: (params?: AttendanceWeeklySummaryQuery) =>
+            request(`/api/v1/attendance/weekly-summary/${buildQuery(params)}`) as Promise<AttendanceWeeklySummary>,
         getAttendanceRecord: (recordId: number) =>
             request(`/api/v1/attendance/records/${recordId}/`) as Promise<AttendanceRecord>,
         getMonthlyAttendanceMatrix: (params: MonthlyAttendanceMatrixQuery) =>

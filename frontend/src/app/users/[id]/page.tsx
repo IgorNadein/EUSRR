@@ -533,7 +533,11 @@ export default function UserDetailPage() {
               personnelState={person.personnel_state}
             />
 
-            <EmployeeAttendanceCard employeeActions={person.actions} employeeId={person.id} />
+            <EmployeeAttendanceCard
+              attendanceAliases={person.attendance_aliases}
+              employeeActions={person.actions}
+              employeeId={person.id}
+            />
           </>
         ) : null}
       </div>

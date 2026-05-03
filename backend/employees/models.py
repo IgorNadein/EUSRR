@@ -231,6 +231,12 @@ class Employee(AbstractUser):
     )
     whatsapp = PhoneNumberField("WhatsApp", blank=True)
     wechat = models.CharField("WeChat", max_length=100, blank=True)
+    attendance_aliases = models.JSONField(
+        "Алиасы посещаемости",
+        default=list,
+        blank=True,
+        help_text="Дополнительные идентификаторы сотрудника в LogStorm",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     skills = models.ManyToManyField(

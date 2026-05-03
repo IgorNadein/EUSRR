@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   AlertTriangle,
   Camera,
   ChevronDown,
+  ChevronRight,
   Clock,
   Edit3,
   Loader2,
@@ -12,6 +13,7 @@ import {
   LogOut,
   MessageSquare,
   RefreshCw,
+  Tag,
 } from "lucide-react";
 
 import {
@@ -33,6 +35,7 @@ import type {
 import type { EmployeeAction } from "@/types/api";
 
 type EmployeeAttendanceCardProps = {
+  attendanceAliases?: string[] | null;
   employeeId: number;
   employeeActions?: EmployeeAction[] | null;
 };
@@ -463,6 +466,17 @@ function nullableTime(value: string) {
   return trimmed || null;
 }
 
+function normalizeAttendanceAliases(aliases: Array<string | null | undefined>) {
+  const result: string[] = [];
+  aliases.forEach((alias) => {
+    const value = String(alias || "").trim();
+    if (value && !result.includes(value)) {
+      result.push(value);
+    }
+  });
+  return result;
+}
+
 type AttendanceCardApiClient = typeof apiClient & {
   request: <T>(endpoint: string, options?: RequestInit) => Promise<T>;
   addAttendanceRecordComment?: unknown;
@@ -491,6 +505,7 @@ function analyzeEmployeeAttendance(data: {
   employee_id: number;
   period_start: string;
   period_end: string;
+  aliases?: string[];
 }) {
   const client = attendanceApiClient();
   if (typeof client.analyzeAttendance === "function") {
@@ -569,10 +584,12 @@ function updateAttendanceRecord(recordId: number, data: AttendanceRecordUpdatePa
 }
 
 export default function EmployeeAttendanceCard({
+  attendanceAliases,
   employeeActions,
   employeeId,
 }: EmployeeAttendanceCardProps) {
   const { user: currentUser } = useUser();
+  const actionsMenuRef = useRef<HTMLDivElement | null>(null);
   const defaultRange = useMemo(() => getPeriodRange("week"), []);
   const [period, setPeriod] = useState<AttendancePeriod>("week");
   const [periodStart, setPeriodStart] = useState(defaultRange.start);
@@ -589,12 +606,46 @@ export default function EmployeeAttendanceCard({
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
   const [dayEventsRecordPreview, setDayEventsRecordPreview] =
     useState<AttendanceDayEventsPreview | null>(null);
+  const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
+  const [aliasModalOpen, setAliasModalOpen] = useState(false);
+  const [aliases, setAliases] = useState<string[]>(() =>
+    normalizeAttendanceAliases(attendanceAliases || []),
+  );
+  const [aliasDraft, setAliasDraft] = useState("");
+  const [aliasError, setAliasError] = useState<string | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState<AttendanceRecordEditForm | null>(null);
 
   const canManageAttendance = Boolean(
     currentUser?.auth?.is_staff || currentUser?.auth?.is_superuser,
   );
+
+  useEffect(() => {
+    setAliases(normalizeAttendanceAliases(attendanceAliases || []));
+  }, [attendanceAliases]);
+
+  useEffect(() => {
+    if (!actionsMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (actionsMenuRef.current && !actionsMenuRef.current.contains(event.target as Node)) {
+        setActionsMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActionsMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [actionsMenuOpen]);
 
   const records = useMemo(() => {
     if (!result?.records || !Array.isArray(result.records)) return [];
@@ -637,6 +688,7 @@ export default function EmployeeAttendanceCard({
         employee_id: employeeId,
         period_start: periodStart,
         period_end: periodEnd,
+        aliases: aliases.length ? aliases : undefined,
       });
       const savedRecords = await getAttendanceRecords({
         employee_id: employeeId,
@@ -835,6 +887,43 @@ export default function EmployeeAttendanceCard({
     setEditModalOpen(true);
   }
 
+  function openAliasModal() {
+    setAliasDraft("");
+    setAliasError(null);
+    setAliasModalOpen(true);
+  }
+
+  async function saveAliases(nextAliases: string[]) {
+    const normalizedAliases = normalizeAttendanceAliases(nextAliases);
+    try {
+      setBusyKey("attendance-aliases");
+      setAliasError(null);
+      await apiClient.updateEmployee(employeeId, {
+        attendance_aliases: normalizedAliases,
+      });
+      setAliases(normalizedAliases);
+      setAliasDraft("");
+    } catch (saveError) {
+      setAliasError(getErrorMessage(saveError, "Не удалось сохранить алиасы"));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function addAlias() {
+    const alias = aliasDraft.trim();
+    if (!alias) return;
+    if (aliases.includes(alias)) {
+      setAliasError("Такой алиас уже добавлен");
+      return;
+    }
+    await saveAliases([...aliases, alias]);
+  }
+
+  async function removeAlias(alias: string) {
+    await saveAliases(aliases.filter((item) => item !== alias));
+  }
+
   function handleEditRecordSelect(recordId: string) {
     const selectedRecord = records.find((record) => getRecordId(record) === Number(recordId));
     const form = selectedRecord ? recordToEditForm(selectedRecord) : null;
@@ -912,15 +1001,48 @@ export default function EmployeeAttendanceCard({
             </button>
 
             {canManageAttendance ? (
-              <button
-                type="button"
-                onClick={openEditModal}
-                className="app-action-ghost flex h-9 w-9 items-center justify-center rounded-md"
-                aria-label="Редактировать записи посещаемости"
-                title="Редактировать записи"
-              >
-                <Edit3 size={15} />
-              </button>
+              <div ref={actionsMenuRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setActionsMenuOpen((current) => !current)}
+                  className="app-action-ghost flex h-9 w-9 items-center justify-center rounded-md"
+                  aria-label="Действия посещаемости"
+                  aria-expanded={actionsMenuOpen}
+                  title="Действия посещаемости"
+                  aria-haspopup="menu"
+                >
+                  <ChevronRight
+                    size={15}
+                    className={`transition-transform duration-200 ${actionsMenuOpen ? "rotate-90" : ""}`}
+                  />
+                </button>
+                {actionsMenuOpen ? (
+                  <div className="app-menu absolute right-0 top-full z-20 mt-2 w-64 rounded-xl py-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionsMenuOpen(false);
+                        openEditModal();
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                    >
+                      <Edit3 size={14} className="app-text-muted" />
+                      Редактировать записи
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionsMenuOpen(false);
+                        openAliasModal();
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                    >
+                      <Tag size={14} className="app-text-muted" />
+                      Добавить алиас
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </div>
@@ -1249,6 +1371,94 @@ export default function EmployeeAttendanceCard({
         onOpenComments={(record) => void openCommentsFromDayEvents(record)}
         record={dayEventsRecordPreview}
       />
+
+      <Modal
+        isOpen={aliasModalOpen}
+        onClose={() => setAliasModalOpen(false)}
+        title="Алиасы посещаемости"
+        size="sm"
+        footer={(
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setAliasModalOpen(false)}
+              className="app-action-secondary rounded-lg px-4 py-2 text-sm font-semibold"
+            >
+              Закрыть
+            </button>
+          </div>
+        )}
+      >
+        <div className="space-y-4">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void addAlias();
+            }}
+            className="flex flex-col gap-2 sm:flex-row"
+          >
+            <input
+              type="text"
+              value={aliasDraft}
+              onChange={(event) => {
+                setAliasDraft(event.target.value);
+                setAliasError(null);
+              }}
+              className="app-input min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm"
+              placeholder="Например, 200"
+            />
+            <button
+              type="submit"
+              disabled={!aliasDraft.trim() || busyKey === "attendance-aliases"}
+              className="app-action-primary inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {busyKey === "attendance-aliases" ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Tag size={16} />
+              )}
+              Добавить
+            </button>
+          </form>
+
+          {aliasError ? (
+            <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <span>{aliasError}</span>
+            </div>
+          ) : null}
+
+          <div className="space-y-2">
+            <p className="app-card-caption">Текущие алиасы</p>
+            {aliases.length ? (
+              <div className="flex flex-wrap gap-2">
+                {aliases.map((alias) => (
+                  <span
+                    key={alias}
+                    className="app-status-pill app-badge inline-flex items-center gap-2"
+                  >
+                    {alias}
+                    <button
+                      type="button"
+                      onClick={() => void removeAlias(alias)}
+                      disabled={busyKey === "attendance-aliases"}
+                      className="text-[var(--muted-foreground)] transition hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-60"
+                      aria-label={`Удалить алиас ${alias}`}
+                      title="Удалить алиас"
+                    >
+                      x
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="app-surface-muted rounded-xl p-4 text-sm text-[var(--muted-foreground)]">
+                Алиасы не добавлены.
+              </div>
+            )}
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={editModalOpen}

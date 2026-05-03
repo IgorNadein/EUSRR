@@ -38,6 +38,10 @@ def _monthly_matrix_url():
     return reverse("api:v1:attendance-monthly-matrix")
 
 
+def _weekly_summary_url():
+    return reverse("api:v1:attendance-weekly-summary")
+
+
 def _monthly_matrix_export_url():
     return reverse("api:v1:attendance-monthly-matrix-export")
 
@@ -179,6 +183,57 @@ def test_analyze_saves_run_and_records(auth_client_factory, user_factory):
     assert record.personnel_status == "normal"
     assert record.statuses == ["late", "underwork"]
     assert record.raw_data["employee_id"] == "42"
+
+
+def test_weekly_summary_counts_present_and_absent_people(
+    auth_client_factory,
+    user_factory,
+):
+    staff = user_factory(staff=True)
+    present_employee = user_factory()
+    absent_employee = user_factory()
+    inactive_employee = user_factory(active=False)
+    client = auth_client_factory(staff)
+    run = AttendanceAnalysisRun.objects.create(
+        employee=present_employee,
+        period_start="2026-04-20",
+        period_end="2026-04-26",
+        triggered_by=staff,
+    )
+
+    AttendanceRecord.objects.create(
+        analysis_run=run,
+        employee=present_employee,
+        date="2026-04-20",
+        arrival_time="09:00",
+        departure_time="18:00",
+        work_hours=9,
+        is_absent=False,
+    )
+    AttendanceRecord.objects.create(
+        analysis_run=run,
+        employee=absent_employee,
+        date="2026-04-20",
+        work_hours=0,
+        is_absent=True,
+        statuses=["absence"],
+    )
+    AttendanceRecord.objects.create(
+        analysis_run=run,
+        employee=inactive_employee,
+        date="2026-04-20",
+        arrival_time="09:00",
+        work_hours=9,
+    )
+
+    response = client.get(_weekly_summary_url(), {"week_start": "2026-04-20"})
+
+    assert response.status_code == 200
+    monday = response.data["days"][0]
+    assert monday["date"] == "2026-04-20"
+    assert monday["present"] == 1
+    assert monday["absent"] == 1
+    assert response.data["days"][6]["date"] == "2026-04-26"
 
 
 def test_work_schedule_endpoint_returns_default_for_self(
