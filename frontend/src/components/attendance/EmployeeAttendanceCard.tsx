@@ -33,6 +33,7 @@ import type {
   PaginatedAttendanceRecords,
 } from "@/lib/api/attendance";
 import type { EmployeeAction } from "@/types/api";
+import { getPersonnelDayMeta } from "./personnel-day-meta.js";
 
 type EmployeeAttendanceCardProps = {
   attendanceAliases?: string[] | null;
@@ -171,110 +172,6 @@ function formatAttendanceIssueLabel(label: string) {
 function hasWorked(record: AttendanceRecord) {
   const hours = Number(record.work_hours || 0);
   return Boolean(record.arrival_time || record.departure_time || hours > 0);
-}
-
-function getDateEnd(value: unknown) {
-  if (!value) return null;
-  const date = new Date(String(value));
-  if (Number.isNaN(date.getTime())) return null;
-  date.setHours(23, 59, 59, 999);
-  return date;
-}
-
-function getPersonnelDayMeta(
-  actions: EmployeeAction[] | null | undefined,
-  dateValue: unknown,
-  record?: AttendanceRecord,
-): PersonnelDayMeta | null {
-  if (record?.personnel_status && record.personnel_status !== "normal") {
-    const personnelStatus = String(record.personnel_status);
-    return {
-      action: {
-        id: Number(record.personnel_action || 0),
-        employee: 0,
-        action: personnelStatus,
-        action_display: record.personnel_status_label || record.personnel_status,
-        date: String(dateValue || ""),
-      },
-      className: personnelStatus === "dismissed"
-        ? "text-red-400"
-        : personnelStatus === "remote"
-          ? "text-sky-400"
-          : "text-amber-500",
-      label: record.personnel_status_label || record.personnel_status,
-      nonWorking: record.effective_is_workday === false,
-    };
-  }
-
-  if (!actions?.length) return null;
-
-  const dayEnd = getDateEnd(dateValue);
-  if (!dayEnd) return null;
-
-  const activeAction = actions
-    .filter((action) => {
-      const actionDate = new Date(action.date);
-      return !Number.isNaN(actionDate.getTime()) && actionDate <= dayEnd;
-    })
-    .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime())[0];
-
-  if (!activeAction) return null;
-
-  if (activeAction.action === "on_leave") {
-    return {
-      action: activeAction,
-      className: "text-amber-500",
-      label: activeAction.action_display || "В отпуске",
-      nonWorking: true,
-    };
-  }
-
-  if (activeAction.action === "on_sick_leave") {
-    return {
-      action: activeAction,
-      className: "text-amber-500",
-      label: activeAction.action_display || "На больничном",
-      nonWorking: true,
-    };
-  }
-
-  if (activeAction.action === "on_day_off") {
-    return {
-      action: activeAction,
-      className: "text-amber-500",
-      label: activeAction.action_display || "В отгуле",
-      nonWorking: true,
-    };
-  }
-
-  if (activeAction.action === "on_maternity") {
-    return {
-      action: activeAction,
-      className: "text-amber-500",
-      label: activeAction.action_display || "В декрете",
-      nonWorking: true,
-    };
-  }
-
-  if (activeAction.action === "dismissed") {
-    return {
-      action: activeAction,
-      className: "text-red-400",
-      label: activeAction.action_display || "Уволен",
-      nonWorking: true,
-    };
-  }
-
-  if (activeAction.action === "remote") {
-    return {
-      action: activeAction,
-      className: "text-sky-400",
-      label: activeAction.action_display || "На удалёнке",
-      nonWorking: false,
-    };
-  }
-
-  return null;
 }
 
 function isRemotePersonnelMeta(personnelMeta?: PersonnelDayMeta | null) {
