@@ -26,7 +26,7 @@ export const CalendarSidebar = memo(function CalendarSidebar(props: CalendarSide
       <div
         className={`space-y-4 lg:overflow-y-auto ${
           fixedDesktop
-            ? "lg:fixed lg:top-0 lg:bottom-0 lg:w-72 lg:pt-[5.5rem] lg:pb-8"
+            ? "lg:fixed lg:top-0 lg:bottom-0 lg:w-72 lg:pt-[4.5rem] lg:pb-8"
             : "lg:sticky lg:top-8 lg:max-h-[calc(100dvh-7.5rem)] lg:pb-2"
         }`}
       >
