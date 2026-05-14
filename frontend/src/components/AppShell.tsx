@@ -45,7 +45,7 @@ const navItems = [
   { href: "/departments", label: "Отделы", icon: Building2 },
   { href: "/attendance", label: "Посещаемость", icon: CalendarCheck },
   { href: "/requests", label: "Заявления", icon: FileSignature, category: "Заявки" },
-  { href: "/equipment", label: "Оборудование", icon: Monitor },
+  // { href: "/equipment", label: "Оборудование", icon: Monitor },
   { href: "/procurement", label: "Закупки", icon: ShoppingCart, category: "Закупки" },
   { href: "/documents", label: "Документы", icon: FileText, category: "Документы" },
   // { href: "/finances", label: "Финансы", icon: Wallet },
