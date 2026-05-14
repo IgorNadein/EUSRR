@@ -80,6 +80,9 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(f"  ✓ Обновлено событий: {result['updated']}")
         )
+        self.stdout.write(
+            self.style.SUCCESS(f"  ✓ Удалено устаревших событий: {result['deleted']}")
+        )
 
         if result["skipped"] > 0:
             self.stdout.write(
