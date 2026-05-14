@@ -632,26 +632,29 @@ class EmployeeAdmin(DjangoUserAdmin):
                     }: is_ldap_managed={employee.is_ldap_managed}"
                 )
 
-                if employee.is_ldap_managed:
-                    # Пробуем найти по employee_number
+                # Пробуем найти существующий объект даже для сотрудников,
+                # которые еще не помечены как LDAP-managed: при ручной
+                # синхронизации Django считается источником истины, поэтому
+                # найденную AD-запись нужно привязать и обновить, а не
+                # пытаться создать повторно.
+                logger.info(
+                    f"[sync_from_django_to_ldap] Employee {
+                        employee.pk
+                    }: поиск в LDAP по sync-state/employeeNumber/email"
+                )
+                ldap_user = _resolve_ldap_user_for_employee(employee)
+                if ldap_user:
                     logger.info(
                         f"[sync_from_django_to_ldap] Employee {
                             employee.pk
-                        }: поиск в LDAP по employee_number={employee.pk}"
+                        }: найден LDAP user с DN={ldap_user.dn}"
                     )
-                    ldap_user = _resolve_ldap_user_for_employee(employee)
-                    if ldap_user:
-                        logger.info(
-                            f"[sync_from_django_to_ldap] Employee {
-                                employee.pk
-                            }: найден LDAP user с DN={ldap_user.dn}"
-                        )
-                    else:
-                        logger.info(
-                            f"[sync_from_django_to_ldap] Employee {
-                                employee.pk
-                            }: не найден по employee_number"
-                        )
+                else:
+                    logger.info(
+                        f"[sync_from_django_to_ldap] Employee {
+                            employee.pk
+                        }: LDAP пользователь не найден"
+                    )
 
                 if ldap_user:
                     # ОБНОВЛЕНИЕ существующего LDAP пользователя
@@ -661,6 +664,56 @@ class EmployeeAdmin(DjangoUserAdmin):
                         "изменений"
                     )
                     try:
+                        from django.utils import timezone
+                        from ldap3 import MODIFY_REPLACE
+                        from employees.ldap.infrastructure.connections import (
+                            _ldap,
+                        )
+
+                        LdapSyncState.objects.update_or_create(
+                            model="employee",
+                            object_pk=str(employee.pk),
+                            defaults={
+                                "ldap_dn": ldap_user.dn,
+                                "last_sync_dir": "django",
+                                "last_django_modify_ts": timezone.now(),
+                            },
+                        )
+
+                        current_employee_number = get_ldap_str(
+                            getattr(ldap_user, "employee_number", "")
+                        )
+                        if current_employee_number != str(employee.pk):
+                            with _ldap() as conn:
+                                ok = conn.modify(
+                                    ldap_user.dn,
+                                    {
+                                        "employeeNumber": [
+                                            (
+                                                MODIFY_REPLACE,
+                                                [str(employee.pk)],
+                                            )
+                                        ]
+                                    },
+                                )
+                                if not ok:
+                                    logger.warning(
+                                        "[sync_from_django_to_ldap] Employee "
+                                        "%s: не удалось записать "
+                                        "employeeNumber в LDAP: %s",
+                                        employee.pk,
+                                        conn.result,
+                                    )
+                                else:
+                                    ldap_user.employee_number = str(
+                                        employee.pk
+                                    )
+
+                        if not employee.is_ldap_managed:
+                            employee.is_ldap_managed = True
+                            employee._skip_ldap_sync = True
+                            employee.save(update_fields=["is_ldap_managed"])
+
                         changes = {}
 
                         ldap_first = get_ldap_str(ldap_user.given_name)

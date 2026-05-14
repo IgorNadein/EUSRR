@@ -1,18 +1,33 @@
 from __future__ import annotations
 
+import uuid
+
 import pytest
+from django.contrib import admin
+from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.contrib.auth.models import Group
+from django.test import RequestFactory
 from rest_framework.test import APIClient
 
+from employees.admin import EmployeeAdmin
 from employees.ldap import (
     DepartmentService,
     LdapGroup,
     LdapOrganizationalUnit,
     LdapOrganizationalUnitGroup,
     LdapUser,
+    _ldap,
 )
-from employees.models import Department, DepartmentRole, LdapSyncState, Position
+from employees.ldap.repositories.ldap_repository import ensure_container_exists
+from employees.ldap.services.constants import UserAccountControl
+from employees.models import (
+    Department,
+    DepartmentRole,
+    EmployeeDepartment,
+    LdapSyncState,
+    Position,
+)
 
 """
 Живой LDAP integration-suite.
@@ -34,6 +49,8 @@ TINY_PNG_BASE64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
     "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
 )
+
+User = get_user_model()
 
 
 def _employee_dn(employee) -> str:
@@ -86,6 +103,94 @@ def test_employee_profile_patch_updates_live_ldap(
     assert ldap_user.mail == f"updated-{user.pk}@example.com"
     assert ldap_user.telephone_number == "+79995554433"
     assert bool(ldap_user.thumbnail_photo) is True
+
+
+def test_django_to_ldap_sync_reuses_existing_unlinked_user(
+    ensure_live_ldap,
+    ldap_cleanup,
+    unique_name,
+):
+    dept_name = unique_name("qa-link-dept")
+    department = Department.objects.create(
+        name=dept_name,
+        description="Target department for existing LDAP user",
+    )
+    ldap_cleanup(_department_dn(department))
+
+    suffix = unique_name("existing")
+    email = f"{suffix}@example.com"
+    phone = f"+79992{uuid.uuid4().int % 10**6:06d}"
+    cn = f"Existing User {suffix}"
+    sam = suffix.replace("-", "")[:20]
+    user_base = settings.LDAP_USERS_BASE
+    existing_dn = f"CN={cn},{user_base}"
+    ldap_cleanup(existing_dn)
+
+    with _ldap() as conn:
+        ensure_container_exists(conn, user_base)
+        ok = conn.add(
+            existing_dn,
+            ["top", "person", "organizationalPerson", "user"],
+            {
+                "cn": cn,
+                "sAMAccountName": sam,
+                "userPrincipalName": email,
+                "userAccountControl": UserAccountControl.DISABLED,
+                "givenName": "Existing",
+                "sn": f"User {suffix}",
+                "displayName": cn,
+                "mail": email,
+                "telephoneNumber": phone,
+            },
+        )
+        assert ok, conn.result
+
+    employee = User.objects.create_user(
+        email=email,
+        password="TestPass123!",
+        first_name="Existing",
+        last_name=f"User {suffix}",
+        phone_number=phone,
+        send_activation_email=False,
+    )
+    employee.email_verified = True
+    employee.is_active = True
+    employee.is_ldap_managed = False
+    employee.save(
+        update_fields=["email_verified", "is_active", "is_ldap_managed"]
+    )
+
+    link = EmployeeDepartment(
+        employee=employee,
+        department=department,
+        is_active=True,
+    )
+    link._skip_ldap_sync = True
+    link.save()
+
+    model_admin = EmployeeAdmin(User, admin.site)
+    model_admin.message_user = lambda *args, **kwargs: None
+    request = RequestFactory().post("/admin/employees/employee/")
+
+    model_admin.sync_from_django_to_ldap(
+        request,
+        User.objects.filter(pk=employee.pk),
+    )
+
+    employee.refresh_from_db()
+    sync_state = LdapSyncState.objects.get(
+        model="employee",
+        object_pk=str(employee.pk),
+    )
+    ldap_cleanup(sync_state.ldap_dn)
+
+    assert employee.is_ldap_managed is True
+    assert _norm_dn(sync_state.ldap_dn).endswith(_norm_dn(_department_dn(department)))
+    assert not LdapUser.objects.filter(dn=existing_dn).exists()
+
+    ldap_user = LdapUser.objects.get(dn=sync_state.ldap_dn)
+    assert ldap_user.mail == email
+    assert ldap_user.employee_number == str(employee.pk)
 
 
 def test_department_api_roundtrip_syncs_ou_head_and_membership(

@@ -271,3 +271,31 @@ def test_find_ldap_user_prefers_email_match_among_multiple_candidates(settings):
         resolved = _find_ldap_user(user)
 
     assert resolved is preferred
+
+
+@pytest.mark.django_db
+def test_find_ldap_user_falls_back_to_email_without_employee_number(settings):
+    settings.LDAP_ENABLED = True
+    user = make_user(
+        username="",
+        is_ldap_managed=False,
+        email="existing@example.com",
+    )
+
+    preferred = make_ldap_user(
+        dn="CN=Existing,OU=Users,OU=company,DC=robotail,DC=local",
+        sam_account_name="existing.login",
+        mail="existing@example.com",
+        user_principal_name="existing@robotail.local",
+    )
+
+    with patch(
+        "employees.ldap.orm_models.LdapUser.objects.filter"
+    ) as filter_mock:
+        filter_mock.side_effect = [[], [preferred]]
+
+        from api.v1.directory.services import _find_ldap_user
+
+        resolved = _find_ldap_user(user)
+
+    assert resolved is preferred

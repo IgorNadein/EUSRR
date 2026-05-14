@@ -20,6 +20,26 @@ def _find_ldap_user(employee):
     from employees.ldap.orm_models import LdapUser
 
     employee_number = str(employee.pk)
+    employee_email = (employee.email or "").strip().lower()
+
+    def find_by_email():
+        if not employee_email:
+            return None
+
+        email_candidates = list(
+            LdapUser.objects.filter(mail=employee_email)
+        )
+        if len(email_candidates) == 1:
+            return email_candidates[0]
+
+        upn_candidates = list(
+            LdapUser.objects.filter(user_principal_name=employee_email)
+        )
+        if len(upn_candidates) == 1:
+            return upn_candidates[0]
+
+        return None
+
     sync_state = LdapSyncState.objects.filter(
         model="employee", object_pk=employee_number
     ).first()
@@ -29,15 +49,19 @@ def _find_ldap_user(employee):
         except LdapUser.DoesNotExist:
             pass
 
+    if not employee.is_ldap_managed:
+        email_match = find_by_email()
+        if email_match is not None:
+            return email_match
+
     candidates = list(
         LdapUser.objects.filter(employee_number=employee_number)
     )
     if not candidates:
-        return None
+        return find_by_email()
     if len(candidates) == 1:
         return candidates[0]
 
-    employee_email = (employee.email or "").strip().lower()
     if employee_email:
         for candidate in candidates:
             if (getattr(candidate, "mail", "") or "").strip().lower() == employee_email:
