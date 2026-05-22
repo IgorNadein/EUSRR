@@ -1273,69 +1273,90 @@ export default function ProcurementPage() {
                 </div>
 
                 <div className="space-y-3">
-                  {form.items.map((it, idx) => (
-                    <div key={idx} className="relative rounded-xl border border-gray-200 bg-gray-50 p-3">
-                      {form.items.length > 1 && (
-                        <button type="button" onClick={() => removeItemRow(idx)} className="absolute right-2 top-2 rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600">
-                          <X size={14} />
-                        </button>
-                      )}
-                      <div className="grid gap-2">
-                        <input
-                          value={it.name}
-                          onChange={(e) => updateItemRow(idx, { name: e.target.value })}
-                          placeholder="Название позиции *"
-                          className="app-input w-full rounded-lg px-3 py-2 text-sm"
-                        />
-                        <input
-                          value={it.description}
-                          onChange={(e) => updateItemRow(idx, { description: e.target.value })}
-                          placeholder="Описание (необязательно)"
-                          className="app-input w-full rounded-lg px-3 py-2 text-sm"
-                        />
-                        <div className="grid grid-cols-4 gap-2">
+                  {form.items.map((it, idx) => {
+                    const hasOptionalFields = Boolean(
+                      it.description.trim() || it.supplier_info.trim() || it.linksText.trim(),
+                    );
+
+                    return (
+                      <div key={idx} className="relative rounded-xl border border-gray-200 bg-gray-50 p-3">
+                        {form.items.length > 1 && (
+                          <button type="button" onClick={() => removeItemRow(idx)} className="absolute right-2 top-2 rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600">
+                            <X size={14} />
+                          </button>
+                        )}
+                        <div className="grid gap-2">
                           <input
-                            type="number"
-                            value={it.quantity}
-                            onChange={(e) => updateItemRow(idx, { quantity: e.target.value })}
-                            placeholder="Кол-во"
-                            min={1}
-                            className="app-input rounded-lg px-3 py-2 text-sm"
+                            value={it.name}
+                            onChange={(e) => updateItemRow(idx, { name: e.target.value })}
+                            placeholder="Название позиции *"
+                            className="app-input w-full rounded-lg px-3 py-2 text-sm"
                           />
-                          <input
-                            value={it.unit}
-                            onChange={(e) => updateItemRow(idx, { unit: e.target.value })}
-                            placeholder="Ед."
-                            className="app-input rounded-lg px-3 py-2 text-sm"
-                          />
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={it.estimated_unit_price}
-                            onChange={(e) => updateItemRow(idx, { estimated_unit_price: e.target.value })}
-                            placeholder="Цена/ед."
-                            className="app-input rounded-lg px-3 py-2 text-sm"
-                          />
-                          <div className="flex items-center text-xs text-gray-500">
-                            {it.quantity && it.estimated_unit_price ? money(Number(it.quantity) * Number(it.estimated_unit_price)) : "—"}
+                          <div className="grid grid-cols-4 gap-2">
+                            <input
+                              type="number"
+                              value={it.quantity}
+                              onChange={(e) => updateItemRow(idx, { quantity: e.target.value })}
+                              placeholder="Кол-во"
+                              min={1}
+                              className="app-input rounded-lg px-3 py-2 text-sm"
+                            />
+                            <input
+                              value={it.unit}
+                              onChange={(e) => updateItemRow(idx, { unit: e.target.value })}
+                              placeholder="Ед."
+                              className="app-input rounded-lg px-3 py-2 text-sm"
+                            />
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={it.estimated_unit_price}
+                              onChange={(e) => updateItemRow(idx, { estimated_unit_price: e.target.value })}
+                              placeholder="Цена/ед."
+                              className="app-input rounded-lg px-3 py-2 text-sm"
+                            />
+                            <div className="flex items-center text-xs text-gray-500">
+                              {it.quantity && it.estimated_unit_price ? money(Number(it.quantity) * Number(it.estimated_unit_price)) : "—"}
+                            </div>
                           </div>
+                          <details className="group">
+                            <summary className="app-action-secondary flex cursor-pointer list-none items-center justify-between rounded-lg px-3 py-2 text-xs font-medium [&::-webkit-details-marker]:hidden">
+                              <span className="inline-flex items-center gap-2">
+                                <ChevronDown size={13} className="transition group-open:rotate-180" />
+                                Дополнительные поля
+                              </span>
+                              {hasOptionalFields ? (
+                                <span className="app-badge rounded-full px-2 py-0.5 text-[10px] font-medium">
+                                  заполнено
+                                </span>
+                              ) : null}
+                            </summary>
+                            <div className="mt-2 grid gap-2">
+                              <input
+                                value={it.description}
+                                onChange={(e) => updateItemRow(idx, { description: e.target.value })}
+                                placeholder="Описание (необязательно)"
+                                className="app-input w-full rounded-lg px-3 py-2 text-sm"
+                              />
+                              <input
+                                value={it.supplier_info}
+                                onChange={(e) => updateItemRow(idx, { supplier_info: e.target.value })}
+                                placeholder="Информация о поставщике (необязательно)"
+                                className="app-input w-full rounded-lg px-3 py-2 text-sm"
+                              />
+                              <textarea
+                                value={it.linksText}
+                                onChange={(e) => updateItemRow(idx, { linksText: e.target.value })}
+                                placeholder="Ссылки, каждая с новой строки"
+                                rows={2}
+                                className="app-input w-full rounded-lg px-3 py-2 text-sm"
+                              />
+                            </div>
+                          </details>
                         </div>
-                        <input
-                          value={it.supplier_info}
-                          onChange={(e) => updateItemRow(idx, { supplier_info: e.target.value })}
-                          placeholder="Информация о поставщике (необязательно)"
-                          className="app-input w-full rounded-lg px-3 py-2 text-sm"
-                        />
-                        <textarea
-                          value={it.linksText}
-                          onChange={(e) => updateItemRow(idx, { linksText: e.target.value })}
-                          placeholder="Ссылки, каждая с новой строки"
-                          rows={2}
-                          className="app-input w-full rounded-lg px-3 py-2 text-sm"
-                        />
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
