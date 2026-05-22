@@ -1279,19 +1279,26 @@ export default function ProcurementPage() {
                     );
 
                     return (
-                      <div key={idx} className="relative rounded-xl border border-gray-200 bg-gray-50 p-3">
-                        {form.items.length > 1 && (
-                          <button type="button" onClick={() => removeItemRow(idx)} className="absolute right-2 top-2 rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600">
-                            <X size={14} />
-                          </button>
-                        )}
+                      <div key={idx} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                         <div className="grid gap-2">
-                          <input
-                            value={it.name}
-                            onChange={(e) => updateItemRow(idx, { name: e.target.value })}
-                            placeholder="Название позиции *"
-                            className="app-input w-full rounded-lg px-3 py-2 text-sm"
-                          />
+                          <div className="flex items-center gap-2">
+                            <input
+                              value={it.name}
+                              onChange={(e) => updateItemRow(idx, { name: e.target.value })}
+                              placeholder="Название позиции *"
+                              className="app-input min-w-0 flex-1 rounded-lg px-3 py-2 text-sm"
+                            />
+                            {form.items.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeItemRow(idx)}
+                                className="app-action-secondary inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                                title="Удалить позицию"
+                              >
+                                <X size={14} />
+                              </button>
+                            )}
+                          </div>
                           <div className="grid grid-cols-4 gap-2">
                             <input
                               type="number"
