@@ -426,9 +426,9 @@ export function useProcurementPage(user: User | null) {
     return detail;
   }, []);
 
-  const handleSave = useCallback(async () => {
+  const saveRequest = useCallback(async (submitAfterCreate = false) => {
     try {
-      setBusyKey("save");
+      setBusyKey(submitAfterCreate ? "save-submit" : "save");
       setActionError(null);
 
       if (!form.title.trim()) {
@@ -483,8 +483,13 @@ export function useProcurementPage(user: User | null) {
       };
 
       if (modalMode === "create") {
-        await apiClient.createProcurementRequest(payload);
-        setActionSuccess(form.requireApproval ? "Заявка создана (черновик)." : "Заявка направлена в отдел.");
+        const created = await apiClient.createProcurementRequest(payload) as ProcurementRequest;
+        if (submitAfterCreate && form.requireApproval && created.id) {
+          await apiClient.submitProcurementRequest(created.id);
+          setActionSuccess("Заявка создана и отправлена на согласование.");
+        } else {
+          setActionSuccess(form.requireApproval ? "Заявка создана (черновик)." : "Заявка направлена в отдел.");
+        }
         setCreateOpen(false);
       } else if (editingId) {
         await apiClient.updateProcurementRequest(editingId, {
@@ -505,6 +510,10 @@ export function useProcurementPage(user: User | null) {
       setBusyKey(null);
     }
   }, [editingId, form, loadPage1, modalMode, resetForm]);
+
+  const handleSave = useCallback(() => saveRequest(false), [saveRequest]);
+
+  const handleSaveAndSubmit = useCallback(() => saveRequest(true), [saveRequest]);
 
   const doAction = useCallback(async (key: string, action: () => Promise<unknown>, id: number, successMessage: string) => {
     try {
@@ -792,6 +801,7 @@ export function useProcurementPage(user: User | null) {
     modalMode,
     isModalOpen,
     handleSave,
+    handleSaveAndSubmit,
     handleLoadMore,
     toggleExpand,
     toggleComments,

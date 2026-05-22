@@ -287,6 +287,7 @@ export default function ProcurementPage() {
     handleLoadMore,
     handleReject,
     handleSave,
+    handleSaveAndSubmit,
     handleStart,
     handleSubmit,
     isFinal,
@@ -1160,11 +1161,26 @@ export default function ProcurementPage() {
       <Modal isOpen={isModalOpen} onClose={closeModal} title={modalMode === "create" ? "Новая заявка на закупку" : "Редактировать заявку"} size="lg" footer={
             <div className="flex flex-wrap items-center justify-end gap-2">
               <button type="button" onClick={closeModal} className="app-action-secondary rounded-lg px-3 py-2 text-sm font-medium">Отмена</button>
-              <button type="button" onClick={handleSave} disabled={busyKey === "save"} className="app-action-primary rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-60">
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={busyKey === "save" || busyKey === "save-submit"}
+                className={`${modalMode === "create" && form.requireApproval ? "app-action-secondary" : "app-action-primary"} rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-60`}
+              >
                 {modalMode === "create"
                   ? form.requireApproval ? "Создать черновик" : "Создать и направить в отдел"
                   : "Сохранить"}
               </button>
+              {modalMode === "create" && form.requireApproval ? (
+                <button
+                  type="button"
+                  onClick={handleSaveAndSubmit}
+                  disabled={busyKey === "save" || busyKey === "save-submit"}
+                  className="app-action-primary rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-60"
+                >
+                  Отправить на согласование
+                </button>
+              ) : null}
             </div>
       }>
 
