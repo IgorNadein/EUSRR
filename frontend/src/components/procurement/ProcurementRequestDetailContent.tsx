@@ -197,18 +197,18 @@ function ProcurementItemCard({
                     placeholder="https://example.ru/item"
                     className="app-input min-w-0 flex-1 rounded-lg px-3 py-2 text-xs"
                   />
-                  <button
-                    type="button"
-                    onClick={() => updateDraft({
-                      links: draft.links.length > 1
-                        ? draft.links.filter((_, currentIndex) => currentIndex !== linkIndex)
-                        : [""],
-                    })}
-                    className="app-action-secondary inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                    title="Удалить ссылку"
-                  >
-                    <X size={12} />
-                  </button>
+                  {draft.links.length > 1 ? (
+                    <button
+                      type="button"
+                      onClick={() => updateDraft({
+                        links: draft.links.filter((_, currentIndex) => currentIndex !== linkIndex),
+                      })}
+                      className="app-action-secondary inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                      title="Удалить ссылку"
+                    >
+                      <X size={12} />
+                    </button>
+                  ) : null}
                 </div>
               ))}
               <button
