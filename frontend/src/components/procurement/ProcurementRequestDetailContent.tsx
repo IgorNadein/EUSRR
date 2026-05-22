@@ -213,7 +213,7 @@ function ProcurementItemCard({
               ))}
               <button
                 type="button"
-                onClick={() => updateDraft({ links: [...draft.links, ""] })}
+                onClick={() => updateDraft({ links: ["", ...draft.links] })}
                 className="app-link-accent inline-flex items-center gap-1 text-xs font-medium"
               >
                 <Plus size={12} /> Добавить ссылку

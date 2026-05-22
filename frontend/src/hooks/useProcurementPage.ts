@@ -742,7 +742,7 @@ export function useProcurementPage(user: User | null) {
   }, []);
 
   const addItemRow = useCallback(() => {
-    setForm((previous) => ({ ...previous, items: [...previous.items, { ...emptyItem }] }));
+    setForm((previous) => ({ ...previous, items: [{ ...emptyItem }, ...previous.items] }));
   }, []);
 
   const removeItemRow = useCallback((index: number) => {

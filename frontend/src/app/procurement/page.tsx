@@ -1324,7 +1324,7 @@ export default function ProcurementPage() {
                               <span className="app-text-muted text-xs font-medium">Ссылки</span>
                               <button
                                 type="button"
-                                onClick={() => updateItemRow(idx, { links: [...it.links, ""] })}
+                                onClick={() => updateItemRow(idx, { links: ["", ...it.links] })}
                                 className="app-link-accent inline-flex items-center gap-1 text-xs font-medium"
                               >
                                 <Plus size={12} /> Добавить ссылку
