@@ -13,6 +13,114 @@ from .config import NotificationVerbs, MessageTemplates, ActionURLs
 logger = logging.getLogger(__name__)
 
 
+def _actor_id(actor):
+    return getattr(actor, "id", None)
+
+
+def _actor_name(actor):
+    if not actor:
+        return "Система"
+    return actor.get_full_name() or getattr(actor, "username", "") or str(actor)
+
+
+def _request_actor(request):
+    return getattr(request, "_notification_actor", None)
+
+
+def _send_procurement_notification(
+    *,
+    recipient,
+    verb,
+    procurement_request,
+    title,
+    description,
+    actor=None,
+    action_object=None,
+    extra_data=None,
+):
+    """Отправить procurement-уведомление одному получателю."""
+    if not recipient:
+        return
+
+    data = {
+        "title": title,
+        "request_id": procurement_request.id,
+    }
+    if actor:
+        data["actor_id"] = actor.id
+    if extra_data:
+        data.update(extra_data)
+
+    notify.send(
+        sender=actor,
+        recipient=recipient,
+        verb=verb,
+        action_object=action_object or procurement_request,
+        target=procurement_request,
+        description=description,
+        action_url=ActionURLs.request_detail(procurement_request.id),
+        data=data,
+    )
+
+
+def _notify_many(
+    recipients,
+    *,
+    verb,
+    procurement_request,
+    title,
+    description,
+    actor=None,
+    action_object=None,
+    extra_data=None,
+):
+    """Отправить уведомление списку получателей с дедупликацией."""
+    seen = set()
+    actor_id = _actor_id(actor)
+    for recipient in recipients:
+        if not recipient or recipient.id in seen:
+            continue
+        seen.add(recipient.id)
+        if actor_id and recipient.id == actor_id:
+            continue
+        _send_procurement_notification(
+            recipient=recipient,
+            verb=verb,
+            procurement_request=procurement_request,
+            title=title,
+            description=description,
+            actor=actor,
+            action_object=action_object,
+            extra_data=extra_data,
+        )
+
+
+def _processing_department_recipients(procurement_request):
+    """Активные участники отдела-исполнителя, включая роли и руководителя."""
+    if not procurement_request.processing_department_id:
+        return []
+
+    from employees.models import Employee, EmployeeDepartment, RoleAssignment
+
+    department = procurement_request.processing_department
+    recipient_ids = set(
+        EmployeeDepartment.objects.filter(
+            department_id=department.id,
+            is_active=True,
+        ).values_list("employee_id", flat=True)
+    )
+    recipient_ids.update(
+        RoleAssignment.objects.filter(
+            role__department_id=department.id,
+            is_active=True,
+        ).values_list("employee_id", flat=True)
+    )
+    if department.head_id:
+        recipient_ids.add(department.head_id)
+
+    return list(Employee.objects.filter(id__in=recipient_ids, is_active=True))
+
+
 def get_current_pending_approvals(request):
     """Вернуть pending approvals только текущего этапа."""
     from ..constants import ApprovalStatus
@@ -28,9 +136,9 @@ def get_current_pending_approvals(request):
 
 def notify_new_request(request):
     """
-    Уведомить о новой заявке на закупку.
+    Legacy-helper для старого сценария уведомления руководителя отдела.
 
-    Отправляет уведомление руководителю отдела.
+    Новая логика адресных заявок использует notify_processing_department_request().
 
     Args:
         request: Объект ProcurementRequest
@@ -65,6 +173,36 @@ def notify_new_request(request):
     )
 
 
+def notify_processing_department_request(request, actor=None):
+    """Уведомить отдел-исполнитель о новой адресной заявке."""
+    if not request.processing_department_id:
+        return
+
+    department_name = request.processing_department.name
+    notification_title, description = MessageTemplates.department_request(
+        request.title,
+        department_name,
+    )
+    recipients = _processing_department_recipients(request)
+    _notify_many(
+        recipients,
+        verb=NotificationVerbs.DEPARTMENT_REQUEST,
+        procurement_request=request,
+        title=notification_title,
+        description=description,
+        actor=actor,
+        extra_data={
+            "processing_department_id": request.processing_department_id,
+            "total_cost": float(request.total_cost),
+        },
+    )
+
+    logger.info(
+        f"[Procurement] Отправлено уведомление о заявке #{request.id} "
+        f"в отдел {department_name}"
+    )
+
+
 def notify_approvers(request):
     """
     Уведомить согласующих только текущего этапа.
@@ -96,18 +234,15 @@ def notify_approver(approval):
         approval.request.title, approval.request.total_cost
     )
 
-    notify.send(
-        sender=None,
+    _send_procurement_notification(
         recipient=approval.approver,
         verb=NotificationVerbs.PENDING_APPROVAL,
-        action_object=approval.request,
+        procurement_request=approval.request,
+        title=notification_title,
         description=description,
-        action_url=ActionURLs.request_detail(approval.request.id),
-        data={
-            'title': notification_title,
-            'request_id': approval.request.id,
-            'approval_id': approval.id,
-            'total_cost': float(approval.request.total_cost),
+        extra_data={
+            "approval_id": approval.id,
+            "total_cost": float(approval.request.total_cost),
         },
     )
 
@@ -117,7 +252,16 @@ def notify_approver(approval):
     )
 
 
-def notify_requestor(request, verb, title, message):
+def notify_requestor(
+    request,
+    verb,
+    title,
+    message,
+    *,
+    actor=None,
+    action_object=None,
+    extra_data=None,
+):
     """
     Уведомить создателя заявки.
 
@@ -127,17 +271,19 @@ def notify_requestor(request, verb, title, message):
         title: Заголовок уведомления
         message: Текст сообщения
     """
-    notify.send(
-        sender=None,
-        recipient=request.requestor,
+    actor = actor or _request_actor(request)
+    if actor and actor.id == request.requestor_id:
+        return
+
+    _send_procurement_notification(
+        actor=actor,
         verb=verb,
-        action_object=request,
+        recipient=request.requestor,
+        procurement_request=request,
+        title=title,
         description=message,
-        action_url=ActionURLs.request_detail(request.id),
-        data={
-            'title': title,
-            'request_id': request.id,
-        },
+        action_object=action_object,
+        extra_data=extra_data,
     )
 
     logger.info(
@@ -158,7 +304,11 @@ def notify_request_approved(request):
         request,
         NotificationVerbs.APPROVED,
         notification_title,
-        description
+        description,
+        extra_data={
+            "old_status": getattr(request, "_original_status", None),
+            "new_status": request.status,
+        },
     )
 
 
@@ -174,7 +324,11 @@ def notify_request_rejected(request):
         request,
         NotificationVerbs.REJECTED,
         notification_title,
-        description
+        description,
+        extra_data={
+            "old_status": getattr(request, "_original_status", None),
+            "new_status": request.status,
+        },
     )
 
 
@@ -184,40 +338,21 @@ def notify_request_completed(request):
 
     Отправляет уведомления:
     - Создателю заявки
-    - Всем одобрившим согласующим
 
     Args:
         request: Объект ProcurementRequest
     """
-    from ..constants import ApprovalStatus
-
-    # Уведомляем создателя
     notification_title, description = MessageTemplates.completed(request.title)
     notify_requestor(
         request,
         NotificationVerbs.COMPLETED,
         notification_title,
-        description
+        description,
+        extra_data={
+            "old_status": getattr(request, "_original_status", None),
+            "new_status": request.status,
+        },
     )
-
-    # Уведомляем всех одобривших согласующих
-    notification_title, description = MessageTemplates.completed_approver(
-        request.title
-    )
-
-    for approval in request.approvals.filter(status=ApprovalStatus.APPROVED):
-        notify.send(
-            sender=None,
-            recipient=approval.approver,
-            verb=NotificationVerbs.COMPLETED,
-            action_object=request,
-            description=description,
-            action_url=ActionURLs.request_detail(request.id),
-            data={
-                'title': notification_title,
-                'request_id': request.id,
-            },
-        )
 
 
 def notify_request_in_progress(request, executor):
@@ -226,57 +361,28 @@ def notify_request_in_progress(request, executor):
 
     Отправляет уведомления:
     - Создателю заявки (если он не сам взял в работу)
-    - Всем одобрившим согласующим
 
     Args:
         request: Объект ProcurementRequest
         executor: Пользователь, взявший заявку в работу
     """
-    from ..constants import ApprovalStatus
-
     executor_name = executor.get_full_name() if executor else 'Сотрудник'
 
-    # Уведомляем создателя (если он не сам взял в работу)
-    if executor and request.requestor != executor:
-        notification_title, description = (
-            MessageTemplates.in_progress_requestor(
-                request.title, executor_name
-            )
-        )
-
-        notify.send(
-            sender=executor,
-            recipient=request.requestor,
-            verb=NotificationVerbs.IN_PROGRESS,
-            action_object=request,
-            description=description,
-            action_url=ActionURLs.request_detail(request.id),
-            data={
-                'title': notification_title,
-                'request_id': request.id,
-                'executor_id': executor.id,
-            },
-        )
-
-    # Уведомляем всех одобривших согласующих
-    notification_title, description = MessageTemplates.in_progress(
+    notification_title, description = MessageTemplates.in_progress_requestor(
         request.title, executor_name
     )
-
-    for approval in request.approvals.filter(status=ApprovalStatus.APPROVED):
-        notify.send(
-            sender=executor,
-            recipient=approval.approver,
-            verb=NotificationVerbs.IN_PROGRESS,
-            action_object=request,
-            description=description,
-            action_url=ActionURLs.request_detail(request.id),
-            data={
-                'title': notification_title,
-                'request_id': request.id,
-                'executor_id': executor.id if executor else None,
-            },
-        )
+    notify_requestor(
+        request,
+        NotificationVerbs.IN_PROGRESS,
+        notification_title,
+        description,
+        actor=executor,
+        extra_data={
+            "old_status": getattr(request, "_original_status", None),
+            "new_status": request.status,
+            "executor_id": executor.id if executor else None,
+        },
+    )
 
 
 def notify_request_cancelled(request):
@@ -293,20 +399,21 @@ def notify_request_cancelled(request):
         request.title, reason
     )
 
-    for approval in request.approvals.all():
-        notify.send(
-            sender=None,
-            recipient=approval.approver,
-            verb=NotificationVerbs.CANCELLED,
-            action_object=request,
-            description=description,
-            action_url=ActionURLs.request_detail(request.id),
-            data={
-                'title': notification_title,
-                'request_id': request.id,
-                'reason': reason,
-            },
-        )
+    actor = _request_actor(request)
+    recipients = [approval.approver for approval in request.approvals.all()]
+    _notify_many(
+        recipients,
+        verb=NotificationVerbs.CANCELLED,
+        procurement_request=request,
+        title=notification_title,
+        description=description,
+        actor=actor,
+        extra_data={
+            "reason": reason,
+            "old_status": getattr(request, "_original_status", None),
+            "new_status": request.status,
+        },
+    )
 
 
 def notify_stage_approved(approval):
@@ -325,7 +432,12 @@ def notify_stage_approved(approval):
         approval.request,
         NotificationVerbs.STAGE_APPROVED,
         notification_title,
-        description
+        description,
+        actor=approval.approver,
+        extra_data={
+            "approval_id": approval.id,
+            "approval_priority": approval.priority,
+        },
     )
     notify_approvers(approval.request)
 
@@ -346,5 +458,80 @@ def notify_stage_rejected(approval):
         approval.request,
         NotificationVerbs.REJECTED,
         notification_title,
-        description
+        description,
+        actor=approval.approver,
+        extra_data={
+            "approval_id": approval.id,
+            "approval_priority": approval.priority,
+            "new_status": "rejected",
+        },
+    )
+
+
+def notify_item_updated(item, actor=None, changed_fields=None):
+    """Уведомить автора заявки об изменении позиции."""
+    procurement_request = item.request
+    actor_name = _actor_name(actor)
+    notification_title, description = MessageTemplates.item_updated(
+        procurement_request.title,
+        item.name,
+        actor_name,
+    )
+    notify_requestor(
+        procurement_request,
+        NotificationVerbs.ITEM_UPDATED,
+        notification_title,
+        description,
+        actor=actor,
+        extra_data={
+            "item_id": item.id,
+            "item_name": item.name,
+            "changed_fields": changed_fields or [],
+        },
+    )
+
+
+def notify_request_comment(request, message, actor=None):
+    """Уведомить автора заявки о комментарии к заявке."""
+    actor = actor or message.author
+    notification_title, description = MessageTemplates.request_commented(
+        request.title,
+        _actor_name(actor),
+    )
+    notify_requestor(
+        request,
+        NotificationVerbs.REQUEST_COMMENTED,
+        notification_title,
+        description,
+        actor=actor,
+        action_object=message,
+        extra_data={
+            "comment_id": message.id,
+            "author_id": message.author_id,
+        },
+    )
+
+
+def notify_item_comment(item, message, actor=None):
+    """Уведомить автора заявки о комментарии к позиции."""
+    actor = actor or message.author
+    procurement_request = item.request
+    notification_title, description = MessageTemplates.item_commented(
+        procurement_request.title,
+        item.name,
+        _actor_name(actor),
+    )
+    notify_requestor(
+        procurement_request,
+        NotificationVerbs.ITEM_COMMENTED,
+        notification_title,
+        description,
+        actor=actor,
+        action_object=message,
+        extra_data={
+            "comment_id": message.id,
+            "author_id": message.author_id,
+            "item_id": item.id,
+            "item_name": item.name,
+        },
     )

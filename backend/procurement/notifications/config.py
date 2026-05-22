@@ -12,6 +12,7 @@ class NotificationVerbs:
 
     # Новая заявка
     NEW_REQUEST = 'procurement_new_request'
+    DEPARTMENT_REQUEST = 'procurement_department_request'
 
     # Согласование
     PENDING_APPROVAL = 'procurement_pending_approval'
@@ -23,6 +24,11 @@ class NotificationVerbs:
     IN_PROGRESS = 'procurement_in_progress'
     COMPLETED = 'procurement_completed'
     CANCELLED = 'procurement_cancelled'
+
+    # Позиции и комментарии
+    ITEM_UPDATED = 'procurement_item_updated'
+    REQUEST_COMMENTED = 'procurement_request_commented'
+    ITEM_COMMENTED = 'procurement_item_commented'
 
 
 # ===== Шаблоны сообщений =====
@@ -40,6 +46,17 @@ class MessageTemplates:
         """
         notification_title = 'Новая заявка на закупку'
         description = f'Создана заявка "{title}" на сумму {total_cost}₽'
+        return notification_title, description
+
+    @staticmethod
+    def department_request(
+        title: str, department_name: str
+    ) -> tuple[str, str]:
+        notification_title = 'Новая заявка для отдела'
+        description = (
+            f'Заявка "{title}" направлена в отдел '
+            f'{department_name}.'
+        )
         return notification_title, description
 
     @staticmethod
@@ -194,6 +211,38 @@ class MessageTemplates:
         description = (
             f'Заявка "{title}" была отменена автором. '
             f'Причина: {reason}'
+        )
+        return notification_title, description
+
+    @staticmethod
+    def item_updated(
+        title: str, item_name: str, actor_name: str
+    ) -> tuple[str, str]:
+        notification_title = 'Позиция закупки изменена'
+        description = (
+            f'{actor_name} изменил позицию "{item_name}" '
+            f'в заявке "{title}".'
+        )
+        return notification_title, description
+
+    @staticmethod
+    def request_commented(
+        title: str, actor_name: str
+    ) -> tuple[str, str]:
+        notification_title = 'Новый комментарий к закупке'
+        description = (
+            f'{actor_name} оставил комментарий к заявке "{title}".'
+        )
+        return notification_title, description
+
+    @staticmethod
+    def item_commented(
+        title: str, item_name: str, actor_name: str
+    ) -> tuple[str, str]:
+        notification_title = 'Новый комментарий к позиции'
+        description = (
+            f'{actor_name} оставил комментарий к позиции "{item_name}" '
+            f'в заявке "{title}".'
         )
         return notification_title, description
 

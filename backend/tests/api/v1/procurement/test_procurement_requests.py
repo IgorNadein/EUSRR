@@ -10,7 +10,13 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from employees.models import Department, Employee, EmployeeDepartment
+from employees.models import (
+    Department,
+    DepartmentRole,
+    Employee,
+    EmployeeDepartment,
+    RoleAssignment,
+)
 from procurement.constants import (
     ApprovalStatus,
     ProcurementFulfillmentStatus,
@@ -758,6 +764,125 @@ class TestProcessingDepartmentWorkflow:
             urgency=UrgencyLevel.MEDIUM,
         )
 
+    def test_create_draft_request_does_not_notify(
+        self, api_client, user, department, monkeypatch
+    ):
+        sent = []
+
+        def fake_notify_send(**kwargs):
+            sent.append(kwargs)
+
+        monkeypatch.setattr(
+            "procurement.notifications.handlers.notify.send",
+            fake_notify_send,
+        )
+
+        api_client.force_authenticate(user=user)
+        url = reverse('api:v1:procurement:procurementrequest-list')
+
+        response = api_client.post(
+            url,
+            {
+                "title": "Черновик закупки",
+                "description": "Без отдела-исполнителя",
+                "department": department.id,
+                "urgency": UrgencyLevel.MEDIUM,
+                "items": [
+                    {
+                        "name": "Перчатки",
+                        "quantity": 1,
+                        "unit": "шт",
+                        "estimated_unit_price": "100.00",
+                    }
+                ],
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data["status"] == ProcurementStatus.DRAFT
+        assert sent == []
+
+    def test_create_processing_department_request_notifies_department_members(
+        self, api_client, user, department, supply_department, supply_user,
+        monkeypatch
+    ):
+        sent = []
+
+        def fake_notify_send(**kwargs):
+            sent.append(kwargs)
+
+        monkeypatch.setattr(
+            "procurement.notifications.handlers.notify.send",
+            fake_notify_send,
+        )
+
+        supply_head = Employee.objects.create_user(
+            email="supply-head@example.com",
+            password="testpass123",
+            phone_number="+79998888890",
+            first_name="Начальник",
+            last_name="Снабжения",
+            is_active=True,
+            email_verified=True,
+            send_activation_email=False,
+        )
+        supply_department.head = supply_head
+        supply_department.save()
+
+        role_user = Employee.objects.create_user(
+            email="role-supply@example.com",
+            password="testpass123",
+            phone_number="+79998888891",
+            first_name="Ролевой",
+            last_name="Снабженец",
+            is_active=True,
+            email_verified=True,
+            send_activation_email=False,
+        )
+        role = DepartmentRole.objects.create(
+            department=supply_department,
+            name="Закупки",
+        )
+        RoleAssignment.objects.create(employee=role_user, role=role)
+
+        api_client.force_authenticate(user=user)
+        url = reverse('api:v1:procurement:procurementrequest-list')
+
+        response = api_client.post(
+            url,
+            {
+                "title": "Расходники",
+                "description": "Нужно для производства",
+                "department": department.id,
+                "processing_department": supply_department.id,
+                "urgency": UrgencyLevel.MEDIUM,
+                "items": [
+                    {
+                        "name": "Лампы",
+                        "quantity": 2,
+                        "unit": "шт",
+                        "estimated_unit_price": "300.00",
+                    }
+                ],
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data["status"] == ProcurementStatus.WAITING
+        recipients = sorted(
+            item["recipient"].email
+            for item in sent
+            if item["verb"] == "procurement_department_request"
+        )
+        assert recipients == [
+            "role-supply@example.com",
+            "supply-head@example.com",
+            "supply@example.com",
+        ]
+        assert user.email not in recipients
+
     def test_available_shows_processing_department_requests(
         self, api_client, supply_user, processing_request, procurement_item_factory
     ):
@@ -847,10 +972,214 @@ class TestProcessingDepartmentWorkflow:
         )
         assert processing_request.status == ProcurementStatus.COMPLETED
 
+    def test_item_update_notifies_requestor(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory, monkeypatch
+    ):
+        sent = []
+
+        def fake_notify_send(**kwargs):
+            sent.append(kwargs)
+
+        monkeypatch.setattr(
+            "procurement.notifications.handlers.notify.send",
+            fake_notify_send,
+        )
+
+        item = procurement_item_factory(request=processing_request)
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save()
+        sent.clear()
+
+        api_client.force_authenticate(user=supply_user)
+        item_url = reverse(
+            'api:v1:procurement:procurementitem-detail',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.patch(
+            item_url,
+            {
+                'execution_status': ProcurementItemExecutionStatus.ORDERED,
+                'actual_unit_price': '120.00',
+                'expected_delivery_date': '2026-05-25',
+                'links': ['https://example.com/item'],
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        item_notifications = [
+            item for item in sent
+            if item["verb"] == "procurement_item_updated"
+        ]
+        assert len(item_notifications) == 1
+        assert item_notifications[0]["recipient"] == processing_request.requestor
+        assert item_notifications[0]["data"]["item_id"] == item.id
+        assert sorted(item_notifications[0]["data"]["changed_fields"]) == [
+            "actual_unit_price",
+            "execution_status",
+            "expected_delivery_date",
+            "links",
+        ]
+
+    def test_requestor_item_update_does_not_notify_self(
+        self, api_client, user, processing_request,
+        procurement_item_factory, monkeypatch
+    ):
+        sent = []
+
+        def fake_notify_send(**kwargs):
+            sent.append(kwargs)
+
+        monkeypatch.setattr(
+            "procurement.notifications.handlers.notify.send",
+            fake_notify_send,
+        )
+
+        item = procurement_item_factory(request=processing_request)
+
+        api_client.force_authenticate(user=user)
+        item_url = reverse(
+            'api:v1:procurement:procurementitem-detail',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.patch(
+            item_url,
+            {'name': 'Перчатки нитриловые'},
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert [
+            item for item in sent
+            if item["verb"] == "procurement_item_updated"
+        ] == []
+
+    def test_request_comment_notifies_requestor(
+        self, api_client, supply_user, processing_request, monkeypatch
+    ):
+        sent = []
+
+        def fake_notify_send(**kwargs):
+            sent.append(kwargs)
+
+        monkeypatch.setattr(
+            "procurement.notifications.handlers.notify.send",
+            fake_notify_send,
+        )
+
+        api_client.force_authenticate(user=supply_user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-comments',
+            kwargs={'pk': processing_request.id},
+        )
+
+        response = api_client.post(url, {'text': 'Взяли в анализ'})
+
+        assert response.status_code == status.HTTP_201_CREATED
+        comment_notifications = [
+            item for item in sent
+            if item["verb"] == "procurement_request_commented"
+        ]
+        assert len(comment_notifications) == 1
+        assert comment_notifications[0]["recipient"] == processing_request.requestor
+        assert comment_notifications[0]["data"]["comment_id"] == response.data["id"]
+
+    def test_item_comment_notifies_requestor(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory, monkeypatch
+    ):
+        sent = []
+
+        def fake_notify_send(**kwargs):
+            sent.append(kwargs)
+
+        monkeypatch.setattr(
+            "procurement.notifications.handlers.notify.send",
+            fake_notify_send,
+        )
+
+        item = procurement_item_factory(request=processing_request)
+        api_client.force_authenticate(user=supply_user)
+        url = reverse(
+            'api:v1:procurement:procurementitem-comments',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.post(url, {'text': 'Заказали аналог'})
+
+        assert response.status_code == status.HTTP_201_CREATED
+        comment_notifications = [
+            item for item in sent
+            if item["verb"] == "procurement_item_commented"
+        ]
+        assert len(comment_notifications) == 1
+        assert comment_notifications[0]["recipient"] == processing_request.requestor
+        assert comment_notifications[0]["data"]["item_id"] == item.id
+        assert comment_notifications[0]["data"]["comment_id"] == response.data["id"]
+
+    def test_requestor_comments_do_not_notify_self(
+        self, api_client, user, processing_request,
+        procurement_item_factory, monkeypatch
+    ):
+        sent = []
+
+        def fake_notify_send(**kwargs):
+            sent.append(kwargs)
+
+        monkeypatch.setattr(
+            "procurement.notifications.handlers.notify.send",
+            fake_notify_send,
+        )
+
+        item = procurement_item_factory(request=processing_request)
+
+        api_client.force_authenticate(user=user)
+        request_comment_url = reverse(
+            'api:v1:procurement:procurementrequest-comments',
+            kwargs={'pk': processing_request.id},
+        )
+        item_comment_url = reverse(
+            'api:v1:procurement:procurementitem-comments',
+            kwargs={'pk': item.id},
+        )
+
+        request_response = api_client.post(
+            request_comment_url,
+            {'text': 'Мой комментарий'},
+        )
+        item_response = api_client.post(
+            item_comment_url,
+            {'text': 'Мой комментарий к позиции'},
+        )
+
+        assert request_response.status_code == status.HTTP_201_CREATED
+        assert item_response.status_code == status.HTTP_201_CREATED
+        assert [
+            item for item in sent
+            if item["verb"] in {
+                "procurement_request_commented",
+                "procurement_item_commented",
+            }
+        ] == []
+
     def test_mark_all_received_completes_processing_request(
         self, api_client, supply_user, processing_request,
-        procurement_item_factory
+        procurement_item_factory, monkeypatch
     ):
+        sent = []
+
+        def fake_notify_send(**kwargs):
+            sent.append(kwargs)
+
+        monkeypatch.setattr(
+            "procurement.notifications.handlers.notify.send",
+            fake_notify_send,
+        )
+
         item_1 = procurement_item_factory(request=processing_request)
         item_2 = procurement_item_factory(
             request=processing_request,
@@ -859,6 +1188,7 @@ class TestProcessingDepartmentWorkflow:
         processing_request.executor = supply_user
         processing_request.status = ProcurementStatus.IN_PROGRESS
         processing_request.save()
+        sent.clear()
 
         api_client.force_authenticate(user=supply_user)
         url = reverse(
@@ -879,6 +1209,21 @@ class TestProcessingDepartmentWorkflow:
             == ProcurementFulfillmentStatus.COMPLETED
         )
         assert processing_request.status == ProcurementStatus.COMPLETED
+        item_update_recipients = [
+            item["recipient"].email
+            for item in sent
+            if item["verb"] == "procurement_item_updated"
+        ]
+        assert item_update_recipients == [
+            processing_request.requestor.email,
+            processing_request.requestor.email,
+        ]
+        completed_recipients = [
+            item["recipient"].email
+            for item in sent
+            if item["verb"] == "procurement_completed"
+        ]
+        assert completed_recipients == [processing_request.requestor.email]
 
 
 # ==============================================================================
@@ -1007,6 +1352,12 @@ class TestProcurementRequestWorkflow:
             if item["verb"] == "procurement_pending_approval"
         ]
         assert pending_recipients == ["user@example.com"]
+        stage_recipients = [
+            item["recipient"].email
+            for item in sent
+            if item["verb"] == "procurement_stage_approved"
+        ]
+        assert stage_recipients == [procurement_request.requestor.email]
 
     def test_final_approve_does_not_notify_future_approvers(
         self, api_client, approver_with_permission, procurement_request, procurement_item, monkeypatch
@@ -1048,6 +1399,12 @@ class TestProcurementRequestWorkflow:
             if item["verb"] == "procurement_pending_approval"
         ]
         assert pending_notifications == []
+        approved_recipients = [
+            item["recipient"].email
+            for item in sent
+            if item["verb"] == "procurement_approved"
+        ]
+        assert approved_recipients == [procurement_request.requestor.email]
 
     def test_reject_notifies_requestor_without_next_stage_notification(
         self, api_client, department_head, procurement_request, procurement_item, monkeypatch
@@ -1093,8 +1450,8 @@ class TestProcurementRequestWorkflow:
 
         verbs = [item["verb"] for item in sent]
         recipients = [item["recipient"].email for item in sent]
-        assert "procurement_rejected" in verbs
-        assert procurement_request.requestor.email in recipients
+        assert verbs.count("procurement_rejected") == 1
+        assert recipients.count(procurement_request.requestor.email) == 1
         assert "procurement_pending_approval" not in verbs
 
     def test_cancel_notifies_all_related_approvers(
@@ -1144,12 +1501,12 @@ class TestProcurementRequestWorkflow:
             for item in sent
             if item["verb"] == "procurement_cancelled"
         ]
-        assert cancelled_recipients == ["head@example.com", "user@example.com"]
+        assert cancelled_recipients == ["head@example.com"]
 
-    def test_start_work_notifies_requestor_and_approved_approvers(
+    def test_start_work_notifies_requestor(
         self, api_client, user, staff_user, department_head, procurement_request, procurement_item, monkeypatch
     ):
-        """При взятии в работу уведомляются создатель и уже одобрившие этапы."""
+        """При взятии в работу уведомляется автор заявки."""
         sent = []
 
         def fake_notify_send(**kwargs):
@@ -1196,14 +1553,12 @@ class TestProcurementRequestWorkflow:
         ]
         assert in_progress_recipients == [
             procurement_request.requestor.email,
-            "head@example.com",
-            "user@example.com",
         ]
 
-    def test_complete_notifies_requestor_and_approved_approvers(
+    def test_complete_notifies_requestor(
         self, api_client, user, staff_user, department_head, procurement_request, procurement_item, monkeypatch
     ):
-        """При завершении уведомляются создатель и уже одобрившие этапы."""
+        """При завершении уведомляется автор заявки."""
         sent = []
 
         def fake_notify_send(**kwargs):
@@ -1250,8 +1605,6 @@ class TestProcurementRequestWorkflow:
         ]
         assert completed_recipients == [
             procurement_request.requestor.email,
-            "head@example.com",
-            "user@example.com",
         ]
 
     def test_submit_request(

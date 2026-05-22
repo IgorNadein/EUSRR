@@ -17,8 +17,8 @@
 Usage:
     # Сигналы подключаются автоматически через AppConfig.ready()
     # Для ручной отправки:
-    from procurement.notifications import notify_new_request
-    notify_new_request(request_obj)
+    from procurement.notifications import notify_request_comment
+    notify_request_comment(request_obj, message_obj, actor=user)
 
     # WebSocket broadcast происходит автоматически через:
     # notify.send() → channels.py → Celery → WebSocketNotificationSender
@@ -30,6 +30,7 @@ from .handlers import (
     notify_new_request,
     notify_approvers,
     notify_approver,
+    notify_processing_department_request,
     notify_requestor,
     notify_request_approved,
     notify_request_rejected,
@@ -38,6 +39,9 @@ from .handlers import (
     notify_request_cancelled,
     notify_stage_approved,
     notify_stage_rejected,
+    notify_item_updated,
+    notify_request_comment,
+    notify_item_comment,
 )
 
 # Сигналы импортируются для регистрации через AppConfig.ready()
@@ -54,6 +58,7 @@ __all__ = [
     'notify_new_request',
     'notify_approvers',
     'notify_approver',
+    'notify_processing_department_request',
     'notify_requestor',
     'notify_request_approved',
     'notify_request_rejected',
@@ -62,6 +67,9 @@ __all__ = [
     'notify_request_cancelled',
     'notify_stage_approved',
     'notify_stage_rejected',
+    'notify_item_updated',
+    'notify_request_comment',
+    'notify_item_comment',
 
     # Signals module (для импорта в AppConfig)
     'signals',

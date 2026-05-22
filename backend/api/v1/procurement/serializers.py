@@ -356,13 +356,19 @@ class ProcurementRequestCreateSerializer(serializers.ModelSerializer):
         """Создать заявку с позициями."""
         items_data = validated_data.pop("items", [])
         request = self.context["request"]
+        has_processing_department = bool(
+            validated_data.get("processing_department")
+        )
 
-        if validated_data.get("processing_department"):
+        if has_processing_department:
             validated_data["status"] = ProcurementStatus.WAITING
 
-        procurement_request = ProcurementRequest.objects.create(
-            requestor=request.user, **validated_data
+        procurement_request = ProcurementRequest(
+            requestor=request.user,
+            **validated_data,
         )
+        procurement_request._notification_actor = request.user
+        procurement_request.save()
 
         # Создаем позиции (если они переданы)
         for item_data in items_data:

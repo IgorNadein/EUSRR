@@ -26,6 +26,11 @@ from procurement.models import (
     ProcurementRequest,
     Supplier,
 )
+from procurement.notifications.handlers import (
+    notify_item_comment,
+    notify_item_updated,
+    notify_request_comment,
+)
 from communications import comments_helpers
 from communications.models import Message
 from procurement.services import ProcurementApprovalResolver
@@ -258,6 +263,11 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             author=request.user,
             content=text,
         )
+        notify_request_comment(
+            procurement_request,
+            message,
+            actor=request.user,
+        )
         author_ser = EmployeeBriefSerializer(message.author)
         return Response(
             {
@@ -417,6 +427,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 
             procurement_request.status = ProcurementStatus.PENDING
             procurement_request.submitted_at = timezone.now()
+            procurement_request._notification_actor = request.user
             procurement_request.save(
                 update_fields=["status", "submitted_at", "updated_at"]
             )
@@ -471,6 +482,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             # Сигнал post_save(ProcurementRequest) отправит уведомление
             # requestor'у
             procurement_request.status = ProcurementStatus.APPROVED
+            procurement_request._notification_actor = request.user
             procurement_request.save()
 
         procurement_request.refresh_from_db()
@@ -506,6 +518,8 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         # Меняем статус заявки; сигнал post_save(ProcurementRequest) уведомит
         # requestor'а
         procurement_request.status = ProcurementStatus.REJECTED
+        procurement_request._notification_actor = request.user
+        procurement_request._requestor_rejected_notified = True
         procurement_request.save()
 
         procurement_request.refresh_from_db()
@@ -647,6 +661,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         procurement_request.executor = request.user
         procurement_request.started_at = timezone.now()
         procurement_request.status = ProcurementStatus.IN_PROGRESS
+        procurement_request._notification_actor = request.user
         procurement_request.save()
 
         serializer = self.get_serializer(procurement_request)
@@ -674,9 +689,9 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         # Меняем статус
         procurement_request.status = ProcurementStatus.COMPLETED
         procurement_request.completed_at = timezone.now()
+        procurement_request._notification_actor = request.user
         procurement_request.save()
-        # Сигнал post_save(ProcurementRequest) с COMPLETED отправит уведомления
-        # requestor'у и согласующим
+        # Сигнал post_save(ProcurementRequest) с COMPLETED уведомит автора
 
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)
@@ -701,9 +716,23 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        items_to_update = list(
+            procurement_request.items.exclude(
+                execution_status=ProcurementItemExecutionStatus.RECEIVED,
+            )
+        )
+
         procurement_request.items.update(
             execution_status=ProcurementItemExecutionStatus.RECEIVED,
         )
+        for item in items_to_update:
+            item.execution_status = ProcurementItemExecutionStatus.RECEIVED
+            notify_item_updated(
+                item,
+                actor=request.user,
+                changed_fields=["execution_status"],
+            )
+        procurement_request._notification_actor = request.user
         procurement_request.recalculate_fulfillment_status(save=True)
         procurement_request.refresh_from_db()
 
@@ -736,6 +765,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 
         # Сохраняем причину на экземпляре, чтобы сигнал мог её использовать
         procurement_request.cancellation_reason = reason or "не указана"
+        procurement_request._notification_actor = request.user
 
         # Меняем статус; сигнал post_save(ProcurementRequest) с CANCELLED
         # уведомит согласующих с указанием причины
@@ -748,6 +778,18 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 
 class ProcurementItemViewSet(viewsets.ModelViewSet):
     """ViewSet для позиций заявок."""
+
+    NOTIFICATION_TRACKED_FIELDS = [
+        "name",
+        "quantity",
+        "unit",
+        "estimated_unit_price",
+        "links",
+        "expected_delivery_date",
+        "actual_unit_price",
+        "execution_status",
+        "executor_comment",
+    ]
 
     queryset = ProcurementItem.objects.select_related(
         "request",
@@ -944,7 +986,28 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         """Проверяем права при обновлении позиции."""
         item = self.get_object()
         self._check_item_edit_permission(item)
-        serializer.save()
+        procurement_request = item.request
+        before = {
+            field: getattr(item, field)
+            for field in self.NOTIFICATION_TRACKED_FIELDS
+        }
+        procurement_request._notification_actor = self.request.user
+        updated_item = serializer.save()
+        after = {
+            field: getattr(updated_item, field)
+            for field in self.NOTIFICATION_TRACKED_FIELDS
+        }
+        changed_fields = [
+            field
+            for field in self.NOTIFICATION_TRACKED_FIELDS
+            if before[field] != after[field]
+        ]
+        if changed_fields:
+            notify_item_updated(
+                updated_item,
+                actor=self.request.user,
+                changed_fields=changed_fields,
+            )
 
     def perform_destroy(self, instance):
         """Проверяем права при удалении позиции."""
@@ -993,6 +1056,11 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
             obj=item,
             author=request.user,
             content=text,
+        )
+        notify_item_comment(
+            item,
+            message,
+            actor=request.user,
         )
         author_ser = EmployeeBriefSerializer(message.author)
         return Response(
