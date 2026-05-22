@@ -3,6 +3,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "@/lib/api";
 import { canManageRequests, canManageSupplier } from "@/lib/permissions";
+import { cleanLinkRows, toLinkRows, validateLinkRows } from "@/lib/procurementLinks";
 import { displayUserName, extractNextPage, loadAllPages } from "@/lib/shared";
 import type {
   Department,
@@ -19,7 +20,7 @@ type ItemDraft = {
   unit: string;
   estimated_unit_price: string;
   supplier_info: string;
-  linksText: string;
+  links: string[];
 };
 
 const emptyItem: ItemDraft = {
@@ -29,7 +30,7 @@ const emptyItem: ItemDraft = {
   unit: "шт",
   estimated_unit_price: "",
   supplier_info: "",
-  linksText: "",
+  links: [""],
 };
 
 type FormState = {
@@ -124,13 +125,6 @@ const getReadableError = (error: unknown, fallback: string): string => {
 
   return raw;
 };
-
-const parseLinks = (value: string): string[] => (
-  value
-    .split(/[\n,]+/)
-    .map((link) => link.trim())
-    .filter(Boolean)
-);
 
 export function useProcurementPage(user: User | null) {
   const canManage = canManageRequests(user);
@@ -385,7 +379,7 @@ export function useProcurementPage(user: User | null) {
             unit: item.unit || "шт",
             estimated_unit_price: String(item.estimated_unit_price || ""),
             supplier_info: item.supplier_info || "",
-            linksText: Array.isArray(item.links) ? item.links.join("\n") : "",
+            links: toLinkRows(item.links),
           }))
         : [{ ...emptyItem }],
     });
@@ -463,6 +457,11 @@ export function useProcurementPage(user: User | null) {
           setActionError(`Позиция «${item.name}»: укажите цену за единицу.`);
           return;
         }
+        const linksError = validateLinkRows(item.links, `Позиция «${item.name}», ссылка`);
+        if (linksError) {
+          setActionError(linksError);
+          return;
+        }
       }
 
       const payload: Record<string, unknown> = {
@@ -478,7 +477,7 @@ export function useProcurementPage(user: User | null) {
           unit: item.unit || "шт",
           estimated_unit_price: item.estimated_unit_price,
           supplier_info: item.supplier_info || undefined,
-          links: parseLinks(item.linksText),
+          links: cleanLinkRows(item.links),
         })),
       };
 
@@ -697,6 +696,13 @@ export function useProcurementPage(user: User | null) {
     try {
       setBusyKey(`item-${itemId}`);
       setActionError(null);
+      if (Array.isArray(patch.links)) {
+        const linksError = validateLinkRows(patch.links.map((link) => String(link || "")));
+        if (linksError) {
+          setActionError(linksError);
+          return false;
+        }
+      }
       await apiClient.updateProcurementItem(itemId, patch);
       setActionSuccess("Позиция обновлена.");
       await refreshOne(requestId);

@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Check, CheckCircle2, CircleDot, ExternalLink, Save, X } from "lucide-react";
+import { Check, CheckCircle2, CircleDot, ExternalLink, Plus, Save, X } from "lucide-react";
 import { RequestAvatar } from "@/components/requests/RequestAvatar";
 
+import { cleanLinkRows, linkHref, toLinkRows } from "@/lib/procurementLinks";
 import { formatDate, formatMoney, userProfileLink } from "@/lib/shared";
 import type { ProcurementItem, ProcurementItemExecutionStatus, ProcurementRequest, User } from "@/types/api";
 
@@ -28,7 +29,7 @@ type ItemProcessingDraft = {
   expected_delivery_date: string;
   actual_unit_price: string;
   executor_comment: string;
-  linksText: string;
+  links: string[];
 };
 
 const executionStatusOptions: { value: ProcurementItemExecutionStatus; label: string }[] = [
@@ -64,17 +65,8 @@ const normalizeItemDraft = (item: ProcurementItem): ItemProcessingDraft => ({
   expected_delivery_date: item.expected_delivery_date || "",
   actual_unit_price: item.actual_unit_price ? String(item.actual_unit_price) : "",
   executor_comment: item.executor_comment || "",
-  linksText: Array.isArray(item.links) ? item.links.join("\n") : "",
+  links: toLinkRows(item.links),
 });
-
-const parseLinks = (value: string): string[] => (
-  value
-    .split(/[\n,]+/)
-    .map((link) => link.trim())
-    .filter(Boolean)
-);
-
-const linkHref = (link: string) => (/^https?:\/\//i.test(link) ? link : `https://${link}`);
 
 interface ProcurementItemCardProps {
   item: ProcurementItem;
@@ -104,7 +96,7 @@ function ProcurementItemCard({
       expected_delivery_date: draft.expected_delivery_date || null,
       actual_unit_price: draft.actual_unit_price || null,
       executor_comment: draft.executor_comment,
-      links: parseLinks(draft.linksText),
+      links: cleanLinkRows(draft.links),
     });
   };
 
@@ -192,12 +184,41 @@ function ProcurementItemCard({
           </div>
           <div>
             <label className="app-text-muted mb-1 block text-[11px] font-medium">Ссылки</label>
-            <textarea
-              value={draft.linksText}
-              onChange={(event) => updateDraft({ linksText: event.target.value })}
-              rows={2}
-              className="app-input app-text-wrap min-h-16 w-full rounded-lg px-3 py-2 text-xs"
-            />
+            <div className="space-y-2">
+              {draft.links.map((link, linkIndex) => (
+                <div key={linkIndex} className="flex items-center gap-2">
+                  <input
+                    value={link}
+                    onChange={(event) => updateDraft({
+                      links: draft.links.map((currentLink, currentIndex) => (
+                        currentIndex === linkIndex ? event.target.value : currentLink
+                      )),
+                    })}
+                    placeholder="https://example.ru/item"
+                    className="app-input min-w-0 flex-1 rounded-lg px-3 py-2 text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => updateDraft({
+                      links: draft.links.length > 1
+                        ? draft.links.filter((_, currentIndex) => currentIndex !== linkIndex)
+                        : [""],
+                    })}
+                    className="app-action-secondary inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                    title="Удалить ссылку"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => updateDraft({ links: [...draft.links, ""] })}
+                className="app-link-accent inline-flex items-center gap-1 text-xs font-medium"
+              >
+                <Plus size={12} /> Добавить ссылку
+              </button>
+            </div>
           </div>
           <div className="sm:col-span-2">
             <label className="app-text-muted mb-1 block text-[11px] font-medium">Комментарий исполнителя</label>
