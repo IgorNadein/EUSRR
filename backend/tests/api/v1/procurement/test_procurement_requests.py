@@ -494,6 +494,162 @@ class TestProcurementRequestComments:
         assert after_item['comments_count'] == 0
 
 
+class TestProcurementItemComments:
+    """Комментарии к позиции заявки на закупку."""
+
+    def test_item_comment_lifecycle_updates_comments_count(
+        self, api_client, user, procurement_item
+    ):
+        api_client.force_authenticate(user=user)
+
+        list_url = reverse('api:v1:procurement:procurementitem-list')
+        comments_url = reverse(
+            'api:v1:procurement:procurementitem-comments',
+            kwargs={'pk': procurement_item.id}
+        )
+
+        before = api_client.get(list_url, {'request': procurement_item.request_id})
+        assert before.status_code == status.HTTP_200_OK
+        before_item = next(
+            item for item in before.data['results']
+            if item['id'] == procurement_item.id
+        )
+        assert before_item['comments_count'] == 0
+
+        create_response = api_client.post(
+            comments_url,
+            {'text': 'Комментарий по конкретной позиции'},
+            format='json',
+        )
+        assert create_response.status_code == status.HTTP_201_CREATED
+        assert create_response.data['item'] == procurement_item.id
+        assert create_response.data['request'] == procurement_item.request_id
+        comment_id = create_response.data['id']
+
+        comments_response = api_client.get(comments_url)
+        assert comments_response.status_code == status.HTTP_200_OK
+        assert len(comments_response.data) == 1
+        assert (
+            comments_response.data[0]['text']
+            == 'Комментарий по конкретной позиции'
+        )
+
+        middle = api_client.get(list_url, {'request': procurement_item.request_id})
+        middle_item = next(
+            item for item in middle.data['results']
+            if item['id'] == procurement_item.id
+        )
+        assert middle_item['comments_count'] == 1
+
+        request_detail_url = reverse(
+            'api:v1:procurement:procurementrequest-detail',
+            kwargs={'pk': procurement_item.request_id}
+        )
+        request_detail = api_client.get(request_detail_url)
+        assert request_detail.status_code == status.HTTP_200_OK
+        detail_item = next(
+            item for item in request_detail.data['items']
+            if item['id'] == procurement_item.id
+        )
+        assert detail_item['comments_count'] == 1
+
+        delete_url = reverse(
+            'api:v1:procurement:procurementitem-delete-comment',
+            kwargs={'pk': procurement_item.id, 'comment_id': comment_id}
+        )
+        delete_response = api_client.delete(delete_url)
+        assert delete_response.status_code == status.HTTP_204_NO_CONTENT
+
+        after_comments = api_client.get(comments_url)
+        assert after_comments.status_code == status.HTTP_200_OK
+        assert after_comments.data == []
+
+        after = api_client.get(list_url, {'request': procurement_item.request_id})
+        after_item = next(
+            item for item in after.data['results']
+            if item['id'] == procurement_item.id
+        )
+        assert after_item['comments_count'] == 0
+
+    def test_outsider_cannot_comment_item(
+        self, api_client, procurement_item
+    ):
+        outsider = Employee.objects.create_user(
+            email="item-outsider@example.com",
+            password="testpass123",
+            phone_number="+79997777771",
+            first_name="Чужой",
+            last_name="Сотрудник",
+            is_active=True,
+            email_verified=True,
+            send_activation_email=False,
+        )
+        api_client.force_authenticate(user=outsider)
+
+        comments_url = reverse(
+            'api:v1:procurement:procurementitem-comments',
+            kwargs={'pk': procurement_item.id}
+        )
+
+        get_response = api_client.get(comments_url)
+        assert get_response.status_code == status.HTTP_403_FORBIDDEN
+
+        post_response = api_client.post(
+            comments_url,
+            {'text': 'Не должен пройти'},
+            format='json',
+        )
+        assert post_response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_processing_department_member_can_comment_item(
+        self, api_client, user, department, procurement_item_factory
+    ):
+        supply_department = Department.objects.create(
+            name="Снабжение для комментариев",
+            description="Отдел снабжения",
+        )
+        supply_user = Employee.objects.create_user(
+            email="item-supply@example.com",
+            password="testpass123",
+            phone_number="+79997777772",
+            first_name="Снабжение",
+            last_name="Комментарий",
+            is_active=True,
+            email_verified=True,
+            send_activation_email=False,
+        )
+        EmployeeDepartment.objects.create(
+            employee=supply_user,
+            department=supply_department,
+            is_active=True,
+        )
+        procurement_request = ProcurementRequest.objects.create(
+            title="Адресная заявка для комментариев",
+            description="Нужны расходники",
+            department=department,
+            processing_department=supply_department,
+            requestor=user,
+            status=ProcurementStatus.WAITING,
+            urgency=UrgencyLevel.MEDIUM,
+        )
+        item = procurement_item_factory(request=procurement_request)
+
+        api_client.force_authenticate(user=supply_user)
+        comments_url = reverse(
+            'api:v1:procurement:procurementitem-comments',
+            kwargs={'pk': item.id}
+        )
+
+        response = api_client.post(
+            comments_url,
+            {'text': 'Уточнение от снабжения'},
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['item'] == item.id
+
+
 # ==============================================================================
 # ТЕСТЫ ОБНОВЛЕНИЯ ЗАЯВОК
 # ==============================================================================

@@ -759,6 +759,36 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
     filterset_fields = ["request"]
     search_fields = ["name", "description"]
 
+    def get_queryset(self):
+        """Annotate item comments count."""
+        from django.contrib.contenttypes.models import ContentType
+        from django.db.models import Count, IntegerField, OuterRef, Subquery, Value
+        from django.db.models.functions import Coalesce
+        from communications.models import Chat
+
+        ct = ContentType.objects.get_for_model(ProcurementItem)
+        comments_sub = (
+            Chat.objects.filter(
+                type="comments",
+                context_content_type=ct,
+                context_object_id=OuterRef("pk"),
+            )
+            .annotate(
+                msg_count=Count(
+                    "messages", filter=Q(messages__is_deleted=False)
+                )
+            )
+            .values("msg_count")[:1]
+        )
+
+        return super().get_queryset().annotate(
+            comments_count=Coalesce(
+                Subquery(comments_sub, output_field=IntegerField()),
+                Value(0),
+                output_field=IntegerField(),
+            )
+        )
+
     def _is_processing_department_member(self, user, procurement_request):
         if not procurement_request.processing_department_id:
             return False
@@ -784,6 +814,34 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
             procurement_request,
         )
 
+    def _can_access_item_comments(self, user, procurement_request):
+        if not user or not user.is_authenticated:
+            return False
+        if user.is_superuser or user.is_staff:
+            return True
+        if (
+            user.has_perm("procurement.view_procurementrequest")
+            or user.has_perm("procurement.change_procurementrequest")
+            or user.has_perm("procurement.execute_procurement")
+        ):
+            return True
+        if procurement_request.requestor_id == user.id:
+            return True
+        if procurement_request.executor_id == user.id:
+            return True
+        if procurement_request.department.head_id == user.id:
+            return True
+        if EmployeeDepartment.objects.filter(
+            employee_id=user.id,
+            department_id=procurement_request.department_id,
+            is_active=True,
+        ).exists():
+            return True
+        return self._is_processing_department_member(
+            user,
+            procurement_request,
+        )
+
     def get_permissions(self):
         """Только создатель заявки может редактировать позиции."""
         if self.action in [
@@ -793,6 +851,8 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
             "destroy",
             "create_equipment",
             "link_equipment",
+            "comments",
+            "delete_comment",
         ]:
             permission_classes = [permissions.IsAuthenticated]
         else:
@@ -890,6 +950,111 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         """Проверяем права при удалении позиции."""
         self._check_item_edit_permission(instance)
         instance.delete()
+
+    @action(detail=True, methods=["get", "post"])
+    def comments(self, request, pk=None):
+        """Список/создание комментариев для позиции заявки."""
+        from api.v1.employees.serializers.employee import (
+            EmployeeBriefSerializer,
+        )
+
+        item = self.get_object()
+        if not self._can_access_item_comments(request.user, item.request):
+            return Response(
+                {"detail": "Нет прав на комментарии этой позиции"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if request.method in ("GET", "HEAD"):
+            messages = comments_helpers.get_comments(item)
+            comments_data = []
+            for msg in messages:
+                author_ser = EmployeeBriefSerializer(msg.author)
+                comments_data.append(
+                    {
+                        "id": msg.id,
+                        "item": item.id,
+                        "request": item.request_id,
+                        "author": author_ser.data,
+                        "text": msg.content,
+                        "created_at": msg.created_at,
+                    }
+                )
+            return Response(comments_data)
+
+        text = request.data.get("text", "").strip()
+        if not text:
+            return Response(
+                {"text": ["Это поле не может быть пустым."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        message = comments_helpers.create_comment(
+            obj=item,
+            author=request.user,
+            content=text,
+        )
+        author_ser = EmployeeBriefSerializer(message.author)
+        return Response(
+            {
+                "id": message.id,
+                "item": item.id,
+                "request": item.request_id,
+                "author": author_ser.data,
+                "text": message.content,
+                "created_at": message.created_at,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="comment_id",
+                type=int,
+                location=OpenApiParameter.PATH,
+                description="ID комментария в чате комментариев позиции.",
+            )
+        ]
+    )
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path="comments/(?P<comment_id>[^/.]+)",
+    )
+    def delete_comment(self, request, pk=None, comment_id=None):
+        """Удаление комментария к позиции заявки."""
+        item = self.get_object()
+        if not self._can_access_item_comments(request.user, item.request):
+            return Response(
+                {"detail": "Нет прав на комментарии этой позиции"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        chat = comments_helpers.get_or_create_comments_chat(item)
+        if isinstance(chat, tuple):
+            chat = chat[0]
+
+        try:
+            message = Message.objects.get(id=comment_id, chat=chat)
+        except Message.DoesNotExist:
+            return Response(
+                {"detail": "Комментарий не найден"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not (request.user.is_staff or message.author == request.user):
+            return Response(
+                {"detail": "Нет прав на удаление"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        comments_helpers.delete_comment(
+            message=message,
+            deleted_by=request.user,
+            soft_delete=True,
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"])
     def create_equipment(self, request, pk=None):

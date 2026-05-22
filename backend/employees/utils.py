@@ -359,6 +359,72 @@ def resolve_chat_participants_for_department(context_object, **kwargs):
     ).distinct()
 
 
+def resolve_chat_participants_for_procurement_request(
+    context_object,
+    **kwargs,
+):
+    """
+    EUSRR callback для участников комментариев заявки на закупку.
+
+    Участники: заявитель, исполнитель, согласующие, отдел заявителя,
+    отдел-исполнитель и администраторы.
+    """
+    from django.db.models import Q
+    from procurement.models import ProcurementRequest
+
+    if not isinstance(context_object, ProcurementRequest):
+        return Employee.objects.none()
+
+    procurement_request = context_object
+    department_ids = [procurement_request.department_id]
+    if procurement_request.processing_department_id:
+        department_ids.append(procurement_request.processing_department_id)
+
+    employee_ids = EmployeeDepartment.objects.filter(
+        department_id__in=department_ids,
+        is_active=True,
+    ).values_list("employee_id", flat=True)
+
+    approval_user_ids = procurement_request.approvals.values_list(
+        "approver_id",
+        flat=True,
+    )
+
+    query = (
+        Q(id=procurement_request.requestor_id)
+        | Q(id=procurement_request.executor_id)
+        | Q(id__in=employee_ids)
+        | Q(id__in=approval_user_ids)
+        | Q(is_staff=True)
+        | Q(is_superuser=True)
+    )
+
+    if procurement_request.department.head_id:
+        query |= Q(id=procurement_request.department.head_id)
+    if (
+        procurement_request.processing_department_id
+        and procurement_request.processing_department.head_id
+    ):
+        query |= Q(id=procurement_request.processing_department.head_id)
+
+    return Employee.objects.filter(query, is_active=True).distinct()
+
+
+def resolve_chat_participants_for_procurement_item(context_object, **kwargs):
+    """
+    EUSRR callback для участников комментариев позиции заявки на закупку.
+    """
+    from procurement.models import ProcurementItem
+
+    if not isinstance(context_object, ProcurementItem):
+        return Employee.objects.none()
+
+    return resolve_chat_participants_for_procurement_request(
+        context_object.request,
+        **kwargs,
+    )
+
+
 def resolve_chat_participants(chat):
     """
     Главная функция для разрешения участников чата в EUSRR.
@@ -393,11 +459,17 @@ def resolve_chat_participants(chat):
                 chat.context_object, chat=chat, type=chat.type
             )
 
-        # Можно добавить другие типы контекстов:
-        # - Project
-        # - Team
-        # - Event
-        # и т.д.
+        from procurement.models import ProcurementItem, ProcurementRequest
+
+        if isinstance(chat.context_object, ProcurementRequest):
+            return resolve_chat_participants_for_procurement_request(
+                chat.context_object, chat=chat, type=chat.type
+            )
+
+        if isinstance(chat.context_object, ProcurementItem):
+            return resolve_chat_participants_for_procurement_item(
+                chat.context_object, chat=chat, type=chat.type
+            )
 
     # 5. Legacy: department field (DEPRECATED, для обратной совместимости)
     if (

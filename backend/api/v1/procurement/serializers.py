@@ -32,6 +32,17 @@ class ProcurementItemSerializer(serializers.ModelSerializer):
     execution_status_display = serializers.CharField(
         source="get_execution_status_display", read_only=True
     )
+    comments_count = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_comments_count(self, obj):
+        annotated_count = getattr(obj, "comments_count", None)
+        if annotated_count is not None:
+            return annotated_count
+
+        from communications.comments_helpers import get_comment_count
+
+        return get_comment_count(obj)
 
     class Meta:
         model = ProcurementItem
@@ -51,6 +62,7 @@ class ProcurementItemSerializer(serializers.ModelSerializer):
             "execution_status",
             "execution_status_display",
             "executor_comment",
+            "comments_count",
             "equipment",
             "created_at",
         ]
@@ -59,6 +71,7 @@ class ProcurementItemSerializer(serializers.ModelSerializer):
             "created_at",
             "total_price",
             "execution_status_display",
+            "comments_count",
         ]
 
 
