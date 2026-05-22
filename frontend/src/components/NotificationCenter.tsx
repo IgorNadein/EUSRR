@@ -17,7 +17,12 @@ interface NotificationCenterProps {
 }
 
 function getNotificationTitle(notification: NotificationItem): string {
-    return notification.title || getVerbName(notification.verb || '');
+    const dataTitle = notification.data?.title;
+    return (
+        notification.title
+        || (typeof dataTitle === 'string' ? dataTitle : '')
+        || getVerbName(notification.verb || '')
+    );
 }
 
 function getNotificationMessage(notification: NotificationItem): string {

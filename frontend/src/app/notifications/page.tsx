@@ -8,14 +8,21 @@ import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale/ru';
 import { getVerbCategory, getVerbName } from '@/lib/verbTranslations';
 import { resolveNotificationActionUrl } from '@/lib/notifications/actionUrl';
+import type { NotificationItem } from '@/contexts/NotificationsContext';
+
+type NotificationReadFilter = 'all' | 'unread' | 'read';
+type NotificationPageItem = NotificationItem & {
+  color?: string;
+  icon?: string;
+};
 
 export default function NotificationsPage() {
   // Локальное состояние для ВСЕХ уведомлений (не только непрочитанных)
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<NotificationPageItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState('');
-  const [filterRead, setFilterRead] = useState<'all' | 'unread' | 'read'>('all');
+  const [filterRead, setFilterRead] = useState<NotificationReadFilter>('all');
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -25,7 +32,7 @@ export default function NotificationsPage() {
       try {
         const data = await apiClient.getNotifications({ page_size: 100 });
         const notifs = data.notifications || data.results || data;
-        setNotifications(Array.isArray(notifs) ? notifs : []);
+        setNotifications(Array.isArray(notifs) ? notifs as NotificationPageItem[] : []);
       } catch (err) {
         console.error('Ошибка загрузки уведомлений:', err);
       } finally {
@@ -82,7 +89,7 @@ export default function NotificationsPage() {
   // Уникальные категории
   const categories = useMemo(() => {
     const cats = new Set<string>();
-    notifications.forEach((n: any) => {
+    notifications.forEach((n) => {
       if (n.category) cats.add(getVerbCategory(n.category));
     });
     return Array.from(cats).sort();
@@ -90,7 +97,7 @@ export default function NotificationsPage() {
 
   // Фильтрация
   const filteredNotifications = useMemo(() => {
-    return notifications.filter((n: any) => {
+    return notifications.filter((n) => {
       // Фильтр по прочитанности
       if (filterRead === 'unread' && n.is_read) return false;
       if (filterRead === 'read' && !n.is_read) return false;
@@ -110,14 +117,14 @@ export default function NotificationsPage() {
     });
   }, [notifications, search, filterRead, filterCategory]);
 
-  const unreadCount = notifications.filter((n: any) => !n.is_read).length;
-  const readCount = notifications.filter((n: any) => n.is_read).length;
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
+  const readCount = notifications.filter((n) => n.is_read).length;
 
   // Подсчет уведомлений по категориям
   const categoryCounts = useMemo(() => {
     const counts: Record<string, { total: number; unread: number }> = {};
     
-    notifications.forEach((n: any) => {
+    notifications.forEach((n) => {
       if (!n.category) return;
       const category = getVerbCategory(n.category);
       
@@ -137,7 +144,7 @@ export default function NotificationsPage() {
       .map(([category, data]) => ({ category, ...data }));
   }, [notifications]);
 
-  const handleNotificationClick = async (notification: any) => {
+  const handleNotificationClick = async (notification: NotificationPageItem) => {
     if (!notification.is_read) {
       await markAsRead(notification.id);
     }
@@ -148,6 +155,8 @@ export default function NotificationsPage() {
   };
 
   const getCategoryIconEmoji = (categoryCode?: string, icon?: string) => {
+    if (icon) return icon;
+
     // Маппинг категорий на эмодзи
     const iconMap: Record<string, string> = {
       'communications': '💬',
@@ -231,7 +240,7 @@ export default function NotificationsPage() {
             <div className="app-surface-muted flex flex-col gap-2 rounded-xl p-3">
               <select
                 value={filterRead}
-                onChange={(e) => setFilterRead(e.target.value as any)}
+                onChange={(e) => setFilterRead(e.target.value as NotificationReadFilter)}
                 className="app-select rounded-lg px-3 py-2 text-sm"
               >
                 <option value="all">Все уведомления</option>
@@ -366,7 +375,7 @@ export default function NotificationsPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {filteredNotifications.map((notification: any) => (
+            {filteredNotifications.map((notification) => (
               <article
                 key={notification.id}
                 className={`group overflow-hidden rounded-xl border transition ${
@@ -397,7 +406,11 @@ export default function NotificationsPage() {
                   >
                     <div className="mb-1 flex items-start justify-between gap-2">
                       <h3 className="font-semibold text-[var(--foreground)] transition group-hover:text-[var(--accent-primary-strong)]">
-                        {notification.title || getVerbName(notification.verb || notification.category)}
+                        {notification.title || (
+                          typeof notification.data?.title === 'string'
+                            ? notification.data.title
+                            : getVerbName(notification.verb || notification.category || '')
+                        )}
                       </h3>
                       {!notification.is_read && (
                         <div className="app-dot-accent mt-1.5 h-2 w-2 shrink-0 rounded-full"></div>
@@ -423,7 +436,7 @@ export default function NotificationsPage() {
                               addSuffix: true,
                               locale: ru,
                             });
-                          } catch (e) {
+                          } catch {
                             return 'недавно';
                           }
                         })()}

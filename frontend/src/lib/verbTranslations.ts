@@ -38,6 +38,17 @@ export const VERB_CATEGORIES: Record<string, string> = {
   
   // Закупки
   procurement_new_request: 'Закупки',
+  procurement_department_request: 'Закупки',
+  procurement_pending_approval: 'Закупки',
+  procurement_stage_approved: 'Закупки',
+  procurement_approved: 'Закупки',
+  procurement_rejected: 'Закупки',
+  procurement_in_progress: 'Закупки',
+  procurement_completed: 'Закупки',
+  procurement_cancelled: 'Закупки',
+  procurement_item_updated: 'Закупки',
+  procurement_request_commented: 'Закупки',
+  procurement_item_commented: 'Закупки',
   
   // Новости
   feed_new_post: 'Новости',
@@ -82,6 +93,17 @@ export const VERB_NAMES: Record<string, string> = {
   
   // Закупки
   procurement_new_request: 'Новая закупка',
+  procurement_department_request: 'Новая заявка для отдела',
+  procurement_pending_approval: 'Требуется согласование закупки',
+  procurement_stage_approved: 'Этап согласования закупки пройден',
+  procurement_approved: 'Закупка одобрена',
+  procurement_rejected: 'Закупка отклонена',
+  procurement_in_progress: 'Закупка взята в работу',
+  procurement_completed: 'Закупка завершена',
+  procurement_cancelled: 'Закупка отменена',
+  procurement_item_updated: 'Позиция закупки изменена',
+  procurement_request_commented: 'Комментарий к закупке',
+  procurement_item_commented: 'Комментарий к позиции закупки',
   
   // Новости
   feed_new_post: 'Новая публикация',
@@ -105,8 +127,8 @@ export function getVerbCategory(verb: string): string {
  */
 export function getVerbsByCategory(category: string): string[] {
   return Object.entries(VERB_CATEGORIES)
-    .filter(([_, cat]) => cat === category)
-    .map(([verb, _]) => verb);
+    .filter((entry) => entry[1] === category)
+    .map((entry) => entry[0]);
 }
 
 /**
