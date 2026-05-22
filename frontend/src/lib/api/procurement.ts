@@ -15,6 +15,7 @@ export function createProcurementApi(request: RequestFn) {
             request(`/api/v1/procurement/requests/${id}/reject/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ comment: comment || '' }) }),
         startWorkProcurementRequest: (id: number) => request(`/api/v1/procurement/requests/${id}/start_work/`, { method: 'POST' }),
         completeProcurementRequest: (id: number) => request(`/api/v1/procurement/requests/${id}/complete/`, { method: 'POST' }),
+        markAllReceivedProcurementRequest: (id: number) => request(`/api/v1/procurement/requests/${id}/mark_all_received/`, { method: 'POST' }),
         cancelProcurementRequest: (id: number, reason?: string) =>
             request(`/api/v1/procurement/requests/${id}/cancel/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: reason || '' }) }),
         getProcurementComments: (requestId: number) => request(`/api/v1/procurement/requests/${requestId}/comments/`),

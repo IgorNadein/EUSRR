@@ -481,7 +481,9 @@ export interface MaintenanceRecord {
 }
 
 // Procurement Request types
-export type ProcurementStatus = 'draft' | 'pending' | 'approved' | 'in_progress' | 'completed' | 'rejected' | 'cancelled';
+export type ProcurementStatus = 'draft' | 'waiting' | 'pending' | 'approved' | 'in_progress' | 'completed' | 'rejected' | 'cancelled';
+export type ProcurementFulfillmentStatus = 'pending' | 'partially_ordered' | 'ordered' | 'partially_received' | 'completed' | 'issues';
+export type ProcurementItemExecutionStatus = 'pending' | 'ordered' | 'rejected' | 'received' | 'completed_with_issue' | 'edited';
 export type UrgencyLevel = 'low' | 'medium' | 'high' | 'critical';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
 
@@ -495,6 +497,12 @@ export interface ProcurementItem {
   estimated_unit_price: string | number;
   total_price?: string | number;
   supplier_info?: string;
+  links?: string[];
+  expected_delivery_date?: string | null;
+  actual_unit_price?: string | number | null;
+  execution_status?: ProcurementItemExecutionStatus;
+  execution_status_display?: string;
+  executor_comment?: string;
   equipment?: number | null;
 }
 
@@ -519,6 +527,8 @@ export interface ProcurementRequest {
   department: number;
   department_name?: string;
   department_details?: Department;
+  processing_department?: number | null;
+  processing_department_name?: string | null;
   requestor: User | number;
   requestor_name?: string;
   requestor_email?: string;
@@ -528,6 +538,8 @@ export interface ProcurementRequest {
   status_display?: string;
   urgency: UrgencyLevel;
   urgency_display?: string;
+  fulfillment_status?: ProcurementFulfillmentStatus;
+  fulfillment_status_display?: string;
   items?: ProcurementItem[];
   approvals?: ProcurementApproval[];
   required_approval_priorities?: number[];

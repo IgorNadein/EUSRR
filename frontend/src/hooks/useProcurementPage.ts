@@ -19,6 +19,9 @@ type ItemDraft = {
   unit: string;
   estimated_unit_price: string;
   supplier_info: string;
+  linksText: string;
+  expected_delivery_date: string;
+  actual_unit_price: string;
 };
 
 const emptyItem: ItemDraft = {
@@ -28,12 +31,17 @@ const emptyItem: ItemDraft = {
   unit: "шт",
   estimated_unit_price: "",
   supplier_info: "",
+  linksText: "",
+  expected_delivery_date: "",
+  actual_unit_price: "",
 };
 
 type FormState = {
   title: string;
   description: string;
   department: number | null;
+  requireApproval: boolean;
+  processing_department: number | null;
   urgency: UrgencyLevel;
   items: ItemDraft[];
 };
@@ -42,6 +50,8 @@ const emptyForm: FormState = {
   title: "",
   description: "",
   department: null,
+  requireApproval: true,
+  processing_department: null,
   urgency: "medium",
   items: [{ ...emptyItem }],
 };
@@ -118,6 +128,13 @@ const getReadableError = (error: unknown, fallback: string): string => {
 
   return raw;
 };
+
+const parseLinks = (value: string): string[] => (
+  value
+    .split(/[\n,]+/)
+    .map((link) => link.trim())
+    .filter(Boolean)
+);
 
 export function useProcurementPage(user: User | null) {
   const canManage = canManageRequests(user);
@@ -361,6 +378,8 @@ export function useProcurementPage(user: User | null) {
       title: detail.title || "",
       description: detail.description || "",
       department: detail.department ?? null,
+      requireApproval: !detail.processing_department,
+      processing_department: detail.processing_department ?? null,
       urgency: detail.urgency || "medium",
       items: detail.items && detail.items.length > 0
         ? detail.items.map((item) => ({
@@ -370,6 +389,9 @@ export function useProcurementPage(user: User | null) {
             unit: item.unit || "шт",
             estimated_unit_price: String(item.estimated_unit_price || ""),
             supplier_info: item.supplier_info || "",
+            linksText: Array.isArray(item.links) ? item.links.join("\n") : "",
+            expected_delivery_date: item.expected_delivery_date || "",
+            actual_unit_price: item.actual_unit_price ? String(item.actual_unit_price) : "",
           }))
         : [{ ...emptyItem }],
     });
@@ -427,6 +449,10 @@ export function useProcurementPage(user: User | null) {
         setActionError("Выберите отдел.");
         return;
       }
+      if (!form.requireApproval && !form.processing_department) {
+        setActionError("Выберите отдел-исполнитель.");
+        return;
+      }
 
       const validItems = form.items.filter((item) => item.name.trim());
       if (validItems.length === 0) {
@@ -449,6 +475,7 @@ export function useProcurementPage(user: User | null) {
         title: form.title,
         description: form.description,
         department: form.department,
+        processing_department: form.requireApproval ? null : form.processing_department,
         urgency: form.urgency,
         items: validItems.map((item) => ({
           name: item.name,
@@ -457,18 +484,22 @@ export function useProcurementPage(user: User | null) {
           unit: item.unit || "шт",
           estimated_unit_price: item.estimated_unit_price,
           supplier_info: item.supplier_info || undefined,
+          links: parseLinks(item.linksText),
+          expected_delivery_date: item.expected_delivery_date || undefined,
+          actual_unit_price: item.actual_unit_price || undefined,
         })),
       };
 
       if (modalMode === "create") {
         await apiClient.createProcurementRequest(payload);
-        setActionSuccess("Заявка создана (черновик).");
+        setActionSuccess(form.requireApproval ? "Заявка создана (черновик)." : "Заявка направлена в отдел.");
         setCreateOpen(false);
       } else if (editingId) {
         await apiClient.updateProcurementRequest(editingId, {
           title: payload.title,
           description: payload.description,
           urgency: payload.urgency,
+          processing_department: payload.processing_department,
         });
         setActionSuccess("Заявка обновлена.");
         setEditingId(null);
@@ -654,6 +685,29 @@ export function useProcurementPage(user: User | null) {
     "Заявка завершена.",
   ), [doAction]);
 
+  const handleMarkAllReceived = useCallback((id: number) => doAction(
+    `mark-all-${id}`,
+    () => apiClient.markAllReceivedProcurementRequest(id),
+    id,
+    "Все позиции отмечены полученными.",
+  ), [doAction]);
+
+  const handleUpdateItem = useCallback(async (requestId: number, itemId: number, patch: Record<string, unknown>) => {
+    try {
+      setBusyKey(`item-${itemId}`);
+      setActionError(null);
+      await apiClient.updateProcurementItem(itemId, patch);
+      setActionSuccess("Позиция обновлена.");
+      await refreshOne(requestId);
+      return true;
+    } catch (updateError) {
+      setActionError(getReadableError(updateError, "Не удалось обновить позицию"));
+      return false;
+    } finally {
+      setBusyKey(null);
+    }
+  }, [refreshOne]);
+
   const handleCancel = useCallback((id: number, reason = "") => {
     return doAction(`cancel-${id}`, () => apiClient.cancelProcurementRequest(id, reason), id, "Заявка отменена.");
   }, [doAction]);
@@ -755,6 +809,8 @@ export function useProcurementPage(user: User | null) {
     handleReject,
     handleStart,
     handleComplete,
+    handleMarkAllReceived,
+    handleUpdateItem,
     handleCancel,
     handleDelete,
     handleAddComment,

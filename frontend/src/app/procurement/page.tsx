@@ -43,6 +43,7 @@ import { Modal } from "@/components/ui";
 
 const statusMeta: Record<string, { label: string; cls: string }> = {
   draft:       { label: "Черновик",        cls: "app-badge" },
+  waiting:     { label: "Ожидает",         cls: "app-feedback-warning" },
   pending:     { label: "На согласовании", cls: "app-feedback-warning" },
   approved:    { label: "Одобрено",        cls: "app-feedback-success" },
   in_progress: { label: "В работе",        cls: "app-selected" },
@@ -147,7 +148,7 @@ function ProcurementRequestActionButtons({
   const status = String(request.status || "").toLowerCase();
   const isDraft = status === "draft";
   const isPending = status === "pending";
-  const isApproved = status === "approved";
+  const canStartWork = (status === "approved" || status === "waiting") && !request.executor;
   const isInProgress = status === "in_progress";
   const canApproveThis = Boolean(request.can_current_user_approve);
 
@@ -207,7 +208,7 @@ function ProcurementRequestActionButtons({
           </button>
         </>
       ) : null}
-      {isApproved && !request.executor ? (
+      {canStartWork ? (
         <button
           type="button"
           onClick={() => onStart(request.id)}
@@ -280,6 +281,8 @@ export default function ProcurementPage() {
     handleApprove,
     handleCancel,
     handleComplete,
+    handleMarkAllReceived,
+    handleUpdateItem,
     handleDelete,
     handleLoadMore,
     handleReject,
@@ -623,14 +626,12 @@ export default function ProcurementPage() {
               const urg = urgencyMeta[req.urgency] ?? urgencyMeta.medium;
               const isAuthor = Boolean(resolveUserId(req.requestor) && user?.id && resolveUserId(req.requestor) === user.id);
               const isExecutor = Boolean(resolveUserId(req.executor) && user?.id && resolveUserId(req.executor) === user.id);
-              const isDraft = st === "draft";
-              const isApproved = st === "approved";
-              const isInProgress = st === "in_progress";
+              const isEditableStatus = (st === "draft" || st === "waiting") && !req.executor;
               const detail = detailsCache[req.id];
               const resolvedDetail = detail || req;
               const canApproveThis = Boolean((resolvedDetail.can_current_user_approve ?? req.can_current_user_approve));
-              const canEditThis = Boolean(isDraft && isAuthor);
-              const canDeleteThis = Boolean(isDraft && (isAuthor || canManage));
+              const canEditThis = Boolean(isEditableStatus && isAuthor);
+              const canDeleteThis = Boolean(isEditableStatus && (isAuthor || canManage));
               const canCancelThis = Boolean(isAuthor && !isFinal(st) && st !== "draft");
               const hasSecondaryActions = canEditThis || canDeleteThis || canCancelThis;
               const expanded = expandedIds.has(req.id);
@@ -674,7 +675,7 @@ export default function ProcurementPage() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                              <span className={`h-2 w-2 shrink-0 rounded-full ${st === "completed" ? "bg-teal-500" : st === "approved" ? "bg-emerald-500" : st === "pending" ? "bg-amber-500" : st === "in_progress" ? "bg-sky-500" : st === "rejected" ? "bg-rose-500" : "bg-slate-400"}`} />
+                              <span className={`h-2 w-2 shrink-0 rounded-full ${st === "completed" ? "bg-teal-500" : st === "approved" ? "bg-emerald-500" : st === "pending" || st === "waiting" ? "bg-amber-500" : st === "in_progress" ? "bg-sky-500" : st === "rejected" ? "bg-rose-500" : "bg-slate-400"}`} />
                               <button
                                 type="button"
                                 onClick={() => void openDetailModal(req.id)}
@@ -685,7 +686,10 @@ export default function ProcurementPage() {
                               </button>
                             </div>
                             <div className="app-text-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                              <span className="font-medium text-[var(--foreground)]">{getDeptName(req)}</span>
+                              <span>Отдел: <span className="font-medium text-[var(--foreground)]">{getDeptName(req)}</span></span>
+                              {req.processing_department_name ? (
+                                <span>Отдел-исполнитель: <span className="font-medium text-[var(--foreground)]">{req.processing_department_name}</span></span>
+                              ) : null}
                               <span>{fmt(req.created_at)}</span>
                               {getRequestAmount(req) && <span className="font-medium text-[var(--foreground)]">{money(getRequestAmount(req))}</span>}
                             </div>
@@ -784,6 +788,11 @@ export default function ProcurementPage() {
                           </div>
                           {(itemsCount > 0 || approvalsCount > 0) && (
                             <div className="col-span-2 flex flex-wrap items-center gap-2 pt-0.5">
+                              {resolvedDetail.fulfillment_status_display ? (
+                                <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                  {resolvedDetail.fulfillment_status_display}
+                                </span>
+                              ) : null}
                               {itemsCount > 0 && (
                                 <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
                                   <Package size={11} /> {itemsCount} поз.
@@ -872,6 +881,10 @@ export default function ProcurementPage() {
                           currentUserId={user?.id}
                           request={resolvedDetail}
                           displayUserName={displayUserName}
+                          canProcessItems={["waiting", "in_progress"].includes(st)}
+                          busyKey={busyKey}
+                          onUpdateItem={handleUpdateItem}
+                          onMarkAllReceived={handleMarkAllReceived}
                           footer={(
                             <ProcurementRequestActionButtons
                               request={req}
@@ -943,10 +956,18 @@ export default function ProcurementPage() {
                   </span>
                 </div>
                 <div className="app-text-muted mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                  <span className="font-medium text-[var(--foreground)]">{getDeptName(selectedRequest)}</span>
+                  <span>Отдел: <span className="font-medium text-[var(--foreground)]">{getDeptName(selectedRequest)}</span></span>
+                  {selectedRequest.processing_department_name ? (
+                    <span>Отдел-исполнитель: <span className="font-medium text-[var(--foreground)]">{selectedRequest.processing_department_name}</span></span>
+                  ) : null}
                   <span>{fmt(selectedRequest.created_at)}</span>
                   {getRequestAmount(selectedRequest) ? (
                     <span className="font-medium text-[var(--foreground)]">{money(getRequestAmount(selectedRequest))}</span>
+                  ) : null}
+                  {selectedRequest.fulfillment_status_display ? (
+                    <span className="app-badge rounded-full px-2 py-0.5 text-[11px] font-medium">
+                      {selectedRequest.fulfillment_status_display}
+                    </span>
                   ) : null}
                 </div>
                 <div className="app-text-muted mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-xs sm:grid-cols-2">
@@ -978,6 +999,10 @@ export default function ProcurementPage() {
               currentUserId={user?.id}
               request={selectedRequest}
               displayUserName={displayUserName}
+              canProcessItems={["waiting", "in_progress"].includes(String(selectedRequest.status || "").toLowerCase())}
+              busyKey={busyKey}
+              onUpdateItem={handleUpdateItem}
+              onMarkAllReceived={handleMarkAllReceived}
               footer={(
                 <ProcurementRequestActionButtons
                   request={selectedRequest}
@@ -1136,7 +1161,9 @@ export default function ProcurementPage() {
             <div className="flex flex-wrap items-center justify-end gap-2">
               <button type="button" onClick={closeModal} className="app-action-secondary rounded-lg px-3 py-2 text-sm font-medium">Отмена</button>
               <button type="button" onClick={handleSave} disabled={busyKey === "save"} className="app-action-primary rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-60">
-                {modalMode === "create" ? "Создать черновик" : "Сохранить"}
+                {modalMode === "create"
+                  ? form.requireApproval ? "Создать черновик" : "Создать и направить в отдел"
+                  : "Сохранить"}
               </button>
             </div>
       }>
@@ -1167,6 +1194,25 @@ export default function ProcurementPage() {
                 />
               </div>
 
+              <label className="app-surface-muted flex items-start gap-3 rounded-xl px-3 py-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.requireApproval}
+                  onChange={(e) => setForm((f) => ({
+                    ...f,
+                    requireApproval: e.target.checked,
+                    processing_department: e.target.checked ? null : f.processing_department,
+                  }))}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-sky-600"
+                />
+                <span>
+                  <span className="block font-medium text-[var(--foreground)]">Требовать согласование</span>
+                  <span className="app-text-muted mt-0.5 block text-xs">
+                    Если выключено, заявка сразу попадет в очередь выбранного отдела.
+                  </span>
+                </span>
+              </label>
+
               {/* Отдел + Срочность */}
               <div className="grid grid-cols-2 gap-3">
                 <SearchableSelectSingle
@@ -1190,6 +1236,16 @@ export default function ProcurementPage() {
                   </select>
                 </div>
               </div>
+
+              {!form.requireApproval ? (
+                <SearchableSelectSingle
+                  label="Отдел-исполнитель *"
+                  placeholder="Выберите отдел, который обработает заявку..."
+                  items={departments.map((d) => ({ id: d.id, name: d.name }))}
+                  selectedId={form.processing_department}
+                  onSelect={(id) => setForm((f) => ({ ...f, processing_department: id }))}
+                />
+              ) : null}
 
               {/* ── Items ── */}
               <div>
@@ -1254,6 +1310,30 @@ export default function ProcurementPage() {
                           placeholder="Информация о поставщике (необязательно)"
                           className="app-input w-full rounded-lg px-3 py-2 text-sm"
                         />
+                        <textarea
+                          value={it.linksText}
+                          onChange={(e) => updateItemRow(idx, { linksText: e.target.value })}
+                          placeholder="Ссылки, каждая с новой строки"
+                          rows={2}
+                          className="app-input w-full rounded-lg px-3 py-2 text-sm"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="date"
+                            value={it.expected_delivery_date}
+                            onChange={(e) => updateItemRow(idx, { expected_delivery_date: e.target.value })}
+                            className="app-input rounded-lg px-3 py-2 text-sm"
+                            aria-label="Ожидаемая дата поступления"
+                          />
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={it.actual_unit_price}
+                            onChange={(e) => updateItemRow(idx, { actual_unit_price: e.target.value })}
+                            placeholder="Фактическая цена/ед."
+                            className="app-input rounded-lg px-3 py-2 text-sm"
+                          />
+                        </div>
                       </div>
                     </div>
                   ))}
