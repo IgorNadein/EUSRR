@@ -687,7 +687,7 @@ export default function ProcurementPage() {
                               </button>
                             </div>
                             <div className="app-text-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                              <span>Отдел: <span className="font-medium text-[var(--foreground)]">{getDeptName(req)}</span></span>
+                              <span>Отдел-заказчик: <span className="font-medium text-[var(--foreground)]">{getDeptName(req)}</span></span>
                               {req.processing_department_name ? (
                                 <span>Отдел-исполнитель: <span className="font-medium text-[var(--foreground)]">{req.processing_department_name}</span></span>
                               ) : null}
@@ -957,7 +957,7 @@ export default function ProcurementPage() {
                   </span>
                 </div>
                 <div className="app-text-muted mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                  <span>Отдел: <span className="font-medium text-[var(--foreground)]">{getDeptName(selectedRequest)}</span></span>
+                  <span>Отдел-заказчик: <span className="font-medium text-[var(--foreground)]">{getDeptName(selectedRequest)}</span></span>
                   {selectedRequest.processing_department_name ? (
                     <span>Отдел-исполнитель: <span className="font-medium text-[var(--foreground)]">{selectedRequest.processing_department_name}</span></span>
                   ) : null}
@@ -1232,8 +1232,8 @@ export default function ProcurementPage() {
               {/* Отдел + Срочность */}
               <div className="grid grid-cols-2 gap-3">
                 <SearchableSelectSingle
-                  label="Отдел *"
-                  placeholder="Выберите отдел..."
+                  label="Отдел-заказчик *"
+                  placeholder="Выберите отдел, для которого нужна закупка..."
                   items={departments.map((d) => ({ id: d.id, name: d.name }))}
                   selectedId={form.department}
                   onSelect={(id) => setForm((f) => ({ ...f, department: id }))}
