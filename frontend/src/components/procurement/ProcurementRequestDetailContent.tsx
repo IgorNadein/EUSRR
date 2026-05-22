@@ -199,7 +199,7 @@ function ProcurementItemCard({
             className="app-action-ghost inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium"
           >
             <SlidersHorizontal size={13} />
-            <span>Редактировать позицию</span>
+            <span>Исполнение</span>
           </button>
         ) : null}
       </div>

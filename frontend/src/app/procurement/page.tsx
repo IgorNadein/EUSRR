@@ -117,6 +117,7 @@ function ProcurementRequestActionButtons({
   isAuthor,
   isExecutor,
   isFinal,
+  showLabels = false,
   showApprovalActions = true,
   showSecondaryActions = true,
   onSubmit,
@@ -134,6 +135,7 @@ function ProcurementRequestActionButtons({
   isAuthor: boolean;
   isExecutor: boolean;
   isFinal: (status?: string) => boolean;
+  showLabels?: boolean;
   showApprovalActions?: boolean;
   showSecondaryActions?: boolean;
   onSubmit: (id: number) => void | Promise<unknown>;
@@ -151,6 +153,11 @@ function ProcurementRequestActionButtons({
   const canStartWork = (status === "approved" || status === "waiting") && !request.executor;
   const isInProgress = status === "in_progress";
   const canApproveThis = Boolean(request.can_current_user_approve);
+  const buttonClass = (variantClass: string) =>
+    `${variantClass} inline-flex h-9 items-center justify-center rounded-lg disabled:opacity-60 ${
+      showLabels ? "gap-1.5 px-3 text-xs font-medium" : "w-9"
+    }`;
+  const label = (text: string) => (showLabels ? <span>{text}</span> : null);
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 pt-1">
@@ -160,9 +167,10 @@ function ProcurementRequestActionButtons({
           onClick={() => onSubmit(request.id)}
           disabled={busyKey === `submit-${request.id}`}
           title="На согласование"
-          className="app-action-primary inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60"
+          className={buttonClass("app-action-primary")}
         >
           <Send size={14} />
+          {label("На согласование")}
         </button>
       ) : null}
       {showSecondaryActions && isDraft && isAuthor ? (
@@ -170,9 +178,10 @@ function ProcurementRequestActionButtons({
           type="button"
           onClick={() => onEdit(request)}
           title="Редактировать"
-          className="app-action-secondary inline-flex h-9 w-9 items-center justify-center rounded-lg"
+          className={buttonClass("app-action-secondary")}
         >
           <Pencil size={14} />
+          {label("Изменить")}
         </button>
       ) : null}
       {showSecondaryActions && isDraft && (isAuthor || canManage) ? (
@@ -181,9 +190,10 @@ function ProcurementRequestActionButtons({
           onClick={() => onDelete(request.id)}
           disabled={busyKey === `delete-${request.id}`}
           title="Удалить"
-          className="app-action-danger inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60"
+          className={buttonClass("app-action-danger")}
         >
           <Trash2 size={14} />
+          {label("Удалить")}
         </button>
       ) : null}
       {showApprovalActions && isPending && canApproveThis ? (
@@ -193,18 +203,20 @@ function ProcurementRequestActionButtons({
             onClick={() => onApprove(request.id)}
             disabled={busyKey === `approve-${request.id}`}
             title="Одобрить"
-            className="app-feedback-success inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60"
+            className={buttonClass("app-feedback-success")}
           >
             <ThumbsUp size={14} />
+            {label("Одобрить")}
           </button>
           <button
             type="button"
             onClick={() => onReject(request.id)}
             disabled={busyKey === `reject-${request.id}`}
             title="Отклонить"
-            className="app-action-danger inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60"
+            className={buttonClass("app-action-danger")}
           >
             <ThumbsDown size={14} />
+            {label("Отклонить")}
           </button>
         </>
       ) : null}
@@ -214,9 +226,10 @@ function ProcurementRequestActionButtons({
           onClick={() => onStart(request.id)}
           disabled={busyKey === `start-${request.id}`}
           title="Взять в работу"
-          className="app-action-primary inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60"
+          className={buttonClass("app-action-primary")}
         >
           <Play size={14} />
+          {label("Взять в работу")}
         </button>
       ) : null}
       {isInProgress && isExecutor ? (
@@ -225,9 +238,10 @@ function ProcurementRequestActionButtons({
           onClick={() => onComplete(request.id)}
           disabled={busyKey === `complete-${request.id}`}
           title="Завершить"
-          className="app-action-primary inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60"
+          className={buttonClass("app-action-primary")}
         >
           <ClipboardCheck size={14} />
+          {label("Завершить")}
         </button>
       ) : null}
       {showSecondaryActions && isAuthor && !isFinal(status) && status !== "draft" ? (
@@ -236,9 +250,10 @@ function ProcurementRequestActionButtons({
           onClick={() => onCancel(request.id)}
           disabled={busyKey === `cancel-${request.id}`}
           title="Отменить"
-          className="app-action-secondary inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-60"
+          className={buttonClass("app-action-secondary")}
         >
           <XCircle size={14} />
+          {label("Отменить")}
         </button>
       ) : null}
     </div>
@@ -649,7 +664,8 @@ export default function ProcurementPage() {
               const executorName = req.executor || req.executor_name ? displayUserName(req.executor, req.executor_name || undefined) : "";
               const requestorLink = userLink(req.requestor);
               const executorLink = userLink(req.executor);
-              const itemsCount = resolvedDetail.items?.length ?? 0;
+              const fulfillmentStatusDisplay = resolvedDetail.fulfillment_status_display ?? req.fulfillment_status_display;
+              const itemsCount = resolvedDetail.items?.length ?? resolvedDetail.items_count ?? req.items_count ?? 0;
               const approvalsCount = resolvedDetail.approvals?.length ?? 0;
 
               return (
@@ -793,11 +809,11 @@ export default function ProcurementPage() {
                               <span>не назначен</span>
                             )}
                           </div>
-                          {(itemsCount > 0 || approvalsCount > 0) && (
+                          {(fulfillmentStatusDisplay || itemsCount > 0 || approvalsCount > 0) && (
                             <div className="col-span-2 flex flex-wrap items-center gap-2 pt-0.5">
-                              {resolvedDetail.fulfillment_status_display ? (
+                              {fulfillmentStatusDisplay ? (
                                 <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
-                                  {resolvedDetail.fulfillment_status_display}
+                                  {fulfillmentStatusDisplay}
                                 </span>
                               ) : null}
                               {itemsCount > 0 && (
@@ -910,6 +926,7 @@ export default function ProcurementPage() {
                               isFinal={isFinal}
                               showApprovalActions={false}
                               showSecondaryActions={false}
+                              showLabels
                               onSubmit={handleSubmit}
                               onEdit={openEdit}
                               onDelete={handleDelete}
@@ -1034,6 +1051,7 @@ export default function ProcurementPage() {
                   isAuthor={Boolean(resolveUserId(selectedRequest.requestor) && user?.id && resolveUserId(selectedRequest.requestor) === user.id)}
                   isExecutor={Boolean(resolveUserId(selectedRequest.executor) && user?.id && resolveUserId(selectedRequest.executor) === user.id)}
                   isFinal={isFinal}
+                  showLabels
                   onSubmit={handleSubmit}
                   onEdit={openEdit}
                   onDelete={(id) => openRequestActionDialog("delete", id)}

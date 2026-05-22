@@ -548,6 +548,7 @@ export interface ProcurementRequest {
   is_editable?: boolean;
   total_cost?: string | number;
   total_estimated_cost?: string | number;
+  items_count?: number;
   comments_count?: number;
   can_current_user_approve?: boolean;
   created_at: string;
