@@ -153,6 +153,17 @@ class CanManageProcurementRequest(permissions.BasePermission):
         """Проверяет, является ли пользователь начальником отдела."""
         return Department.objects.filter(id=dept_id, head_id=user.id).exists()
 
+    def _is_dept_member(self, user, dept_id: int) -> bool:
+        """Проверяет активную принадлежность пользователя к отделу."""
+        return (
+            EmployeeDepartment.objects.filter(
+                employee_id=user.id,
+                department_id=dept_id,
+                is_active=True,
+            ).exists()
+            or self._is_dept_head(user, dept_id)
+        )
+
     def has_permission(self, request, view) -> bool:
         """Проверка доступа на уровне запроса."""
         user = request.user
@@ -235,13 +246,28 @@ class CanManageProcurementRequest(permissions.BasePermission):
         if action == "delete_comment":
             return True
 
-        # Start_work (взять в работу) - любой авторизованный
+        # Start_work: общий пул может взять любой, адресную заявку - отдел.
         if action == "start_work":
+            if obj.processing_department_id:
+                return self._is_dept_member(
+                    user,
+                    obj.processing_department_id,
+                )
             return True
 
         # Complete (завершить) - только исполнитель
         if action == "complete":
             return obj.executor == user
+
+        if action == "mark_all_received":
+            if obj.executor == user:
+                return True
+            if obj.processing_department_id:
+                return self._is_dept_member(
+                    user,
+                    obj.processing_department_id,
+                )
+            return False
 
         # Удаление
         if action == "destroy":
@@ -255,6 +281,12 @@ class CanManageProcurementRequest(permissions.BasePermission):
 
         # Изменение
         if action in ("update", "partial_update"):
+            if obj.processing_department_id and self._is_dept_member(
+                user,
+                obj.processing_department_id,
+            ):
+                return True
+
             # Заявка должна быть редактируемой (DRAFT)
             if not obj.is_editable:
                 return False

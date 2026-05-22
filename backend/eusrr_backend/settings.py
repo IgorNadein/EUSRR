@@ -459,6 +459,7 @@ SPECTACULAR_SETTINGS = {
     "ENUM_NAME_OVERRIDES": {
         "ProcurementStatusEnum": [
             ("draft", "Черновик"),
+            ("waiting", "Ожидает"),
             ("pending", "На согласовании"),
             ("approved", "Одобрено"),
             ("rejected", "Отклонено"),

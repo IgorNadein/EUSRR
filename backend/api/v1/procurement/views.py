@@ -8,11 +8,12 @@ from rest_framework import filters, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from employees.models import Department
+from employees.models import Department, EmployeeDepartment
 from procurement.constants import (
     ApprovalStatus,
     ProcurementStatus,
     EquipmentStatus,
+    ProcurementItemExecutionStatus,
 )
 from procurement.models import (
     Approval,
@@ -55,14 +56,24 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
     """ViewSet для заявок на закупку."""
 
     queryset = ProcurementRequest.objects.select_related(
-        "department", "requestor", "executor"
+        "department",
+        "processing_department",
+        "requestor",
+        "executor",
     ).prefetch_related("items", "approvals__approver")
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
         filters.OrderingFilter,
     ]
-    filterset_fields = ["status", "urgency", "department", "executor"]
+    filterset_fields = [
+        "status",
+        "urgency",
+        "department",
+        "processing_department",
+        "executor",
+        "fulfillment_status",
+    ]
     search_fields = ["title", "description"]
     ordering_fields = ["created_at", "status"]
     ordering = ["-created_at"]
@@ -79,6 +90,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             "start_work",
             "complete",
             "cancel",
+            "mark_all_received",
         ]:
             return ProcurementRequestDetailSerializer
         return ProcurementRequestListSerializer
@@ -138,8 +150,29 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             # Заявки, которые я взял в работу (где я исполнитель)
             queryset = queryset.filter(executor=user)
         elif scope == "available":
-            # Доступные заявки - со статусом "Согласовано"
-            queryset = queryset.filter(status="approved")
+            queryset = queryset.filter(
+                status__in=[
+                    ProcurementStatus.WAITING,
+                    ProcurementStatus.APPROVED,
+                ],
+                executor__isnull=True,
+            )
+            if not (
+                user.is_superuser
+                or user.is_staff
+                or user.has_perm("procurement.change_procurementrequest")
+                or user.has_perm("procurement.execute_procurement")
+            ):
+                queryset = queryset.filter(
+                    Q(
+                        status=ProcurementStatus.WAITING,
+                        processing_department__in=user.departments.all(),
+                    )
+                    | Q(
+                        status=ProcurementStatus.APPROVED,
+                        processing_department__isnull=True,
+                    )
+                )
         elif scope == "all":
             # Все заявки - применяем стандартную логику прав
             pass
@@ -160,7 +193,12 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(
                     Q(requestor=user)
                     | Q(department__in=user.departments.all())
+                    | Q(processing_department__in=user.departments.all())
                     | Q(approvals__approver=user)
+                    | Q(
+                        status=ProcurementStatus.APPROVED,
+                        processing_department__isnull=True,
+                    )
                 )
 
         # Фильтрация по периоду
@@ -281,6 +319,17 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         from django.db import transaction
 
         procurement_request = self.get_object()
+
+        if procurement_request.processing_department_id:
+            return Response(
+                {
+                    "error": (
+                        "Заявка уже направлена в отдел-исполнитель "
+                        "и не требует согласования"
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Проверки
         if procurement_request.requestor != request.user:
@@ -509,12 +558,33 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"])
     def available(self, request):
-        """Получить одобренные заявки, доступные для взятия в работу."""
+        """Получить заявки, доступные для взятия в работу."""
         queryset = self.filter_queryset(
             self.get_queryset().filter(
-                status=ProcurementStatus.APPROVED, executor__isnull=True
+                status__in=[
+                    ProcurementStatus.WAITING,
+                    ProcurementStatus.APPROVED,
+                ],
+                executor__isnull=True,
             )
         )
+
+        if not (
+            request.user.is_superuser
+            or request.user.is_staff
+            or request.user.has_perm("procurement.change_procurementrequest")
+            or request.user.has_perm("procurement.execute_procurement")
+        ):
+            queryset = queryset.filter(
+                Q(
+                    status=ProcurementStatus.WAITING,
+                    processing_department__in=request.user.departments.all(),
+                )
+                | Q(
+                    status=ProcurementStatus.APPROVED,
+                    processing_department__isnull=True,
+                )
+            )
 
         page = self.paginate_queryset(queryset)
         if page is not None:
@@ -528,15 +598,24 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
     def start_work(self, request, pk=None):
         """Начать работу над заявкой (перевод в статус IN_PROGRESS).
 
-        Любой авторизованный пользователь может взять заявку в работу.
-        TODO: Позже добавить проверку роли "Закупщик".
+        Общий пул может взять любой авторизованный пользователь.
+        Адресную заявку может взять сотрудник отдела-исполнителя.
         """
         procurement_request = self.get_object()
+        self.check_object_permissions(request, procurement_request)
 
         # Проверяем текущий статус
-        if procurement_request.status != ProcurementStatus.APPROVED:
+        if procurement_request.status not in [
+            ProcurementStatus.APPROVED,
+            ProcurementStatus.WAITING,
+        ]:
             return Response(
-                {"error": "Только одобренные заявки можно взять в работу"},
+                {
+                    "error": (
+                        "Только одобренные или ожидающие заявки "
+                        "можно взять в работу"
+                    )
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -593,6 +672,35 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=True, methods=["post"])
+    def mark_all_received(self, request, pk=None):
+        """Отметить все позиции заявки как полученные."""
+        procurement_request = self.get_object()
+        self.check_object_permissions(request, procurement_request)
+
+        if procurement_request.status not in [
+            ProcurementStatus.WAITING,
+            ProcurementStatus.IN_PROGRESS,
+        ]:
+            return Response(
+                {
+                    "error": (
+                        "Отмечать позиции можно только в ожидающей "
+                        "или взятой в работу заявке"
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        procurement_request.items.update(
+            execution_status=ProcurementItemExecutionStatus.RECEIVED,
+        )
+        procurement_request.recalculate_fulfillment_status(save=True)
+        procurement_request.refresh_from_db()
+
+        serializer = self.get_serializer(procurement_request)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
         """Отменить заявку."""
         procurement_request = self.get_object()
@@ -631,11 +739,40 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 class ProcurementItemViewSet(viewsets.ModelViewSet):
     """ViewSet для позиций заявок."""
 
-    queryset = ProcurementItem.objects.select_related("request")
+    queryset = ProcurementItem.objects.select_related(
+        "request",
+        "request__department",
+        "request__processing_department",
+    )
     serializer_class = ProcurementItemSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ["request"]
     search_fields = ["name", "description"]
+
+    def _is_processing_department_member(self, user, procurement_request):
+        if not procurement_request.processing_department_id:
+            return False
+        return (
+            EmployeeDepartment.objects.filter(
+                employee_id=user.id,
+                department_id=procurement_request.processing_department_id,
+                is_active=True,
+            ).exists()
+            or procurement_request.processing_department.head_id == user.id
+        )
+
+    def _can_process_request_items(self, user, procurement_request):
+        if user.is_superuser or user.is_staff:
+            return True
+        if (
+            user.has_perm("procurement.change_procurementrequest")
+            or user.has_perm("procurement.execute_procurement")
+        ):
+            return True
+        return self._is_processing_department_member(
+            user,
+            procurement_request,
+        )
 
     def get_permissions(self):
         """Только создатель заявки может редактировать позиции."""
@@ -666,31 +803,30 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         procurement_request = serializer.validated_data.get("request")
         user = self.request.user
 
-        # Проверяем, что заявка в DRAFT
-        if not procurement_request.is_editable:
+        if procurement_request.status in [
+            ProcurementStatus.CANCELLED,
+            ProcurementStatus.REJECTED,
+        ]:
             raise PermissionDenied(
                 "Нельзя добавлять позиции в заявку со статусом '{}'".format(
                     procurement_request.get_status_display()
                 )
             )
 
-        # Админы могут редактировать
-        if user.is_superuser or user.is_staff:
-            serializer.save()
-            return
-
-        # Модельные права
-        if user.has_perm("procurement.change_procurementrequest"):
+        if self._can_process_request_items(user, procurement_request):
             serializer.save()
             return
 
         # Автор заявки
-        if procurement_request.requestor == user:
+        if procurement_request.requestor == user and procurement_request.is_editable:
             serializer.save()
             return
 
         # Начальник отдела
-        if procurement_request.department.head == user:
+        if (
+            procurement_request.department.head == user
+            and procurement_request.is_editable
+        ):
             serializer.save()
             return
 
@@ -707,28 +843,28 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         user = self.request.user
         procurement_request = item.request
 
-        # Проверяем, что заявка в DRAFT
-        if not procurement_request.is_editable:
+        if procurement_request.status in [
+            ProcurementStatus.CANCELLED,
+            ProcurementStatus.REJECTED,
+        ]:
             raise PermissionDenied(
                 "Нельзя изменять позиции в заявке со статусом '{}'".format(
                     procurement_request.get_status_display()
                 )
             )
 
-        # Админы могут редактировать
-        if user.is_superuser or user.is_staff:
-            return True
-
-        # Модельные права
-        if user.has_perm("procurement.change_procurementrequest"):
+        if self._can_process_request_items(user, procurement_request):
             return True
 
         # Автор заявки
-        if procurement_request.requestor == user:
+        if procurement_request.requestor == user and procurement_request.is_editable:
             return True
 
         # Начальник отдела
-        if procurement_request.department.head == user:
+        if (
+            procurement_request.department.head == user
+            and procurement_request.is_editable
+        ):
             return True
 
         # Нет прав

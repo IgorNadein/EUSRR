@@ -26,6 +26,9 @@ class ProcurementItemInline(admin.TabularInline):
         "quantity",
         "unit",
         "estimated_unit_price",
+        "actual_unit_price",
+        "execution_status",
+        "expected_delivery_date",
         "supplier_info",
     ]
 
@@ -35,7 +38,14 @@ class ApprovalInline(admin.TabularInline):
 
     model = Approval
     extra = 0
-    fields = ["approver", "role", "status", "comment", "created_at"]
+    fields = [
+        "approver",
+        "priority",
+        "step_name",
+        "status",
+        "comment",
+        "created_at",
+    ]
     readonly_fields = ["created_at"]
     can_delete = False
 
@@ -48,13 +58,22 @@ class ProcurementRequestAdmin(admin.ModelAdmin):
         "id",
         "title",
         "department",
+        "processing_department",
         "requestor",
         "status_badge",
+        "fulfillment_status",
         "urgency_badge",
         "get_total_cost",
         "created_at",
     ]
-    list_filter = ["status", "urgency", "department", "created_at"]
+    list_filter = [
+        "status",
+        "fulfillment_status",
+        "urgency",
+        "department",
+        "processing_department",
+        "created_at",
+    ]
     search_fields = ["title", "description", "requestor__username"]
     readonly_fields = [
         "created_at",
@@ -69,13 +88,22 @@ class ProcurementRequestAdmin(admin.ModelAdmin):
     fieldsets = (
         (
             "Основная информация",
-            {"fields": ("title", "description", "department", "requestor")},
+            {
+                "fields": (
+                    "title",
+                    "description",
+                    "department",
+                    "processing_department",
+                    "requestor",
+                )
+            },
         ),
         (
             "Параметры",
             {
                 "fields": (
                     "status",
+                    "fulfillment_status",
                     "urgency",
                     "get_total_cost",
                     "actual_cost",
@@ -100,6 +128,7 @@ class ProcurementRequestAdmin(admin.ModelAdmin):
         """Цветной бадж статуса."""
         colors = {
             "draft": "#6c757d",
+            "waiting": "#ffc107",
             "pending": "#0dcaf0",
             "approved": "#198754",
             "rejected": "#dc3545",
@@ -153,9 +182,12 @@ class ProcurementItemAdmin(admin.ModelAdmin):
         "quantity",
         "unit",
         "estimated_unit_price",
+        "actual_unit_price",
+        "execution_status",
+        "expected_delivery_date",
         "total_price",
     ]
-    list_filter = ["unit", "created_at"]
+    list_filter = ["unit", "execution_status", "created_at"]
     search_fields = ["name", "description", "request__title"]
     readonly_fields = ["created_at", "total_price"]
 

@@ -13,6 +13,8 @@ from rest_framework.test import APIClient
 from employees.models import Department, Employee, EmployeeDepartment
 from procurement.constants import (
     ApprovalStatus,
+    ProcurementFulfillmentStatus,
+    ProcurementItemExecutionStatus,
     ProcurementStatus,
     UrgencyLevel,
 )
@@ -332,6 +334,46 @@ class TestProcurementRequestCreate:
             status.HTTP_403_FORBIDDEN
         ]
 
+    def test_create_processing_department_request_skips_approvals(
+        self, api_client, user, department, db
+    ):
+        """Заявка в отдел-исполнитель сразу попадает в очередь."""
+        supply_department = Department.objects.create(
+            name="Снабжение",
+            description="Отдел снабжения",
+        )
+
+        api_client.force_authenticate(user=user)
+        url = reverse('api:v1:procurement:procurementrequest-list')
+
+        response = api_client.post(
+            url,
+            {
+                'title': 'Расходники для производства',
+                'description': 'Нужны материалы для заказа',
+                'department': department.id,
+                'processing_department': supply_department.id,
+                'urgency': UrgencyLevel.MEDIUM,
+                'items': [
+                    {
+                        'name': 'Перчатки',
+                        'quantity': 10,
+                        'unit': 'упак',
+                        'estimated_unit_price': '500.00',
+                        'links': ['https://example.com/gloves'],
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['status'] == ProcurementStatus.WAITING
+        request_id = response.data['id']
+        procurement_request = ProcurementRequest.objects.get(id=request_id)
+        assert procurement_request.processing_department == supply_department
+        assert procurement_request.approvals.count() == 0
+
 
 # ==============================================================================
 # ТЕСТЫ ДЕТАЛЬНОЙ ИНФОРМАЦИИ
@@ -497,6 +539,190 @@ class TestProcurementRequestUpdate:
         response = api_client.patch(url, data, format='json')
         
         assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+# ==============================================================================
+# ТЕСТЫ АДРЕСНЫХ ЗАЯВОК В ОТДЕЛ-ИСПОЛНИТЕЛЬ
+# ==============================================================================
+
+
+class TestProcessingDepartmentWorkflow:
+    """Workflow для заявок, направленных в отдел-исполнитель."""
+
+    @pytest.fixture
+    def supply_department(self, db):
+        return Department.objects.create(
+            name="Снабжение",
+            description="Отдел снабжения",
+        )
+
+    @pytest.fixture
+    def supply_user(self, db, supply_department):
+        employee = Employee.objects.create_user(
+            email="supply@example.com",
+            password="testpass123",
+            phone_number="+79998888888",
+            first_name="Снабжение",
+            last_name="Исполнитель",
+            is_active=True,
+            email_verified=True,
+            send_activation_email=False,
+        )
+        EmployeeDepartment.objects.create(
+            employee=employee,
+            department=supply_department,
+            is_active=True,
+        )
+        return employee
+
+    @pytest.fixture
+    def outsider(self, db):
+        return Employee.objects.create_user(
+            email="outsider@example.com",
+            password="testpass123",
+            phone_number="+79998888889",
+            first_name="Чужой",
+            last_name="Сотрудник",
+            is_active=True,
+            email_verified=True,
+            send_activation_email=False,
+        )
+
+    @pytest.fixture
+    def processing_request(
+        self, department, user, supply_department
+    ):
+        return ProcurementRequest.objects.create(
+            title="Заявка на расходники",
+            description="Нужны расходные материалы",
+            department=department,
+            processing_department=supply_department,
+            requestor=user,
+            status=ProcurementStatus.WAITING,
+            urgency=UrgencyLevel.MEDIUM,
+        )
+
+    def test_available_shows_processing_department_requests(
+        self, api_client, supply_user, processing_request, procurement_item_factory
+    ):
+        procurement_item_factory(request=processing_request)
+        api_client.force_authenticate(user=supply_user)
+        url = reverse('api:v1:procurement:procurementrequest-available')
+
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        ids = [item['id'] for item in response.data['results']]
+        assert processing_request.id in ids
+
+    def test_outsider_cannot_start_processing_department_request(
+        self, api_client, outsider, processing_request, procurement_item_factory
+    ):
+        procurement_item_factory(request=processing_request)
+        api_client.force_authenticate(user=outsider)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-start-work',
+            kwargs={'pk': processing_request.id},
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        processing_request.refresh_from_db()
+        assert processing_request.executor is None
+        assert processing_request.status == ProcurementStatus.WAITING
+
+    def test_processing_department_user_can_start_work_and_blocks_author_edit(
+        self, api_client, user, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        procurement_item_factory(request=processing_request)
+        start_url = reverse(
+            'api:v1:procurement:procurementrequest-start-work',
+            kwargs={'pk': processing_request.id},
+        )
+        detail_url = reverse(
+            'api:v1:procurement:procurementrequest-detail',
+            kwargs={'pk': processing_request.id},
+        )
+
+        api_client.force_authenticate(user=supply_user)
+        start_response = api_client.post(start_url)
+        assert start_response.status_code == status.HTTP_200_OK
+
+        processing_request.refresh_from_db()
+        assert processing_request.executor == supply_user
+        assert processing_request.status == ProcurementStatus.IN_PROGRESS
+
+        api_client.force_authenticate(user=user)
+        edit_response = api_client.patch(
+            detail_url,
+            {'title': 'Нельзя менять'},
+            format='json',
+        )
+        assert edit_response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_item_status_recalculates_request_fulfillment_status(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(request=processing_request)
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save()
+
+        api_client.force_authenticate(user=supply_user)
+        item_url = reverse(
+            'api:v1:procurement:procurementitem-detail',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.patch(
+            item_url,
+            {'execution_status': ProcurementItemExecutionStatus.RECEIVED},
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        processing_request.refresh_from_db()
+        assert (
+            processing_request.fulfillment_status
+            == ProcurementFulfillmentStatus.COMPLETED
+        )
+        assert processing_request.status == ProcurementStatus.COMPLETED
+
+    def test_mark_all_received_completes_processing_request(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item_1 = procurement_item_factory(request=processing_request)
+        item_2 = procurement_item_factory(
+            request=processing_request,
+            name="Лампы",
+        )
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save()
+
+        api_client.force_authenticate(user=supply_user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-mark-all-received',
+            kwargs={'pk': processing_request.id},
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        processing_request.refresh_from_db()
+        item_1.refresh_from_db()
+        item_2.refresh_from_db()
+        assert item_1.execution_status == ProcurementItemExecutionStatus.RECEIVED
+        assert item_2.execution_status == ProcurementItemExecutionStatus.RECEIVED
+        assert (
+            processing_request.fulfillment_status
+            == ProcurementFulfillmentStatus.COMPLETED
+        )
+        assert processing_request.status == ProcurementStatus.COMPLETED
 
 
 # ==============================================================================

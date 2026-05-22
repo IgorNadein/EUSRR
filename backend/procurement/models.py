@@ -27,6 +27,8 @@ from .constants import (
     ApprovalStatus,
     EquipmentStatus,
     MaintenanceType,
+    ProcurementFulfillmentStatus,
+    ProcurementItemExecutionStatus,
     ProcurementStatus,
     UrgencyLevel,
     get_default_approval_step_name,
@@ -55,6 +57,15 @@ class ProcurementRequest(models.Model):
         related_name="procurement_requests",
         verbose_name="Отдел",
     )
+    processing_department = models.ForeignKey(
+        Department,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="processing_procurement_requests",
+        verbose_name="Отдел-исполнитель",
+        help_text="Отдел, который должен обработать заявку",
+    )
     requestor = models.ForeignKey(
         User,
         on_delete=models.PROTECT,
@@ -81,6 +92,12 @@ class ProcurementRequest(models.Model):
         max_length=20,
         choices=UrgencyLevel.choices,
         default=UrgencyLevel.MEDIUM,
+    )
+    fulfillment_status = models.CharField(
+        "Статус исполнения",
+        max_length=30,
+        choices=ProcurementFulfillmentStatus.choices,
+        default=ProcurementFulfillmentStatus.PENDING,
     )
     actual_cost = models.DecimalField(
         "Фактическая стоимость",
@@ -144,7 +161,67 @@ class ProcurementRequest(models.Model):
     @property
     def is_editable(self):
         """Можно ли редактировать заявку."""
-        return self.status == ProcurementStatus.DRAFT
+        return self.status in [
+            ProcurementStatus.DRAFT,
+            ProcurementStatus.WAITING,
+        ] and self.executor_id is None
+
+    def recalculate_fulfillment_status(self, save=True):
+        """Пересчитать рабочий статус заявки по статусам позиций."""
+        item_statuses = list(
+            self.items.values_list("execution_status", flat=True)
+        )
+        if not item_statuses:
+            new_status = ProcurementFulfillmentStatus.PENDING
+        elif any(
+            item_status
+            in {
+                ProcurementItemExecutionStatus.REJECTED,
+                ProcurementItemExecutionStatus.COMPLETED_WITH_ISSUE,
+                ProcurementItemExecutionStatus.EDITED,
+            }
+            for item_status in item_statuses
+        ):
+            new_status = ProcurementFulfillmentStatus.ISSUES
+        elif all(
+            item_status == ProcurementItemExecutionStatus.RECEIVED
+            for item_status in item_statuses
+        ):
+            new_status = ProcurementFulfillmentStatus.COMPLETED
+        elif any(
+            item_status == ProcurementItemExecutionStatus.RECEIVED
+            for item_status in item_statuses
+        ):
+            new_status = ProcurementFulfillmentStatus.PARTIALLY_RECEIVED
+        elif all(
+            item_status == ProcurementItemExecutionStatus.ORDERED
+            for item_status in item_statuses
+        ):
+            new_status = ProcurementFulfillmentStatus.ORDERED
+        elif any(
+            item_status == ProcurementItemExecutionStatus.ORDERED
+            for item_status in item_statuses
+        ):
+            new_status = ProcurementFulfillmentStatus.PARTIALLY_ORDERED
+        else:
+            new_status = ProcurementFulfillmentStatus.PENDING
+
+        if self.fulfillment_status == new_status:
+            return new_status
+
+        self.fulfillment_status = new_status
+        if save:
+            update_fields = ["fulfillment_status", "updated_at"]
+            if (
+                new_status == ProcurementFulfillmentStatus.COMPLETED
+                and self.status
+                in [ProcurementStatus.WAITING, ProcurementStatus.IN_PROGRESS]
+            ):
+                self.status = ProcurementStatus.COMPLETED
+                self.completed_at = timezone.now()
+                update_fields.extend(["status", "completed_at"])
+            self.save(update_fields=update_fields)
+        return new_status
 
 
 class ProcurementItem(models.Model):
@@ -184,6 +261,35 @@ class ProcurementItem(models.Model):
         blank=True,
         help_text="Ссылки на товар, контакты поставщика",
     )
+    links = models.JSONField(
+        "Ссылки",
+        default=list,
+        blank=True,
+        help_text="Список ссылок на позицию",
+    )
+    expected_delivery_date = models.DateField(
+        "Ожидаемая дата поступления",
+        null=True,
+        blank=True,
+    )
+    actual_unit_price = models.DecimalField(
+        "Фактическая цена за единицу",
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    execution_status = models.CharField(
+        "Статус выполнения",
+        max_length=30,
+        choices=ProcurementItemExecutionStatus.choices,
+        default=ProcurementItemExecutionStatus.PENDING,
+    )
+    executor_comment = models.TextField(
+        "Комментарий исполнителя",
+        blank=True,
+    )
     equipment = models.OneToOneField(
         "Equipment",
         on_delete=models.SET_NULL,
@@ -207,6 +313,17 @@ class ProcurementItem(models.Model):
     def total_price(self):
         """Общая стоимость позиции."""
         return self.estimated_unit_price * self.quantity
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.request_id:
+            self.request.recalculate_fulfillment_status(save=True)
+
+    def delete(self, *args, **kwargs):
+        request = self.request
+        result = super().delete(*args, **kwargs)
+        request.recalculate_fulfillment_status(save=True)
+        return result
 
 
 class ApprovalRoute(models.Model):

@@ -9,6 +9,7 @@ from django.db import models
 class ProcurementStatus(models.TextChoices):
     """Статусы заявки на закупку."""
     DRAFT = 'draft', 'Черновик'
+    WAITING = 'waiting', 'Ожидает'
     PENDING = 'pending', 'На согласовании'
     APPROVED = 'approved', 'Одобрено'
     REJECTED = 'rejected', 'Отклонено'
@@ -23,6 +24,26 @@ class UrgencyLevel(models.TextChoices):
     MEDIUM = 'medium', 'Средняя'
     HIGH = 'high', 'Высокая'
     CRITICAL = 'critical', 'Критическая'
+
+
+class ProcurementFulfillmentStatus(models.TextChoices):
+    """Рабочий статус исполнения заявки по позициям."""
+    PENDING = 'pending', 'Ожидает обработки'
+    PARTIALLY_ORDERED = 'partially_ordered', 'Заказано частично'
+    ORDERED = 'ordered', 'Заказано'
+    PARTIALLY_RECEIVED = 'partially_received', 'Прибыл частично'
+    COMPLETED = 'completed', 'Выполнено'
+    ISSUES = 'issues', 'Выполнено с проблемами'
+
+
+class ProcurementItemExecutionStatus(models.TextChoices):
+    """Рабочий статус отдельной позиции заявки."""
+    PENDING = 'pending', 'Не выполнено'
+    ORDERED = 'ordered', 'Заказано'
+    REJECTED = 'rejected', 'Отказано'
+    RECEIVED = 'received', 'Получено'
+    COMPLETED_WITH_ISSUE = 'completed_with_issue', 'Выполнено с замечанием'
+    EDITED = 'edited', 'Отредактировано'
 
 
 def get_default_approval_step_name(priority: int,

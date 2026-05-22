@@ -5,7 +5,10 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from procurement.constants import get_default_approval_step_name
+from procurement.constants import (
+    ProcurementStatus,
+    get_default_approval_step_name,
+)
 from procurement.services import ProcurementApprovalResolver
 from procurement.models import (
     Approval,
@@ -26,6 +29,9 @@ class ProcurementItemSerializer(serializers.ModelSerializer):
     total_price = serializers.DecimalField(
         max_digits=12, decimal_places=2, read_only=True
     )
+    execution_status_display = serializers.CharField(
+        source="get_execution_status_display", read_only=True
+    )
 
     class Meta:
         model = ProcurementItem
@@ -39,10 +45,21 @@ class ProcurementItemSerializer(serializers.ModelSerializer):
             "estimated_unit_price",
             "total_price",
             "supplier_info",
+            "links",
+            "expected_delivery_date",
+            "actual_unit_price",
+            "execution_status",
+            "execution_status_display",
+            "executor_comment",
             "equipment",
             "created_at",
         ]
-        read_only_fields = ["id", "created_at", "total_price"]
+        read_only_fields = [
+            "id",
+            "created_at",
+            "total_price",
+            "execution_status_display",
+        ]
 
 
 class ProcurementItemCreateSerializer(serializers.ModelSerializer):
@@ -57,6 +74,11 @@ class ProcurementItemCreateSerializer(serializers.ModelSerializer):
             "unit",
             "estimated_unit_price",
             "supplier_info",
+            "links",
+            "expected_delivery_date",
+            "actual_unit_price",
+            "execution_status",
+            "executor_comment",
         ]
 
 
@@ -109,6 +131,9 @@ class ProcurementRequestListSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(
         source="department.name", read_only=True
     )
+    processing_department_name = serializers.CharField(
+        source="processing_department.name", read_only=True, allow_null=True
+    )
     requestor_name = serializers.CharField(
         source="requestor.get_full_name", read_only=True
     )
@@ -117,6 +142,9 @@ class ProcurementRequestListSerializer(serializers.ModelSerializer):
     )
     urgency_display = serializers.CharField(
         source="get_urgency_display", read_only=True
+    )
+    fulfillment_status_display = serializers.CharField(
+        source="get_fulfillment_status_display", read_only=True
     )
     items_count = serializers.IntegerField(read_only=True)
     total_cost = serializers.DecimalField(
@@ -141,6 +169,8 @@ class ProcurementRequestListSerializer(serializers.ModelSerializer):
             "title",
             "department",
             "department_name",
+            "processing_department",
+            "processing_department_name",
             "requestor",
             "requestor_name",
             "executor",
@@ -149,6 +179,8 @@ class ProcurementRequestListSerializer(serializers.ModelSerializer):
             "status_display",
             "urgency",
             "urgency_display",
+            "fulfillment_status",
+            "fulfillment_status_display",
             "total_cost",
             "items_count",
             "comments_count",
@@ -163,10 +195,13 @@ class ProcurementRequestListSerializer(serializers.ModelSerializer):
             "submitted_at",
             "started_at",
             "department_name",
+            "processing_department_name",
             "requestor_name",
             "executor_name",
             "status_display",
             "urgency_display",
+            "fulfillment_status",
+            "fulfillment_status_display",
             "items_count",
             "total_cost",
             "comments_count",
@@ -191,6 +226,9 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(
         source="department.name", read_only=True
     )
+    processing_department_name = serializers.CharField(
+        source="processing_department.name", read_only=True, allow_null=True
+    )
     requestor_name = serializers.CharField(
         source="requestor.get_full_name", read_only=True
     )
@@ -205,6 +243,9 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
     )
     urgency_display = serializers.CharField(
         source="get_urgency_display", read_only=True
+    )
+    fulfillment_status_display = serializers.CharField(
+        source="get_fulfillment_status_display", read_only=True
     )
     total_cost = serializers.DecimalField(
         max_digits=12, decimal_places=2, read_only=True
@@ -232,6 +273,8 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
             "description",
             "department",
             "department_name",
+            "processing_department",
+            "processing_department_name",
             "requestor",
             "requestor_name",
             "requestor_email",
@@ -241,6 +284,8 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
             "status_display",
             "urgency",
             "urgency_display",
+            "fulfillment_status",
+            "fulfillment_status_display",
             "total_cost",
             "actual_cost",
             "items",
@@ -265,6 +310,9 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
             "is_editable",
             "total_cost",
             "executor_name",
+            "fulfillment_status",
+            "processing_department_name",
+            "fulfillment_status_display",
             "comments_count",
             "can_current_user_approve",
         ]
@@ -282,6 +330,7 @@ class ProcurementRequestCreateSerializer(serializers.ModelSerializer):
             "title",
             "description",
             "department",
+            "processing_department",
             "requestor",
             "urgency",
             "items",
@@ -295,7 +344,9 @@ class ProcurementRequestCreateSerializer(serializers.ModelSerializer):
         items_data = validated_data.pop("items", [])
         request = self.context["request"]
 
-        # Создаем заявку
+        if validated_data.get("processing_department"):
+            validated_data["status"] = ProcurementStatus.WAITING
+
         procurement_request = ProcurementRequest.objects.create(
             requestor=request.user, **validated_data
         )
