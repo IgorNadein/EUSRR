@@ -8,6 +8,8 @@ import { displayUserName, extractNextPage, loadAllPages } from "@/lib/shared";
 import type {
   Department,
   ProcurementComment,
+  ProcurementItem,
+  ProcurementItemComment,
   ProcurementRequest,
   UrgencyLevel,
   User,
@@ -167,6 +169,9 @@ export function useProcurementPage(user: User | null) {
   const [expandedComments, setExpandedComments] = useState<Record<number, boolean>>({});
   const [commentsMap, setCommentsMap] = useState<Record<number, ProcurementComment[]>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
+  const [expandedItemComments, setExpandedItemComments] = useState<Record<number, boolean>>({});
+  const [itemCommentsMap, setItemCommentsMap] = useState<Record<number, ProcurementItemComment[]>>({});
+  const [itemCommentDrafts, setItemCommentDrafts] = useState<Record<number, string>>({});
   const [detailsCache, setDetailsCache] = useState<Record<number, ProcurementRequest>>({});
   const detailsCacheRef = useRef<Record<number, ProcurementRequest>>({});
   const hasLoadedOnceRef = useRef(false);
@@ -596,6 +601,62 @@ export function useProcurementPage(user: User | null) {
     }
   }, [commentsMap, ensureCommentsLoaded, expandedComments]);
 
+  const updateCachedItem = useCallback((
+    requestId: number,
+    itemId: number,
+    updater: (item: ProcurementItem) => ProcurementItem,
+  ) => {
+    const updateRequest = (request: ProcurementRequest): ProcurementRequest => {
+      if (!Array.isArray(request.items)) {
+        return request;
+      }
+
+      return {
+        ...request,
+        items: request.items.map((item) => (item.id === itemId ? updater(item) : item)),
+      };
+    };
+
+    setRequests((previous) => previous.map((request) => (
+      request.id === requestId ? updateRequest(request) : request
+    )));
+    setDetailsCache((previous) => {
+      const detail = previous[requestId];
+      if (!detail) {
+        return previous;
+      }
+
+      const updatedDetail = updateRequest(detail);
+      const next = { ...previous, [requestId]: updatedDetail };
+      detailsCacheRef.current = { ...detailsCacheRef.current, [requestId]: updatedDetail };
+      return next;
+    });
+  }, []);
+
+  const ensureItemCommentsLoaded = useCallback(async (itemId: number) => {
+    if (itemCommentsMap[itemId]) {
+      return itemCommentsMap[itemId];
+    }
+
+    const comments = await apiClient.getProcurementItemComments(itemId);
+    const normalized = Array.isArray(comments) ? comments : [];
+    setItemCommentsMap((previous) => ({ ...previous, [itemId]: normalized }));
+    return normalized;
+  }, [itemCommentsMap]);
+
+  const toggleItemComments = useCallback(async (itemId: number) => {
+    const isOpen = Boolean(expandedItemComments[itemId]);
+    setExpandedItemComments((previous) => ({ ...previous, [itemId]: !isOpen }));
+
+    if (!isOpen && !itemCommentsMap[itemId]) {
+      try {
+        await ensureItemCommentsLoaded(itemId);
+      } catch {
+        setActionError("Не удалось загрузить комментарии позиции");
+      }
+    }
+  }, [ensureItemCommentsLoaded, expandedItemComments, itemCommentsMap]);
+
   const handleAddComment = useCallback(async (id: number) => {
     const text = (commentDrafts[id] || "").trim();
     if (!text) return;
@@ -628,6 +689,29 @@ export function useProcurementPage(user: User | null) {
     }
   }, [commentDrafts]);
 
+  const handleAddItemComment = useCallback(async (requestId: number, itemId: number) => {
+    const text = (itemCommentDrafts[itemId] || "").trim();
+    if (!text) return;
+
+    try {
+      setBusyKey(`item-comment-${itemId}`);
+      const created = await apiClient.addProcurementItemComment(itemId, text);
+      setItemCommentsMap((previous) => ({
+        ...previous,
+        [itemId]: [...(previous[itemId] || []), created],
+      }));
+      setItemCommentDrafts((previous) => ({ ...previous, [itemId]: "" }));
+      updateCachedItem(requestId, itemId, (item) => ({
+        ...item,
+        comments_count: (item.comments_count || 0) + 1,
+      }));
+    } catch {
+      setActionError("Не удалось добавить комментарий к позиции");
+    } finally {
+      setBusyKey(null);
+    }
+  }, [itemCommentDrafts, updateCachedItem]);
+
   const handleDeleteComment = useCallback(async (requestId: number, commentId: number) => {
     try {
       setBusyKey(`comment-delete-${commentId}`);
@@ -655,6 +739,25 @@ export function useProcurementPage(user: User | null) {
       setBusyKey(null);
     }
   }, []);
+
+  const handleDeleteItemComment = useCallback(async (requestId: number, itemId: number, commentId: number) => {
+    try {
+      setBusyKey(`item-comment-delete-${commentId}`);
+      await apiClient.deleteProcurementItemComment(itemId, commentId);
+      setItemCommentsMap((previous) => ({
+        ...previous,
+        [itemId]: (previous[itemId] || []).filter((comment) => comment.id !== commentId),
+      }));
+      updateCachedItem(requestId, itemId, (item) => ({
+        ...item,
+        comments_count: Math.max(0, (item.comments_count || 0) - 1),
+      }));
+    } catch {
+      setActionError("Не удалось удалить комментарий позиции");
+    } finally {
+      setBusyKey(null);
+    }
+  }, [updateCachedItem]);
 
   const handleSubmit = useCallback((id: number) => doAction(
     `submit-${id}`,
@@ -798,6 +901,10 @@ export function useProcurementPage(user: User | null) {
     expandedComments,
     commentsMap,
     commentDrafts,
+    expandedItemComments,
+    itemCommentsMap,
+    itemCommentDrafts,
+    setItemCommentDrafts,
     setCommentDrafts,
     detailsCache,
     filteredRequests,
@@ -811,7 +918,9 @@ export function useProcurementPage(user: User | null) {
     handleLoadMore,
     toggleExpand,
     toggleComments,
+    toggleItemComments,
     ensureCommentsLoaded,
+    ensureItemCommentsLoaded,
     handleSubmit,
     handleApprove,
     handleReject,
@@ -823,6 +932,8 @@ export function useProcurementPage(user: User | null) {
     handleDelete,
     handleAddComment,
     handleDeleteComment,
+    handleAddItemComment,
+    handleDeleteItemComment,
     addItemRow,
     removeItemRow,
     updateItemRow,

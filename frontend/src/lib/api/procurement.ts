@@ -30,6 +30,11 @@ export function createProcurementApi(request: RequestFn) {
         createProcurementItem: (data: Record<string, any>) => request('/api/v1/procurement/items/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
         updateProcurementItem: (id: number, data: Record<string, any>) => request(`/api/v1/procurement/items/${id}/`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
         deleteProcurementItem: (id: number): Promise<void> => request(`/api/v1/procurement/items/${id}/`, { method: 'DELETE' }),
+        getProcurementItemComments: (itemId: number) => request(`/api/v1/procurement/items/${itemId}/comments/`),
+        addProcurementItemComment: (itemId: number, text: string) =>
+            request(`/api/v1/procurement/items/${itemId}/comments/`, { method: 'POST', body: JSON.stringify({ text }) }),
+        deleteProcurementItemComment: (itemId: number, commentId: number): Promise<void> =>
+            request(`/api/v1/procurement/items/${itemId}/comments/${commentId}/`, { method: 'DELETE' }),
         // Suppliers
         getProcurementSuppliers: (params?: Record<string, string | number>) => request(`/api/v1/procurement/suppliers/${buildQuery(params)}`),
         createProcurementSupplier: (data: Record<string, any>) => request('/api/v1/procurement/suppliers/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),

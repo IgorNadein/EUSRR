@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Check, CheckCircle2, CircleDot, ExternalLink, Plus, Save, X } from "lucide-react";
+import { Check, CheckCircle2, CircleDot, ExternalLink, MessageSquare, Plus, Save, X } from "lucide-react";
 import { RequestAvatar } from "@/components/requests/RequestAvatar";
+import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
 
 import { cleanLinkRows, linkHref, toLinkRows } from "@/lib/procurementLinks";
 import { formatDate, formatMoney, userProfileLink } from "@/lib/shared";
-import type { ProcurementItem, ProcurementItemExecutionStatus, ProcurementRequest, User } from "@/types/api";
+import type { ProcurementItem, ProcurementItemComment, ProcurementItemExecutionStatus, ProcurementRequest, User } from "@/types/api";
 
 interface ProcurementRequestDetailContentProps {
   currentUserId?: number | null;
@@ -19,8 +20,16 @@ interface ProcurementRequestDetailContentProps {
   ) => string;
   canProcessItems?: boolean;
   busyKey?: string | null;
+  canDeleteAnyComment?: boolean;
   onUpdateItem?: (requestId: number, itemId: number, patch: Record<string, unknown>) => void | Promise<unknown>;
   onMarkAllReceived?: (requestId: number) => void | Promise<unknown>;
+  itemCommentsMap?: Record<number, ProcurementItemComment[]>;
+  itemCommentDrafts?: Record<number, string>;
+  expandedItemComments?: Record<number, boolean>;
+  onToggleItemComments?: (itemId: number) => void | Promise<void>;
+  onItemCommentDraftChange?: (itemId: number, value: string) => void;
+  onAddItemComment?: (requestId: number, itemId: number) => void | Promise<void>;
+  onDeleteItemComment?: (requestId: number, itemId: number, commentId: number) => void | Promise<void>;
   footer?: React.ReactNode;
 }
 
@@ -71,20 +80,45 @@ const normalizeItemDraft = (item: ProcurementItem): ItemProcessingDraft => ({
 interface ProcurementItemCardProps {
   item: ProcurementItem;
   requestId: number;
+  displayUserName: (
+    person?: User | number | null,
+    fallbackName?: string | null,
+    fallbackEmail?: string | null,
+  ) => string;
   canEditItemProcessing: boolean;
+  currentUserId?: number | null;
+  canDeleteAnyComment?: boolean;
   busyKey?: string | null;
   onUpdateItem?: (requestId: number, itemId: number, patch: Record<string, unknown>) => void | Promise<unknown>;
+  comments?: ProcurementItemComment[];
+  commentDraft?: string;
+  commentsOpen?: boolean;
+  onToggleComments?: (itemId: number) => void | Promise<void>;
+  onCommentDraftChange?: (itemId: number, value: string) => void;
+  onAddComment?: (requestId: number, itemId: number) => void | Promise<void>;
+  onDeleteComment?: (requestId: number, itemId: number, commentId: number) => void | Promise<void>;
 }
 
 function ProcurementItemCard({
   item,
   requestId,
+  displayUserName,
   canEditItemProcessing,
+  currentUserId,
+  canDeleteAnyComment = false,
   busyKey,
   onUpdateItem,
+  comments = [],
+  commentDraft = "",
+  commentsOpen = false,
+  onToggleComments,
+  onCommentDraftChange,
+  onAddComment,
+  onDeleteComment,
 }: ProcurementItemCardProps) {
   const [draft, setDraft] = useState<ItemProcessingDraft>(() => normalizeItemDraft(item));
   const links = Array.isArray(item.links) ? item.links.filter(Boolean) : [];
+  const commentsTotal = item.comments_count ?? comments.length;
 
   const updateDraft = (patch: Partial<ItemProcessingDraft>) => {
     setDraft((previous) => ({ ...previous, ...patch }));
@@ -148,6 +182,63 @@ function ProcurementItemCard({
           Комментарий исполнителя: {item.executor_comment}
         </p>
       ) : null}
+
+      <div className="mt-3 border-t border-[var(--border)] pt-3">
+        <button
+          type="button"
+          onClick={() => void onToggleComments?.(item.id)}
+          className="app-action-secondary inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium"
+        >
+          <MessageSquare size={13} />
+          <span>Комментарии</span>
+          {commentsTotal > 0 ? (
+            <span className="app-counter inline-flex min-w-4 items-center justify-center px-1 py-0.5 text-[10px] font-bold text-white">
+              {commentsTotal}
+            </span>
+          ) : null}
+        </button>
+
+        {commentsOpen ? (
+          <div className="mt-2 space-y-2">
+            {comments.length === 0 ? (
+              <p className="app-text-muted text-xs">Комментариев по позиции пока нет</p>
+            ) : (
+              comments.map((comment) => {
+                const canDeleteComment = Boolean(
+                  canDeleteAnyComment || (comment.author?.id && currentUserId === comment.author.id),
+                );
+
+                return (
+                  <div key={comment.id} className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span className="font-medium text-[var(--foreground)]">
+                        {displayUserName(comment.author)}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="app-text-muted">{formatDate(comment.created_at)}</span>
+                        {canDeleteComment ? (
+                          <CommentDeleteButton
+                            disabled={busyKey === `item-comment-delete-${comment.id}`}
+                            onClick={() => onDeleteComment?.(requestId, item.id, comment.id)}
+                          />
+                        ) : null}
+                      </div>
+                    </div>
+                    <p className="app-text-wrap text-[var(--foreground)]">{comment.text}</p>
+                  </div>
+                );
+              })
+            )}
+            <CommentComposer
+              value={commentDraft}
+              onChange={(value) => onCommentDraftChange?.(item.id, value)}
+              onSubmit={() => onAddComment?.(requestId, item.id)}
+              disabled={busyKey === `item-comment-${item.id}`}
+              placeholder="Комментарий по позиции"
+            />
+          </div>
+        ) : null}
+      </div>
 
       {canEditItemProcessing ? (
         <div className="mt-3 grid gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-primary)] p-3 sm:grid-cols-2">
@@ -251,8 +342,16 @@ export function ProcurementRequestDetailContent({
   displayUserName,
   canProcessItems = false,
   busyKey,
+  canDeleteAnyComment = false,
   onUpdateItem,
   onMarkAllReceived,
+  itemCommentsMap = {},
+  itemCommentDrafts = {},
+  expandedItemComments = {},
+  onToggleItemComments,
+  onItemCommentDraftChange,
+  onAddItemComment,
+  onDeleteItemComment,
   footer,
 }: ProcurementRequestDetailContentProps) {
   const canEditItemProcessing = Boolean(canProcessItems && onUpdateItem);
@@ -313,9 +412,19 @@ export function ProcurementRequestDetailContent({
                 ].join(":")}
                 item={item}
                 requestId={request.id}
+                displayUserName={displayUserName}
                 canEditItemProcessing={canEditItemProcessing}
+                currentUserId={currentUserId}
+                canDeleteAnyComment={canDeleteAnyComment}
                 busyKey={busyKey}
                 onUpdateItem={onUpdateItem}
+                comments={itemCommentsMap[item.id] || []}
+                commentDraft={itemCommentDrafts[item.id] || ""}
+                commentsOpen={Boolean(expandedItemComments[item.id])}
+                onToggleComments={onToggleItemComments}
+                onCommentDraftChange={onItemCommentDraftChange}
+                onAddComment={onAddItemComment}
+                onDeleteComment={onDeleteItemComment}
               />
             ))}
           </div>

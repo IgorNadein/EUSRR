@@ -271,6 +271,10 @@ export default function ProcurementPage() {
     commentsMap,
     commentDrafts,
     setCommentDrafts,
+    expandedItemComments,
+    itemCommentsMap,
+    itemCommentDrafts,
+    setItemCommentDrafts,
     expandedIds,
     expandedComments,
     filteredRequests,
@@ -305,7 +309,6 @@ export default function ProcurementPage() {
     resolveUserId,
     requests,
     searchQuery,
-    setActiveSection,
     setDepartmentFilter,
     setFiltersOpen,
     setForm,
@@ -325,6 +328,9 @@ export default function ProcurementPage() {
     scopeCounts,
     handleAddComment,
     handleDeleteComment,
+    handleAddItemComment,
+    handleDeleteItemComment,
+    toggleItemComments,
   } = useProcurementPage(user);
 
   const [detailModalId, setDetailModalId] = useState<number | null>(null);
@@ -884,8 +890,16 @@ export default function ProcurementPage() {
                           displayUserName={displayUserName}
                           canProcessItems={["waiting", "in_progress"].includes(st)}
                           busyKey={busyKey}
+                          canDeleteAnyComment={Boolean(user?.auth?.is_staff || user?.auth?.is_superuser)}
                           onUpdateItem={handleUpdateItem}
                           onMarkAllReceived={handleMarkAllReceived}
+                          itemCommentsMap={itemCommentsMap}
+                          itemCommentDrafts={itemCommentDrafts}
+                          expandedItemComments={expandedItemComments}
+                          onToggleItemComments={toggleItemComments}
+                          onItemCommentDraftChange={(itemId, value) => setItemCommentDrafts((previous) => ({ ...previous, [itemId]: value }))}
+                          onAddItemComment={handleAddItemComment}
+                          onDeleteItemComment={handleDeleteItemComment}
                           footer={(
                             <ProcurementRequestActionButtons
                               request={req}
@@ -1002,8 +1016,16 @@ export default function ProcurementPage() {
               displayUserName={displayUserName}
               canProcessItems={["waiting", "in_progress"].includes(String(selectedRequest.status || "").toLowerCase())}
               busyKey={busyKey}
+              canDeleteAnyComment={Boolean(user?.auth?.is_staff || user?.auth?.is_superuser)}
               onUpdateItem={handleUpdateItem}
               onMarkAllReceived={handleMarkAllReceived}
+              itemCommentsMap={itemCommentsMap}
+              itemCommentDrafts={itemCommentDrafts}
+              expandedItemComments={expandedItemComments}
+              onToggleItemComments={toggleItemComments}
+              onItemCommentDraftChange={(itemId, value) => setItemCommentDrafts((previous) => ({ ...previous, [itemId]: value }))}
+              onAddItemComment={handleAddItemComment}
+              onDeleteItemComment={handleDeleteItemComment}
               footer={(
                 <ProcurementRequestActionButtons
                   request={selectedRequest}

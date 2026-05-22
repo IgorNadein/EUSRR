@@ -503,6 +503,7 @@ export interface ProcurementItem {
   execution_status?: ProcurementItemExecutionStatus;
   execution_status_display?: string;
   executor_comment?: string;
+  comments_count?: number;
   equipment?: number | null;
 }
 
@@ -562,6 +563,10 @@ export interface ProcurementComment {
   author: User;
   text: string;
   created_at: string;
+}
+
+export interface ProcurementItemComment extends ProcurementComment {
+  item: number;
 }
 
 export interface ProcurementSupplier {
