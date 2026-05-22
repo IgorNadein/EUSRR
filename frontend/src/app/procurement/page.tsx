@@ -1317,23 +1317,6 @@ export default function ProcurementPage() {
                           rows={2}
                           className="app-input w-full rounded-lg px-3 py-2 text-sm"
                         />
-                        <div className="grid grid-cols-2 gap-2">
-                          <input
-                            type="date"
-                            value={it.expected_delivery_date}
-                            onChange={(e) => updateItemRow(idx, { expected_delivery_date: e.target.value })}
-                            className="app-input rounded-lg px-3 py-2 text-sm"
-                            aria-label="Ожидаемая дата поступления"
-                          />
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={it.actual_unit_price}
-                            onChange={(e) => updateItemRow(idx, { actual_unit_price: e.target.value })}
-                            placeholder="Фактическая цена/ед."
-                            className="app-input rounded-lg px-3 py-2 text-sm"
-                          />
-                        </div>
                       </div>
                     </div>
                   ))}

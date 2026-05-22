@@ -20,8 +20,6 @@ type ItemDraft = {
   estimated_unit_price: string;
   supplier_info: string;
   linksText: string;
-  expected_delivery_date: string;
-  actual_unit_price: string;
 };
 
 const emptyItem: ItemDraft = {
@@ -32,8 +30,6 @@ const emptyItem: ItemDraft = {
   estimated_unit_price: "",
   supplier_info: "",
   linksText: "",
-  expected_delivery_date: "",
-  actual_unit_price: "",
 };
 
 type FormState = {
@@ -390,8 +386,6 @@ export function useProcurementPage(user: User | null) {
             estimated_unit_price: String(item.estimated_unit_price || ""),
             supplier_info: item.supplier_info || "",
             linksText: Array.isArray(item.links) ? item.links.join("\n") : "",
-            expected_delivery_date: item.expected_delivery_date || "",
-            actual_unit_price: item.actual_unit_price ? String(item.actual_unit_price) : "",
           }))
         : [{ ...emptyItem }],
     });
@@ -485,8 +479,6 @@ export function useProcurementPage(user: User | null) {
           estimated_unit_price: item.estimated_unit_price,
           supplier_info: item.supplier_info || undefined,
           links: parseLinks(item.linksText),
-          expected_delivery_date: item.expected_delivery_date || undefined,
-          actual_unit_price: item.actual_unit_price || undefined,
         })),
       };
 
