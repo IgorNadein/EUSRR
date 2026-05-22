@@ -1273,12 +1273,7 @@ export default function ProcurementPage() {
                 </div>
 
                 <div className="space-y-3">
-                  {form.items.map((it, idx) => {
-                    const hasOptionalFields = Boolean(
-                      it.description.trim() || it.supplier_info.trim(),
-                    );
-
-                    return (
+                  {form.items.map((it, idx) => (
                       <div key={idx} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                         <div className="grid gap-2">
                           <div className="flex items-center gap-2">
@@ -1364,37 +1359,9 @@ export default function ProcurementPage() {
                               </div>
                             ))}
                           </div>
-                          <details className="group">
-                            <summary className="app-action-secondary flex cursor-pointer list-none items-center justify-between rounded-lg px-3 py-2 text-xs font-medium [&::-webkit-details-marker]:hidden">
-                              <span className="inline-flex items-center gap-2">
-                                <ChevronDown size={13} className="transition group-open:rotate-180" />
-                                Дополнительные поля
-                              </span>
-                              {hasOptionalFields ? (
-                                <span className="app-badge rounded-full px-2 py-0.5 text-[10px] font-medium">
-                                  заполнено
-                                </span>
-                              ) : null}
-                            </summary>
-                            <div className="mt-2 grid gap-2">
-                              <input
-                                value={it.description}
-                                onChange={(e) => updateItemRow(idx, { description: e.target.value })}
-                                placeholder="Описание (необязательно)"
-                                className="app-input w-full rounded-lg px-3 py-2 text-sm"
-                              />
-                              <input
-                                value={it.supplier_info}
-                                onChange={(e) => updateItemRow(idx, { supplier_info: e.target.value })}
-                                placeholder="Информация о поставщике (необязательно)"
-                                className="app-input w-full rounded-lg px-3 py-2 text-sm"
-                              />
-                            </div>
-                          </details>
                         </div>
                       </div>
-                    );
-                  })}
+                  ))}
                 </div>
               </div>
             </div>
