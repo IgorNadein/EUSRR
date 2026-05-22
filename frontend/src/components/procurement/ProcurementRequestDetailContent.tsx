@@ -37,7 +37,6 @@ type ItemProcessingDraft = {
   execution_status: ProcurementItemExecutionStatus;
   expected_delivery_date: string;
   actual_unit_price: string;
-  executor_comment: string;
   links: string[];
 };
 
@@ -73,7 +72,6 @@ const normalizeItemDraft = (item: ProcurementItem): ItemProcessingDraft => ({
   execution_status: item.execution_status || "pending",
   expected_delivery_date: item.expected_delivery_date || "",
   actual_unit_price: item.actual_unit_price ? String(item.actual_unit_price) : "",
-  executor_comment: item.executor_comment || "",
   links: toLinkRows(item.links),
 });
 
@@ -129,7 +127,6 @@ function ProcurementItemCard({
       execution_status: draft.execution_status,
       expected_delivery_date: draft.expected_delivery_date || null,
       actual_unit_price: draft.actual_unit_price || null,
-      executor_comment: draft.executor_comment,
       links: cleanLinkRows(draft.links),
     });
   };
@@ -177,12 +174,6 @@ function ProcurementItemCard({
         <span>Статус: {item.execution_status_display || "Не выполнено"}</span>
         {item.expected_delivery_date ? <span>Ожидается: {formatDate(item.expected_delivery_date)}</span> : null}
       </div>
-      {item.executor_comment ? (
-        <p className="app-text-wrap app-text-muted mt-2">
-          Комментарий исполнителя: {item.executor_comment}
-        </p>
-      ) : null}
-
       <div className="mt-3">
         <button
           type="button"
@@ -312,15 +303,6 @@ function ProcurementItemCard({
             </div>
           </div>
           <div className="sm:col-span-2">
-            <label className="app-text-muted mb-1 block text-[11px] font-medium">Комментарий исполнителя</label>
-            <textarea
-              value={draft.executor_comment}
-              onChange={(event) => updateDraft({ executor_comment: event.target.value })}
-              rows={2}
-              className="app-input app-text-wrap min-h-16 w-full rounded-lg px-3 py-2 text-xs"
-            />
-          </div>
-          <div className="sm:col-span-2">
             <button
               type="button"
               onClick={() => void saveItemProcessing()}
@@ -407,7 +389,6 @@ export function ProcurementRequestDetailContent({
                   item.execution_status || "",
                   item.expected_delivery_date || "",
                   item.actual_unit_price || "",
-                  item.executor_comment || "",
                   Array.isArray(item.links) ? item.links.join("|") : "",
                 ].join(":")}
                 item={item}
