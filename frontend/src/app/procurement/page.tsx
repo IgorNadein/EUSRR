@@ -1275,7 +1275,7 @@ export default function ProcurementPage() {
                 <div className="space-y-3">
                   {form.items.map((it, idx) => {
                     const hasOptionalFields = Boolean(
-                      it.description.trim() || it.supplier_info.trim() || it.links.some((link) => link.trim()),
+                      it.description.trim() || it.supplier_info.trim(),
                     );
 
                     return (
@@ -1319,6 +1319,44 @@ export default function ProcurementPage() {
                               {it.quantity && it.estimated_unit_price ? money(Number(it.quantity) * Number(it.estimated_unit_price)) : "—"}
                             </div>
                           </div>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="app-text-muted text-xs font-medium">Ссылки</span>
+                              <button
+                                type="button"
+                                onClick={() => updateItemRow(idx, { links: [...it.links, ""] })}
+                                className="app-link-accent inline-flex items-center gap-1 text-xs font-medium"
+                              >
+                                <Plus size={12} /> Добавить ссылку
+                              </button>
+                            </div>
+                            {it.links.map((link, linkIndex) => (
+                              <div key={linkIndex} className="flex items-center gap-2">
+                                <input
+                                  value={link}
+                                  onChange={(e) => updateItemRow(idx, {
+                                    links: it.links.map((currentLink, currentIndex) => (
+                                      currentIndex === linkIndex ? e.target.value : currentLink
+                                    )),
+                                  })}
+                                  placeholder="https://example.ru/item"
+                                  className="app-input min-w-0 flex-1 rounded-lg px-3 py-2 text-sm"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => updateItemRow(idx, {
+                                    links: it.links.length > 1
+                                      ? it.links.filter((_, currentIndex) => currentIndex !== linkIndex)
+                                      : [""],
+                                  })}
+                                  className="app-action-secondary inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                                  title="Удалить ссылку"
+                                >
+                                  <X size={13} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
                           <details className="group">
                             <summary className="app-action-secondary flex cursor-pointer list-none items-center justify-between rounded-lg px-3 py-2 text-xs font-medium [&::-webkit-details-marker]:hidden">
                               <span className="inline-flex items-center gap-2">
@@ -1344,44 +1382,6 @@ export default function ProcurementPage() {
                                 placeholder="Информация о поставщике (необязательно)"
                                 className="app-input w-full rounded-lg px-3 py-2 text-sm"
                               />
-                              <div className="space-y-2">
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="app-text-muted text-xs font-medium">Ссылки</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => updateItemRow(idx, { links: [...it.links, ""] })}
-                                    className="app-link-accent inline-flex items-center gap-1 text-xs font-medium"
-                                  >
-                                    <Plus size={12} /> Добавить ссылку
-                                  </button>
-                                </div>
-                                {it.links.map((link, linkIndex) => (
-                                  <div key={linkIndex} className="flex items-center gap-2">
-                                    <input
-                                      value={link}
-                                      onChange={(e) => updateItemRow(idx, {
-                                        links: it.links.map((currentLink, currentIndex) => (
-                                          currentIndex === linkIndex ? e.target.value : currentLink
-                                        )),
-                                      })}
-                                      placeholder="https://example.ru/item"
-                                      className="app-input min-w-0 flex-1 rounded-lg px-3 py-2 text-sm"
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() => updateItemRow(idx, {
-                                        links: it.links.length > 1
-                                          ? it.links.filter((_, currentIndex) => currentIndex !== linkIndex)
-                                          : [""],
-                                      })}
-                                      className="app-action-secondary inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-                                      title="Удалить ссылку"
-                                    >
-                                      <X size={13} />
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
                             </div>
                           </details>
                         </div>
