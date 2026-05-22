@@ -195,7 +195,7 @@ class ProcurementApprovalResolver:
 
         return pending.filter(
             approver=user,
-            priority=first_pending.priority,
+            priority__gte=first_pending.priority,
         ).first()
 
     @classmethod

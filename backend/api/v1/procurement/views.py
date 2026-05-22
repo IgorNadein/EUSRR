@@ -446,6 +446,16 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        # Вышестоящий согласующий закрывает все предыдущие pending-этапы.
+        procurement_request.approvals.filter(
+            status=ApprovalStatus.PENDING,
+            priority__lt=approval.priority,
+        ).update(
+            status=ApprovalStatus.APPROVED,
+            comment="Автоматически одобрено вышестоящим согласующим",
+            updated_at=timezone.now(),
+        )
+
         # Одобряем
         approval.status = ApprovalStatus.APPROVED
         approval.comment = request.data.get("comment", "")

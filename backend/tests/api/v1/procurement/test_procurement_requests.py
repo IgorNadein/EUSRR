@@ -1264,21 +1264,21 @@ class TestProcurementRequestWorkflow:
         response = api_client.post(url, {'comment': 'Одобрено'})
         assert response.status_code == status.HTTP_200_OK
 
-    def test_finance_cannot_approve_before_head(
+    def test_higher_approver_can_approve_before_head(
         self, api_client, user, department_head, procurement_request,
         procurement_item, budget
     ):
-        """Финансовый этап недоступен, пока не завершён предыдущий."""
+        """Вышестоящий согласующий может закрыть предыдущий этап."""
         procurement_request.status = ProcurementStatus.PENDING
         procurement_request.save()
 
-        Approval.objects.create(
+        head_approval = Approval.objects.create(
             request=procurement_request,
             approver=department_head,
             priority=HEAD_PRIORITY,
             status=ApprovalStatus.PENDING,
         )
-        Approval.objects.create(
+        finance_approval = Approval.objects.create(
             request=procurement_request,
             approver=user,
             priority=FINANCE_PRIORITY,
@@ -1291,8 +1291,75 @@ class TestProcurementRequestWorkflow:
             kwargs={'pk': procurement_request.id}
         )
 
-        response = api_client.post(url, {'comment': 'Рано'})
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        response = api_client.post(url, {'comment': 'Согласовано сверху'})
+        assert response.status_code == status.HTTP_200_OK
+
+        head_approval.refresh_from_db()
+        finance_approval.refresh_from_db()
+        procurement_request.refresh_from_db()
+
+        assert head_approval.status == ApprovalStatus.APPROVED
+        assert "вышестоящим" in head_approval.comment
+        assert finance_approval.status == ApprovalStatus.APPROVED
+        assert finance_approval.comment == "Согласовано сверху"
+        assert procurement_request.status == ProcurementStatus.APPROVED
+
+    def test_top_approver_can_close_all_previous_stages(
+        self, api_client, user, department_head, procurement_request,
+        procurement_item, budget
+    ):
+        """Последний согласующий может одобрить заявку сразу за всю цепочку."""
+        director = Employee.objects.create_user(
+            email="director-bypass@example.com",
+            password="testpass123",
+            phone_number="+79998889999",
+            first_name="АЮ",
+            last_name="Директор",
+            is_active=True,
+            email_verified=True,
+            send_activation_email=False,
+        )
+        procurement_request.status = ProcurementStatus.PENDING
+        procurement_request.save()
+
+        head_approval = Approval.objects.create(
+            request=procurement_request,
+            approver=department_head,
+            priority=HEAD_PRIORITY,
+            status=ApprovalStatus.PENDING,
+        )
+        finance_approval = Approval.objects.create(
+            request=procurement_request,
+            approver=user,
+            priority=FINANCE_PRIORITY,
+            status=ApprovalStatus.PENDING,
+        )
+        director_approval = Approval.objects.create(
+            request=procurement_request,
+            approver=director,
+            priority=DIRECTOR_PRIORITY,
+            status=ApprovalStatus.PENDING,
+        )
+
+        api_client.force_authenticate(user=director)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-approve',
+            kwargs={'pk': procurement_request.id}
+        )
+
+        response = api_client.post(url, {'comment': 'Финальное согласование'})
+        assert response.status_code == status.HTTP_200_OK
+
+        head_approval.refresh_from_db()
+        finance_approval.refresh_from_db()
+        director_approval.refresh_from_db()
+        procurement_request.refresh_from_db()
+
+        assert head_approval.status == ApprovalStatus.APPROVED
+        assert finance_approval.status == ApprovalStatus.APPROVED
+        assert director_approval.status == ApprovalStatus.APPROVED
+        assert director_approval.comment == "Финальное согласование"
+        assert procurement_request.status == ProcurementStatus.APPROVED
 
     def test_staff_without_pending_stage_cannot_approve(
         self, api_client, staff_user, department_head, procurement_request, procurement_item
@@ -1482,10 +1549,10 @@ class TestProcurementRequestWorkflow:
         procurement_request.refresh_from_db()
         assert procurement_request.status == ProcurementStatus.APPROVED
 
-    def test_list_marks_only_current_approver_as_can_approve(
+    def test_list_marks_current_and_higher_approver_as_can_approve(
         self, api_client, user, department_head, procurement_request, procurement_item
     ):
-        """Список должен показывать approve/reject только текущему согласующему."""
+        """Список показывает approve/reject текущему и вышестоящему согласующим."""
         procurement_request.status = ProcurementStatus.PENDING
         procurement_request.save()
 
@@ -1512,7 +1579,7 @@ class TestProcurementRequestWorkflow:
         api_client.force_authenticate(user=user)
         finance_response = api_client.get(url)
         assert finance_response.status_code == status.HTTP_200_OK
-        assert finance_response.data['results'][0]['can_current_user_approve'] is False
+        assert finance_response.data['results'][0]['can_current_user_approve'] is True
 
     def test_detail_marks_next_stage_approver_after_previous_stage_complete(
         self, api_client, user, department_head, procurement_request, procurement_item
