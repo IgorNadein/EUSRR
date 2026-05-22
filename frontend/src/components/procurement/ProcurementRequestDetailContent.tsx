@@ -155,7 +155,7 @@ function ProcurementItemCard({
                   href={linkHref(link)}
                   target="_blank"
                   rel="noreferrer"
-                  className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium hover:bg-[var(--surface-tertiary)]"
+                  className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium no-underline hover:bg-[var(--surface-tertiary)] hover:no-underline"
                 >
                   <ExternalLink size={11} />
                   <span className="truncate">{link}</span>
@@ -183,11 +183,11 @@ function ProcurementItemCard({
         </p>
       ) : null}
 
-      <div className="mt-3 border-t border-[var(--border)] pt-3">
+      <div className="mt-3">
         <button
           type="button"
           onClick={() => void onToggleComments?.(item.id)}
-          className="app-action-secondary inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium"
+          className="app-action-ghost inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium"
         >
           <MessageSquare size={13} />
           <span>Комментарии</span>
@@ -209,7 +209,7 @@ function ProcurementItemCard({
                 );
 
                 return (
-                  <div key={comment.id} className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs">
+                  <div key={comment.id} className="rounded-lg bg-[var(--surface-primary)] px-3 py-2 text-xs">
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <span className="font-medium text-[var(--foreground)]">
                         {displayUserName(comment.author)}
@@ -241,7 +241,7 @@ function ProcurementItemCard({
       </div>
 
       {canEditItemProcessing ? (
-        <div className="mt-3 grid gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-primary)] p-3 sm:grid-cols-2">
+        <div className="mt-3 grid gap-2 rounded-lg bg-[var(--surface-primary)] p-3 sm:grid-cols-2">
           <div>
             <label className="app-text-muted mb-1 block text-[11px] font-medium">Статус позиции</label>
             <select
