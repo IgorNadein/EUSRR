@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Check, CheckCircle2, CircleDot, ExternalLink, MessageSquare, Plus, Save, X } from "lucide-react";
+import { Check, CheckCircle2, CircleDot, ExternalLink, MessageSquare, Plus, Save, SlidersHorizontal, X } from "lucide-react";
 import { RequestAvatar } from "@/components/requests/RequestAvatar";
 import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
 
@@ -115,6 +115,7 @@ function ProcurementItemCard({
   onDeleteComment,
 }: ProcurementItemCardProps) {
   const [draft, setDraft] = useState<ItemProcessingDraft>(() => normalizeItemDraft(item));
+  const [processingOpen, setProcessingOpen] = useState(false);
   const links = Array.isArray(item.links) ? item.links.filter(Boolean) : [];
   const commentsTotal = item.comments_count ?? comments.length;
 
@@ -174,64 +175,77 @@ function ProcurementItemCard({
         <span>Статус: {item.execution_status_display || "Не выполнено"}</span>
         {item.expected_delivery_date ? <span>Ожидается: {formatDate(item.expected_delivery_date)}</span> : null}
       </div>
-      <div className="mt-3">
-        <button
-          type="button"
-          onClick={() => void onToggleComments?.(item.id)}
-          className="app-action-ghost inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium"
-        >
-          <MessageSquare size={13} />
-          <span>Комментарии</span>
-          {commentsTotal > 0 ? (
-            <span className="app-counter inline-flex min-w-4 items-center justify-center px-1 py-0.5 text-[10px] font-bold text-white">
-              {commentsTotal}
-            </span>
-          ) : null}
-        </button>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div>
+          <button
+            type="button"
+            onClick={() => void onToggleComments?.(item.id)}
+            className="app-action-ghost inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium"
+          >
+            <MessageSquare size={13} />
+            <span>Комментарии</span>
+            {commentsTotal > 0 ? (
+              <span className="app-counter inline-flex min-w-4 items-center justify-center px-1 py-0.5 text-[10px] font-bold text-white">
+                {commentsTotal}
+              </span>
+            ) : null}
+          </button>
+        </div>
 
-        {commentsOpen ? (
-          <div className="mt-2 space-y-2">
-            {comments.length === 0 ? (
-              <p className="app-text-muted text-xs">Комментариев по позиции пока нет</p>
-            ) : (
-              comments.map((comment) => {
-                const canDeleteComment = Boolean(
-                  canDeleteAnyComment || (comment.author?.id && currentUserId === comment.author.id),
-                );
-
-                return (
-                  <div key={comment.id} className="rounded-lg bg-[var(--surface-primary)] px-3 py-2 text-xs">
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="font-medium text-[var(--foreground)]">
-                        {displayUserName(comment.author)}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className="app-text-muted">{formatDate(comment.created_at)}</span>
-                        {canDeleteComment ? (
-                          <CommentDeleteButton
-                            disabled={busyKey === `item-comment-delete-${comment.id}`}
-                            onClick={() => onDeleteComment?.(requestId, item.id, comment.id)}
-                          />
-                        ) : null}
-                      </div>
-                    </div>
-                    <p className="app-text-wrap text-[var(--foreground)]">{comment.text}</p>
-                  </div>
-                );
-              })
-            )}
-            <CommentComposer
-              value={commentDraft}
-              onChange={(value) => onCommentDraftChange?.(item.id, value)}
-              onSubmit={() => onAddComment?.(requestId, item.id)}
-              disabled={busyKey === `item-comment-${item.id}`}
-              placeholder="Комментарий по позиции"
-            />
-          </div>
+        {canEditItemProcessing ? (
+          <button
+            type="button"
+            onClick={() => setProcessingOpen((open) => !open)}
+            className="app-action-ghost inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium"
+          >
+            <SlidersHorizontal size={13} />
+            <span>Редактировать позицию</span>
+          </button>
         ) : null}
       </div>
 
-      {canEditItemProcessing ? (
+      {commentsOpen ? (
+        <div className="mt-2 space-y-2">
+          {comments.length === 0 ? (
+            <p className="app-text-muted text-xs">Комментариев по позиции пока нет</p>
+          ) : (
+            comments.map((comment) => {
+              const canDeleteComment = Boolean(
+                canDeleteAnyComment || (comment.author?.id && currentUserId === comment.author.id),
+              );
+
+              return (
+                <div key={comment.id} className="rounded-lg bg-[var(--surface-primary)] px-3 py-2 text-xs">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className="font-medium text-[var(--foreground)]">
+                      {displayUserName(comment.author)}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="app-text-muted">{formatDate(comment.created_at)}</span>
+                      {canDeleteComment ? (
+                        <CommentDeleteButton
+                          disabled={busyKey === `item-comment-delete-${comment.id}`}
+                          onClick={() => onDeleteComment?.(requestId, item.id, comment.id)}
+                        />
+                      ) : null}
+                    </div>
+                  </div>
+                  <p className="app-text-wrap text-[var(--foreground)]">{comment.text}</p>
+                </div>
+              );
+            })
+          )}
+          <CommentComposer
+            value={commentDraft}
+            onChange={(value) => onCommentDraftChange?.(item.id, value)}
+            onSubmit={() => onAddComment?.(requestId, item.id)}
+            disabled={busyKey === `item-comment-${item.id}`}
+            placeholder="Комментарий по позиции"
+          />
+        </div>
+      ) : null}
+
+      {canEditItemProcessing && processingOpen ? (
         <div className="mt-3 grid gap-2 rounded-lg bg-[var(--surface-primary)] p-3 sm:grid-cols-2">
           <div>
             <label className="app-text-muted mb-1 block text-[11px] font-medium">Статус позиции</label>
