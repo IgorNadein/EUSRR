@@ -51,7 +51,7 @@ const emptyForm: FormState = {
   title: "",
   description: "",
   department: null,
-  requireApproval: true,
+  requireApproval: false,
   processing_department: null,
   urgency: "medium",
   items: [{ ...emptyItem }],
@@ -335,7 +335,11 @@ export function useProcurementPage(user: User | null) {
   }, [departments]);
 
   useEffect(() => {
-    if (form.requireApproval || !defaultProcessingDepartmentId) {
+    if (
+      editingId !== null ||
+      form.requireApproval ||
+      !defaultProcessingDepartmentId
+    ) {
       return;
     }
 
@@ -351,7 +355,7 @@ export function useProcurementPage(user: User | null) {
         processing_department: defaultProcessingDepartmentId,
       };
     });
-  }, [defaultProcessingDepartmentId, form.requireApproval]);
+  }, [defaultProcessingDepartmentId, editingId, form.requireApproval]);
 
   const filteredRequests = useMemo(() => {
     const urgencyRank: Record<string, number> = {
@@ -401,7 +405,7 @@ export function useProcurementPage(user: User | null) {
       title: detail.title || "",
       description: detail.description || "",
       department: detail.department ?? null,
-      requireApproval: !detail.processing_department,
+      requireApproval: false,
       processing_department: detail.processing_department ?? null,
       urgency: detail.urgency || "medium",
       items: detail.items && detail.items.length > 0
@@ -454,24 +458,20 @@ export function useProcurementPage(user: User | null) {
     return detail;
   }, []);
 
-  const saveRequest = useCallback(async (submitAfterCreate = false) => {
+  const saveRequest = useCallback(async () => {
     try {
-      setBusyKey(submitAfterCreate ? "save-submit" : "save");
+      setBusyKey("save");
       setActionError(null);
 
       if (!form.title.trim()) {
         setActionError("Укажите название заявки.");
         return;
       }
-      if (form.requireApproval && !form.description.trim()) {
-        setActionError("Укажите описание и обоснование.");
-        return;
-      }
       if (!form.department) {
         setActionError("Выберите отдел.");
         return;
       }
-      if (!form.requireApproval && !form.processing_department) {
+      if (!form.processing_department) {
         setActionError("Выберите отдел-исполнитель.");
         return;
       }
@@ -498,7 +498,7 @@ export function useProcurementPage(user: User | null) {
         title: form.title,
         description: form.description.trim(),
         department: form.department,
-        processing_department: form.requireApproval ? null : form.processing_department,
+        processing_department: form.processing_department,
         urgency: form.urgency,
         items: validItems.map((item) => ({
           name: item.name,
@@ -513,13 +513,8 @@ export function useProcurementPage(user: User | null) {
       };
 
       if (modalMode === "create") {
-        const created = await apiClient.createProcurementRequest(payload) as ProcurementRequest;
-        if (submitAfterCreate && form.requireApproval && created.id) {
-          await apiClient.submitProcurementRequest(created.id);
-          setActionSuccess("Заявка создана и отправлена на согласование.");
-        } else {
-          setActionSuccess(form.requireApproval ? "Заявка создана (черновик)." : "Заявка направлена в отдел.");
-        }
+        await apiClient.createProcurementRequest(payload) as ProcurementRequest;
+        setActionSuccess("Заявка создана и направлена в отдел.");
         setCreateOpen(false);
       } else if (editingId) {
         await apiClient.updateProcurementRequest(editingId, {
@@ -541,9 +536,7 @@ export function useProcurementPage(user: User | null) {
     }
   }, [editingId, form, loadPage1, modalMode, resetForm]);
 
-  const handleSave = useCallback(() => saveRequest(false), [saveRequest]);
-
-  const handleSaveAndSubmit = useCallback(() => saveRequest(true), [saveRequest]);
+  const handleSave = useCallback(() => saveRequest(), [saveRequest]);
 
   const doAction = useCallback(async (key: string, action: () => Promise<unknown>, id: number, successMessage: string) => {
     try {
@@ -957,7 +950,6 @@ export function useProcurementPage(user: User | null) {
     modalMode,
     isModalOpen,
     handleSave,
-    handleSaveAndSubmit,
     handleLoadMore,
     toggleExpand,
     toggleComments,

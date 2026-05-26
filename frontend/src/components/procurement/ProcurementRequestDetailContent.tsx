@@ -523,10 +523,11 @@ export function ProcurementRequestDetailContent({
   footer,
 }: ProcurementRequestDetailContentProps) {
   const canEditItemProcessing = Boolean(canProcessItems && onUpdateItem);
+  const isRequestPending = String(request.status || "").toLowerCase() === "pending";
   const requestorId = typeof request.requestor === "number" ? request.requestor : request.requestor?.id ?? null;
   const executorId = typeof request.executor === "number" ? request.executor : request.executor?.id ?? null;
   const canReportIssues = Boolean(
-    onReportItemIssue && currentUserId && (
+    !isRequestPending && onReportItemIssue && currentUserId && (
       canEditItemProcessing ||
       currentUserId === requestorId ||
       currentUserId === executorId

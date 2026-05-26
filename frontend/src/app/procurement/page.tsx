@@ -155,6 +155,7 @@ function ProcurementRequestActionButtons({
   const canStartWork = (status === "approved" || status === "waiting") && !request.executor;
   const isInProgress = status === "in_progress";
   const canApproveThis = Boolean(request.can_current_user_approve);
+  const canSubmitForApproval = Boolean(request.can_current_user_submit_for_approval);
   const buttonClass = (variantClass: string) =>
     `${variantClass} inline-flex h-9 items-center justify-center rounded-lg disabled:opacity-60 ${
       showLabels ? "gap-1.5 px-3 text-xs font-medium" : "w-9"
@@ -163,16 +164,16 @@ function ProcurementRequestActionButtons({
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 pt-1">
-      {isDraft && isAuthor ? (
+      {canSubmitForApproval ? (
         <button
           type="button"
           onClick={() => onSubmit(request.id)}
           disabled={busyKey === `submit-${request.id}`}
-          title="На согласование"
+          title="Отправить на согласование"
           className={buttonClass("app-action-primary")}
         >
           <Send size={14} />
-          {label("На согласование")}
+          {label("Отправить на согласование")}
         </button>
       ) : null}
       {showSecondaryActions && isDraft && isAuthor ? (
@@ -310,7 +311,6 @@ export default function ProcurementPage() {
     handleLoadMore,
     handleReject,
     handleSave,
-    handleSaveAndSubmit,
     handleStart,
     handleSubmit,
     isFinal,
@@ -1247,22 +1247,10 @@ export default function ProcurementPage() {
                 type="button"
                 onClick={handleSave}
                 disabled={busyKey === "save" || busyKey === "save-submit"}
-                className={`${modalMode === "create" && form.requireApproval ? "app-action-secondary" : "app-action-primary"} rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-60`}
+                className="app-action-primary rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-60"
               >
-                {modalMode === "create"
-                  ? form.requireApproval ? "Создать черновик" : "Создать и направить в отдел"
-                  : "Сохранить"}
+                {modalMode === "create" ? "Создать заявку" : "Сохранить"}
               </button>
-              {modalMode === "create" && form.requireApproval ? (
-                <button
-                  type="button"
-                  onClick={handleSaveAndSubmit}
-                  disabled={busyKey === "save" || busyKey === "save-submit"}
-                  className="app-action-primary rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-60"
-                >
-                  Отправить на согласование
-                </button>
-              ) : null}
             </div>
       }>
 
@@ -1283,35 +1271,16 @@ export default function ProcurementPage() {
               {/* Описание */}
               <div>
                 <label className="app-text-muted mb-1 block text-xs font-medium">
-                  Описание и обоснование{form.requireApproval ? " *" : " (необязательно)"}
+                  Описание и обоснование (необязательно)
                 </label>
                 <textarea
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                  placeholder={form.requireApproval ? "Обоснуйте необходимость закупки..." : "Можно оставить пустым и описать детали в позициях..."}
+                  placeholder="Можно оставить пустым и описать детали в позициях..."
                   rows={3}
                   className="app-input w-full rounded-lg px-3 py-2 text-sm"
                 />
               </div>
-
-              <label className="app-surface-muted flex items-start gap-3 rounded-xl px-3 py-3 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.requireApproval}
-                  onChange={(e) => setForm((f) => ({
-                    ...f,
-                    requireApproval: e.target.checked,
-                    processing_department: e.target.checked ? null : f.processing_department,
-                  }))}
-                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-sky-600"
-                />
-                <span>
-                  <span className="block font-medium text-[var(--foreground)]">Требовать согласование</span>
-                  <span className="app-text-muted mt-0.5 block text-xs">
-                    Если выключено, заявка сразу попадет в очередь выбранного отдела.
-                  </span>
-                </span>
-              </label>
 
               {/* Отдел + Срочность */}
               <div className="grid grid-cols-2 gap-3">
@@ -1337,16 +1306,14 @@ export default function ProcurementPage() {
                 </div>
               </div>
 
-              {!form.requireApproval ? (
-                <SearchableSelectSingle
-                  label="Отдел-исполнитель *"
-                  placeholder="Выберите отдел, который обработает заявку..."
-                  items={departments.map((d) => ({ id: d.id, name: d.name }))}
-                  selectedId={form.processing_department}
-                  onSelect={(id) => setForm((f) => ({ ...f, processing_department: id }))}
-                  disabled={Boolean(defaultProcessingDepartmentId)}
-                />
-              ) : null}
+              <SearchableSelectSingle
+                label="Отдел-исполнитель *"
+                placeholder="Выберите отдел, который обработает заявку..."
+                items={departments.map((d) => ({ id: d.id, name: d.name }))}
+                selectedId={form.processing_department}
+                onSelect={(id) => setForm((f) => ({ ...f, processing_department: id }))}
+                disabled={modalMode === "create" && Boolean(defaultProcessingDepartmentId)}
+              />
 
               {/* ── Items ── */}
               <div>

@@ -23,6 +23,7 @@ from .handlers import (
     notify_request_rejected,
     notify_request_completed,
     notify_request_in_progress,
+    notify_request_returned_to_processing,
     notify_request_cancelled,
     notify_stage_approved,
     notify_stage_rejected,
@@ -84,6 +85,18 @@ def _handle_status_change(request, new_status):
     if new_status == ProcurementStatus.PENDING:
         # Заявка отправлена на согласование
         notify_approvers(request)
+
+    elif (
+        getattr(request, "_original_status", None) == ProcurementStatus.PENDING
+        and request.processing_department_id
+        and new_status in {
+            ProcurementStatus.WAITING,
+            ProcurementStatus.IN_PROGRESS,
+        }
+    ):
+        # Адресная заявка после согласования возвращается в тот же отдел.
+        notify_request_approved(request)
+        notify_request_returned_to_processing(request)
 
     elif new_status == ProcurementStatus.APPROVED:
         # Заявка одобрена

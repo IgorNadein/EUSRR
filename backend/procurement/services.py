@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from procurement.constants import (
     ApprovalStatus,
+    ProcurementStatus,
     get_default_approval_step_name,
 )
 
@@ -92,6 +93,60 @@ class ProcurementApprovalResolver:
     Для этапа типа department_head согласующий определяется
     через Department.head.
     """
+
+    @classmethod
+    def user_is_processing_department_member(cls, user, procurement_request):
+        if not procurement_request.processing_department_id:
+            return False
+
+        from employees.models import EmployeeDepartment
+
+        return (
+            EmployeeDepartment.objects.filter(
+                employee_id=user.id,
+                department_id=procurement_request.processing_department_id,
+                is_active=True,
+            ).exists()
+            or procurement_request.processing_department.head_id == user.id
+        )
+
+    @classmethod
+    def user_can_submit_for_approval(cls, user, procurement_request) -> bool:
+        if not user or not user.is_authenticated:
+            return False
+
+        if (
+            procurement_request.status == ProcurementStatus.PENDING
+            or procurement_request.approvals.filter(
+                status=ApprovalStatus.PENDING,
+            ).exists()
+        ):
+            return False
+
+        if procurement_request.processing_department_id:
+            if procurement_request.status not in {
+                ProcurementStatus.WAITING,
+                ProcurementStatus.IN_PROGRESS,
+            }:
+                return False
+            if (
+                user.is_superuser
+                or user.is_staff
+                or user.has_perm("procurement.change_procurementrequest")
+                or user.has_perm("procurement.execute_procurement")
+            ):
+                return True
+            if procurement_request.executor_id == user.id:
+                return True
+            return cls.user_is_processing_department_member(
+                user,
+                procurement_request,
+            )
+
+        return (
+            procurement_request.requestor_id == user.id
+            and procurement_request.is_editable
+        )
 
     @classmethod
     def resolve_approval_step(cls, procurement_request, route):

@@ -105,6 +105,8 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         """Выбрать права доступа в зависимости от действия."""
         if self.action in ["approve", "reject"]:
             permission_classes = [CanApproveProcurementRequest]
+        elif self.action == "submit":
+            permission_classes = [permissions.IsAuthenticated]
         else:
             # Для create, update, delete и остальных действий
             permission_classes = [CanManageProcurementRequest]
@@ -331,25 +333,30 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 
         procurement_request = self.get_object()
 
-        if procurement_request.processing_department_id:
+        if (
+            procurement_request.status == ProcurementStatus.PENDING
+            or procurement_request.approvals.filter(
+                status=ApprovalStatus.PENDING,
+            ).exists()
+        ):
             return Response(
-                {
-                    "error": (
-                        "Заявка уже направлена в отдел-исполнитель "
-                        "и не требует согласования"
-                    )
-                },
+                {"error": "Заявка уже находится на согласовании"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Проверки
-        if procurement_request.requestor != request.user:
+        if not ProcurementApprovalResolver.user_can_submit_for_approval(
+            request.user,
+            procurement_request,
+        ):
             return Response(
-                {"error": "Вы не можете отправить чужую заявку"},
+                {"error": "Вы не можете отправить эту заявку на согласование"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        if not procurement_request.is_editable:
+        if (
+            not procurement_request.processing_department_id
+            and not procurement_request.is_editable
+        ):
             return Response(
                 {"error": "Заявка уже отправлена на согласование"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -479,12 +486,16 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         ).count()
 
         if pending_approvals == 0:
-            # Все одобрили - меняем статус заявки
-            # Сигнал post_save(ProcurementRequest) отправит уведомление
-            # requestor'у
-            procurement_request.status = ProcurementStatus.APPROVED
+            if procurement_request.processing_department_id:
+                procurement_request.status = (
+                    ProcurementStatus.IN_PROGRESS
+                    if procurement_request.executor_id
+                    else ProcurementStatus.WAITING
+                )
+            else:
+                procurement_request.status = ProcurementStatus.APPROVED
             procurement_request._notification_actor = request.user
-            procurement_request.save()
+            procurement_request.save(update_fields=["status", "updated_at"])
 
         procurement_request.refresh_from_db()
 
@@ -930,6 +941,7 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         if procurement_request.status in [
+            ProcurementStatus.PENDING,
             ProcurementStatus.CANCELLED,
             ProcurementStatus.REJECTED,
         ]:
@@ -970,6 +982,7 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         procurement_request = item.request
 
         if procurement_request.status in [
+            ProcurementStatus.PENDING,
             ProcurementStatus.CANCELLED,
             ProcurementStatus.REJECTED,
         ]:
@@ -1040,11 +1053,17 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
             )
 
         if procurement_request.status in [
+            ProcurementStatus.PENDING,
             ProcurementStatus.CANCELLED,
             ProcurementStatus.REJECTED,
         ]:
             return Response(
-                {"detail": "Нельзя изменить позицию в отменённой или отклонённой заявке"},
+                {
+                    "detail": (
+                        "Нельзя изменить позицию в заявке на согласовании, "
+                        "в отменённой или отклонённой заявке"
+                    )
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

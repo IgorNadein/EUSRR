@@ -982,6 +982,221 @@ class TestProcessingDepartmentWorkflow:
         )
         assert edit_response.status_code == status.HTTP_403_FORBIDDEN
 
+    @pytest.fixture
+    def department_head_approval_route(self, department_head):
+        return ApprovalRoute.objects.create(
+            priority=HEAD_PRIORITY,
+            resolver_type=ApprovalRoute.ResolverType.DEPARTMENT_HEAD,
+        )
+
+    def test_processing_department_user_can_submit_waiting_request_for_approval(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory, department_head_approval_route
+    ):
+        procurement_item_factory(request=processing_request)
+        api_client.force_authenticate(user=supply_user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': processing_request.id},
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        processing_request.refresh_from_db()
+        assert processing_request.status == ProcurementStatus.PENDING
+        assert processing_request.processing_department_id is not None
+        assert processing_request.approvals.count() == 1
+        assert response.data["can_current_user_submit_for_approval"] is False
+
+    def test_processing_department_requestor_cannot_submit_for_approval(
+        self, api_client, user, processing_request,
+        procurement_item_factory, department_head_approval_route
+    ):
+        procurement_item_factory(request=processing_request)
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': processing_request.id},
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        processing_request.refresh_from_db()
+        assert processing_request.status == ProcurementStatus.WAITING
+        assert processing_request.approvals.count() == 0
+
+    def test_processing_department_request_cannot_be_submitted_twice_while_pending(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory, department_head_approval_route
+    ):
+        procurement_item_factory(request=processing_request)
+        processing_request.status = ProcurementStatus.PENDING
+        processing_request.save(update_fields=["status", "updated_at"])
+        Approval.objects.create(
+            request=processing_request,
+            approver=processing_request.department.head,
+            priority=HEAD_PRIORITY,
+            status=ApprovalStatus.PENDING,
+        )
+
+        api_client.force_authenticate(user=supply_user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': processing_request.id},
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_final_approve_returns_processing_request_to_waiting_without_executor(
+        self, api_client, supply_user, department_head, processing_request,
+        procurement_item_factory, department_head_approval_route
+    ):
+        procurement_item_factory(request=processing_request)
+        submit_url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': processing_request.id},
+        )
+        approve_url = reverse(
+            'api:v1:procurement:procurementrequest-approve',
+            kwargs={'pk': processing_request.id},
+        )
+
+        api_client.force_authenticate(user=supply_user)
+        submit_response = api_client.post(submit_url)
+        assert submit_response.status_code == status.HTTP_200_OK
+
+        api_client.force_authenticate(user=department_head)
+        approve_response = api_client.post(approve_url, {'comment': 'Можно'})
+
+        assert approve_response.status_code == status.HTTP_200_OK
+        processing_request.refresh_from_db()
+        assert processing_request.status == ProcurementStatus.WAITING
+        assert processing_request.executor is None
+        assert processing_request.processing_department is not None
+
+    def test_final_approve_returns_processing_request_to_executor_work(
+        self, api_client, supply_user, department_head, processing_request,
+        procurement_item_factory, department_head_approval_route
+    ):
+        procurement_item_factory(request=processing_request)
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.started_at = timezone.now()
+        processing_request.save(
+            update_fields=[
+                "executor",
+                "status",
+                "started_at",
+                "updated_at",
+            ]
+        )
+        submit_url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': processing_request.id},
+        )
+        approve_url = reverse(
+            'api:v1:procurement:procurementrequest-approve',
+            kwargs={'pk': processing_request.id},
+        )
+
+        api_client.force_authenticate(user=supply_user)
+        submit_response = api_client.post(submit_url)
+        assert submit_response.status_code == status.HTTP_200_OK
+
+        api_client.force_authenticate(user=department_head)
+        approve_response = api_client.post(approve_url, {'comment': 'Можно'})
+
+        assert approve_response.status_code == status.HTTP_200_OK
+        processing_request.refresh_from_db()
+        assert processing_request.status == ProcurementStatus.IN_PROGRESS
+        assert processing_request.executor == supply_user
+        assert processing_request.processing_department is not None
+
+    def test_reject_processing_request_stops_purchase(
+        self, api_client, supply_user, department_head, processing_request,
+        procurement_item_factory, department_head_approval_route
+    ):
+        procurement_item_factory(request=processing_request)
+        submit_url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': processing_request.id},
+        )
+        reject_url = reverse(
+            'api:v1:procurement:procurementrequest-reject',
+            kwargs={'pk': processing_request.id},
+        )
+
+        api_client.force_authenticate(user=supply_user)
+        submit_response = api_client.post(submit_url)
+        assert submit_response.status_code == status.HTTP_200_OK
+
+        api_client.force_authenticate(user=department_head)
+        reject_response = api_client.post(reject_url, {'comment': 'Нельзя'})
+
+        assert reject_response.status_code == status.HTTP_200_OK
+        processing_request.refresh_from_db()
+        assert processing_request.status == ProcurementStatus.REJECTED
+
+    def test_pending_processing_request_blocks_execution_actions(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory, department_head_approval_route
+    ):
+        item = procurement_item_factory(request=processing_request)
+        processing_request.status = ProcurementStatus.PENDING
+        processing_request.save(update_fields=["status", "updated_at"])
+        Approval.objects.create(
+            request=processing_request,
+            approver=processing_request.department.head,
+            priority=HEAD_PRIORITY,
+            status=ApprovalStatus.PENDING,
+        )
+        api_client.force_authenticate(user=supply_user)
+
+        item_url = reverse(
+            'api:v1:procurement:procurementitem-detail',
+            kwargs={'pk': item.id},
+        )
+        report_issue_url = reverse(
+            'api:v1:procurement:procurementitem-report-issue',
+            kwargs={'pk': item.id},
+        )
+        mark_all_url = reverse(
+            'api:v1:procurement:procurementrequest-mark-all-received',
+            kwargs={'pk': processing_request.id},
+        )
+        complete_url = reverse(
+            'api:v1:procurement:procurementrequest-complete',
+            kwargs={'pk': processing_request.id},
+        )
+        start_url = reverse(
+            'api:v1:procurement:procurementrequest-start-work',
+            kwargs={'pk': processing_request.id},
+        )
+
+        item_response = api_client.patch(
+            item_url,
+            {'execution_status': ProcurementItemExecutionStatus.RECEIVED},
+            format='json',
+        )
+        issue_response = api_client.post(
+            report_issue_url,
+            {'text': 'Брак'},
+            format='json',
+        )
+        mark_all_response = api_client.post(mark_all_url)
+        complete_response = api_client.post(complete_url)
+        start_response = api_client.post(start_url)
+
+        assert item_response.status_code == status.HTTP_403_FORBIDDEN
+        assert issue_response.status_code == status.HTTP_400_BAD_REQUEST
+        assert mark_all_response.status_code == status.HTTP_400_BAD_REQUEST
+        assert complete_response.status_code == status.HTTP_403_FORBIDDEN
+        assert start_response.status_code == status.HTTP_400_BAD_REQUEST
+
     def test_item_status_recalculates_request_fulfillment_status(
         self, api_client, supply_user, processing_request,
         procurement_item_factory

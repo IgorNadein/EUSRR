@@ -561,6 +561,7 @@ export interface ProcurementRequest {
   total_received_quantity?: number;
   comments_count?: number;
   can_current_user_approve?: boolean;
+  can_current_user_submit_for_approval?: boolean;
   created_at: string;
   updated_at: string;
   submitted_at?: string | null;

@@ -348,12 +348,22 @@ class ProcurementRequestListSerializer(
     )
     comments_count = serializers.IntegerField(read_only=True, default=0)
     can_current_user_approve = serializers.SerializerMethodField()
+    can_current_user_submit_for_approval = serializers.SerializerMethodField()
 
     @extend_schema_field(serializers.BooleanField())
     def get_can_current_user_approve(self, obj):
         request = self.context.get("request")
         user = getattr(request, "user", None)
         return ProcurementApprovalResolver.user_can_approve(user, obj)
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_current_user_submit_for_approval(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return ProcurementApprovalResolver.user_can_submit_for_approval(
+            user,
+            obj,
+        )
 
     class Meta:
         model = ProcurementRequest
@@ -386,6 +396,7 @@ class ProcurementRequestListSerializer(
             "total_received_quantity",
             "comments_count",
             "can_current_user_approve",
+            "can_current_user_submit_for_approval",
             "created_at",
             "submitted_at",
             "started_at",
@@ -415,6 +426,7 @@ class ProcurementRequestListSerializer(
             "total_received_quantity",
             "comments_count",
             "can_current_user_approve",
+            "can_current_user_submit_for_approval",
         ]
 
     def update(self, instance, validated_data):
@@ -470,12 +482,22 @@ class ProcurementRequestDetailSerializer(
     is_editable = serializers.BooleanField(read_only=True)
     comments_count = serializers.IntegerField(read_only=True, default=0)
     can_current_user_approve = serializers.SerializerMethodField()
+    can_current_user_submit_for_approval = serializers.SerializerMethodField()
 
     @extend_schema_field(serializers.BooleanField())
     def get_can_current_user_approve(self, obj):
         request = self.context.get("request")
         user = getattr(request, "user", None)
         return ProcurementApprovalResolver.user_can_approve(user, obj)
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_current_user_submit_for_approval(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return ProcurementApprovalResolver.user_can_submit_for_approval(
+            user,
+            obj,
+        )
 
     class Meta:
         model = ProcurementRequest
@@ -514,6 +536,7 @@ class ProcurementRequestDetailSerializer(
             "is_editable",
             "comments_count",
             "can_current_user_approve",
+            "can_current_user_submit_for_approval",
             "created_at",
             "updated_at",
             "submitted_at",
@@ -543,6 +566,7 @@ class ProcurementRequestDetailSerializer(
             "fulfillment_status_display",
             "comments_count",
             "can_current_user_approve",
+            "can_current_user_submit_for_approval",
         ]
 
 

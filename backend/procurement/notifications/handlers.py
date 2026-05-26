@@ -312,6 +312,39 @@ def notify_request_approved(request):
     )
 
 
+def notify_request_returned_to_processing(request):
+    """Уведомить исполнителя или отдел, что согласованная заявка вернулась."""
+    if not request.processing_department_id:
+        return
+
+    actor = _request_actor(request)
+    title = "Заявка вернулась в обработку"
+    description = (
+        f'Заявка "{request.title}" согласована и снова доступна '
+        f'для обработки.'
+    )
+    recipients = []
+    if request.executor_id:
+        recipients.append(request.executor)
+    else:
+        recipients.extend(_processing_department_recipients(request))
+
+    _notify_many(
+        recipients,
+        verb=NotificationVerbs.APPROVED,
+        procurement_request=request,
+        title=title,
+        description=description,
+        actor=actor,
+        extra_data={
+            "old_status": getattr(request, "_original_status", None),
+            "new_status": request.status,
+            "processing_department_id": request.processing_department_id,
+            "executor_id": request.executor_id,
+        },
+    )
+
+
 def notify_request_rejected(request):
     """
     Уведомить об отклонении заявки.
