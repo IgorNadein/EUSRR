@@ -145,15 +145,30 @@ class ProcurementRequest(models.Model):
 
     @property
     def total_cost(self):
-        """Общая стоимость заявки (сумма всех позиций)."""
+        """Общая стоимость заявки по уточненным или ориентировочным ценам."""
+        effective_unit_price = Coalesce(
+            models.F("actual_unit_price"),
+            models.F("estimated_unit_price"),
+            Decimal("0.00"),
+            output_field=models.DecimalField(
+                max_digits=12,
+                decimal_places=2,
+            ),
+        )
+        line_total = models.ExpressionWrapper(
+            effective_unit_price * models.F("quantity"),
+            output_field=models.DecimalField(
+                max_digits=18,
+                decimal_places=2,
+            ),
+        )
         total = self.items.aggregate(
             total=Sum(
-                Coalesce(
-                    models.F("estimated_unit_price"),
-                    Decimal("0.00"),
-                    output_field=models.DecimalField(),
-                ) * models.F("quantity"),
-                output_field=models.DecimalField(),
+                line_total,
+                output_field=models.DecimalField(
+                    max_digits=18,
+                    decimal_places=2,
+                ),
             )
         )["total"]
         return total or Decimal("0.00")
@@ -338,10 +353,13 @@ class ProcurementItem(models.Model):
 
     @property
     def total_price(self):
-        """Общая стоимость позиции."""
-        if self.estimated_unit_price is None:
+        """Общая стоимость позиции по фактической или ориентировочной цене."""
+        unit_price = self.actual_unit_price
+        if unit_price is None:
+            unit_price = self.estimated_unit_price
+        if unit_price is None:
             return Decimal("0.00")
-        return self.estimated_unit_price * self.quantity
+        return unit_price * self.quantity
 
     def clean(self):
         super().clean()

@@ -171,6 +171,39 @@ class TestProcurementRequest:
         assert FINANCE_PRIORITY in approvals
         assert DIRECTOR_PRIORITY in approvals
 
+    def test_total_cost_uses_actual_price_before_estimated(
+        self, department, user
+    ):
+        """Фактическая цена при расчете заявки приоритетнее ориентировочной."""
+        request = ProcurementRequest.objects.create(
+            title="Уточненная закупка",
+            department=department,
+            requestor=user,
+        )
+        ProcurementItem.objects.create(
+            request=request,
+            name="Позиция с фактической ценой",
+            quantity=2,
+            unit="шт",
+            estimated_unit_price=Decimal("100.00"),
+            actual_unit_price=Decimal("80.00"),
+        )
+        ProcurementItem.objects.create(
+            request=request,
+            name="Позиция без фактической цены",
+            quantity=3,
+            unit="шт",
+            estimated_unit_price=Decimal("50.00"),
+        )
+        ProcurementItem.objects.create(
+            request=request,
+            name="Позиция без цены",
+            quantity=4,
+            unit="шт",
+        )
+
+        assert request.total_cost == Decimal("310.00")
+
     def test_is_editable_draft(self, department, user):
         """Тест: черновик можно редактировать."""
         request = ProcurementRequest.objects.create(
@@ -231,6 +264,23 @@ class TestProcurementItem:
         )
 
         assert item.total_price == Decimal("5005.00")
+
+    def test_total_price_prefers_actual_unit_price(self, department, user):
+        """Фактическая цена приоритетнее ориентировочной в сумме позиции."""
+        request = ProcurementRequest.objects.create(
+            title="Заявка", department=department, requestor=user
+        )
+
+        item = ProcurementItem.objects.create(
+            request=request,
+            name="Кабель HDMI",
+            quantity=10,
+            unit="шт",
+            estimated_unit_price=Decimal("500.50"),
+            actual_unit_price=Decimal("450.00"),
+        )
+
+        assert item.total_price == Decimal("4500.00")
 
 
 @pytest.mark.django_db

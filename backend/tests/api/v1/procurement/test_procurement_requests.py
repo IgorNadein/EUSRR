@@ -2189,6 +2189,42 @@ class TestProcurementRequestWorkflow:
             procurement_request.approvals.order_by('priority').values_list('priority', flat=True)
         ) == expected_priorities
 
+    def test_submit_request_applies_amount_thresholds_by_actual_price(
+        self, api_client, user, department
+    ):
+        """Если закупщик указал фактическую цену, пороги берутся по ней."""
+        procurement_request = ProcurementRequest.objects.create(
+            title="Уточненная пороговая заявка",
+            description="Проверка маршрутов",
+            department=department,
+            requestor=user,
+            status=ProcurementStatus.DRAFT,
+            urgency=UrgencyLevel.MEDIUM,
+        )
+        ProcurementItem.objects.create(
+            request=procurement_request,
+            name="Позиция с уточненной ценой",
+            quantity=1,
+            unit="шт",
+            estimated_unit_price=Decimal("100.00"),
+            actual_unit_price=Decimal("120000.00"),
+        )
+
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': procurement_request.id}
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        procurement_request.refresh_from_db()
+        assert procurement_request.total_cost == Decimal("120000.00")
+        assert list(
+            procurement_request.approvals.order_by('priority').values_list('priority', flat=True)
+        ) == [HEAD_PRIORITY, FINANCE_PRIORITY, DIRECTOR_PRIORITY]
+
     def test_submit_request_without_department_head_returns_explicit_error(
         self, api_client, user, department
     ):
