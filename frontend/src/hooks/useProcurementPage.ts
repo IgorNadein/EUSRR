@@ -383,8 +383,12 @@ export function useProcurementPage(user: User | null) {
   }, [ordering, requests]);
 
   const resetForm = useCallback(() => {
-    setForm({ ...emptyForm, items: [{ ...emptyItem }] });
-  }, []);
+    setForm({
+      ...emptyForm,
+      processing_department: defaultProcessingDepartmentId,
+      items: [{ ...emptyItem }],
+    });
+  }, [defaultProcessingDepartmentId]);
 
   const openCreate = useCallback(() => {
     setEditingId(null);
