@@ -1,8 +1,7 @@
 export const toLinkRows = (links?: string[] | null): string[] => {
-  const rows = Array.isArray(links)
+  return Array.isArray(links)
     ? links.map((link) => String(link || "").trim()).filter(Boolean)
     : [];
-  return rows.length > 0 ? rows : [""];
 };
 
 export const cleanLinkRows = (links: string[]): string[] => (

@@ -44,6 +44,7 @@ class ProcurementItemExecutionStatus(models.TextChoices):
     RECEIVED = 'received', 'Получено'
     COMPLETED_WITH_ISSUE = 'completed_with_issue', 'Выполнено с замечанием'
     EDITED = 'edited', 'Отредактировано'
+    DEFECTIVE = 'defective', 'Брак / перезаказ'
 
 
 def get_default_approval_step_name(priority: int,

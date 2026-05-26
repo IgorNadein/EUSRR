@@ -28,6 +28,7 @@ from procurement.models import (
 )
 from procurement.notifications.handlers import (
     notify_item_comment,
+    notify_item_issue_reported,
     notify_item_updated,
     notify_request_comment,
 )
@@ -722,15 +723,25 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             )
         )
 
-        procurement_request.items.update(
-            execution_status=ProcurementItemExecutionStatus.RECEIVED,
-        )
         for item in items_to_update:
             item.execution_status = ProcurementItemExecutionStatus.RECEIVED
+            if item.ordered_quantity is None:
+                item.ordered_quantity = item.quantity
+            if item.received_quantity is None:
+                item.received_quantity = item.quantity
+        ProcurementItem.objects.bulk_update(
+            items_to_update,
+            ["execution_status", "ordered_quantity", "received_quantity"],
+        )
+        for item in items_to_update:
             notify_item_updated(
                 item,
                 actor=request.user,
-                changed_fields=["execution_status"],
+                changed_fields=[
+                    "execution_status",
+                    "ordered_quantity",
+                    "received_quantity",
+                ],
             )
         procurement_request._notification_actor = request.user
         procurement_request.recalculate_fulfillment_status(save=True)
@@ -784,6 +795,8 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         "quantity",
         "unit",
         "estimated_unit_price",
+        "ordered_quantity",
+        "received_quantity",
         "links",
         "expected_delivery_date",
         "actual_unit_price",
@@ -895,6 +908,7 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
             "link_equipment",
             "comments",
             "delete_comment",
+            "report_issue",
         ]:
             permission_classes = [permissions.IsAuthenticated]
         else:
@@ -1008,6 +1022,73 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
                 actor=self.request.user,
                 changed_fields=changed_fields,
             )
+
+    @action(detail=True, methods=["post"])
+    def report_issue(self, request, pk=None):
+        """Отметить позицию как проблемную/бракованную."""
+        item = self.get_object()
+        procurement_request = item.request
+        user = request.user
+
+        if not (
+            procurement_request.requestor_id == user.id
+            or self._can_process_request_items(user, procurement_request)
+        ):
+            return Response(
+                {"detail": "Нет прав отметить проблему по этой позиции"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if procurement_request.status in [
+            ProcurementStatus.CANCELLED,
+            ProcurementStatus.REJECTED,
+        ]:
+            return Response(
+                {"detail": "Нельзя изменить позицию в отменённой или отклонённой заявке"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        item.execution_status = ProcurementItemExecutionStatus.DEFECTIVE
+        item.save(update_fields=["execution_status"])
+
+        if procurement_request.status == ProcurementStatus.COMPLETED:
+            procurement_request.status = (
+                ProcurementStatus.IN_PROGRESS
+                if procurement_request.executor_id
+                else ProcurementStatus.WAITING
+            )
+            procurement_request.completed_at = None
+            procurement_request._notification_actor = user
+            procurement_request.save(
+                update_fields=["status", "completed_at", "updated_at"]
+            )
+
+        text = request.data.get("text", "")
+        if isinstance(text, str):
+            text = text.strip()
+        else:
+            text = ""
+
+        message = None
+        if text:
+            message = comments_helpers.create_comment(
+                obj=item,
+                author=user,
+                content=text,
+            )
+            notify_item_comment(item, message, actor=user)
+
+        notify_item_updated(
+            item,
+            actor=user,
+            changed_fields=["execution_status"],
+        )
+        if procurement_request.requestor_id == user.id:
+            notify_item_issue_reported(item, actor=user)
+
+        item.refresh_from_db()
+        serializer = self.get_serializer(item)
+        return Response(serializer.data)
 
     def perform_destroy(self, instance):
         """Проверяем права при удалении позиции."""
@@ -1194,6 +1275,18 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         # Создаем оборудование
         from django.utils import timezone
 
+        purchase_cost = item.actual_unit_price or item.estimated_unit_price
+        if purchase_cost is None:
+            return Response(
+                {
+                    "error": (
+                        "Для создания оборудования укажите фактическую "
+                        "или ориентировочную цену позиции"
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
             equipment = Equipment.objects.create(
                 name=item.name,
@@ -1206,7 +1299,7 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
                 location=location,
                 purchase_date=timezone.now().date(),
                 warranty_until=warranty_until,
-                purchase_cost=item.estimated_unit_price,
+                purchase_cost=purchase_cost,
                 notes=item.description,  # description -> notes
             )
         except Exception as e:

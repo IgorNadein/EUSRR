@@ -23,6 +23,7 @@ type ItemDraft = {
   estimated_unit_price: string;
   supplier_info: string;
   links: string[];
+  initial_comment: string;
 };
 
 const emptyItem: ItemDraft = {
@@ -32,7 +33,8 @@ const emptyItem: ItemDraft = {
   unit: "шт",
   estimated_unit_price: "",
   supplier_info: "",
-  links: [""],
+  links: [],
+  initial_comment: "",
 };
 
 type FormState = {
@@ -325,6 +327,32 @@ export function useProcurementPage(user: User | null) {
     };
   }, []);
 
+  const defaultProcessingDepartmentId = useMemo(() => {
+    const procurementDepartment = departments.find(
+      (department) => department.name.trim().toLocaleLowerCase("ru-RU") === "снабжение",
+    );
+    return procurementDepartment?.id ?? null;
+  }, [departments]);
+
+  useEffect(() => {
+    if (form.requireApproval || !defaultProcessingDepartmentId) {
+      return;
+    }
+
+    setForm((previous) => {
+      if (
+        previous.requireApproval ||
+        previous.processing_department === defaultProcessingDepartmentId
+      ) {
+        return previous;
+      }
+      return {
+        ...previous,
+        processing_department: defaultProcessingDepartmentId,
+      };
+    });
+  }, [defaultProcessingDepartmentId, form.requireApproval]);
+
   const filteredRequests = useMemo(() => {
     const urgencyRank: Record<string, number> = {
       low: 1,
@@ -385,6 +413,7 @@ export function useProcurementPage(user: User | null) {
             estimated_unit_price: String(item.estimated_unit_price || ""),
             supplier_info: item.supplier_info || "",
             links: toLinkRows(item.links),
+            initial_comment: "",
           }))
         : [{ ...emptyItem }],
     });
@@ -434,7 +463,7 @@ export function useProcurementPage(user: User | null) {
         setActionError("Укажите название заявки.");
         return;
       }
-      if (!form.description.trim()) {
+      if (form.requireApproval && !form.description.trim()) {
         setActionError("Укажите описание и обоснование.");
         return;
       }
@@ -458,10 +487,6 @@ export function useProcurementPage(user: User | null) {
           setActionError(`Позиция «${item.name}»: укажите количество.`);
           return;
         }
-        if (!item.estimated_unit_price || Number(item.estimated_unit_price) <= 0) {
-          setActionError(`Позиция «${item.name}»: укажите цену за единицу.`);
-          return;
-        }
         const linksError = validateLinkRows(item.links, `Позиция «${item.name}», ссылка`);
         if (linksError) {
           setActionError(linksError);
@@ -471,7 +496,7 @@ export function useProcurementPage(user: User | null) {
 
       const payload: Record<string, unknown> = {
         title: form.title,
-        description: form.description,
+        description: form.description.trim(),
         department: form.department,
         processing_department: form.requireApproval ? null : form.processing_department,
         urgency: form.urgency,
@@ -480,9 +505,10 @@ export function useProcurementPage(user: User | null) {
           description: item.description || undefined,
           quantity: item.quantity,
           unit: item.unit || "шт",
-          estimated_unit_price: item.estimated_unit_price,
+          estimated_unit_price: item.estimated_unit_price || null,
           supplier_info: item.supplier_info || undefined,
           links: cleanLinkRows(item.links),
+          initial_comment: item.initial_comment.trim() || undefined,
         })),
       };
 
@@ -785,7 +811,7 @@ export function useProcurementPage(user: User | null) {
     `complete-${id}`,
     () => apiClient.completeProcurementRequest(id),
     id,
-    "Заявка завершена.",
+    "Заявка закрыта.",
   ), [doAction]);
 
   const handleMarkAllReceived = useCallback((id: number) => doAction(
@@ -812,6 +838,22 @@ export function useProcurementPage(user: User | null) {
       return true;
     } catch (updateError) {
       setActionError(getReadableError(updateError, "Не удалось обновить позицию"));
+      return false;
+    } finally {
+      setBusyKey(null);
+    }
+  }, [refreshOne]);
+
+  const handleReportItemIssue = useCallback(async (requestId: number, itemId: number, text = "") => {
+    try {
+      setBusyKey(`item-issue-${itemId}`);
+      setActionError(null);
+      await apiClient.reportProcurementItemIssue(itemId, text);
+      setActionSuccess("Позиция отмечена как проблемная.");
+      await refreshOne(requestId);
+      return true;
+    } catch (issueError) {
+      setActionError(getReadableError(issueError, "Не удалось отметить проблему"));
       return false;
     } finally {
       setBusyKey(null);
@@ -867,6 +909,7 @@ export function useProcurementPage(user: User | null) {
     canSupplierManage,
     requests,
     departments,
+    defaultProcessingDepartmentId,
     loading,
     loadingMore,
     error,
@@ -928,6 +971,7 @@ export function useProcurementPage(user: User | null) {
     handleComplete,
     handleMarkAllReceived,
     handleUpdateItem,
+    handleReportItemIssue,
     handleCancel,
     handleDelete,
     handleAddComment,

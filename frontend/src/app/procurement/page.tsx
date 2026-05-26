@@ -10,7 +10,9 @@ import ProcurementStatsPanel from "@/components/procurement/ProcurementStatsPane
 import ProcurementSuppliersPanel from "@/components/procurement/ProcurementSuppliersPanel";
 import type { ProcurementRequest, UrgencyLevel } from "@/types/api";
 import {
+  AlertTriangle,
   ArrowUpDown,
+  CalendarDays,
   Check,
   ChevronDown,
   ChevronRight,
@@ -237,11 +239,11 @@ function ProcurementRequestActionButtons({
           type="button"
           onClick={() => onComplete(request.id)}
           disabled={busyKey === `complete-${request.id}`}
-          title="Завершить"
+          title="Закрыть заявку"
           className={buttonClass("app-action-primary")}
         >
           <ClipboardCheck size={14} />
-          {label("Завершить")}
+          {label("Закрыть заявку")}
         </button>
       ) : null}
       {showSecondaryActions && isAuthor && !isFinal(status) && status !== "draft" ? (
@@ -278,6 +280,7 @@ export default function ProcurementPage() {
     closeModal,
     departmentFilter,
     departments,
+    defaultProcessingDepartmentId,
     detailsCache,
     displayUserName,
     ensureRequestDetail,
@@ -301,6 +304,7 @@ export default function ProcurementPage() {
     handleCancel,
     handleComplete,
     handleMarkAllReceived,
+    handleReportItemIssue,
     handleUpdateItem,
     handleDelete,
     handleLoadMore,
@@ -666,6 +670,15 @@ export default function ProcurementPage() {
               const executorLink = userLink(req.executor);
               const fulfillmentStatusDisplay = resolvedDetail.fulfillment_status_display ?? req.fulfillment_status_display;
               const itemsCount = resolvedDetail.items?.length ?? resolvedDetail.items_count ?? req.items_count ?? 0;
+              const detailItems = resolvedDetail.items || req.items || [];
+              const itemsTotalCount = resolvedDetail.items_total_count ?? req.items_total_count ?? itemsCount;
+              const itemsReceivedCount = resolvedDetail.items_received_count ?? req.items_received_count ?? detailItems.filter((item) => item.execution_status === "received").length;
+              const itemsProblemCount = resolvedDetail.items_problem_count ?? req.items_problem_count ?? detailItems.filter((item) => ["rejected", "completed_with_issue", "edited", "defective"].includes(String(item.execution_status || ""))).length;
+              const itemsPendingCount = resolvedDetail.items_pending_count ?? req.items_pending_count ?? detailItems.filter((item) => !item.execution_status || item.execution_status === "pending").length;
+              const totalRequestedQuantity = resolvedDetail.total_requested_quantity ?? req.total_requested_quantity ?? detailItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+              const totalOrderedQuantity = resolvedDetail.total_ordered_quantity ?? req.total_ordered_quantity ?? detailItems.reduce((sum, item) => sum + Number(item.ordered_quantity || 0), 0);
+              const totalReceivedQuantity = resolvedDetail.total_received_quantity ?? req.total_received_quantity ?? detailItems.reduce((sum, item) => sum + Number(item.received_quantity || 0), 0);
+              const nextExpectedDeliveryDate = resolvedDetail.next_expected_delivery_date ?? req.next_expected_delivery_date ?? null;
               const approvalsCount = resolvedDetail.approvals?.length ?? 0;
 
               return (
@@ -710,9 +723,6 @@ export default function ProcurementPage() {
                             </div>
                             <div className="app-text-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                               <span>Отдел-заказчик: <span className="font-medium text-[var(--foreground)]">{getDeptName(req)}</span></span>
-                              {req.processing_department_name ? (
-                                <span>Отдел-исполнитель: <span className="font-medium text-[var(--foreground)]">{req.processing_department_name}</span></span>
-                              ) : null}
                               <span>{fmt(req.created_at)}</span>
                               {getRequestAmount(req) && <span className="font-medium text-[var(--foreground)]">{money(getRequestAmount(req))}</span>}
                             </div>
@@ -809,16 +819,46 @@ export default function ProcurementPage() {
                               <span>не назначен</span>
                             )}
                           </div>
-                          {(fulfillmentStatusDisplay || itemsCount > 0 || approvalsCount > 0) && (
+                          {(fulfillmentStatusDisplay || itemsTotalCount > 0 || approvalsCount > 0 || nextExpectedDeliveryDate) && (
                             <div className="col-span-2 flex flex-wrap items-center gap-2 pt-0.5">
                               {fulfillmentStatusDisplay ? (
                                 <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
                                   {fulfillmentStatusDisplay}
                                 </span>
                               ) : null}
-                              {itemsCount > 0 && (
+                              {nextExpectedDeliveryDate ? (
                                 <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
-                                  <Package size={11} /> {itemsCount} поз.
+                                  <CalendarDays size={11} /> {fmt(nextExpectedDeliveryDate)}
+                                </span>
+                              ) : null}
+                              {itemsTotalCount > 0 && (
+                                <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                  <Package size={11} /> {itemsTotalCount} поз.
+                                </span>
+                              )}
+                              {itemsTotalCount > 0 && (
+                                <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                  <Check size={11} /> Получено {itemsReceivedCount}/{itemsTotalCount} поз.
+                                </span>
+                              )}
+                              {itemsProblemCount > 0 && (
+                                <span className="app-feedback-warning inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                  <AlertTriangle size={11} /> Проблемы {itemsProblemCount}/{itemsTotalCount} поз.
+                                </span>
+                              )}
+                              {totalRequestedQuantity > 0 && (
+                                <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                  Заказано {totalOrderedQuantity}/{totalRequestedQuantity} шт.
+                                </span>
+                              )}
+                              {totalRequestedQuantity > 0 && (
+                                <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                  Получено {totalReceivedQuantity}/{totalRequestedQuantity} шт.
+                                </span>
+                              )}
+                              {itemsPendingCount > 0 && (
+                                <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                  Не обработано {itemsPendingCount}
                                 </span>
                               )}
                               {approvalsCount > 0 && (
@@ -908,6 +948,7 @@ export default function ProcurementPage() {
                           busyKey={busyKey}
                           canDeleteAnyComment={Boolean(user?.auth?.is_staff || user?.auth?.is_superuser)}
                           onUpdateItem={handleUpdateItem}
+                          onReportItemIssue={handleReportItemIssue}
                           onMarkAllReceived={handleMarkAllReceived}
                           itemCommentsMap={itemCommentsMap}
                           itemCommentDrafts={itemCommentDrafts}
@@ -1035,6 +1076,7 @@ export default function ProcurementPage() {
               busyKey={busyKey}
               canDeleteAnyComment={Boolean(user?.auth?.is_staff || user?.auth?.is_superuser)}
               onUpdateItem={handleUpdateItem}
+              onReportItemIssue={handleReportItemIssue}
               onMarkAllReceived={handleMarkAllReceived}
               itemCommentsMap={itemCommentsMap}
               itemCommentDrafts={itemCommentDrafts}
@@ -1240,11 +1282,13 @@ export default function ProcurementPage() {
 
               {/* Описание */}
               <div>
-                <label className="app-text-muted mb-1 block text-xs font-medium">Описание и обоснование *</label>
+                <label className="app-text-muted mb-1 block text-xs font-medium">
+                  Описание и обоснование{form.requireApproval ? " *" : " (необязательно)"}
+                </label>
                 <textarea
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                  placeholder="Обоснуйте необходимость закупки..."
+                  placeholder={form.requireApproval ? "Обоснуйте необходимость закупки..." : "Можно оставить пустым и описать детали в позициях..."}
                   rows={3}
                   className="app-input w-full rounded-lg px-3 py-2 text-sm"
                 />
@@ -1300,6 +1344,7 @@ export default function ProcurementPage() {
                   items={departments.map((d) => ({ id: d.id, name: d.name }))}
                   selectedId={form.processing_department}
                   onSelect={(id) => setForm((f) => ({ ...f, processing_department: id }))}
+                  disabled={Boolean(defaultProcessingDepartmentId)}
                 />
               ) : null}
 
@@ -1314,7 +1359,7 @@ export default function ProcurementPage() {
 
                 <div className="space-y-3">
                   {form.items.map((it, idx) => (
-                      <div key={idx} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                      <div key={idx} className="app-surface-muted rounded-xl p-3">
                         <div className="grid gap-2">
                           <div className="flex items-center gap-2">
                             <input
@@ -1334,6 +1379,13 @@ export default function ProcurementPage() {
                               </button>
                             )}
                           </div>
+                          <textarea
+                            value={it.initial_comment}
+                            onChange={(e) => updateItemRow(idx, { initial_comment: e.target.value })}
+                            placeholder="Комментарий к позиции"
+                            rows={2}
+                            className="app-input app-text-wrap w-full rounded-lg px-3 py-2 text-sm"
+                          />
                           <div className="grid grid-cols-4 gap-2">
                             <input
                               type="number"
@@ -1354,7 +1406,7 @@ export default function ProcurementPage() {
                               step="0.01"
                               value={it.estimated_unit_price}
                               onChange={(e) => updateItemRow(idx, { estimated_unit_price: e.target.value })}
-                              placeholder="Цена/ед."
+                              placeholder="Цена/ед. (необяз.)"
                               className="app-input rounded-lg px-3 py-2 text-sm"
                             />
                             <div className="flex items-center text-xs text-gray-500">

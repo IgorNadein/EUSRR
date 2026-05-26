@@ -491,6 +491,36 @@ def notify_item_updated(item, actor=None, changed_fields=None):
     )
 
 
+def notify_item_issue_reported(item, actor=None):
+    """Уведомить исполнителей о проблеме, которую отметил заявитель."""
+    procurement_request = item.request
+    actor_name = _actor_name(actor)
+    notification_title = 'Позиция закупки требует внимания'
+    description = (
+        f'{actor_name} отметил проблему по позиции "{item.name}" '
+        f'в заявке "{procurement_request.title}".'
+    )
+    recipients = []
+    if procurement_request.executor_id:
+        recipients.append(procurement_request.executor)
+    recipients.extend(_processing_department_recipients(procurement_request))
+    _notify_many(
+        recipients,
+        verb=NotificationVerbs.ITEM_UPDATED,
+        procurement_request=procurement_request,
+        title=notification_title,
+        description=description,
+        actor=actor,
+        action_object=item,
+        extra_data={
+            "item_id": item.id,
+            "item_name": item.name,
+            "changed_fields": ["execution_status"],
+            "new_status": item.execution_status,
+        },
+    )
+
+
 def notify_request_comment(request, message, actor=None):
     """Уведомить автора заявки о комментарии к заявке."""
     actor = actor or message.author

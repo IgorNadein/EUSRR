@@ -483,7 +483,7 @@ export interface MaintenanceRecord {
 // Procurement Request types
 export type ProcurementStatus = 'draft' | 'waiting' | 'pending' | 'approved' | 'in_progress' | 'completed' | 'rejected' | 'cancelled';
 export type ProcurementFulfillmentStatus = 'pending' | 'partially_ordered' | 'ordered' | 'partially_received' | 'completed' | 'issues';
-export type ProcurementItemExecutionStatus = 'pending' | 'ordered' | 'rejected' | 'received' | 'completed_with_issue' | 'edited';
+export type ProcurementItemExecutionStatus = 'pending' | 'ordered' | 'rejected' | 'received' | 'completed_with_issue' | 'edited' | 'defective';
 export type UrgencyLevel = 'low' | 'medium' | 'high' | 'critical';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
 
@@ -494,7 +494,7 @@ export interface ProcurementItem {
   description?: string;
   quantity: string | number;
   unit: string;
-  estimated_unit_price: string | number;
+  estimated_unit_price?: string | number | null;
   total_price?: string | number;
   supplier_info?: string;
   links?: string[];
@@ -502,7 +502,9 @@ export interface ProcurementItem {
   actual_unit_price?: string | number | null;
   execution_status?: ProcurementItemExecutionStatus;
   execution_status_display?: string;
-  executor_comment?: string;
+  ordered_quantity?: number | null;
+  received_quantity?: number | null;
+  initial_comment?: string;
   comments_count?: number;
   equipment?: number | null;
 }
@@ -549,6 +551,14 @@ export interface ProcurementRequest {
   total_cost?: string | number;
   total_estimated_cost?: string | number;
   items_count?: number;
+  next_expected_delivery_date?: string | null;
+  items_total_count?: number;
+  items_received_count?: number;
+  items_problem_count?: number;
+  items_pending_count?: number;
+  total_requested_quantity?: number;
+  total_ordered_quantity?: number;
+  total_received_quantity?: number;
   comments_count?: number;
   can_current_user_approve?: boolean;
   created_at: string;

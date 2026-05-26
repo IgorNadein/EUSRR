@@ -20,6 +20,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Sum
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from employees.models import Department
 
@@ -147,7 +148,11 @@ class ProcurementRequest(models.Model):
         """Общая стоимость заявки (сумма всех позиций)."""
         total = self.items.aggregate(
             total=Sum(
-                models.F("estimated_unit_price") * models.F("quantity"),
+                Coalesce(
+                    models.F("estimated_unit_price"),
+                    Decimal("0.00"),
+                    output_field=models.DecimalField(),
+                ) * models.F("quantity"),
                 output_field=models.DecimalField(),
             )
         )["total"]
@@ -179,6 +184,7 @@ class ProcurementRequest(models.Model):
                 ProcurementItemExecutionStatus.REJECTED,
                 ProcurementItemExecutionStatus.COMPLETED_WITH_ISSUE,
                 ProcurementItemExecutionStatus.EDITED,
+                ProcurementItemExecutionStatus.DEFECTIVE,
             }
             for item_status in item_statuses
         ):
@@ -206,20 +212,25 @@ class ProcurementRequest(models.Model):
         else:
             new_status = ProcurementFulfillmentStatus.PENDING
 
-        if self.fulfillment_status == new_status:
+        should_close = (
+            new_status == ProcurementFulfillmentStatus.COMPLETED
+            and self.status in [
+                ProcurementStatus.WAITING,
+                ProcurementStatus.IN_PROGRESS,
+            ]
+        )
+
+        if self.fulfillment_status == new_status and not should_close:
             return new_status
 
         self.fulfillment_status = new_status
+        update_fields = ["fulfillment_status", "updated_at"]
+        if should_close:
+            self.status = ProcurementStatus.COMPLETED
+            self.completed_at = timezone.now()
+            update_fields.extend(["status", "completed_at"])
+
         if save:
-            update_fields = ["fulfillment_status", "updated_at"]
-            if (
-                new_status == ProcurementFulfillmentStatus.COMPLETED
-                and self.status
-                in [ProcurementStatus.WAITING, ProcurementStatus.IN_PROGRESS]
-            ):
-                self.status = ProcurementStatus.COMPLETED
-                self.completed_at = timezone.now()
-                update_fields.extend(["status", "completed_at"])
             self.save(update_fields=update_fields)
         return new_status
 
@@ -254,6 +265,8 @@ class ProcurementItem(models.Model):
         "Цена за единицу",
         max_digits=12,
         decimal_places=2,
+        null=True,
+        blank=True,
         validators=[MinValueValidator(Decimal("0.01"))],
     )
     supplier_info = models.TextField(
@@ -279,6 +292,20 @@ class ProcurementItem(models.Model):
         null=True,
         blank=True,
         validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    ordered_quantity = models.PositiveIntegerField(
+        "Заказанное количество",
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+        help_text="Сколько единиц заказал исполнитель",
+    )
+    received_quantity = models.PositiveIntegerField(
+        "Полученное количество",
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+        help_text="Сколько единиц фактически получено",
     )
     execution_status = models.CharField(
         "Статус выполнения",
@@ -312,9 +339,92 @@ class ProcurementItem(models.Model):
     @property
     def total_price(self):
         """Общая стоимость позиции."""
+        if self.estimated_unit_price is None:
+            return Decimal("0.00")
         return self.estimated_unit_price * self.quantity
 
+    def clean(self):
+        super().clean()
+        if (
+            self.ordered_quantity is not None
+            and self.ordered_quantity > self.quantity
+        ):
+            raise ValidationError(
+                {"ordered_quantity": "Не может быть больше количества позиции"}
+            )
+        if (
+            self.received_quantity is not None
+            and self.received_quantity > self.quantity
+        ):
+            raise ValidationError(
+                {"received_quantity": "Не может быть больше количества позиции"}
+            )
+
+    @staticmethod
+    def _mark_update_field(update_fields, field):
+        if update_fields is not None:
+            update_fields.add(field)
+
+    def _sync_execution_status_from_quantities(self, update_fields=None):
+        workflow_statuses = {
+            ProcurementItemExecutionStatus.PENDING,
+            ProcurementItemExecutionStatus.ORDERED,
+            ProcurementItemExecutionStatus.RECEIVED,
+        }
+        if self.execution_status not in workflow_statuses:
+            return
+
+        ordered_quantity = self.ordered_quantity or 0
+        received_quantity = self.received_quantity or 0
+
+        if received_quantity > 0 and self.ordered_quantity is None:
+            self.ordered_quantity = min(received_quantity, self.quantity)
+            self._mark_update_field(update_fields, "ordered_quantity")
+            ordered_quantity = self.ordered_quantity
+        elif received_quantity > 0 and ordered_quantity < received_quantity:
+            self.ordered_quantity = min(received_quantity, self.quantity)
+            self._mark_update_field(update_fields, "ordered_quantity")
+            ordered_quantity = self.ordered_quantity
+
+        new_status = self.execution_status
+        if received_quantity > 0:
+            new_status = (
+                ProcurementItemExecutionStatus.RECEIVED
+                if received_quantity >= self.quantity
+                else ProcurementItemExecutionStatus.ORDERED
+            )
+        elif ordered_quantity > 0:
+            new_status = ProcurementItemExecutionStatus.ORDERED
+        elif self.execution_status in {
+            ProcurementItemExecutionStatus.ORDERED,
+            ProcurementItemExecutionStatus.RECEIVED,
+        }:
+            new_status = ProcurementItemExecutionStatus.PENDING
+
+        if new_status != self.execution_status:
+            self.execution_status = new_status
+            self._mark_update_field(update_fields, "execution_status")
+
     def save(self, *args, **kwargs):
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            update_fields = set(update_fields)
+            kwargs["update_fields"] = update_fields
+
+        if (
+            self.execution_status == ProcurementItemExecutionStatus.ORDERED
+            and self.ordered_quantity is None
+        ):
+            self.ordered_quantity = self.quantity
+            self._mark_update_field(update_fields, "ordered_quantity")
+        if self.execution_status == ProcurementItemExecutionStatus.RECEIVED:
+            if self.ordered_quantity is None:
+                self.ordered_quantity = self.quantity
+                self._mark_update_field(update_fields, "ordered_quantity")
+            if self.received_quantity is None:
+                self.received_quantity = self.quantity
+                self._mark_update_field(update_fields, "received_quantity")
+        self._sync_execution_status_from_quantities(update_fields=update_fields)
         super().save(*args, **kwargs)
         if self.request_id:
             self.request.recalculate_fulfillment_status(save=True)

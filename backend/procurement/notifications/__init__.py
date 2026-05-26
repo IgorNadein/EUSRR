@@ -40,6 +40,7 @@ from .handlers import (
     notify_stage_approved,
     notify_stage_rejected,
     notify_item_updated,
+    notify_item_issue_reported,
     notify_request_comment,
     notify_item_comment,
 )
@@ -68,6 +69,7 @@ __all__ = [
     'notify_stage_approved',
     'notify_stage_rejected',
     'notify_item_updated',
+    'notify_item_issue_reported',
     'notify_request_comment',
     'notify_item_comment',
 

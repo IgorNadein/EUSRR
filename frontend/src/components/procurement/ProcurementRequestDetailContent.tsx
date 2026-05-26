@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Check, CheckCircle2, CircleDot, ExternalLink, MessageSquare, Plus, Save, SlidersHorizontal, X } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, CircleDot, ExternalLink, MessageSquare, Minus, Plus, RotateCcw, Save, SlidersHorizontal, X } from "lucide-react";
 import { RequestAvatar } from "@/components/requests/RequestAvatar";
 import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
 
@@ -22,6 +22,7 @@ interface ProcurementRequestDetailContentProps {
   busyKey?: string | null;
   canDeleteAnyComment?: boolean;
   onUpdateItem?: (requestId: number, itemId: number, patch: Record<string, unknown>) => void | Promise<unknown>;
+  onReportItemIssue?: (requestId: number, itemId: number, text?: string) => void | Promise<unknown>;
   onMarkAllReceived?: (requestId: number) => void | Promise<unknown>;
   itemCommentsMap?: Record<number, ProcurementItemComment[]>;
   itemCommentDrafts?: Record<number, string>;
@@ -38,6 +39,8 @@ type ItemProcessingDraft = {
   expected_delivery_date: string;
   actual_unit_price: string;
   links: string[];
+  ordered_quantity: string;
+  received_quantity: string;
 };
 
 const executionStatusOptions: { value: ProcurementItemExecutionStatus; label: string }[] = [
@@ -47,7 +50,32 @@ const executionStatusOptions: { value: ProcurementItemExecutionStatus; label: st
   { value: "received", label: "Получено" },
   { value: "completed_with_issue", label: "Выполнено с замечанием" },
   { value: "edited", label: "Отредактировано" },
+  { value: "defective", label: "Брак / перезаказ" },
 ];
+
+const problemExecutionStatuses = new Set<ProcurementItemExecutionStatus>([
+  "completed_with_issue",
+  "edited",
+  "defective",
+]);
+
+const executionStatusBadgeClass = (status?: ProcurementItemExecutionStatus) => {
+  if (status === "ordered" || status === "received") return "app-feedback-success";
+  if (status === "rejected") return "app-feedback-danger";
+  if (status && problemExecutionStatuses.has(status)) return "app-feedback-warning";
+  return "app-badge";
+};
+
+const toNumber = (value?: string | number | null): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const toOptionalInteger = (value: string): number | null => {
+  if (value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : null;
+};
 
 const approvalIconByStatus = (status?: string) => {
   const normalized = String(status || "").toLowerCase();
@@ -73,6 +101,8 @@ const normalizeItemDraft = (item: ProcurementItem): ItemProcessingDraft => ({
   expected_delivery_date: item.expected_delivery_date || "",
   actual_unit_price: item.actual_unit_price ? String(item.actual_unit_price) : "",
   links: toLinkRows(item.links),
+  ordered_quantity: item.ordered_quantity === null || item.ordered_quantity === undefined ? "" : String(item.ordered_quantity),
+  received_quantity: item.received_quantity === null || item.received_quantity === undefined ? "" : String(item.received_quantity),
 });
 
 interface ProcurementItemCardProps {
@@ -84,10 +114,12 @@ interface ProcurementItemCardProps {
     fallbackEmail?: string | null,
   ) => string;
   canEditItemProcessing: boolean;
+  canReportIssue: boolean;
   currentUserId?: number | null;
   canDeleteAnyComment?: boolean;
   busyKey?: string | null;
   onUpdateItem?: (requestId: number, itemId: number, patch: Record<string, unknown>) => void | Promise<unknown>;
+  onReportItemIssue?: (requestId: number, itemId: number, text?: string) => void | Promise<unknown>;
   comments?: ProcurementItemComment[];
   commentDraft?: string;
   commentsOpen?: boolean;
@@ -102,10 +134,12 @@ function ProcurementItemCard({
   requestId,
   displayUserName,
   canEditItemProcessing,
+  canReportIssue,
   currentUserId,
   canDeleteAnyComment = false,
   busyKey,
   onUpdateItem,
+  onReportItemIssue,
   comments = [],
   commentDraft = "",
   commentsOpen = false,
@@ -118,9 +152,30 @@ function ProcurementItemCard({
   const [processingOpen, setProcessingOpen] = useState(false);
   const links = Array.isArray(item.links) ? item.links.filter(Boolean) : [];
   const commentsTotal = item.comments_count ?? comments.length;
+  const requestedQuantity = Math.max(0, Math.trunc(toNumber(item.quantity)));
+  const orderedQuantity = item.ordered_quantity ?? 0;
+  const receivedQuantity = item.received_quantity ?? 0;
+  const status = item.execution_status || "pending";
+  const statusLabel = item.execution_status_display || executionStatusOptions.find((option) => option.value === status)?.label || "Не выполнено";
+  const canCancelReceived = canEditItemProcessing && status === "received";
+  const canMarkIssue = Boolean(
+    canReportIssue &&
+    onReportItemIssue &&
+    status !== "rejected" &&
+    status !== "defective" &&
+    (canEditItemProcessing || status === "received")
+  );
 
   const updateDraft = (patch: Partial<ItemProcessingDraft>) => {
     setDraft((previous) => ({ ...previous, ...patch }));
+  };
+
+  const adjustDraftQuantity = (field: "ordered_quantity" | "received_quantity", delta: number) => {
+    setDraft((previous) => {
+      const current = toOptionalInteger(previous[field]) ?? 0;
+      const next = Math.min(requestedQuantity, Math.max(0, current + delta));
+      return { ...previous, [field]: String(next) };
+    });
   };
 
   const saveItemProcessing = () => {
@@ -128,7 +183,17 @@ function ProcurementItemCard({
       execution_status: draft.execution_status,
       expected_delivery_date: draft.expected_delivery_date || null,
       actual_unit_price: draft.actual_unit_price || null,
+      ordered_quantity: toOptionalInteger(draft.ordered_quantity),
+      received_quantity: toOptionalInteger(draft.received_quantity),
       links: cleanLinkRows(draft.links),
+    });
+  };
+
+  const cancelReceived = () => {
+    const nextStatus: ProcurementItemExecutionStatus = Number(item.ordered_quantity || 0) > 0 ? "ordered" : "pending";
+    return onUpdateItem?.(requestId, item.id, {
+      execution_status: nextStatus,
+      received_quantity: 0,
     });
   };
 
@@ -169,11 +234,27 @@ function ProcurementItemCard({
           </p>
         </div>
       </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <span className={`app-status-pill ${executionStatusBadgeClass(status)}`}>{statusLabel}</span>
+        {item.expected_delivery_date ? (
+          <span className="app-badge inline-flex rounded-full px-2 py-1 text-[11px] font-medium">
+            Ожидается: {formatDate(item.expected_delivery_date)}
+          </span>
+        ) : null}
+        {item.actual_unit_price ? (
+          <span className="app-badge inline-flex rounded-full px-2 py-1 text-[11px] font-medium">
+            Факт: {formatMoney(item.actual_unit_price)}
+          </span>
+        ) : null}
+        <span className="app-badge inline-flex rounded-full px-2 py-1 text-[11px] font-medium">
+          Заказано {orderedQuantity}/{requestedQuantity}
+        </span>
+        <span className="app-badge inline-flex rounded-full px-2 py-1 text-[11px] font-medium">
+          Получено {receivedQuantity}/{requestedQuantity}
+        </span>
+      </div>
       <div className="app-text-muted mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
         <span>Цена/ед.: {formatMoney(item.estimated_unit_price)}</span>
-        {item.actual_unit_price ? <span>Факт/ед.: {formatMoney(item.actual_unit_price)}</span> : null}
-        <span>Статус: {item.execution_status_display || "Не выполнено"}</span>
-        {item.expected_delivery_date ? <span>Ожидается: {formatDate(item.expected_delivery_date)}</span> : null}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <div>
@@ -200,6 +281,30 @@ function ProcurementItemCard({
           >
             <SlidersHorizontal size={13} />
             <span>Исполнение</span>
+          </button>
+        ) : null}
+
+        {canCancelReceived ? (
+          <button
+            type="button"
+            onClick={() => void cancelReceived()}
+            disabled={busyKey === `item-${item.id}`}
+            className="app-action-secondary inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium disabled:opacity-60"
+          >
+            <RotateCcw size={13} />
+            <span>Отменить получение</span>
+          </button>
+        ) : null}
+
+        {canMarkIssue ? (
+          <button
+            type="button"
+            onClick={() => void onReportItemIssue?.(requestId, item.id)}
+            disabled={busyKey === `item-issue-${item.id}`}
+            className="app-feedback-warning inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium disabled:opacity-60"
+          >
+            <AlertTriangle size={13} />
+            <span>Брак</span>
           </button>
         ) : null}
       </div>
@@ -279,6 +384,72 @@ function ProcurementItemCard({
             />
           </div>
           <div>
+            <label className="app-text-muted mb-1 block text-[11px] font-medium">Заказано, шт.</label>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => adjustDraftQuantity("ordered_quantity", -1)}
+                className="app-action-secondary inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+              >
+                <Minus size={12} />
+              </button>
+              <input
+                type="number"
+                min={0}
+                max={requestedQuantity}
+                value={draft.ordered_quantity}
+                onChange={(event) => {
+                  const parsed = toOptionalInteger(event.target.value);
+                  updateDraft({
+                    ordered_quantity: parsed === null ? "" : String(Math.min(requestedQuantity, parsed)),
+                  });
+                }}
+                placeholder={`0-${requestedQuantity}`}
+                className="app-input min-w-0 flex-1 rounded-lg px-3 py-2 text-xs"
+              />
+              <button
+                type="button"
+                onClick={() => adjustDraftQuantity("ordered_quantity", 1)}
+                className="app-action-secondary inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+              >
+                <Plus size={12} />
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="app-text-muted mb-1 block text-[11px] font-medium">Получено, шт.</label>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => adjustDraftQuantity("received_quantity", -1)}
+                className="app-action-secondary inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+              >
+                <Minus size={12} />
+              </button>
+              <input
+                type="number"
+                min={0}
+                max={requestedQuantity}
+                value={draft.received_quantity}
+                onChange={(event) => {
+                  const parsed = toOptionalInteger(event.target.value);
+                  updateDraft({
+                    received_quantity: parsed === null ? "" : String(Math.min(requestedQuantity, parsed)),
+                  });
+                }}
+                placeholder={`0-${requestedQuantity}`}
+                className="app-input min-w-0 flex-1 rounded-lg px-3 py-2 text-xs"
+              />
+              <button
+                type="button"
+                onClick={() => adjustDraftQuantity("received_quantity", 1)}
+                className="app-action-secondary inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+              >
+                <Plus size={12} />
+              </button>
+            </div>
+          </div>
+          <div>
             <label className="app-text-muted mb-1 block text-[11px] font-medium">Ссылки</label>
             <div className="space-y-2">
               {draft.links.map((link, linkIndex) => (
@@ -323,7 +494,7 @@ function ProcurementItemCard({
               disabled={busyKey === `item-${item.id}`}
               className="app-action-primary inline-flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-60"
             >
-              <Save size={13} /> Сохранить позицию
+              <Save size={13} /> Сохранить исполнение
             </button>
           </div>
         </div>
@@ -340,6 +511,7 @@ export function ProcurementRequestDetailContent({
   busyKey,
   canDeleteAnyComment = false,
   onUpdateItem,
+  onReportItemIssue,
   onMarkAllReceived,
   itemCommentsMap = {},
   itemCommentDrafts = {},
@@ -351,6 +523,15 @@ export function ProcurementRequestDetailContent({
   footer,
 }: ProcurementRequestDetailContentProps) {
   const canEditItemProcessing = Boolean(canProcessItems && onUpdateItem);
+  const requestorId = typeof request.requestor === "number" ? request.requestor : request.requestor?.id ?? null;
+  const executorId = typeof request.executor === "number" ? request.executor : request.executor?.id ?? null;
+  const canReportIssues = Boolean(
+    onReportItemIssue && currentUserId && (
+      canEditItemProcessing ||
+      currentUserId === requestorId ||
+      currentUserId === executorId
+    ),
+  );
 
   return (
     <div className="space-y-3">
@@ -403,16 +584,20 @@ export function ProcurementRequestDetailContent({
                   item.execution_status || "",
                   item.expected_delivery_date || "",
                   item.actual_unit_price || "",
+                  item.ordered_quantity ?? "",
+                  item.received_quantity ?? "",
                   Array.isArray(item.links) ? item.links.join("|") : "",
                 ].join(":")}
                 item={item}
                 requestId={request.id}
                 displayUserName={displayUserName}
                 canEditItemProcessing={canEditItemProcessing}
+                canReportIssue={canReportIssues}
                 currentUserId={currentUserId}
                 canDeleteAnyComment={canDeleteAnyComment}
                 busyKey={busyKey}
                 onUpdateItem={onUpdateItem}
+                onReportItemIssue={onReportItemIssue}
                 comments={itemCommentsMap[item.id] || []}
                 commentDraft={itemCommentDrafts[item.id] || ""}
                 commentsOpen={Boolean(expandedItemComments[item.id])}

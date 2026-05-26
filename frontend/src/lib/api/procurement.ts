@@ -29,6 +29,8 @@ export function createProcurementApi(request: RequestFn) {
         getProcurementItems: (params?: Record<string, string | number>) => request(`/api/v1/procurement/items/${buildQuery(params)}`),
         createProcurementItem: (data: Record<string, any>) => request('/api/v1/procurement/items/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
         updateProcurementItem: (id: number, data: Record<string, any>) => request(`/api/v1/procurement/items/${id}/`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
+        reportProcurementItemIssue: (id: number, text?: string) =>
+            request(`/api/v1/procurement/items/${id}/report_issue/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: text || '' }) }),
         deleteProcurementItem: (id: number): Promise<void> => request(`/api/v1/procurement/items/${id}/`, { method: 'DELETE' }),
         getProcurementItemComments: (itemId: number) => request(`/api/v1/procurement/items/${itemId}/comments/`),
         addProcurementItemComment: (itemId: number, text: string) =>

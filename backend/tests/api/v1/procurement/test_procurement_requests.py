@@ -7,9 +7,11 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth.models import Permission
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from communications.comments_helpers import get_comments
 from employees.models import (
     Department,
     DepartmentRole,
@@ -356,7 +358,6 @@ class TestProcurementRequestCreate:
             url,
             {
                 'title': 'Расходники для производства',
-                'description': 'Нужны материалы для заказа',
                 'department': department.id,
                 'processing_department': supply_department.id,
                 'urgency': UrgencyLevel.MEDIUM,
@@ -377,6 +378,7 @@ class TestProcurementRequestCreate:
         assert response.data['status'] == ProcurementStatus.WAITING
         request_id = response.data['id']
         procurement_request = ProcurementRequest.objects.get(id=request_id)
+        assert procurement_request.description == ""
         assert procurement_request.processing_department == supply_department
         assert procurement_request.approvals.count() == 0
 
@@ -803,6 +805,43 @@ class TestProcessingDepartmentWorkflow:
         assert response.data["status"] == ProcurementStatus.DRAFT
         assert sent == []
 
+    def test_create_request_allows_item_without_price_and_links_with_comment(
+        self, api_client, user, department
+    ):
+        api_client.force_authenticate(user=user)
+        url = reverse('api:v1:procurement:procurementrequest-list')
+
+        response = api_client.post(
+            url,
+            {
+                "title": "Нужен расходник",
+                "description": "Не знаю где купить",
+                "department": department.id,
+                "urgency": UrgencyLevel.MEDIUM,
+                "items": [
+                    {
+                        "name": "Паяльник",
+                        "quantity": 1,
+                        "unit": "шт",
+                        "initial_comment": "Нужен для ремонта, ссылок нет",
+                    }
+                ],
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        procurement_request = ProcurementRequest.objects.get(
+            id=response.data["id"]
+        )
+        item = procurement_request.items.get()
+        assert item.estimated_unit_price is None
+        assert item.links == []
+        assert procurement_request.total_cost == Decimal("0.00")
+        comments = list(get_comments(item))
+        assert len(comments) == 1
+        assert comments[0].content == "Нужен для ремонта, ссылок нет"
+
     def test_create_processing_department_request_notifies_department_members(
         self, api_client, user, department, supply_department, supply_user,
         monkeypatch
@@ -971,6 +1010,10 @@ class TestProcessingDepartmentWorkflow:
             == ProcurementFulfillmentStatus.COMPLETED
         )
         assert processing_request.status == ProcurementStatus.COMPLETED
+        assert processing_request.completed_at is not None
+        item.refresh_from_db()
+        assert item.ordered_quantity == item.quantity
+        assert item.received_quantity == item.quantity
 
     def test_item_update_notifies_requestor(
         self, api_client, supply_user, processing_request,
@@ -1022,7 +1065,254 @@ class TestProcessingDepartmentWorkflow:
             "execution_status",
             "expected_delivery_date",
             "links",
+            "ordered_quantity",
         ]
+
+    def test_item_quantities_cannot_exceed_requested_quantity(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            quantity=3,
+        )
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save()
+
+        api_client.force_authenticate(user=supply_user)
+        item_url = reverse(
+            'api:v1:procurement:procurementitem-detail',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.patch(
+            item_url,
+            {'ordered_quantity': 4},
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "ordered_quantity" in response.data
+
+    def test_ordered_quantity_moves_pending_item_to_ordered(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            quantity=3,
+            execution_status=ProcurementItemExecutionStatus.PENDING,
+        )
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save()
+
+        api_client.force_authenticate(user=supply_user)
+        item_url = reverse(
+            'api:v1:procurement:procurementitem-detail',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.patch(
+            item_url,
+            {'ordered_quantity': 2},
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        item.refresh_from_db()
+        assert item.ordered_quantity == 2
+        assert item.execution_status == ProcurementItemExecutionStatus.ORDERED
+
+    def test_received_quantity_sets_ordered_or_received_status(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            quantity=3,
+            execution_status=ProcurementItemExecutionStatus.PENDING,
+        )
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save()
+
+        api_client.force_authenticate(user=supply_user)
+        item_url = reverse(
+            'api:v1:procurement:procurementitem-detail',
+            kwargs={'pk': item.id},
+        )
+
+        partial_response = api_client.patch(
+            item_url,
+            {'received_quantity': 2},
+            format='json',
+        )
+
+        assert partial_response.status_code == status.HTTP_200_OK
+        item.refresh_from_db()
+        assert item.ordered_quantity == 2
+        assert item.received_quantity == 2
+        assert item.execution_status == ProcurementItemExecutionStatus.ORDERED
+
+        full_response = api_client.patch(
+            item_url,
+            {'received_quantity': 3},
+            format='json',
+        )
+
+        assert full_response.status_code == status.HTTP_200_OK
+        item.refresh_from_db()
+        assert item.ordered_quantity == 3
+        assert item.received_quantity == 3
+        assert item.execution_status == ProcurementItemExecutionStatus.RECEIVED
+
+    def test_zero_received_quantity_returns_received_item_to_workflow(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            quantity=3,
+            ordered_quantity=2,
+            received_quantity=3,
+            execution_status=ProcurementItemExecutionStatus.RECEIVED,
+        )
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save()
+
+        api_client.force_authenticate(user=supply_user)
+        item_url = reverse(
+            'api:v1:procurement:procurementitem-detail',
+            kwargs={'pk': item.id},
+        )
+
+        ordered_response = api_client.patch(
+            item_url,
+            {'received_quantity': 0},
+            format='json',
+        )
+
+        assert ordered_response.status_code == status.HTTP_200_OK
+        item.refresh_from_db()
+        assert item.received_quantity == 0
+        assert item.execution_status == ProcurementItemExecutionStatus.ORDERED
+
+        pending_response = api_client.patch(
+            item_url,
+            {'ordered_quantity': 0},
+            format='json',
+        )
+
+        assert pending_response.status_code == status.HTTP_200_OK
+        item.refresh_from_db()
+        assert item.ordered_quantity == 0
+        assert item.execution_status == ProcurementItemExecutionStatus.PENDING
+
+    def test_report_issue_marks_item_defective_and_reopens_completed_request(
+        self, api_client, user, supply_user, processing_request,
+        procurement_item_factory, monkeypatch
+    ):
+        sent = []
+
+        def fake_notify_send(**kwargs):
+            sent.append(kwargs)
+
+        monkeypatch.setattr(
+            "procurement.notifications.handlers.notify.send",
+            fake_notify_send,
+        )
+
+        item = procurement_item_factory(
+            request=processing_request,
+            execution_status=ProcurementItemExecutionStatus.RECEIVED,
+            received_quantity=1,
+        )
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.COMPLETED
+        processing_request.completed_at = timezone.now()
+        processing_request.save()
+        sent.clear()
+
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementitem-report-issue',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.post(
+            url,
+            {'text': 'Обнаружен брак'},
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        item.refresh_from_db()
+        processing_request.refresh_from_db()
+        assert item.execution_status == ProcurementItemExecutionStatus.DEFECTIVE
+        assert (
+            processing_request.fulfillment_status
+            == ProcurementFulfillmentStatus.ISSUES
+        )
+        assert processing_request.status == ProcurementStatus.IN_PROGRESS
+        assert processing_request.completed_at is None
+        assert [comment.content for comment in get_comments(item)] == [
+            "Обнаружен брак"
+        ]
+        issue_recipients = [
+            notification["recipient"].email
+            for notification in sent
+            if notification["verb"] == "procurement_item_updated"
+        ]
+        assert supply_user.email in issue_recipients
+
+    def test_list_exposes_procurement_progress_summary(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        procurement_item_factory(
+            request=processing_request,
+            quantity=5,
+            execution_status=ProcurementItemExecutionStatus.RECEIVED,
+            ordered_quantity=5,
+            received_quantity=3,
+            expected_delivery_date="2026-05-28",
+        )
+        procurement_item_factory(
+            request=processing_request,
+            name="Проблемная позиция",
+            quantity=2,
+            execution_status=ProcurementItemExecutionStatus.DEFECTIVE,
+            ordered_quantity=1,
+            expected_delivery_date="2026-05-27",
+        )
+        procurement_item_factory(
+            request=processing_request,
+            name="Не обработано",
+            quantity=4,
+            execution_status=ProcurementItemExecutionStatus.PENDING,
+        )
+
+        api_client.force_authenticate(user=supply_user)
+        url = reverse('api:v1:procurement:procurementrequest-list')
+
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        result = next(
+            item for item in response.data["results"]
+            if item["id"] == processing_request.id
+        )
+        assert result["next_expected_delivery_date"] == "2026-05-27"
+        assert result["items_total_count"] == 3
+        assert result["items_received_count"] == 0
+        assert result["items_problem_count"] == 1
+        assert result["items_pending_count"] == 1
+        assert result["total_requested_quantity"] == 11
+        assert result["total_ordered_quantity"] == 6
+        assert result["total_received_quantity"] == 3
 
     def test_requestor_item_update_does_not_notify_self(
         self, api_client, user, processing_request,
@@ -1166,7 +1456,7 @@ class TestProcessingDepartmentWorkflow:
             }
         ] == []
 
-    def test_mark_all_received_completes_processing_request(
+    def test_mark_all_received_updates_items_and_closes_request(
         self, api_client, supply_user, processing_request,
         procurement_item_factory, monkeypatch
     ):
@@ -1204,11 +1494,16 @@ class TestProcessingDepartmentWorkflow:
         item_2.refresh_from_db()
         assert item_1.execution_status == ProcurementItemExecutionStatus.RECEIVED
         assert item_2.execution_status == ProcurementItemExecutionStatus.RECEIVED
+        assert item_1.ordered_quantity == item_1.quantity
+        assert item_1.received_quantity == item_1.quantity
+        assert item_2.ordered_quantity == item_2.quantity
+        assert item_2.received_quantity == item_2.quantity
         assert (
             processing_request.fulfillment_status
             == ProcurementFulfillmentStatus.COMPLETED
         )
         assert processing_request.status == ProcurementStatus.COMPLETED
+        assert processing_request.completed_at is not None
         item_update_recipients = [
             item["recipient"].email
             for item in sent
@@ -1597,6 +1892,8 @@ class TestProcurementRequestWorkflow:
 
         response = api_client.post(url)
         assert response.status_code == status.HTTP_200_OK
+        procurement_item.refresh_from_db()
+        assert procurement_item.execution_status == ProcurementItemExecutionStatus.PENDING
 
         completed_recipients = [
             item["recipient"].email

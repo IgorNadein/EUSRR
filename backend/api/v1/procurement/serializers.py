@@ -5,7 +5,9 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from communications import comments_helpers
 from procurement.constants import (
+    ProcurementItemExecutionStatus,
     ProcurementStatus,
     get_default_approval_step_name,
 )
@@ -23,9 +25,137 @@ from procurement.models import (
 from ..employees.serializers import EmployeeBriefSerializer
 
 
+PROBLEM_ITEM_STATUSES = {
+    ProcurementItemExecutionStatus.REJECTED,
+    ProcurementItemExecutionStatus.COMPLETED_WITH_ISSUE,
+    ProcurementItemExecutionStatus.EDITED,
+    ProcurementItemExecutionStatus.DEFECTIVE,
+}
+
+
+def _validate_item_quantities(attrs, instance=None):
+    quantity = attrs.get("quantity", getattr(instance, "quantity", None))
+    for field in ("ordered_quantity", "received_quantity"):
+        value = attrs.get(field, getattr(instance, field, None))
+        if value is not None and quantity is not None and value > quantity:
+            raise serializers.ValidationError(
+                {field: "Не может быть больше количества позиции"}
+            )
+    return attrs
+
+
+def _request_items(obj):
+    return list(obj.items.all())
+
+
+def _effective_ordered_quantity(item):
+    if item.ordered_quantity is not None:
+        return item.ordered_quantity
+    if item.execution_status in {
+        ProcurementItemExecutionStatus.ORDERED,
+        ProcurementItemExecutionStatus.RECEIVED,
+    }:
+        return item.quantity
+    return 0
+
+
+def _effective_received_quantity(item):
+    if item.received_quantity is not None:
+        return item.received_quantity
+    if item.execution_status == ProcurementItemExecutionStatus.RECEIVED:
+        return item.quantity
+    return 0
+
+
+class ProcurementRequestSummaryMixin(serializers.Serializer):
+    next_expected_delivery_date = serializers.SerializerMethodField()
+    items_total_count = serializers.SerializerMethodField()
+    items_received_count = serializers.SerializerMethodField()
+    items_problem_count = serializers.SerializerMethodField()
+    items_pending_count = serializers.SerializerMethodField()
+    total_requested_quantity = serializers.SerializerMethodField()
+    total_ordered_quantity = serializers.SerializerMethodField()
+    total_received_quantity = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.DateField(allow_null=True))
+    def get_next_expected_delivery_date(self, obj):
+        dated_items = [
+            item for item in _request_items(obj)
+            if item.expected_delivery_date
+        ]
+        if not dated_items:
+            return None
+
+        pending_dates = [
+            item.expected_delivery_date for item in dated_items
+            if item.execution_status != ProcurementItemExecutionStatus.RECEIVED
+        ]
+        if pending_dates:
+            return min(pending_dates).isoformat()
+        return max(item.expected_delivery_date for item in dated_items).isoformat()
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_items_total_count(self, obj):
+        return len(_request_items(obj))
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_items_received_count(self, obj):
+        return sum(
+            1 for item in _request_items(obj)
+            if item.execution_status == ProcurementItemExecutionStatus.RECEIVED
+        )
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_items_problem_count(self, obj):
+        return sum(
+            1 for item in _request_items(obj)
+            if item.execution_status in PROBLEM_ITEM_STATUSES
+        )
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_items_pending_count(self, obj):
+        return sum(
+            1 for item in _request_items(obj)
+            if item.execution_status == ProcurementItemExecutionStatus.PENDING
+        )
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_total_requested_quantity(self, obj):
+        return sum(item.quantity for item in _request_items(obj))
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_total_ordered_quantity(self, obj):
+        return sum(_effective_ordered_quantity(item) for item in _request_items(obj))
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_total_received_quantity(self, obj):
+        return sum(_effective_received_quantity(item) for item in _request_items(obj))
+
+
 class ProcurementItemSerializer(serializers.ModelSerializer):
     """Сериализатор для позиций заявки."""
 
+    estimated_unit_price = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+    )
+    ordered_quantity = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=0,
+    )
+    received_quantity = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=0,
+    )
+    initial_comment = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+    )
     total_price = serializers.DecimalField(
         max_digits=12, decimal_places=2, read_only=True
     )
@@ -55,6 +185,8 @@ class ProcurementItemSerializer(serializers.ModelSerializer):
             "unit",
             "estimated_unit_price",
             "total_price",
+            "ordered_quantity",
+            "received_quantity",
             "supplier_info",
             "links",
             "expected_delivery_date",
@@ -62,6 +194,7 @@ class ProcurementItemSerializer(serializers.ModelSerializer):
             "execution_status",
             "execution_status_display",
             "executor_comment",
+            "initial_comment",
             "comments_count",
             "equipment",
             "created_at",
@@ -74,9 +207,47 @@ class ProcurementItemSerializer(serializers.ModelSerializer):
             "comments_count",
         ]
 
+    def validate(self, attrs):
+        return _validate_item_quantities(attrs, self.instance)
+
+    def create(self, validated_data):
+        initial_comment = validated_data.pop("initial_comment", "").strip()
+        item = super().create(validated_data)
+        request = self.context.get("request")
+        author = getattr(request, "user", None)
+        if initial_comment and author and author.is_authenticated:
+            comments_helpers.create_comment(
+                obj=item,
+                author=author,
+                content=initial_comment,
+            )
+        return item
+
 
 class ProcurementItemCreateSerializer(serializers.ModelSerializer):
     """Сериализатор для создания позиций (без request)."""
+
+    estimated_unit_price = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+    )
+    ordered_quantity = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=0,
+    )
+    received_quantity = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=0,
+    )
+    initial_comment = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+    )
 
     class Meta:
         model = ProcurementItem
@@ -86,13 +257,19 @@ class ProcurementItemCreateSerializer(serializers.ModelSerializer):
             "quantity",
             "unit",
             "estimated_unit_price",
+            "ordered_quantity",
+            "received_quantity",
             "supplier_info",
             "links",
             "expected_delivery_date",
             "actual_unit_price",
             "execution_status",
             "executor_comment",
+            "initial_comment",
         ]
+
+    def validate(self, attrs):
+        return _validate_item_quantities(attrs, self.instance)
 
 
 class ApprovalSerializer(serializers.ModelSerializer):
@@ -138,7 +315,10 @@ class ApprovalSerializer(serializers.ModelSerializer):
         ]
 
 
-class ProcurementRequestListSerializer(serializers.ModelSerializer):
+class ProcurementRequestListSerializer(
+    ProcurementRequestSummaryMixin,
+    serializers.ModelSerializer,
+):
     """Сериализатор для списка заявок (краткий)."""
 
     department_name = serializers.CharField(
@@ -196,6 +376,14 @@ class ProcurementRequestListSerializer(serializers.ModelSerializer):
             "fulfillment_status_display",
             "total_cost",
             "items_count",
+            "next_expected_delivery_date",
+            "items_total_count",
+            "items_received_count",
+            "items_problem_count",
+            "items_pending_count",
+            "total_requested_quantity",
+            "total_ordered_quantity",
+            "total_received_quantity",
             "comments_count",
             "can_current_user_approve",
             "created_at",
@@ -217,6 +405,14 @@ class ProcurementRequestListSerializer(serializers.ModelSerializer):
             "fulfillment_status_display",
             "items_count",
             "total_cost",
+            "next_expected_delivery_date",
+            "items_total_count",
+            "items_received_count",
+            "items_problem_count",
+            "items_pending_count",
+            "total_requested_quantity",
+            "total_ordered_quantity",
+            "total_received_quantity",
             "comments_count",
             "can_current_user_approve",
         ]
@@ -233,7 +429,10 @@ class ProcurementRequestListSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 
-class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
+class ProcurementRequestDetailSerializer(
+    ProcurementRequestSummaryMixin,
+    serializers.ModelSerializer,
+):
     """Сериализатор для детальной информации о заявке."""
 
     department_name = serializers.CharField(
@@ -301,6 +500,14 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
             "fulfillment_status_display",
             "total_cost",
             "actual_cost",
+            "next_expected_delivery_date",
+            "items_total_count",
+            "items_received_count",
+            "items_problem_count",
+            "items_pending_count",
+            "total_requested_quantity",
+            "total_ordered_quantity",
+            "total_received_quantity",
             "items",
             "approvals",
             "required_approval_priorities",
@@ -322,6 +529,14 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
             "completed_at",
             "is_editable",
             "total_cost",
+            "next_expected_delivery_date",
+            "items_total_count",
+            "items_received_count",
+            "items_problem_count",
+            "items_pending_count",
+            "total_requested_quantity",
+            "total_ordered_quantity",
+            "total_received_quantity",
             "executor_name",
             "fulfillment_status",
             "processing_department_name",
@@ -334,6 +549,10 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
 class ProcurementRequestCreateSerializer(serializers.ModelSerializer):
     """Сериализатор для создания заявки с позициями."""
 
+    description = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
     items = ProcurementItemCreateSerializer(many=True, required=False)
 
     class Meta:
@@ -351,6 +570,16 @@ class ProcurementRequestCreateSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "requestor", "status", "created_at"]
+
+    def validate(self, attrs):
+        if (
+            not attrs.get("processing_department")
+            and not attrs.get("description", "").strip()
+        ):
+            raise serializers.ValidationError(
+                {"description": "Укажите описание и обоснование."}
+            )
+        return attrs
 
     def create(self, validated_data):
         """Создать заявку с позициями."""
@@ -372,9 +601,16 @@ class ProcurementRequestCreateSerializer(serializers.ModelSerializer):
 
         # Создаем позиции (если они переданы)
         for item_data in items_data:
-            ProcurementItem.objects.create(
+            initial_comment = item_data.pop("initial_comment", "").strip()
+            item = ProcurementItem.objects.create(
                 request=procurement_request, **item_data
             )
+            if initial_comment:
+                comments_helpers.create_comment(
+                    obj=item,
+                    author=request.user,
+                    content=initial_comment,
+                )
 
         return procurement_request
 
