@@ -205,14 +205,17 @@ function ProcurementItemCard({
         </p>
         <span className={`app-status-pill ${executionStatusBadgeClass(status)}`}>{statusLabel}</span>
       </div>
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(260px,0.8fr)]">
-        <section className="min-w-0">
-          <p className="app-text-muted mb-2 text-[11px] font-semibold uppercase tracking-wide">
-            От заказчика
-          </p>
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="app-text-wrap font-medium text-[var(--foreground)]">{item.name}</p>
+      <div className="grid gap-3 md:grid-cols-2">
+        <section className="min-w-0 rounded-lg bg-[var(--surface-primary)] px-3 py-3">
+          <div className="mb-2">
+            <p className="app-text-muted text-[11px] font-semibold uppercase tracking-wide">
+              От заказчика
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="min-w-0">
+              <p className="app-text-muted text-[11px]">Название</p>
+              <p className="app-text-wrap mt-0.5 font-medium text-[var(--foreground)]">{item.name}</p>
               {item.description ? (
                 <p className="app-text-wrap mt-1 text-[var(--muted-foreground)]">{item.description}</p>
               ) : null}
@@ -222,15 +225,19 @@ function ProcurementItemCard({
                 </p>
               ) : null}
             </div>
-            <div className="shrink-0 text-right">
-              <p className="app-text-muted text-[11px]">Количество</p>
-              <p className="mt-0.5 font-medium text-[var(--foreground)]">
-                {item.quantity} {item.unit}
-              </p>
-              <p className="app-text-muted mt-2 text-[11px]">Цена ориентир</p>
-              <p className="mt-0.5 font-medium text-[var(--foreground)]">
-                {formatMoney(item.estimated_unit_price)}
-              </p>
+            <div className="shrink-0 sm:text-right">
+              <div>
+                <p className="app-text-muted text-[11px]">Количество</p>
+                <p className="mt-0.5 font-medium text-[var(--foreground)]">
+                  {item.quantity} {item.unit}
+                </p>
+              </div>
+              <div className="mt-2">
+                <p className="app-text-muted text-[11px]">Цена ориентир</p>
+                <p className="mt-0.5 font-medium text-[var(--foreground)]">
+                  {formatMoney(item.estimated_unit_price)}
+                </p>
+              </div>
             </div>
           </div>
           {links.length > 0 ? (
