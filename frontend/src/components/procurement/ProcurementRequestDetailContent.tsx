@@ -214,48 +214,58 @@ function ProcurementItemCard({
         <span className={`app-status-pill ${executionStatusBadgeClass(status)}`}>{statusLabel}</span>
       </div>
 
-      <div className="mt-3 grid gap-x-5 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <p className="app-text-muted text-[11px]">Количество</p>
-          <p className="mt-0.5 font-medium text-[var(--foreground)]">
-            {item.quantity} {item.unit}
-          </p>
+      <div className="mt-3 grid gap-x-6 gap-y-3 lg:grid-cols-[minmax(0,1fr)_minmax(190px,0.55fr)]">
+        <div className="min-w-0">
+          <p className="app-text-muted mb-1 text-[11px] font-semibold uppercase tracking-wide">Исполнение</p>
+          <div className="grid gap-x-5 gap-y-2 sm:grid-cols-2">
+            <div>
+              <p className="app-text-muted text-[11px]">Количество</p>
+              <p className="mt-0.5 font-medium text-[var(--foreground)]">
+                {item.quantity} {item.unit}
+              </p>
+            </div>
+            <div>
+              <p className="app-text-muted text-[11px]">Дата поступления</p>
+              <p className="mt-0.5 font-medium text-[var(--foreground)]">
+                {formatDate(item.expected_delivery_date) || "—"}
+              </p>
+            </div>
+            <div>
+              <p className="app-text-muted text-[11px]">Заказано</p>
+              <p className="mt-0.5 font-medium text-[var(--foreground)]">
+                {orderedQuantity}/{requestedQuantity}
+              </p>
+            </div>
+            <div>
+              <p className="app-text-muted text-[11px]">Получено</p>
+              <p className="mt-0.5 font-medium text-[var(--foreground)]">
+                {receivedQuantity}/{requestedQuantity}
+              </p>
+            </div>
+          </div>
         </div>
-        <div>
-          <p className="app-text-muted text-[11px]">Цена ориентир</p>
-          <p className="mt-0.5 font-medium text-[var(--foreground)]">
-            {formatMoney(item.estimated_unit_price)}
-          </p>
-        </div>
-        <div>
-          <p className="app-text-muted text-[11px]">Цена факт</p>
-          <p className="mt-0.5 font-medium text-[var(--foreground)]">
-            {item.actual_unit_price ? formatMoney(item.actual_unit_price) : "—"}
-          </p>
-        </div>
-        <div>
-          <p className="app-text-muted text-[11px]">Сумма расчёт</p>
-          <p className="mt-0.5 font-medium text-[var(--foreground)]">
-            {formatMoney(item.total_price)}
-          </p>
-        </div>
-        <div>
-          <p className="app-text-muted text-[11px]">Дата поступления</p>
-          <p className="mt-0.5 font-medium text-[var(--foreground)]">
-            {formatDate(item.expected_delivery_date) || "—"}
-          </p>
-        </div>
-        <div>
-          <p className="app-text-muted text-[11px]">Заказано</p>
-          <p className="mt-0.5 font-medium text-[var(--foreground)]">
-            {orderedQuantity}/{requestedQuantity}
-          </p>
-        </div>
-        <div>
-          <p className="app-text-muted text-[11px]">Получено</p>
-          <p className="mt-0.5 font-medium text-[var(--foreground)]">
-            {receivedQuantity}/{requestedQuantity}
-          </p>
+        <div className="min-w-0 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-primary)] px-3 py-2">
+          <p className="app-text-muted mb-2 text-[11px] font-semibold uppercase tracking-wide">Стоимость</p>
+          <div className="grid gap-x-5 gap-y-2 sm:grid-cols-3 lg:grid-cols-1">
+            <div>
+              <p className="app-text-muted text-[11px]">Ориентир</p>
+              <p className="mt-0.5 font-medium text-[var(--foreground)]">
+                {formatMoney(item.estimated_unit_price)}
+              </p>
+            </div>
+            <div>
+              <p className="app-text-muted text-[11px]">Факт</p>
+              <p className="mt-0.5 font-medium text-[var(--foreground)]">
+                {item.actual_unit_price ? formatMoney(item.actual_unit_price) : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="app-text-muted text-[11px]">Расчёт</p>
+              <p className="mt-0.5 font-medium text-[var(--foreground)]">
+                {formatMoney(item.total_price)}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
