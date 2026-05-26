@@ -199,6 +199,12 @@ function ProcurementItemCard({
 
   return (
     <div className="app-surface-muted rounded-lg px-3 py-3 text-xs">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="app-text-muted text-[11px] font-semibold uppercase tracking-wide">
+          Позиция
+        </p>
+        <span className={`app-status-pill ${executionStatusBadgeClass(status)}`}>{statusLabel}</span>
+      </div>
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(260px,0.8fr)]">
         <section className="min-w-0">
           <p className="app-text-muted mb-2 text-[11px] font-semibold uppercase tracking-wide">
@@ -217,11 +223,13 @@ function ProcurementItemCard({
               ) : null}
             </div>
             <div className="shrink-0 text-right">
-              <p className="font-medium text-[var(--foreground)]">
+              <p className="app-text-muted text-[11px]">Количество</p>
+              <p className="mt-0.5 font-medium text-[var(--foreground)]">
                 {item.quantity} {item.unit}
               </p>
-              <p className="app-text-muted mt-1">
-                Ориентир: {formatMoney(item.estimated_unit_price)}
+              <p className="app-text-muted mt-2 text-[11px]">Цена ориентир</p>
+              <p className="mt-0.5 font-medium text-[var(--foreground)]">
+                {formatMoney(item.estimated_unit_price)}
               </p>
             </div>
           </div>
@@ -246,12 +254,11 @@ function ProcurementItemCard({
           ) : null}
         </section>
 
-        <section className="min-w-0 border-t border-[var(--border)] pt-3 md:border-l md:border-t-0 md:pl-3 md:pt-0">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <section className="min-w-0 rounded-lg bg-[var(--surface-primary)] px-3 py-3">
+          <div className="mb-2">
             <p className="app-text-muted text-[11px] font-semibold uppercase tracking-wide">
               От закупщика
             </p>
-            <span className={`app-status-pill ${executionStatusBadgeClass(status)}`}>{statusLabel}</span>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -278,16 +285,12 @@ function ProcurementItemCard({
                 {receivedQuantity}/{requestedQuantity}
               </p>
             </div>
-          </div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <span className="app-badge inline-flex rounded-full px-2 py-1 text-[11px] font-medium">
-              Расчёт: {formatMoney(item.total_price)}
-            </span>
-            {item.actual_unit_price ? (
-              <span className="app-badge inline-flex rounded-full px-2 py-1 text-[11px] font-medium">
-                Факт: {formatMoney(item.actual_unit_price)}
-              </span>
-            ) : null}
+            <div>
+              <p className="app-text-muted text-[11px]">Сумма расчёт</p>
+              <p className="mt-0.5 font-medium text-[var(--foreground)]">
+                {formatMoney(item.total_price)}
+              </p>
+            </div>
           </div>
         </section>
       </div>
