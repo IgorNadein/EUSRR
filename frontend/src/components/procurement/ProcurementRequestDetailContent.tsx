@@ -199,63 +199,99 @@ function ProcurementItemCard({
 
   return (
     <div className="app-surface-muted rounded-lg px-3 py-3 text-xs">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="app-text-wrap font-medium text-[var(--foreground)]">{item.name}</p>
-          {item.description ? (
-            <p className="app-text-wrap mt-1 text-[var(--muted-foreground)]">{item.description}</p>
-          ) : null}
-          {item.supplier_info ? (
-            <p className="app-text-wrap mt-1 text-[var(--muted-foreground)]">
-              Поставщик: {item.supplier_info}
-            </p>
-          ) : null}
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(260px,0.8fr)]">
+        <section className="min-w-0">
+          <p className="app-text-muted mb-2 text-[11px] font-semibold uppercase tracking-wide">
+            От заказчика
+          </p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="app-text-wrap font-medium text-[var(--foreground)]">{item.name}</p>
+              {item.description ? (
+                <p className="app-text-wrap mt-1 text-[var(--muted-foreground)]">{item.description}</p>
+              ) : null}
+              {item.supplier_info ? (
+                <p className="app-text-wrap mt-1 text-[var(--muted-foreground)]">
+                  Поставщик: {item.supplier_info}
+                </p>
+              ) : null}
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="font-medium text-[var(--foreground)]">
+                {item.quantity} {item.unit}
+              </p>
+              <p className="app-text-muted mt-1">
+                Ориентир: {formatMoney(item.estimated_unit_price)}
+              </p>
+            </div>
+          </div>
           {links.length > 0 ? (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {links.map((link, linkIndex) => (
-                <a
-                  key={`${item.id}-${linkIndex}`}
-                  href={linkHref(link)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium no-underline hover:bg-[var(--surface-tertiary)] hover:no-underline"
-                >
-                  <ExternalLink size={11} />
-                  <span className="truncate">{link}</span>
-                </a>
-              ))}
+            <div className="mt-2">
+              <p className="app-text-muted mb-1 text-[11px] font-medium">Ссылки / варианты</p>
+              <div className="flex flex-wrap gap-1.5">
+                {links.map((link, linkIndex) => (
+                  <a
+                    key={`${item.id}-${linkIndex}`}
+                    href={linkHref(link)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium no-underline hover:bg-[var(--surface-tertiary)] hover:no-underline"
+                  >
+                    <ExternalLink size={11} />
+                    <span className="truncate">{link}</span>
+                  </a>
+                ))}
+              </div>
             </div>
           ) : null}
-        </div>
-        <div className="text-right">
-          <p className="font-medium text-[var(--foreground)]">{formatMoney(item.total_price)}</p>
-          <p className="app-text-muted mt-1">
-            {item.quantity} {item.unit}
-          </p>
-        </div>
+        </section>
+
+        <section className="min-w-0 border-t border-[var(--border)] pt-3 md:border-l md:border-t-0 md:pl-3 md:pt-0">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="app-text-muted text-[11px] font-semibold uppercase tracking-wide">
+              От закупщика
+            </p>
+            <span className={`app-status-pill ${executionStatusBadgeClass(status)}`}>{statusLabel}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <p className="app-text-muted text-[11px]">Дата поступления</p>
+              <p className="mt-0.5 font-medium text-[var(--foreground)]">
+                {formatDate(item.expected_delivery_date) || "—"}
+              </p>
+            </div>
+            <div>
+              <p className="app-text-muted text-[11px]">Цена факт</p>
+              <p className="mt-0.5 font-medium text-[var(--foreground)]">
+                {item.actual_unit_price ? formatMoney(item.actual_unit_price) : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="app-text-muted text-[11px]">Заказано</p>
+              <p className="mt-0.5 font-medium text-[var(--foreground)]">
+                {orderedQuantity}/{requestedQuantity}
+              </p>
+            </div>
+            <div>
+              <p className="app-text-muted text-[11px]">Получено</p>
+              <p className="mt-0.5 font-medium text-[var(--foreground)]">
+                {receivedQuantity}/{requestedQuantity}
+              </p>
+            </div>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <span className="app-badge inline-flex rounded-full px-2 py-1 text-[11px] font-medium">
+              Расчёт: {formatMoney(item.total_price)}
+            </span>
+            {item.actual_unit_price ? (
+              <span className="app-badge inline-flex rounded-full px-2 py-1 text-[11px] font-medium">
+                Факт: {formatMoney(item.actual_unit_price)}
+              </span>
+            ) : null}
+          </div>
+        </section>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <span className={`app-status-pill ${executionStatusBadgeClass(status)}`}>{statusLabel}</span>
-        {item.expected_delivery_date ? (
-          <span className="app-badge inline-flex rounded-full px-2 py-1 text-[11px] font-medium">
-            Ожидается: {formatDate(item.expected_delivery_date)}
-          </span>
-        ) : null}
-        {item.actual_unit_price ? (
-          <span className="app-badge inline-flex rounded-full px-2 py-1 text-[11px] font-medium">
-            Факт: {formatMoney(item.actual_unit_price)}
-          </span>
-        ) : null}
-        <span className="app-badge inline-flex rounded-full px-2 py-1 text-[11px] font-medium">
-          Заказано {orderedQuantity}/{requestedQuantity}
-        </span>
-        <span className="app-badge inline-flex rounded-full px-2 py-1 text-[11px] font-medium">
-          Получено {receivedQuantity}/{requestedQuantity}
-        </span>
-      </div>
-      <div className="app-text-muted mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span>Цена/ед.: {formatMoney(item.estimated_unit_price)}</span>
-      </div>
+
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <div>
           <button
