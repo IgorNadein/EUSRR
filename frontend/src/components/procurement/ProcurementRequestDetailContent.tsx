@@ -199,108 +199,85 @@ function ProcurementItemCard({
 
   return (
     <div className="app-surface-muted rounded-lg px-3 py-3 text-xs">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="app-text-muted text-[11px] font-semibold uppercase tracking-wide">
-          Позиция
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="app-text-wrap font-semibold text-[var(--foreground)]">{item.name}</p>
+          {item.description ? (
+            <p className="app-text-wrap mt-1 text-[var(--muted-foreground)]">{item.description}</p>
+          ) : null}
+          {item.supplier_info ? (
+            <p className="app-text-wrap mt-1 text-[var(--muted-foreground)]">
+              Поставщик: {item.supplier_info}
+            </p>
+          ) : null}
+        </div>
         <span className={`app-status-pill ${executionStatusBadgeClass(status)}`}>{statusLabel}</span>
       </div>
-      <div className="grid gap-3 md:grid-cols-2">
-        <section className="min-w-0 rounded-lg bg-[var(--surface-primary)] px-3 py-3">
-          <div className="mb-2">
-            <p className="app-text-muted text-[11px] font-semibold uppercase tracking-wide">
-              От заказчика
-            </p>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="min-w-0">
-              <p className="app-text-muted text-[11px]">Название</p>
-              <p className="app-text-wrap mt-0.5 font-medium text-[var(--foreground)]">{item.name}</p>
-              {item.description ? (
-                <p className="app-text-wrap mt-1 text-[var(--muted-foreground)]">{item.description}</p>
-              ) : null}
-              {item.supplier_info ? (
-                <p className="app-text-wrap mt-1 text-[var(--muted-foreground)]">
-                  Поставщик: {item.supplier_info}
-                </p>
-              ) : null}
-            </div>
-            <div className="shrink-0 sm:text-right">
-              <div>
-                <p className="app-text-muted text-[11px]">Количество</p>
-                <p className="mt-0.5 font-medium text-[var(--foreground)]">
-                  {item.quantity} {item.unit}
-                </p>
-              </div>
-              <div className="mt-2">
-                <p className="app-text-muted text-[11px]">Цена ориентир</p>
-                <p className="mt-0.5 font-medium text-[var(--foreground)]">
-                  {formatMoney(item.estimated_unit_price)}
-                </p>
-              </div>
-            </div>
-          </div>
-          {links.length > 0 ? (
-            <div className="mt-2">
-              <p className="app-text-muted mb-1 text-[11px] font-medium">Ссылки / варианты</p>
-              <div className="flex flex-wrap gap-1.5">
-                {links.map((link, linkIndex) => (
-                  <a
-                    key={`${item.id}-${linkIndex}`}
-                    href={linkHref(link)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium no-underline hover:bg-[var(--surface-tertiary)] hover:no-underline"
-                  >
-                    <ExternalLink size={11} />
-                    <span className="truncate">{link}</span>
-                  </a>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </section>
 
-        <section className="min-w-0 rounded-lg bg-[var(--surface-primary)] px-3 py-3">
-          <div className="mb-2">
-            <p className="app-text-muted text-[11px] font-semibold uppercase tracking-wide">
-              От закупщика
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <p className="app-text-muted text-[11px]">Дата поступления</p>
-              <p className="mt-0.5 font-medium text-[var(--foreground)]">
-                {formatDate(item.expected_delivery_date) || "—"}
-              </p>
-            </div>
-            <div>
-              <p className="app-text-muted text-[11px]">Цена факт</p>
-              <p className="mt-0.5 font-medium text-[var(--foreground)]">
-                {item.actual_unit_price ? formatMoney(item.actual_unit_price) : "—"}
-              </p>
-            </div>
-            <div>
-              <p className="app-text-muted text-[11px]">Заказано</p>
-              <p className="mt-0.5 font-medium text-[var(--foreground)]">
-                {orderedQuantity}/{requestedQuantity}
-              </p>
-            </div>
-            <div>
-              <p className="app-text-muted text-[11px]">Получено</p>
-              <p className="mt-0.5 font-medium text-[var(--foreground)]">
-                {receivedQuantity}/{requestedQuantity}
-              </p>
-            </div>
-            <div>
-              <p className="app-text-muted text-[11px]">Сумма расчёт</p>
-              <p className="mt-0.5 font-medium text-[var(--foreground)]">
-                {formatMoney(item.total_price)}
-              </p>
-            </div>
-          </div>
-        </section>
+      <div className="mt-3 grid gap-x-5 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <p className="app-text-muted text-[11px]">Количество</p>
+          <p className="mt-0.5 font-medium text-[var(--foreground)]">
+            {item.quantity} {item.unit}
+          </p>
+        </div>
+        <div>
+          <p className="app-text-muted text-[11px]">Цена ориентир</p>
+          <p className="mt-0.5 font-medium text-[var(--foreground)]">
+            {formatMoney(item.estimated_unit_price)}
+          </p>
+        </div>
+        <div>
+          <p className="app-text-muted text-[11px]">Цена факт</p>
+          <p className="mt-0.5 font-medium text-[var(--foreground)]">
+            {item.actual_unit_price ? formatMoney(item.actual_unit_price) : "—"}
+          </p>
+        </div>
+        <div>
+          <p className="app-text-muted text-[11px]">Сумма расчёт</p>
+          <p className="mt-0.5 font-medium text-[var(--foreground)]">
+            {formatMoney(item.total_price)}
+          </p>
+        </div>
+        <div>
+          <p className="app-text-muted text-[11px]">Дата поступления</p>
+          <p className="mt-0.5 font-medium text-[var(--foreground)]">
+            {formatDate(item.expected_delivery_date) || "—"}
+          </p>
+        </div>
+        <div>
+          <p className="app-text-muted text-[11px]">Заказано</p>
+          <p className="mt-0.5 font-medium text-[var(--foreground)]">
+            {orderedQuantity}/{requestedQuantity}
+          </p>
+        </div>
+        <div>
+          <p className="app-text-muted text-[11px]">Получено</p>
+          <p className="mt-0.5 font-medium text-[var(--foreground)]">
+            {receivedQuantity}/{requestedQuantity}
+          </p>
+        </div>
       </div>
+
+      {links.length > 0 ? (
+        <div className="mt-3">
+          <p className="app-text-muted mb-1 text-[11px] font-medium">Ссылки / варианты</p>
+          <div className="flex flex-wrap gap-1.5">
+            {links.map((link, linkIndex) => (
+              <a
+                key={`${item.id}-${linkIndex}`}
+                href={linkHref(link)}
+                target="_blank"
+                rel="noreferrer"
+                className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium no-underline hover:bg-[var(--surface-tertiary)] hover:no-underline"
+              >
+                <ExternalLink size={11} />
+                <span className="truncate">{link}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <div>
