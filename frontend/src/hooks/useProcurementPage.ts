@@ -59,7 +59,7 @@ const emptyForm: FormState = {
   items: [{ ...emptyItem }],
 };
 
-type ScopeTab = "all" | "mine" | "department" | "pending_approvals" | "my_work" | "available";
+type ScopeTab = "all" | "mine" | "department" | "processing_department" | "pending_approvals" | "my_work" | "available";
 type ProcurementSection = "requests" | "stats" | "suppliers";
 
 type PaginatedLike<T> = {
@@ -149,6 +149,7 @@ export function useProcurementPage(user: User | null) {
     all: 0,
     mine: 0,
     department: 0,
+    processing_department: 0,
     pending_approvals: 0,
     my_work: 0,
     available: 0,
@@ -225,6 +226,7 @@ export function useProcurementPage(user: User | null) {
       const params: Record<string, string | number> = { page };
       if (scope === "mine") params.scope = "mine";
       else if (scope === "department") params.scope = "department";
+      else if (scope === "processing_department") params.scope = "processing_department";
       else if (scope === "my_work") params.scope = "my_work";
       else if (scope === "available") params.scope = "available";
       if (statusFilter.length === 1) params.status = statusFilter[0];
@@ -243,6 +245,7 @@ export function useProcurementPage(user: User | null) {
       const params: Record<string, string | number> = { page: 1 };
       if (targetScope === "mine") params.scope = "mine";
       else if (targetScope === "department") params.scope = "department";
+      else if (targetScope === "processing_department") params.scope = "processing_department";
       else if (targetScope === "my_work") params.scope = "my_work";
       else if (targetScope === "available") params.scope = "available";
       if (statusFilter.length === 1) params.status = statusFilter[0];
@@ -282,33 +285,44 @@ export function useProcurementPage(user: User | null) {
     void loadPage1();
   }, [loadPage1]);
 
+  const loadScopeCounts = useCallback(async () => {
+    try {
+      const scopes: ScopeTab[] = [
+        "all",
+        "mine",
+        "department",
+        "processing_department",
+        "pending_approvals",
+        "my_work",
+        "available",
+      ];
+      const results = await Promise.all(
+        scopes.map(async (scopeKey) => {
+          const response: unknown = scopeKey === "pending_approvals"
+            ? await apiClient.getPendingApprovals(buildScopeCountParams(scopeKey))
+            : await apiClient.getProcurementRequests(buildScopeCountParams(scopeKey));
+          return [scopeKey, getPaginatedCount(response)] as const;
+        }),
+      );
+
+      setScopeCounts(Object.fromEntries(results) as Record<ScopeTab, number>);
+    } catch (countsError) {
+      console.error("Load procurement scope counts error:", countsError);
+    }
+  }, [buildScopeCountParams]);
+
   useEffect(() => {
     let cancelled = false;
 
     void (async () => {
-      try {
-        const scopes: ScopeTab[] = ["all", "mine", "department", "pending_approvals", "my_work", "available"];
-        const results = await Promise.all(
-          scopes.map(async (scopeKey) => {
-            const response: unknown = scopeKey === "pending_approvals"
-              ? await apiClient.getPendingApprovals(buildScopeCountParams(scopeKey))
-              : await apiClient.getProcurementRequests(buildScopeCountParams(scopeKey));
-            return [scopeKey, getPaginatedCount(response)] as const;
-          }),
-        );
-
-        if (!cancelled) {
-          setScopeCounts(Object.fromEntries(results) as Record<ScopeTab, number>);
-        }
-      } catch (countsError) {
-        console.error("Load procurement scope counts error:", countsError);
-      }
+      if (cancelled) return;
+      await loadScopeCounts();
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [buildScopeCountParams]);
+  }, [loadScopeCounts]);
 
   useEffect(() => {
     let cancelled = false;
@@ -465,12 +479,32 @@ export function useProcurementPage(user: User | null) {
   const refreshOne = useCallback(async (id: number) => {
     try {
       const updated = await apiClient.getProcurementRequest(id);
+      detailsCacheRef.current = {
+        ...detailsCacheRef.current,
+        [id]: updated,
+      };
       setRequests((previous) => previous.map((request) => (request.id === id ? updated : request)));
-      setDetailsCache((previous) => ({ ...previous, [id]: updated }));
+      setDetailsCache((previous) => {
+        const next = { ...previous, [id]: updated };
+        detailsCacheRef.current = next;
+        return next;
+      });
     } catch {
       await loadPage1();
     }
   }, [loadPage1]);
+
+  const refreshCurrentView = useCallback(async () => {
+    await Promise.all([
+      loadPage1(),
+      loadScopeCounts(),
+    ]);
+  }, [loadPage1, loadScopeCounts]);
+
+  const refreshAfterMutation = useCallback(async (id: number) => {
+    await refreshOne(id);
+    await refreshCurrentView();
+  }, [refreshCurrentView, refreshOne]);
 
   const ensureRequestDetail = useCallback(async (id: number) => {
     const cached = detailsCacheRef.current[id];
@@ -559,13 +593,13 @@ export function useProcurementPage(user: User | null) {
       }
 
       resetForm();
-      await loadPage1();
+      await refreshCurrentView();
     } catch (saveError) {
       setActionError(getReadableError(saveError, "Ошибка сохранения"));
     } finally {
       setBusyKey(null);
     }
-  }, [editingId, form, loadPage1, modalMode, resetForm]);
+  }, [editingId, form, modalMode, refreshCurrentView, resetForm]);
 
   const handleSave = useCallback(() => saveRequest(), [saveRequest]);
 
@@ -575,7 +609,7 @@ export function useProcurementPage(user: User | null) {
       setActionError(null);
       await action();
       setActionSuccess(successMessage);
-      await refreshOne(id);
+      await refreshAfterMutation(id);
       return true;
     } catch (actionErrorValue) {
       setActionError(getReadableError(actionErrorValue, "Ошибка"));
@@ -583,7 +617,7 @@ export function useProcurementPage(user: User | null) {
     } finally {
       setBusyKey(null);
     }
-  }, [refreshOne]);
+  }, [refreshAfterMutation]);
 
   const handleLoadMore = useCallback(async () => {
     if (!nextPage || loadingMore) return;
@@ -858,7 +892,7 @@ export function useProcurementPage(user: User | null) {
       }
       await apiClient.updateProcurementItem(itemId, patch);
       setActionSuccess("Позиция обновлена.");
-      await refreshOne(requestId);
+      await refreshAfterMutation(requestId);
       return true;
     } catch (updateError) {
       setActionError(getReadableError(updateError, "Не удалось обновить позицию"));
@@ -866,7 +900,7 @@ export function useProcurementPage(user: User | null) {
     } finally {
       setBusyKey(null);
     }
-  }, [refreshOne]);
+  }, [refreshAfterMutation]);
 
   const handleReportItemIssue = useCallback(async (requestId: number, itemId: number, text = "") => {
     try {
@@ -874,7 +908,7 @@ export function useProcurementPage(user: User | null) {
       setActionError(null);
       await apiClient.reportProcurementItemIssue(itemId, text);
       setActionSuccess("Позиция отмечена как проблемная.");
-      await refreshOne(requestId);
+      await refreshAfterMutation(requestId);
       return true;
     } catch (issueError) {
       setActionError(getReadableError(issueError, "Не удалось отметить проблему"));
@@ -882,7 +916,7 @@ export function useProcurementPage(user: User | null) {
     } finally {
       setBusyKey(null);
     }
-  }, [refreshOne]);
+  }, [refreshAfterMutation]);
 
   const handleCancel = useCallback((id: number, reason = "") => {
     return doAction(`cancel-${id}`, () => apiClient.cancelProcurementRequest(id, reason), id, "Заявка отменена.");
@@ -901,6 +935,7 @@ export function useProcurementPage(user: User | null) {
         return next;
       });
       setActionSuccess("Заявка удалена.");
+      await refreshCurrentView();
       return true;
     } catch (deleteError) {
       setActionError(getReadableError(deleteError, "Не удалось удалить"));
@@ -908,7 +943,7 @@ export function useProcurementPage(user: User | null) {
     } finally {
       setBusyKey(null);
     }
-  }, []);
+  }, [refreshCurrentView]);
 
   const addItemRow = useCallback(() => {
     setForm((previous) => ({ ...previous, items: [{ ...emptyItem }, ...previous.items] }));

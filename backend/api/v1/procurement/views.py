@@ -146,6 +146,11 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         user = self.request.user
         scope = self.request.query_params.get("scope", None)
         period = self.request.query_params.get("period", None)
+        participant_department_ids = (
+            ProcurementApprovalResolver.get_user_department_participant_ids(
+                user,
+            )
+        )
 
         # Обработка scope параметра
         if scope == "mine":
@@ -154,6 +159,11 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         elif scope == "department":
             # Заявки моего отдела
             queryset = queryset.filter(department__in=user.departments.all())
+        elif scope == "processing_department":
+            # Заявки, направленные в отделы, где пользователь участвует.
+            queryset = queryset.filter(
+                processing_department_id__in=participant_department_ids,
+            )
         elif scope == "my_work":
             # Заявки, которые я взял в работу (где я исполнитель)
             queryset = queryset.filter(executor=user)
@@ -174,7 +184,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(
                     Q(
                         status=ProcurementStatus.WAITING,
-                        processing_department__in=user.departments.all(),
+                        processing_department_id__in=participant_department_ids,
                     )
                     | Q(
                         status=ProcurementStatus.APPROVED,
@@ -201,7 +211,9 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(
                     Q(requestor=user)
                     | Q(department__in=user.departments.all())
-                    | Q(processing_department__in=user.departments.all())
+                    | Q(
+                        processing_department_id__in=participant_department_ids
+                    )
                     | Q(approvals__approver=user)
                     | Q(
                         status=ProcurementStatus.APPROVED,
@@ -453,8 +465,8 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         # Проверяем права
         self.check_object_permissions(request, procurement_request)
 
-        # Находим согласование текущего пользователя
-        approval = ProcurementApprovalResolver.get_available_approval(
+        # Находим или создаем доступный этап текущего пользователя.
+        approval = ProcurementApprovalResolver.get_or_create_available_approval(
             request.user,
             procurement_request,
         )
@@ -510,8 +522,8 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         # Проверяем права
         self.check_object_permissions(request, procurement_request)
 
-        # Находим согласование текущего пользователя
-        approval = ProcurementApprovalResolver.get_available_approval(
+        # Находим или создаем доступный этап текущего пользователя.
+        approval = ProcurementApprovalResolver.get_or_create_available_approval(
             request.user,
             procurement_request,
         )
@@ -521,6 +533,16 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 {"error": "У вас нет прав на согласование этой заявки"},
                 status=status.HTTP_403_FORBIDDEN,
             )
+
+        # Вышестоящий согласующий закрывает предыдущие pending-этапы.
+        procurement_request.approvals.filter(
+            status=ApprovalStatus.PENDING,
+            priority__lt=approval.priority,
+        ).update(
+            status=ApprovalStatus.REJECTED,
+            comment="Автоматически закрыто вышестоящим отклонением",
+            updated_at=timezone.now(),
+        )
 
         # Отклоняем
         approval.status = ApprovalStatus.REJECTED
@@ -554,13 +576,10 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
     def pending_approvals(self, request):
         """Получить заявки, ожидающие согласования текущим польз."""
         # Находим заявки где есть pending approval для текущего юзера
-        base_queryset = (
-            self.filter_queryset(self.get_queryset())
-            .filter(
-                approvals__approver=request.user,
-                approvals__status=ApprovalStatus.PENDING,
+        base_queryset = self.filter_queryset(
+            self.queryset.filter(
+                status=ProcurementStatus.PENDING,
             )
-            .distinct()
         )
         available_ids = [
             request_obj.id
@@ -611,10 +630,15 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             or request.user.has_perm("procurement.change_procurementrequest")
             or request.user.has_perm("procurement.execute_procurement")
         ):
+            participant_department_ids = (
+                ProcurementApprovalResolver.get_user_department_participant_ids(
+                    request.user,
+                )
+            )
             queryset = queryset.filter(
                 Q(
                     status=ProcurementStatus.WAITING,
-                    processing_department__in=request.user.departments.all(),
+                    processing_department_id__in=participant_department_ids,
                 )
                 | Q(
                     status=ProcurementStatus.APPROVED,
@@ -728,18 +752,21 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        items_to_update = list(
-            procurement_request.items.exclude(
-                execution_status=ProcurementItemExecutionStatus.RECEIVED,
+        items_to_update = [
+            item
+            for item in procurement_request.items.all()
+            if (
+                item.execution_status
+                != ProcurementItemExecutionStatus.RECEIVED
+                or item.ordered_quantity != item.quantity
+                or item.received_quantity != item.quantity
             )
-        )
+        ]
 
         for item in items_to_update:
             item.execution_status = ProcurementItemExecutionStatus.RECEIVED
-            if item.ordered_quantity is None:
-                item.ordered_quantity = item.quantity
-            if item.received_quantity is None:
-                item.received_quantity = item.quantity
+            item.ordered_quantity = item.quantity
+            item.received_quantity = item.quantity
         ProcurementItem.objects.bulk_update(
             items_to_update,
             ["execution_status", "ordered_quantity", "received_quantity"],
@@ -856,15 +883,9 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         )
 
     def _is_processing_department_member(self, user, procurement_request):
-        if not procurement_request.processing_department_id:
-            return False
-        return (
-            EmployeeDepartment.objects.filter(
-                employee_id=user.id,
-                department_id=procurement_request.processing_department_id,
-                is_active=True,
-            ).exists()
-            or procurement_request.processing_department.head_id == user.id
+        return ProcurementApprovalResolver.user_is_processing_department_member(
+            user,
+            procurement_request,
         )
 
     def _can_process_request_items(self, user, procurement_request):

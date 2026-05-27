@@ -376,11 +376,13 @@ def notify_request_completed(request):
         request: Объект ProcurementRequest
     """
     notification_title, description = MessageTemplates.completed(request.title)
+    actor = _request_actor(request) or request.executor
     notify_requestor(
         request,
         NotificationVerbs.COMPLETED,
         notification_title,
         description,
+        actor=actor,
         extra_data={
             "old_status": getattr(request, "_original_status", None),
             "new_status": request.status,

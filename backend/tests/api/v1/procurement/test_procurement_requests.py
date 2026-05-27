@@ -740,6 +740,29 @@ class TestProcessingDepartmentWorkflow:
         return employee
 
     @pytest.fixture
+    def supply_role_user(self, db, supply_department):
+        employee = Employee.objects.create_user(
+            email="supply-role@example.com",
+            password="testpass123",
+            phone_number="+79998888892",
+            first_name="Ролевой",
+            last_name="Исполнитель",
+            is_active=True,
+            email_verified=True,
+            send_activation_email=False,
+        )
+        role = DepartmentRole.objects.create(
+            department=supply_department,
+            name="Закупщик",
+        )
+        RoleAssignment.objects.create(
+            employee=employee,
+            role=role,
+            is_active=True,
+        )
+        return employee
+
+    @pytest.fixture
     def outsider(self, db):
         return Employee.objects.create_user(
             email="outsider@example.com",
@@ -935,6 +958,82 @@ class TestProcessingDepartmentWorkflow:
         ids = [item['id'] for item in response.data['results']]
         assert processing_request.id in ids
 
+    def test_role_assignment_user_sees_processing_department_request(
+        self, api_client, supply_role_user, processing_request,
+        procurement_item_factory
+    ):
+        procurement_item_factory(request=processing_request)
+        api_client.force_authenticate(user=supply_role_user)
+
+        available_url = reverse(
+            'api:v1:procurement:procurementrequest-available'
+        )
+        available_response = api_client.get(available_url)
+        assert available_response.status_code == status.HTTP_200_OK
+        available_ids = [
+            item['id'] for item in available_response.data['results']
+        ]
+        assert processing_request.id in available_ids
+
+        list_url = reverse('api:v1:procurement:procurementrequest-list')
+        list_response = api_client.get(list_url)
+        assert list_response.status_code == status.HTTP_200_OK
+        list_ids = [item['id'] for item in list_response.data['results']]
+        assert processing_request.id in list_ids
+
+    def test_processing_department_scope_uses_executor_department_participants(
+        self, api_client, supply_role_user, user, processing_request,
+        procurement_item_factory
+    ):
+        procurement_item_factory(request=processing_request)
+        list_url = reverse('api:v1:procurement:procurementrequest-list')
+
+        api_client.force_authenticate(user=supply_role_user)
+        processing_response = api_client.get(
+            f"{list_url}?scope=processing_department"
+        )
+        assert processing_response.status_code == status.HTTP_200_OK
+        processing_ids = [
+            item['id'] for item in processing_response.data['results']
+        ]
+        assert processing_request.id in processing_ids
+
+        api_client.force_authenticate(user=user)
+        department_response = api_client.get(f"{list_url}?scope=department")
+        assert department_response.status_code == status.HTTP_200_OK
+        department_ids = [
+            item['id'] for item in department_response.data['results']
+        ]
+        assert processing_request.id in department_ids
+
+    def test_processing_permission_flags_follow_executor_department(
+        self, api_client, user, supply_user, supply_role_user,
+        processing_request, procurement_item_factory
+    ):
+        procurement_item_factory(request=processing_request)
+        detail_url = reverse(
+            'api:v1:procurement:procurementrequest-detail',
+            kwargs={'pk': processing_request.id},
+        )
+
+        api_client.force_authenticate(user=user)
+        author_response = api_client.get(detail_url)
+        assert author_response.status_code == status.HTTP_200_OK
+        assert author_response.data["can_current_user_start_work"] is False
+        assert author_response.data["can_current_user_process_items"] is False
+
+        api_client.force_authenticate(user=supply_user)
+        supply_response = api_client.get(detail_url)
+        assert supply_response.status_code == status.HTTP_200_OK
+        assert supply_response.data["can_current_user_start_work"] is True
+        assert supply_response.data["can_current_user_process_items"] is True
+
+        api_client.force_authenticate(user=supply_role_user)
+        role_response = api_client.get(detail_url)
+        assert role_response.status_code == status.HTTP_200_OK
+        assert role_response.data["can_current_user_start_work"] is True
+        assert role_response.data["can_current_user_process_items"] is True
+
     def test_outsider_cannot_start_processing_department_request(
         self, api_client, outsider, processing_request, procurement_item_factory
     ):
@@ -981,6 +1080,63 @@ class TestProcessingDepartmentWorkflow:
             format='json',
         )
         assert edit_response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_processing_department_role_user_can_start_work(
+        self, api_client, supply_role_user, processing_request,
+        procurement_item_factory
+    ):
+        procurement_item_factory(request=processing_request)
+        api_client.force_authenticate(user=supply_role_user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-start-work',
+            kwargs={'pk': processing_request.id},
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        processing_request.refresh_from_db()
+        assert processing_request.executor == supply_role_user
+        assert processing_request.status == ProcurementStatus.IN_PROGRESS
+
+    def test_processing_department_role_user_can_manage_items(
+        self, api_client, supply_role_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            quantity=2,
+        )
+        api_client.force_authenticate(user=supply_role_user)
+        item_url = reverse(
+            'api:v1:procurement:procurementitem-detail',
+            kwargs={'pk': item.id},
+        )
+
+        update_response = api_client.patch(
+            item_url,
+            {
+                'execution_status': ProcurementItemExecutionStatus.ORDERED,
+                'ordered_quantity': 1,
+            },
+            format='json',
+        )
+
+        assert update_response.status_code == status.HTTP_200_OK
+        item.refresh_from_db()
+        assert item.execution_status == ProcurementItemExecutionStatus.ORDERED
+        assert item.ordered_quantity == 1
+
+        mark_all_url = reverse(
+            'api:v1:procurement:procurementrequest-mark-all-received',
+            kwargs={'pk': processing_request.id},
+        )
+        mark_all_response = api_client.post(mark_all_url)
+
+        assert mark_all_response.status_code == status.HTTP_200_OK
+        item.refresh_from_db()
+        assert item.execution_status == ProcurementItemExecutionStatus.RECEIVED
+        assert item.received_quantity == item.quantity
 
     def test_author_can_edit_waiting_request_with_items_before_work(
         self, api_client, user, department, supply_department,
@@ -1085,6 +1241,24 @@ class TestProcessingDepartmentWorkflow:
         assert processing_request.approvals.count() == 1
         assert response.data["can_current_user_submit_for_approval"] is False
 
+    def test_processing_department_role_user_can_submit_for_approval(
+        self, api_client, supply_role_user, processing_request,
+        procurement_item_factory, department_head_approval_route
+    ):
+        procurement_item_factory(request=processing_request)
+        api_client.force_authenticate(user=supply_role_user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': processing_request.id},
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        processing_request.refresh_from_db()
+        assert processing_request.status == ProcurementStatus.PENDING
+        assert processing_request.approvals.count() == 1
+
     def test_processing_department_requestor_cannot_submit_for_approval(
         self, api_client, user, processing_request,
         procurement_item_factory, department_head_approval_route
@@ -1126,6 +1300,39 @@ class TestProcessingDepartmentWorkflow:
         response = api_client.post(url)
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_approved_processing_request_cannot_be_submitted_again(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory, department_head_approval_route
+    ):
+        """После пройденного согласования кнопку submit больше не показываем."""
+        procurement_item_factory(request=processing_request)
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save(update_fields=["executor", "status", "updated_at"])
+        Approval.objects.create(
+            request=processing_request,
+            approver=processing_request.department.head,
+            priority=HEAD_PRIORITY,
+            status=ApprovalStatus.APPROVED,
+        )
+
+        api_client.force_authenticate(user=supply_user)
+        detail_url = reverse(
+            'api:v1:procurement:procurementrequest-detail',
+            kwargs={'pk': processing_request.id},
+        )
+        submit_url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': processing_request.id},
+        )
+
+        detail_response = api_client.get(detail_url)
+        assert detail_response.status_code == status.HTTP_200_OK
+        assert detail_response.data["can_current_user_submit_for_approval"] is False
+
+        submit_response = api_client.post(submit_url)
+        assert submit_response.status_code == status.HTTP_403_FORBIDDEN
 
     def test_final_approve_returns_processing_request_to_waiting_without_executor(
         self, api_client, supply_user, department_head, processing_request,
@@ -1305,6 +1512,47 @@ class TestProcessingDepartmentWorkflow:
         item.refresh_from_db()
         assert item.ordered_quantity == item.quantity
         assert item.received_quantity == item.quantity
+
+    def test_item_auto_completion_notification_uses_executor_actor(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory, monkeypatch
+    ):
+        sent = []
+
+        def fake_notify_send(**kwargs):
+            sent.append(kwargs)
+
+        monkeypatch.setattr(
+            "procurement.notifications.handlers.notify.send",
+            fake_notify_send,
+        )
+
+        item = procurement_item_factory(request=processing_request)
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save()
+        sent.clear()
+
+        api_client.force_authenticate(user=supply_user)
+        item_url = reverse(
+            'api:v1:procurement:procurementitem-detail',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.patch(
+            item_url,
+            {'received_quantity': item.quantity},
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        completed_notifications = [
+            item for item in sent
+            if item["verb"] == "procurement_completed"
+        ]
+        assert len(completed_notifications) == 1
+        assert completed_notifications[0]["sender"] == supply_user
+        assert completed_notifications[0]["data"]["actor_id"] == supply_user.id
 
     def test_item_update_notifies_requestor(
         self, api_client, supply_user, processing_request,
@@ -1691,6 +1939,39 @@ class TestProcessingDepartmentWorkflow:
         assert result["total_ordered_quantity"] == 6
         assert result["total_received_quantity"] == 3
 
+    def test_list_expected_date_falls_back_to_latest_when_all_received(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        procurement_item_factory(
+            request=processing_request,
+            quantity=1,
+            execution_status=ProcurementItemExecutionStatus.RECEIVED,
+            ordered_quantity=1,
+            received_quantity=1,
+            expected_delivery_date="2026-05-28",
+        )
+        procurement_item_factory(
+            request=processing_request,
+            name="Вторая полученная позиция",
+            quantity=1,
+            execution_status=ProcurementItemExecutionStatus.RECEIVED,
+            ordered_quantity=1,
+            received_quantity=1,
+            expected_delivery_date="2026-05-30",
+        )
+        api_client.force_authenticate(user=supply_user)
+        url = reverse('api:v1:procurement:procurementrequest-list')
+
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        result = next(
+            item for item in response.data["results"]
+            if item["id"] == processing_request.id
+        )
+        assert result["next_expected_delivery_date"] == "2026-05-30"
+
     def test_requestor_item_update_does_not_notify_self(
         self, api_client, user, processing_request,
         procurement_item_factory, monkeypatch
@@ -1847,7 +2128,12 @@ class TestProcessingDepartmentWorkflow:
             fake_notify_send,
         )
 
-        item_1 = procurement_item_factory(request=processing_request)
+        item_1 = procurement_item_factory(
+            request=processing_request,
+            quantity=2,
+            execution_status=ProcurementItemExecutionStatus.ORDERED,
+            ordered_quantity=1,
+        )
         item_2 = procurement_item_factory(
             request=processing_request,
             name="Лампы",
@@ -2580,6 +2866,83 @@ class TestProcurementRequestWorkflow:
         assert director_approval.comment == "Финальное согласование"
         assert procurement_request.status == ProcurementStatus.APPROVED
 
+    def test_higher_approver_reject_closes_previous_stages(
+        self, api_client, user, department_head, procurement_request,
+        procurement_item, budget
+    ):
+        """Вышестоящее отклонение закрывает предыдущие pending-этапы."""
+        procurement_request.status = ProcurementStatus.PENDING
+        procurement_request.save()
+
+        head_approval = Approval.objects.create(
+            request=procurement_request,
+            approver=department_head,
+            priority=HEAD_PRIORITY,
+            status=ApprovalStatus.PENDING,
+        )
+        finance_approval = Approval.objects.create(
+            request=procurement_request,
+            approver=user,
+            priority=FINANCE_PRIORITY,
+            status=ApprovalStatus.PENDING,
+        )
+
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-reject',
+            kwargs={'pk': procurement_request.id}
+        )
+
+        response = api_client.post(url, {'comment': 'Отклонено сверху'})
+        assert response.status_code == status.HTTP_200_OK
+
+        head_approval.refresh_from_db()
+        finance_approval.refresh_from_db()
+        procurement_request.refresh_from_db()
+
+        assert head_approval.status == ApprovalStatus.REJECTED
+        assert "вышестоящим" in head_approval.comment
+        assert finance_approval.status == ApprovalStatus.REJECTED
+        assert finance_approval.comment == "Отклонено сверху"
+        assert procurement_request.status == ProcurementStatus.REJECTED
+
+    def test_pending_approval_does_not_allow_approve_when_request_not_pending(
+        self, api_client, department_head, procurement_request, procurement_item
+    ):
+        """Pending-запись не дает approve, если сама заявка уже не pending."""
+        procurement_request.status = ProcurementStatus.APPROVED
+        procurement_request.save()
+
+        Approval.objects.create(
+            request=procurement_request,
+            approver=department_head,
+            priority=HEAD_PRIORITY,
+            status=ApprovalStatus.PENDING,
+        )
+
+        list_url = reverse('api:v1:procurement:procurementrequest-list')
+        detail_url = reverse(
+            'api:v1:procurement:procurementrequest-detail',
+            kwargs={'pk': procurement_request.id}
+        )
+        approve_url = reverse(
+            'api:v1:procurement:procurementrequest-approve',
+            kwargs={'pk': procurement_request.id}
+        )
+
+        api_client.force_authenticate(user=department_head)
+
+        list_response = api_client.get(list_url)
+        assert list_response.status_code == status.HTTP_200_OK
+        assert list_response.data['results'][0]['can_current_user_approve'] is False
+
+        detail_response = api_client.get(detail_url)
+        assert detail_response.status_code == status.HTTP_200_OK
+        assert detail_response.data['can_current_user_approve'] is False
+
+        approve_response = api_client.post(approve_url, {'comment': 'Поздно'})
+        assert approve_response.status_code == status.HTTP_403_FORBIDDEN
+
     def test_staff_without_pending_stage_cannot_approve(
         self, api_client, staff_user, department_head, procurement_request, procurement_item
     ):
@@ -2799,6 +3162,93 @@ class TestProcurementRequestWorkflow:
         finance_response = api_client.get(url)
         assert finance_response.status_code == status.HTTP_200_OK
         assert finance_response.data['results'][0]['can_current_user_approve'] is True
+
+    def test_pending_approvals_includes_higher_approver(
+        self, api_client, user, department_head, procurement_request, procurement_item
+    ):
+        """Вкладка согласования должна показывать заявку вышестоящему этапу."""
+        procurement_request.status = ProcurementStatus.PENDING
+        procurement_request.save()
+
+        Approval.objects.create(
+            request=procurement_request,
+            approver=department_head,
+            priority=HEAD_PRIORITY,
+            status=ApprovalStatus.PENDING,
+        )
+        Approval.objects.create(
+            request=procurement_request,
+            approver=user,
+            priority=FINANCE_PRIORITY,
+            status=ApprovalStatus.PENDING,
+        )
+
+        url = reverse('api:v1:procurement:procurementrequest-pending-approvals')
+
+        api_client.force_authenticate(user=user)
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert [item['id'] for item in response.data['results']] == [procurement_request.id]
+        assert response.data['results'][0]['can_current_user_approve'] is True
+
+    def test_higher_route_can_approve_even_if_not_required_by_amount(
+        self, api_client, user, department
+    ):
+        """Вышестоящий маршрут может согласовать заявку ниже своего порога."""
+        procurement_request = ProcurementRequest.objects.create(
+            title="Низкая сумма для обхода сверху",
+            description="Проверка согласования верхним маршрутом",
+            department=department,
+            requestor=user,
+            status=ProcurementStatus.DRAFT,
+            urgency=UrgencyLevel.MEDIUM,
+        )
+        ProcurementItem.objects.create(
+            request=procurement_request,
+            name="Дешевая позиция",
+            quantity=1,
+            unit="шт",
+            estimated_unit_price=Decimal("12.00"),
+        )
+
+        api_client.force_authenticate(user=user)
+        submit_url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': procurement_request.id}
+        )
+        submit_response = api_client.post(submit_url)
+        assert submit_response.status_code == status.HTTP_200_OK
+
+        procurement_request.refresh_from_db()
+        assert list(
+            procurement_request.approvals.order_by('priority').values_list('priority', flat=True)
+        ) == [HEAD_PRIORITY]
+
+        pending_url = reverse('api:v1:procurement:procurementrequest-pending-approvals')
+        pending_response = api_client.get(pending_url)
+        assert pending_response.status_code == status.HTTP_200_OK
+        assert [item['id'] for item in pending_response.data['results']] == [procurement_request.id]
+        assert pending_response.data['results'][0]['can_current_user_approve'] is True
+
+        approve_url = reverse(
+            'api:v1:procurement:procurementrequest-approve',
+            kwargs={'pk': procurement_request.id}
+        )
+        approve_response = api_client.post(approve_url, {'comment': 'Согласовано выше порога'})
+        assert approve_response.status_code == status.HTTP_200_OK
+
+        procurement_request.refresh_from_db()
+        approvals = procurement_request.approvals.order_by('priority')
+        assert list(approvals.values_list('priority', flat=True)) == [
+            HEAD_PRIORITY,
+            FINANCE_PRIORITY,
+        ]
+        assert list(approvals.values_list('status', flat=True)) == [
+            ApprovalStatus.APPROVED,
+            ApprovalStatus.APPROVED,
+        ]
+        assert procurement_request.status == ProcurementStatus.APPROVED
 
     def test_detail_marks_next_stage_approver_after_previous_stage_complete(
         self, api_client, user, department_head, procurement_request, procurement_item

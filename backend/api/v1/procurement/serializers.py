@@ -367,6 +367,8 @@ class ProcurementRequestListSerializer(
     comments_count = serializers.IntegerField(read_only=True, default=0)
     can_current_user_approve = serializers.SerializerMethodField()
     can_current_user_submit_for_approval = serializers.SerializerMethodField()
+    can_current_user_start_work = serializers.SerializerMethodField()
+    can_current_user_process_items = serializers.SerializerMethodField()
 
     @extend_schema_field(serializers.BooleanField())
     def get_can_current_user_approve(self, obj):
@@ -382,6 +384,18 @@ class ProcurementRequestListSerializer(
             user,
             obj,
         )
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_current_user_start_work(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return ProcurementApprovalResolver.user_can_start_work(user, obj)
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_current_user_process_items(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return ProcurementApprovalResolver.user_can_process_items(user, obj)
 
     class Meta:
         model = ProcurementRequest
@@ -416,6 +430,8 @@ class ProcurementRequestListSerializer(
             "comments_count",
             "can_current_user_approve",
             "can_current_user_submit_for_approval",
+            "can_current_user_start_work",
+            "can_current_user_process_items",
             "items",
             "created_at",
             "submitted_at",
@@ -447,6 +463,8 @@ class ProcurementRequestListSerializer(
             "comments_count",
             "can_current_user_approve",
             "can_current_user_submit_for_approval",
+            "can_current_user_start_work",
+            "can_current_user_process_items",
         ]
 
     def update(self, instance, validated_data):
@@ -582,6 +600,8 @@ class ProcurementRequestDetailSerializer(
     comments_count = serializers.IntegerField(read_only=True, default=0)
     can_current_user_approve = serializers.SerializerMethodField()
     can_current_user_submit_for_approval = serializers.SerializerMethodField()
+    can_current_user_start_work = serializers.SerializerMethodField()
+    can_current_user_process_items = serializers.SerializerMethodField()
 
     @extend_schema_field(serializers.BooleanField())
     def get_can_current_user_approve(self, obj):
@@ -597,6 +617,18 @@ class ProcurementRequestDetailSerializer(
             user,
             obj,
         )
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_current_user_start_work(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return ProcurementApprovalResolver.user_can_start_work(user, obj)
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_current_user_process_items(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return ProcurementApprovalResolver.user_can_process_items(user, obj)
 
     class Meta:
         model = ProcurementRequest
@@ -636,6 +668,8 @@ class ProcurementRequestDetailSerializer(
             "comments_count",
             "can_current_user_approve",
             "can_current_user_submit_for_approval",
+            "can_current_user_start_work",
+            "can_current_user_process_items",
             "created_at",
             "updated_at",
             "submitted_at",
@@ -666,6 +700,8 @@ class ProcurementRequestDetailSerializer(
             "comments_count",
             "can_current_user_approve",
             "can_current_user_submit_for_approval",
+            "can_current_user_start_work",
+            "can_current_user_process_items",
         ]
 
 

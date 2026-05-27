@@ -74,11 +74,12 @@ const orderingOptions = [
   { value: "-urgency", label: "По срочности ↓" },
 ];
 
-type ScopeTab = "all" | "mine" | "department" | "pending_approvals" | "my_work" | "available";
+type ScopeTab = "all" | "mine" | "department" | "processing_department" | "pending_approvals" | "my_work" | "available";
 const scopeTabs: { value: ScopeTab; label: string }[] = [
   { value: "all",               label: "Все" },
   { value: "mine",              label: "Мои" },
-  { value: "department",        label: "Мой отдел" },
+  { value: "department",        label: "Отдел-заказчик" },
+  { value: "processing_department", label: "Отдел-исполнитель" },
   { value: "pending_approvals", label: "На согласование" },
   { value: "my_work",           label: "В работе у меня" },
   { value: "available",         label: "Доступные" },
@@ -156,7 +157,7 @@ function ProcurementRequestActionButtons({
   const status = String(request.status || "").toLowerCase();
   const isDraft = status === "draft";
   const isPending = status === "pending";
-  const canStartWork = (status === "approved" || status === "waiting") && !request.executor;
+  const canStartWork = Boolean(request.can_current_user_start_work);
   const isInProgress = status === "in_progress";
   const canApproveThis = Boolean(request.can_current_user_approve);
   const canSubmitForApproval = Boolean(request.can_current_user_submit_for_approval);
@@ -1051,7 +1052,7 @@ export default function ProcurementPage() {
                           currentUserId={user?.id}
                           request={resolvedDetail}
                           displayUserName={displayUserName}
-                          canProcessItems={["waiting", "in_progress"].includes(st)}
+                          canProcessItems={Boolean(resolvedDetail.can_current_user_process_items)}
                           busyKey={busyKey}
                           canDeleteAnyComment={Boolean(user?.auth?.is_staff || user?.auth?.is_superuser)}
                           onUpdateItem={handleUpdateItem}
@@ -1066,13 +1067,12 @@ export default function ProcurementPage() {
                           onDeleteItemComment={handleDeleteItemComment}
                           footer={(
                             <ProcurementRequestActionButtons
-                              request={req}
+                              request={resolvedDetail}
                               busyKey={busyKey}
                               canManage={canManage}
                               isAuthor={isAuthor}
                               isExecutor={isExecutor}
                               isFinal={isFinal}
-                              showApprovalActions={false}
                               showSecondaryActions={false}
                               showLabels
                               onSubmit={handleSubmit}
@@ -1179,7 +1179,7 @@ export default function ProcurementPage() {
               currentUserId={user?.id}
               request={selectedRequest}
               displayUserName={displayUserName}
-              canProcessItems={["waiting", "in_progress"].includes(String(selectedRequest.status || "").toLowerCase())}
+              canProcessItems={Boolean(selectedRequest.can_current_user_process_items)}
               busyKey={busyKey}
               canDeleteAnyComment={Boolean(user?.auth?.is_staff || user?.auth?.is_superuser)}
               onUpdateItem={handleUpdateItem}

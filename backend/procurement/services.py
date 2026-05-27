@@ -95,19 +95,75 @@ class ProcurementApprovalResolver:
     """
 
     @classmethod
-    def user_is_processing_department_member(cls, user, procurement_request):
-        if not procurement_request.processing_department_id:
+    def user_is_department_participant(cls, user, department_id):
+        """Проверяет рабочее участие пользователя в отделе.
+
+        Участником считается физический сотрудник отдела, руководитель отдела
+        или сотрудник с активной ролью в этом отделе.
+        """
+        if not department_id or not user or not user.is_authenticated:
             return False
 
-        from employees.models import EmployeeDepartment
+        from employees.models import (
+            Department,
+            EmployeeDepartment,
+            RoleAssignment,
+        )
 
         return (
             EmployeeDepartment.objects.filter(
                 employee_id=user.id,
-                department_id=procurement_request.processing_department_id,
+                department_id=department_id,
                 is_active=True,
             ).exists()
-            or procurement_request.processing_department.head_id == user.id
+            or Department.objects.filter(
+                id=department_id,
+                head_id=user.id,
+            ).exists()
+            or RoleAssignment.objects.filter(
+                employee_id=user.id,
+                role__department_id=department_id,
+                is_active=True,
+            ).exists()
+        )
+
+    @classmethod
+    def get_user_department_participant_ids(cls, user):
+        """Возвращает отделы, где пользователь участник или role-only участник."""
+        if not user or not user.is_authenticated:
+            return []
+
+        from employees.models import (
+            Department,
+            EmployeeDepartment,
+            RoleAssignment,
+        )
+
+        department_ids = set(
+            EmployeeDepartment.objects.filter(
+                employee_id=user.id,
+                is_active=True,
+            ).values_list("department_id", flat=True)
+        )
+        department_ids.update(
+            Department.objects.filter(head_id=user.id).values_list(
+                "id",
+                flat=True,
+            )
+        )
+        department_ids.update(
+            RoleAssignment.objects.filter(
+                employee_id=user.id,
+                is_active=True,
+            ).values_list("role__department_id", flat=True)
+        )
+        return sorted(department_ids)
+
+    @classmethod
+    def user_is_processing_department_member(cls, user, procurement_request):
+        return cls.user_is_department_participant(
+            user,
+            procurement_request.processing_department_id,
         )
 
     @classmethod
@@ -119,6 +175,9 @@ class ProcurementApprovalResolver:
             procurement_request.status == ProcurementStatus.PENDING
             or procurement_request.approvals.filter(
                 status=ApprovalStatus.PENDING,
+            ).exists()
+            or procurement_request.approvals.filter(
+                status=ApprovalStatus.APPROVED,
             ).exists()
         ):
             return False
@@ -147,6 +206,64 @@ class ProcurementApprovalResolver:
             procurement_request.requestor_id == user.id
             and procurement_request.is_editable
         )
+
+    @classmethod
+    def user_can_start_work(cls, user, procurement_request) -> bool:
+        if not user or not user.is_authenticated:
+            return False
+
+        if (
+            procurement_request.status
+            not in {ProcurementStatus.APPROVED, ProcurementStatus.WAITING}
+            or procurement_request.executor_id
+        ):
+            return False
+
+        if (
+            user.is_superuser
+            or user.is_staff
+            or user.has_perm("procurement.change_procurementrequest")
+            or user.has_perm("procurement.execute_procurement")
+        ):
+            return True
+
+        if procurement_request.processing_department_id:
+            return cls.user_is_processing_department_member(
+                user,
+                procurement_request,
+            )
+
+        return True
+
+    @classmethod
+    def user_can_process_items(cls, user, procurement_request) -> bool:
+        if not user or not user.is_authenticated:
+            return False
+
+        if procurement_request.status not in {
+            ProcurementStatus.WAITING,
+            ProcurementStatus.IN_PROGRESS,
+        }:
+            return False
+
+        if procurement_request.executor_id == user.id:
+            return True
+
+        if (
+            user.is_superuser
+            or user.is_staff
+            or user.has_perm("procurement.change_procurementrequest")
+            or user.has_perm("procurement.execute_procurement")
+        ):
+            return True
+
+        if procurement_request.processing_department_id:
+            return cls.user_is_processing_department_member(
+                user,
+                procurement_request,
+            )
+
+        return False
 
     @classmethod
     def resolve_approval_step(cls, procurement_request, route):
@@ -241,6 +358,9 @@ class ProcurementApprovalResolver:
         if not user or not user.is_authenticated:
             return None
 
+        if procurement_request.status != ProcurementStatus.PENDING:
+            return None
+
         pending = procurement_request.approvals.filter(
             status=ApprovalStatus.PENDING,
         ).order_by("priority", "created_at", "id")
@@ -254,10 +374,79 @@ class ProcurementApprovalResolver:
         ).first()
 
     @classmethod
+    def get_available_higher_route(cls, user, procurement_request):
+        if not user or not user.is_authenticated:
+            return None
+
+        if procurement_request.status != ProcurementStatus.PENDING:
+            return None
+
+        first_pending = (
+            procurement_request.approvals.filter(
+                status=ApprovalStatus.PENDING,
+            )
+            .order_by("priority", "created_at", "id")
+            .first()
+        )
+        if first_pending is None:
+            return None
+
+        from .models import ApprovalRoute
+
+        existing_priorities = set(
+            procurement_request.approvals.values_list("priority", flat=True)
+        )
+        routes = (
+            ApprovalRoute.objects.select_related("employee")
+            .filter(priority__gt=first_pending.priority)
+            .order_by("priority", "id")
+        )
+        for route in routes:
+            if route.priority in existing_priorities:
+                continue
+            step = cls.resolve_approval_step(procurement_request, route)
+            if step and step[1].id == user.id:
+                return step
+        return None
+
+    @classmethod
+    def get_or_create_available_approval(cls, user, procurement_request):
+        approval = cls.get_available_approval(user, procurement_request)
+        if approval is not None:
+            return approval
+
+        step = cls.get_available_higher_route(user, procurement_request)
+        if step is None:
+            return None
+
+        from .models import Approval
+
+        priority, approver, step_name = step
+        approval, _ = Approval.objects.get_or_create(
+            request=procurement_request,
+            priority=priority,
+            defaults={
+                "approver": approver,
+                "step_name": step_name,
+                "status": ApprovalStatus.PENDING,
+            },
+        )
+        if (
+            approval.approver_id != user.id
+            or approval.status != ApprovalStatus.PENDING
+        ):
+            return None
+        return approval
+
+    @classmethod
     def user_can_approve(cls, user, procurement_request) -> bool:
         if not user or not user.is_authenticated:
             return False
-        return cls.get_available_approval(user, procurement_request) is not None
+        return (
+            cls.get_available_approval(user, procurement_request) is not None
+            or cls.get_available_higher_route(user, procurement_request)
+            is not None
+        )
 
 
 class EquipmentService:

@@ -154,14 +154,10 @@ class CanManageProcurementRequest(permissions.BasePermission):
         return Department.objects.filter(id=dept_id, head_id=user.id).exists()
 
     def _is_dept_member(self, user, dept_id: int) -> bool:
-        """Проверяет активную принадлежность пользователя к отделу."""
-        return (
-            EmployeeDepartment.objects.filter(
-                employee_id=user.id,
-                department_id=dept_id,
-                is_active=True,
-            ).exists()
-            or self._is_dept_head(user, dept_id)
+        """Проверяет участие пользователя в отделе, включая role-only."""
+        return ProcurementApprovalResolver.user_is_department_participant(
+            user,
+            dept_id,
         )
 
     def has_permission(self, request, view) -> bool:
