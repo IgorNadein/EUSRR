@@ -19,7 +19,7 @@ export async function loadAllPages<T extends { id: number }>(fetcher: PageFetche
   const all: T[] = [];
   let page = 1;
   for (;;) {
-    const res = await fetcher({ page, limit: 200 });
+    const res = await fetcher({ page, page_size: 200, limit: 200 });
     const results = Array.isArray(res) ? res : (res.results || []);
     all.push(...results);
     if (Array.isArray(res) || !(res as { next?: string | null }).next) break;

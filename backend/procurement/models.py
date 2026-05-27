@@ -187,45 +187,39 @@ class ProcurementRequest(models.Model):
         ] and self.executor_id is None
 
     def recalculate_fulfillment_status(self, save=True):
-        """Пересчитать рабочий статус заявки по статусам позиций."""
-        item_statuses = list(
-            self.items.values_list("execution_status", flat=True)
-        )
-        if not item_statuses:
+        """Пересчитать рабочий статус заявки по количествам позиций."""
+        items = list(self.items.model.objects.filter(request_id=self.pk))
+        if not items:
             new_status = ProcurementFulfillmentStatus.PENDING
         elif any(
-            item_status
-            in {
+            item.execution_status in {
                 ProcurementItemExecutionStatus.REJECTED,
                 ProcurementItemExecutionStatus.COMPLETED_WITH_ISSUE,
                 ProcurementItemExecutionStatus.EDITED,
                 ProcurementItemExecutionStatus.DEFECTIVE,
             }
-            for item_status in item_statuses
+            for item in items
         ):
             new_status = ProcurementFulfillmentStatus.ISSUES
-        elif all(
-            item_status == ProcurementItemExecutionStatus.RECEIVED
-            for item_status in item_statuses
-        ):
-            new_status = ProcurementFulfillmentStatus.COMPLETED
-        elif any(
-            item_status == ProcurementItemExecutionStatus.RECEIVED
-            for item_status in item_statuses
-        ):
-            new_status = ProcurementFulfillmentStatus.PARTIALLY_RECEIVED
-        elif all(
-            item_status == ProcurementItemExecutionStatus.ORDERED
-            for item_status in item_statuses
-        ):
-            new_status = ProcurementFulfillmentStatus.ORDERED
-        elif any(
-            item_status == ProcurementItemExecutionStatus.ORDERED
-            for item_status in item_statuses
-        ):
-            new_status = ProcurementFulfillmentStatus.PARTIALLY_ORDERED
         else:
-            new_status = ProcurementFulfillmentStatus.PENDING
+            total_quantity = sum(item.quantity for item in items)
+            ordered_quantity = sum(
+                item.effective_ordered_quantity for item in items
+            )
+            received_quantity = sum(
+                item.effective_received_quantity for item in items
+            )
+
+            if received_quantity >= total_quantity:
+                new_status = ProcurementFulfillmentStatus.COMPLETED
+            elif received_quantity > 0:
+                new_status = ProcurementFulfillmentStatus.PARTIALLY_RECEIVED
+            elif ordered_quantity >= total_quantity:
+                new_status = ProcurementFulfillmentStatus.ORDERED
+            elif ordered_quantity > 0:
+                new_status = ProcurementFulfillmentStatus.PARTIALLY_ORDERED
+            else:
+                new_status = ProcurementFulfillmentStatus.PENDING
 
         should_close = (
             new_status == ProcurementFulfillmentStatus.COMPLETED
@@ -350,6 +344,45 @@ class ProcurementItem(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.quantity} {self.unit})"
+
+    @property
+    def effective_ordered_quantity(self):
+        if self.ordered_quantity is not None:
+            return self.ordered_quantity
+        if self.execution_status in {
+            ProcurementItemExecutionStatus.ORDERED,
+            ProcurementItemExecutionStatus.RECEIVED,
+        }:
+            return self.quantity
+        return 0
+
+    @property
+    def effective_received_quantity(self):
+        if self.received_quantity is not None:
+            return self.received_quantity
+        if self.execution_status == ProcurementItemExecutionStatus.RECEIVED:
+            return self.quantity
+        return 0
+
+    @property
+    def execution_status_display(self):
+        problem_statuses = {
+            ProcurementItemExecutionStatus.REJECTED,
+            ProcurementItemExecutionStatus.COMPLETED_WITH_ISSUE,
+            ProcurementItemExecutionStatus.EDITED,
+            ProcurementItemExecutionStatus.DEFECTIVE,
+        }
+        if self.execution_status in problem_statuses:
+            return self.get_execution_status_display()
+        if self.effective_received_quantity > 0:
+            if self.effective_received_quantity < self.quantity:
+                return "Получено частично"
+            return ProcurementItemExecutionStatus.RECEIVED.label
+        if self.effective_ordered_quantity > 0:
+            if self.effective_ordered_quantity < self.quantity:
+                return "Заказано частично"
+            return ProcurementItemExecutionStatus.ORDERED.label
+        return self.get_execution_status_display()
 
     @property
     def total_price(self):

@@ -13,12 +13,13 @@ export function createEmployeesApi(request: RequestFn) {
             request('/api/v1/directory/me/login/'),
         refreshDirectoryLogin: () =>
             request('/api/v1/directory/me/login/refresh/', { method: 'POST' }),
-        getEmployees: (params?: { search?: string; department?: string; page?: number; limit?: number; is_active?: boolean; ordering?: string }) => {
+        getEmployees: (params?: { search?: string; department?: string; page?: number; page_size?: number; limit?: number; is_active?: boolean; ordering?: string }) => {
             const qp = new URLSearchParams();
             if (params?.search) qp.append('search', params.search);
             if (params?.department) qp.append('department', params.department);
             if (params?.page) qp.append('page', params.page.toString());
-            if (params?.limit) qp.append('limit', params.limit.toString());
+            const pageSize = params?.page_size ?? params?.limit;
+            if (pageSize) qp.append('page_size', pageSize.toString());
             if (params?.is_active !== undefined) qp.append('active', params.is_active.toString());
             if (params?.ordering) qp.append('ordering', params.ordering);
             const qs = qp.toString();
@@ -46,11 +47,12 @@ export function createEmployeesApi(request: RequestFn) {
             request(`/api/v1/employee-actions/${actionId}/`, { method: 'PATCH', body: JSON.stringify(data) }),
         deleteEmployeeAction: (actionId: number) =>
             request(`/api/v1/employee-actions/${actionId}/`, { method: 'DELETE' }),
-        getDepartments: (params?: { search?: string; page?: number; limit?: number }) => {
+        getDepartments: (params?: { search?: string; page?: number; page_size?: number; limit?: number }) => {
             const qp = new URLSearchParams();
             if (params?.search) qp.append('search', params.search);
             if (params?.page) qp.append('page', params.page.toString());
-            if (params?.limit) qp.append('limit', params.limit.toString());
+            const pageSize = params?.page_size ?? params?.limit;
+            if (pageSize) qp.append('page_size', pageSize.toString());
             const qs = qp.toString();
             return request(`/api/v1/departments/${qs ? '?' + qs : ''}`);
         },
@@ -96,11 +98,12 @@ export function createEmployeesApi(request: RequestFn) {
                 body: JSON.stringify(data),
             }),
         getMyDepartments: () => request('/api/v1/departments/my-departments/'),
-        getDepartmentRoles: (params?: { department?: number | string; page?: number; limit?: number; ordering?: string }) => {
+        getDepartmentRoles: (params?: { department?: number | string; page?: number; page_size?: number; limit?: number; ordering?: string }) => {
             const qp = new URLSearchParams();
             if (params?.department) qp.append('department', String(params.department));
             if (params?.page) qp.append('page', params.page.toString());
-            if (params?.limit) qp.append('limit', params.limit.toString());
+            const pageSize = params?.page_size ?? params?.limit;
+            if (pageSize) qp.append('page_size', pageSize.toString());
             if (params?.ordering) qp.append('ordering', params.ordering);
             const qs = qp.toString();
             return request(`/api/v1/department-roles/${qs ? '?' + qs : ''}`);

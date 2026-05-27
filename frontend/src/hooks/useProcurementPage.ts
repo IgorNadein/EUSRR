@@ -11,11 +11,13 @@ import type {
   ProcurementItem,
   ProcurementItemComment,
   ProcurementRequest,
+  ProcurementStatus,
   UrgencyLevel,
   User,
 } from "@/types/api";
 
 type ItemDraft = {
+  id?: number;
   name: string;
   description: string;
   quantity: string;
@@ -155,7 +157,7 @@ export function useProcurementPage(user: User | null) {
   const [scope, setScope] = useState<ScopeTab>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ProcurementStatus[]>([]);
   const [urgencyFilter, setUrgencyFilter] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [periodFilter, setPeriodFilter] = useState("");
@@ -225,7 +227,8 @@ export function useProcurementPage(user: User | null) {
       else if (scope === "department") params.scope = "department";
       else if (scope === "my_work") params.scope = "my_work";
       else if (scope === "available") params.scope = "available";
-      if (statusFilter) params.status = statusFilter;
+      if (statusFilter.length === 1) params.status = statusFilter[0];
+      else if (statusFilter.length > 1) params.status__in = statusFilter.join(",");
       if (urgencyFilter) params.urgency = urgencyFilter;
       if (departmentFilter) params.department = departmentFilter;
       if (periodFilter) params.period = periodFilter;
@@ -242,7 +245,8 @@ export function useProcurementPage(user: User | null) {
       else if (targetScope === "department") params.scope = "department";
       else if (targetScope === "my_work") params.scope = "my_work";
       else if (targetScope === "available") params.scope = "available";
-      if (statusFilter) params.status = statusFilter;
+      if (statusFilter.length === 1) params.status = statusFilter[0];
+      else if (statusFilter.length > 1) params.status__in = statusFilter.join(",");
       if (urgencyFilter) params.urgency = urgencyFilter;
       if (departmentFilter) params.department = departmentFilter;
       if (periodFilter) params.period = periodFilter;
@@ -398,13 +402,33 @@ export function useProcurementPage(user: User | null) {
     setCreateOpen(true);
   }, [resetForm]);
 
-  const openEdit = useCallback((request: ProcurementRequest) => {
+  const openEdit = useCallback(async (request: ProcurementRequest) => {
     setCreateOpen(false);
-    setEditingId(request.id);
     setActionError(null);
     setActionSuccess(null);
 
-    const detail = detailsCache[request.id] || request;
+    let detail: ProcurementRequest;
+    try {
+      detail = detailsCacheRef.current[request.id];
+      if (!detail) {
+        detail = await apiClient.getProcurementRequest(request.id);
+        detailsCacheRef.current = {
+          ...detailsCacheRef.current,
+          [request.id]: detail,
+        };
+        setDetailsCache((previous) => ({ ...previous, [request.id]: detail }));
+        setRequests((previous) => previous.map((currentRequest) => (
+          currentRequest.id === request.id
+            ? { ...currentRequest, ...detail }
+            : currentRequest
+        )));
+      }
+    } catch {
+      setActionError("Не удалось загрузить заявку для редактирования.");
+      return;
+    }
+
+    setEditingId(request.id);
     setForm({
       title: detail.title || "",
       description: detail.description || "",
@@ -414,6 +438,7 @@ export function useProcurementPage(user: User | null) {
       urgency: detail.urgency || "medium",
       items: detail.items && detail.items.length > 0
         ? detail.items.map((item) => ({
+            id: item.id,
             name: item.name || "",
             description: item.description || "",
             quantity: String(item.quantity || "1"),
@@ -425,7 +450,7 @@ export function useProcurementPage(user: User | null) {
           }))
         : [{ ...emptyItem }],
     });
-  }, [detailsCache]);
+  }, []);
 
   const closeModal = useCallback(() => {
     setCreateOpen(false);
@@ -505,6 +530,7 @@ export function useProcurementPage(user: User | null) {
         processing_department: form.processing_department,
         urgency: form.urgency,
         items: validItems.map((item) => ({
+          id: item.id,
           name: item.name,
           description: item.description || undefined,
           quantity: item.quantity,
@@ -526,6 +552,7 @@ export function useProcurementPage(user: User | null) {
           description: payload.description,
           urgency: payload.urgency,
           processing_department: payload.processing_department,
+          items: payload.items,
         });
         setActionSuccess("Заявка обновлена.");
         setEditingId(null);
@@ -898,7 +925,12 @@ export function useProcurementPage(user: User | null) {
     }));
   }, []);
 
-  const activeFilterCount = [statusFilter, urgencyFilter, departmentFilter, periodFilter].filter(Boolean).length;
+  const activeFilterCount = [
+    statusFilter.length > 0,
+    urgencyFilter,
+    departmentFilter,
+    periodFilter,
+  ].filter(Boolean).length;
   const isFinal = useCallback((status?: string) => ["completed", "rejected", "cancelled"].includes(String(status || "").toLowerCase()), []);
 
   return {

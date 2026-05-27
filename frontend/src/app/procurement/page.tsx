@@ -8,7 +8,7 @@ import Link from "next/link";
 import { ProcurementRequestDetailContent } from "@/components/procurement/ProcurementRequestDetailContent";
 import ProcurementStatsPanel from "@/components/procurement/ProcurementStatsPanel";
 import ProcurementSuppliersPanel from "@/components/procurement/ProcurementSuppliersPanel";
-import type { ProcurementRequest, UrgencyLevel } from "@/types/api";
+import type { ProcurementRequest, ProcurementStatus, UrgencyLevel } from "@/types/api";
 import {
   AlertTriangle,
   ArrowUpDown,
@@ -43,7 +43,7 @@ import { Modal } from "@/components/ui";
    Constants & helpers
    ══════════════════════════════════════════════════════ */
 
-const statusMeta: Record<string, { label: string; cls: string }> = {
+const statusMeta: Record<ProcurementStatus, { label: string; cls: string }> = {
   draft:       { label: "Черновик",        cls: "app-badge" },
   waiting:     { label: "Ожидает",         cls: "app-feedback-warning" },
   pending:     { label: "На согласовании", cls: "app-feedback-warning" },
@@ -53,7 +53,11 @@ const statusMeta: Record<string, { label: string; cls: string }> = {
   rejected:    { label: "Отклонено",       cls: "app-feedback-danger" },
   cancelled:   { label: "Отменено",        cls: "app-badge" },
 };
+const statusOptions = Object.entries(statusMeta) as [ProcurementStatus, { label: string; cls: string }][];
 const defaultStatusMeta = { label: "—", cls: "app-badge" };
+const getStatusMeta = (status?: string | null) => (
+  statusMeta[String(status || "").toLowerCase() as ProcurementStatus] ?? defaultStatusMeta
+);
 
 const urgencyMeta: Record<string, { label: string; cls: string }> = {
   low:      { label: "Низкая",      cls: "text-gray-500" },
@@ -352,13 +356,34 @@ export default function ProcurementPage() {
     toggleItemComments,
   } = useProcurementPage(user);
 
+  const toggleStatusFilter = useCallback((status: ProcurementStatus) => {
+    setStatusFilter((current) => (
+      current.includes(status)
+        ? current.filter((item) => item !== status)
+        : [...current, status]
+    ));
+  }, [setStatusFilter]);
+
   const [detailModalId, setDetailModalId] = useState<number | null>(null);
   const [detailModalLoading, setDetailModalLoading] = useState(false);
   const [detailModalError, setDetailModalError] = useState<string | null>(null);
   const procurementMenuRef = useRef<HTMLDivElement | null>(null);
+  const statusFilterRef = useRef<HTMLDivElement | null>(null);
   const [procurementMenuOpenId, setProcurementMenuOpenId] = useState<number | null>(null);
+  const [statusFilterOpen, setStatusFilterOpen] = useState(false);
   const [requestActionDialog, setRequestActionDialog] = useState<{ kind: RequestActionDialogKind; requestId: number } | null>(null);
   const [requestActionComment, setRequestActionComment] = useState("");
+
+  const statusFilterSummary = useMemo(() => {
+    if (statusFilter.length === 0) return "Все статусы";
+
+    const labels = statusFilter
+      .map((status) => statusMeta[status]?.label)
+      .filter(Boolean);
+
+    if (labels.length <= 2) return labels.join(", ");
+    return `Выбрано статусов: ${labels.length}`;
+  }, [statusFilter]);
 
   const syncRequestUrl = useCallback((requestId: number | null) => {
     if (typeof window === "undefined") return;
@@ -499,6 +524,36 @@ export default function ProcurementPage() {
     };
   }, [procurementMenuOpenId]);
 
+  useEffect(() => {
+    if (!statusFilterOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (statusFilterRef.current && !statusFilterRef.current.contains(event.target as Node)) {
+        setStatusFilterOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setStatusFilterOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [statusFilterOpen]);
+
+  useEffect(() => {
+    if (!filtersOpen) {
+      setStatusFilterOpen(false);
+    }
+  }, [filtersOpen]);
+
   /* ══════════════════════════════════════════════════════
      RENDER
      ══════════════════════════════════════════════════════ */
@@ -616,10 +671,62 @@ export default function ProcurementPage() {
           {/* ── filters panel ── */}
           {filtersOpen && (
             <div className="app-surface-muted mb-3 flex flex-col gap-2 rounded-xl p-3">
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="app-select rounded-lg px-3 py-2 text-sm">
-                <option value="">Все статусы</option>
-                {Object.entries(statusMeta).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
+              <div ref={statusFilterRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setStatusFilterOpen((current) => !current)}
+                  aria-expanded={statusFilterOpen}
+                  className="app-select flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm"
+                >
+                  <span className={statusFilter.length > 0 ? "truncate text-[var(--foreground)]" : "app-text-muted truncate"}>
+                    {statusFilterSummary}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    {statusFilter.length > 0 ? (
+                      <span className="app-badge rounded-full px-1.5 py-0.5 text-[10px] font-bold">
+                        {statusFilter.length}
+                      </span>
+                    ) : null}
+                    <ChevronDown size={14} className={`app-text-muted transition ${statusFilterOpen ? "rotate-180" : ""}`} />
+                  </span>
+                </button>
+                {statusFilterOpen ? (
+                  <div className="app-menu absolute inset-x-0 z-50 mt-1 overflow-hidden rounded-lg">
+                    <div className="app-divider flex items-center justify-between gap-2 border-b px-3 py-2">
+                      <span className="app-text-muted text-xs font-semibold uppercase">Статусы</span>
+                      {statusFilter.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setStatusFilter([])}
+                          className="app-link-accent text-xs font-medium"
+                        >
+                          Сбросить
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="max-h-64 overflow-y-auto p-1">
+                      {statusOptions.map(([key, meta]) => (
+                        <label
+                          key={key}
+                          className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm transition ${
+                            statusFilter.includes(key)
+                              ? "app-selected app-accent-text font-medium"
+                              : "hover:bg-[var(--surface-secondary)]"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={statusFilter.includes(key)}
+                            onChange={() => toggleStatusFilter(key)}
+                            className="h-4 w-4 rounded border-[var(--border-strong)] accent-[var(--accent-primary)]"
+                          />
+                          <span className="min-w-0 flex-1 truncate">{meta.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
               <select value={urgencyFilter} onChange={(e) => setUrgencyFilter(e.target.value)} className="app-select rounded-lg px-3 py-2 text-sm">
                 <option value="">Все уровни срочности</option>
                 {Object.entries(urgencyMeta).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
@@ -632,7 +739,7 @@ export default function ProcurementPage() {
                 {periodOptions.map((option) => <option key={option.value || "all"} value={option.value}>{option.label}</option>)}
               </select>
               {activeFilterCount > 0 && (
-                <button type="button" onClick={() => { setStatusFilter(""); setUrgencyFilter(""); setDepartmentFilter(""); setPeriodFilter(""); }} className="app-action-secondary rounded-lg px-3 py-2 text-sm font-medium transition">
+                <button type="button" onClick={() => { setStatusFilter([]); setUrgencyFilter(""); setDepartmentFilter(""); setPeriodFilter(""); }} className="app-action-secondary rounded-lg px-3 py-2 text-sm font-medium transition">
                   Очистить фильтры
                 </button>
               )}
@@ -648,7 +755,7 @@ export default function ProcurementPage() {
               </div>
             ) : filteredRequests.map((req) => {
               const st = String(req.status || "").toLowerCase();
-              const sMeta = statusMeta[st] ?? defaultStatusMeta;
+              const sMeta = getStatusMeta(st);
               const urg = urgencyMeta[req.urgency] ?? urgencyMeta.medium;
               const isAuthor = Boolean(resolveUserId(req.requestor) && user?.id && resolveUserId(req.requestor) === user.id);
               const isExecutor = Boolean(resolveUserId(req.executor) && user?.id && resolveUserId(req.executor) === user.id);
@@ -1021,8 +1128,8 @@ export default function ProcurementPage() {
             <div className="app-surface-muted rounded-xl px-4 py-4">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={`app-status-pill ${statusMeta[String(selectedRequest.status || "").toLowerCase()]?.cls ?? defaultStatusMeta.cls}`}>
-                    {statusMeta[String(selectedRequest.status || "").toLowerCase()]?.label ?? defaultStatusMeta.label}
+                  <span className={`app-status-pill ${getStatusMeta(selectedRequest.status).cls}`}>
+                    {getStatusMeta(selectedRequest.status).label}
                   </span>
                   <span className={`text-[11px] font-medium ${urgencyMeta[selectedRequest.urgency]?.cls ?? urgencyMeta.medium.cls}`}>
                     {(urgencyMeta[selectedRequest.urgency]?.label ?? urgencyMeta.medium.label)} срочность
@@ -1290,6 +1397,7 @@ export default function ProcurementPage() {
                   items={departments.map((d) => ({ id: d.id, name: d.name }))}
                   selectedId={form.department}
                   onSelect={(id) => setForm((f) => ({ ...f, department: id }))}
+                  disabled={modalMode === "edit"}
                 />
                 <div>
                   <label className="app-text-muted mb-1 block text-xs font-medium">Срочность</label>
@@ -1312,7 +1420,7 @@ export default function ProcurementPage() {
                 items={departments.map((d) => ({ id: d.id, name: d.name }))}
                 selectedId={form.processing_department}
                 onSelect={(id) => setForm((f) => ({ ...f, processing_department: id }))}
-                disabled={modalMode === "create" && Boolean(defaultProcessingDepartmentId)}
+                disabled={Boolean(defaultProcessingDepartmentId)}
               />
 
               {/* ── Items ── */}

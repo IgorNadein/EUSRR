@@ -982,6 +982,82 @@ class TestProcessingDepartmentWorkflow:
         )
         assert edit_response.status_code == status.HTTP_403_FORBIDDEN
 
+    def test_author_can_edit_waiting_request_with_items_before_work(
+        self, api_client, user, department, supply_department,
+        processing_request, procurement_item_factory
+    ):
+        kept_item = procurement_item_factory(
+            request=processing_request,
+            name="Старое название",
+            quantity=2,
+            unit="шт",
+            estimated_unit_price=Decimal("10.00"),
+        )
+        removed_item = procurement_item_factory(
+            request=processing_request,
+            name="Удалить",
+            quantity=1,
+        )
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-detail',
+            kwargs={'pk': processing_request.id},
+        )
+
+        response = api_client.patch(
+            url,
+            {
+                "title": "Обновленная закупка",
+                "description": "Уточненное описание",
+                "department": department.id,
+                "processing_department": supply_department.id,
+                "urgency": UrgencyLevel.HIGH,
+                "items": [
+                    {
+                        "id": kept_item.id,
+                        "name": "Обновленная позиция",
+                        "description": "Новые детали",
+                        "quantity": 5,
+                        "unit": "упак",
+                        "estimated_unit_price": "12.50",
+                        "supplier_info": "Поставщик",
+                        "links": ["https://example.com/updated"],
+                    },
+                    {
+                        "name": "Новая позиция",
+                        "description": "",
+                        "quantity": 1,
+                        "unit": "шт",
+                        "estimated_unit_price": None,
+                        "supplier_info": "",
+                        "links": [],
+                        "initial_comment": "Первичный комментарий",
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        processing_request.refresh_from_db()
+        kept_item.refresh_from_db()
+        assert processing_request.title == "Обновленная закупка"
+        assert processing_request.description == "Уточненное описание"
+        assert processing_request.urgency == UrgencyLevel.HIGH
+        assert kept_item.name == "Обновленная позиция"
+        assert kept_item.description == "Новые детали"
+        assert kept_item.quantity == 5
+        assert kept_item.unit == "упак"
+        assert kept_item.estimated_unit_price == Decimal("12.50")
+        assert kept_item.supplier_info == "Поставщик"
+        assert kept_item.links == ["https://example.com/updated"]
+        assert not ProcurementItem.objects.filter(id=removed_item.id).exists()
+
+        new_item = processing_request.items.get(name="Новая позиция")
+        comments = get_comments(new_item)
+        assert len(comments) == 1
+        assert comments[0].content == "Первичный комментарий"
+
     @pytest.fixture
     def department_head_approval_route(self, department_head):
         return ApprovalRoute.objects.create(
@@ -1339,6 +1415,92 @@ class TestProcessingDepartmentWorkflow:
         item.refresh_from_db()
         assert item.ordered_quantity == 2
         assert item.execution_status == ProcurementItemExecutionStatus.ORDERED
+
+    def test_partial_quantities_drive_item_display_and_request_fulfillment(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            quantity=4,
+            execution_status=ProcurementItemExecutionStatus.PENDING,
+        )
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save()
+
+        api_client.force_authenticate(user=supply_user)
+        item_url = reverse(
+            'api:v1:procurement:procurementitem-detail',
+            kwargs={'pk': item.id},
+        )
+
+        partial_ordered_response = api_client.patch(
+            item_url,
+            {'ordered_quantity': 1},
+            format='json',
+        )
+
+        assert partial_ordered_response.status_code == status.HTTP_200_OK
+        assert (
+            partial_ordered_response.data["execution_status_display"]
+            == "Заказано частично"
+        )
+        processing_request.refresh_from_db()
+        assert (
+            processing_request.fulfillment_status
+            == ProcurementFulfillmentStatus.PARTIALLY_ORDERED
+        )
+        assert processing_request.status == ProcurementStatus.IN_PROGRESS
+
+        ordered_response = api_client.patch(
+            item_url,
+            {'ordered_quantity': 4},
+            format='json',
+        )
+
+        assert ordered_response.status_code == status.HTTP_200_OK
+        assert ordered_response.data["execution_status_display"] == "Заказано"
+        processing_request.refresh_from_db()
+        assert (
+            processing_request.fulfillment_status
+            == ProcurementFulfillmentStatus.ORDERED
+        )
+        assert processing_request.status == ProcurementStatus.IN_PROGRESS
+
+        partial_received_response = api_client.patch(
+            item_url,
+            {'received_quantity': 2},
+            format='json',
+        )
+
+        assert partial_received_response.status_code == status.HTTP_200_OK
+        assert (
+            partial_received_response.data["execution_status_display"]
+            == "Получено частично"
+        )
+        processing_request.refresh_from_db()
+        assert (
+            processing_request.fulfillment_status
+            == ProcurementFulfillmentStatus.PARTIALLY_RECEIVED
+        )
+        assert processing_request.status == ProcurementStatus.IN_PROGRESS
+
+        received_response = api_client.patch(
+            item_url,
+            {'received_quantity': 4},
+            format='json',
+        )
+
+        assert received_response.status_code == status.HTTP_200_OK
+        assert received_response.data["execution_status_display"] == "Получено"
+        processing_request.refresh_from_db()
+        assert (
+            processing_request.fulfillment_status
+            == ProcurementFulfillmentStatus.COMPLETED
+        )
+        assert processing_request.status == ProcurementStatus.COMPLETED
+        assert processing_request.completed_at is not None
 
     def test_received_quantity_sets_ordered_or_received_status(
         self, api_client, supply_user, processing_request,

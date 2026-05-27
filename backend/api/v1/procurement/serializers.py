@@ -3,6 +3,7 @@
 """
 
 from drf_spectacular.utils import extend_schema_field
+from django.db import transaction
 from rest_framework import serializers
 
 from communications import comments_helpers
@@ -49,22 +50,11 @@ def _request_items(obj):
 
 
 def _effective_ordered_quantity(item):
-    if item.ordered_quantity is not None:
-        return item.ordered_quantity
-    if item.execution_status in {
-        ProcurementItemExecutionStatus.ORDERED,
-        ProcurementItemExecutionStatus.RECEIVED,
-    }:
-        return item.quantity
-    return 0
+    return item.effective_ordered_quantity
 
 
 def _effective_received_quantity(item):
-    if item.received_quantity is not None:
-        return item.received_quantity
-    if item.execution_status == ProcurementItemExecutionStatus.RECEIVED:
-        return item.quantity
-    return 0
+    return item.effective_received_quantity
 
 
 class ProcurementRequestSummaryMixin(serializers.Serializer):
@@ -159,9 +149,7 @@ class ProcurementItemSerializer(serializers.ModelSerializer):
     total_price = serializers.DecimalField(
         max_digits=12, decimal_places=2, read_only=True
     )
-    execution_status_display = serializers.CharField(
-        source="get_execution_status_display", read_only=True
-    )
+    execution_status_display = serializers.SerializerMethodField()
     comments_count = serializers.SerializerMethodField()
 
     @extend_schema_field(serializers.IntegerField())
@@ -173,6 +161,10 @@ class ProcurementItemSerializer(serializers.ModelSerializer):
         from communications.comments_helpers import get_comment_count
 
         return get_comment_count(obj)
+
+    @extend_schema_field(serializers.CharField())
+    def get_execution_status_display(self, obj):
+        return obj.execution_status_display
 
     class Meta:
         model = ProcurementItem
@@ -272,6 +264,26 @@ class ProcurementItemCreateSerializer(serializers.ModelSerializer):
         return _validate_item_quantities(attrs, self.instance)
 
 
+class ProcurementItemEditSerializer(ProcurementItemCreateSerializer):
+    """Сериализатор для редактирования позиций внутри заявки."""
+
+    id = serializers.IntegerField(required=False)
+
+    class Meta:
+        model = ProcurementItem
+        fields = [
+            "id",
+            "name",
+            "description",
+            "quantity",
+            "unit",
+            "estimated_unit_price",
+            "supplier_info",
+            "links",
+            "initial_comment",
+        ]
+
+
 class ApprovalSerializer(serializers.ModelSerializer):
     """Сериализатор для согласований."""
 
@@ -321,6 +333,12 @@ class ProcurementRequestListSerializer(
 ):
     """Сериализатор для списка заявок (краткий)."""
 
+    description = serializers.CharField(required=False, allow_blank=True)
+    items = ProcurementItemEditSerializer(
+        many=True,
+        required=False,
+        write_only=True,
+    )
     department_name = serializers.CharField(
         source="department.name", read_only=True
     )
@@ -370,6 +388,7 @@ class ProcurementRequestListSerializer(
         fields = [
             "id",
             "title",
+            "description",
             "department",
             "department_name",
             "processing_department",
@@ -397,6 +416,7 @@ class ProcurementRequestListSerializer(
             "comments_count",
             "can_current_user_approve",
             "can_current_user_submit_for_approval",
+            "items",
             "created_at",
             "submitted_at",
             "started_at",
@@ -431,14 +451,93 @@ class ProcurementRequestListSerializer(
 
     def update(self, instance, validated_data):
         """
-        При обновлении заявки запрещаем изменение requestor и department.
-        Эти поля игнорируются при обновлении.
+        Обновить заявку и, если передан список, синхронизировать позиции.
         """
-        # Игнорируем попытки изменить requestor
         validated_data.pop("requestor", None)
-        # Игнорируем попытки изменить department
         validated_data.pop("department", None)
-        return super().update(instance, validated_data)
+        items_data = validated_data.pop("items", None)
+
+        if items_data is None:
+            instance = super().update(instance, validated_data)
+            return instance
+
+        if not items_data:
+            raise serializers.ValidationError(
+                {"items": "Добавьте хотя бы одну позицию."}
+            )
+
+        request = self.context.get("request")
+        author = getattr(request, "user", None)
+        with transaction.atomic():
+            instance = super().update(instance, validated_data)
+            existing_items = {item.id: item for item in instance.items.all()}
+            kept_item_ids = set()
+
+            for item_data in items_data:
+                item_id = item_data.pop("id", None)
+                initial_comment = item_data.pop("initial_comment", "").strip()
+                if item_id is not None:
+                    item = existing_items.get(item_id)
+                    if item is None:
+                        raise serializers.ValidationError(
+                            {"items": f"Позиция {item_id} не найдена в заявке."}
+                        )
+                    for field, value in item_data.items():
+                        setattr(item, field, value)
+                    item.save()
+                else:
+                    item = ProcurementItem.objects.create(
+                        request=instance,
+                        **item_data,
+                    )
+
+                kept_item_ids.add(item.id)
+                if initial_comment and author and author.is_authenticated:
+                    comments_helpers.create_comment(
+                        obj=item,
+                        author=author,
+                        content=initial_comment,
+                    )
+
+            for item_id, item in existing_items.items():
+                if item_id not in kept_item_ids:
+                    item.delete()
+
+            instance.recalculate_fulfillment_status(save=True)
+        return instance
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        items_data = attrs.get("items")
+        if items_data is None:
+            return attrs
+        if not items_data:
+            raise serializers.ValidationError(
+                {"items": "Добавьте хотя бы одну позицию."}
+            )
+        names = [item.get("name", "").strip() for item in items_data]
+        if not any(names):
+            raise serializers.ValidationError(
+                {"items": "Добавьте хотя бы одну позицию."}
+            )
+        if self.instance is not None:
+            valid_item_ids = set(
+                self.instance.items.values_list("id", flat=True)
+            )
+            incoming_item_ids = {
+                item["id"] for item in items_data if item.get("id") is not None
+            }
+            unknown_item_ids = incoming_item_ids - valid_item_ids
+            if unknown_item_ids:
+                raise serializers.ValidationError(
+                    {
+                        "items": (
+                            "Позиция "
+                            f"{min(unknown_item_ids)} не найдена в заявке."
+                        )
+                    }
+                )
+        return attrs
 
 
 class ProcurementRequestDetailSerializer(

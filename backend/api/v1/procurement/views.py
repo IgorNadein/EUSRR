@@ -72,14 +72,14 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         filters.SearchFilter,
         filters.OrderingFilter,
     ]
-    filterset_fields = [
-        "status",
-        "urgency",
-        "department",
-        "processing_department",
-        "executor",
-        "fulfillment_status",
-    ]
+    filterset_fields = {
+        "status": ["exact", "in"],
+        "urgency": ["exact"],
+        "department": ["exact"],
+        "processing_department": ["exact"],
+        "executor": ["exact"],
+        "fulfillment_status": ["exact"],
+    }
     search_fields = ["title", "description"]
     ordering_fields = ["created_at", "status"]
     ordering = ["-created_at"]
@@ -555,7 +555,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         """Получить заявки, ожидающие согласования текущим польз."""
         # Находим заявки где есть pending approval для текущего юзера
         base_queryset = (
-            self.get_queryset()
+            self.filter_queryset(self.get_queryset())
             .filter(
                 approvals__approver=request.user,
                 approvals__status=ApprovalStatus.PENDING,

@@ -4,6 +4,7 @@ import { AppShell } from "../../components/AppShell";
 import { Modal } from "@/components/ui/Modal";
 import { useUser } from "@/contexts/UserContext";
 import { apiClient } from "@/lib/api";
+import { loadAllPages } from "@/lib/shared";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Department } from "@/types/api";
@@ -39,8 +40,10 @@ export default function DepartmentsPage() {
       try {
         setLoading(true);
         setError(null);
-        const response = await apiClient.getDepartments();
-        setDepartments(response.results || []);
+        const allDepartments = await loadAllPages<Department>((params) =>
+          apiClient.getDepartments(params),
+        );
+        setDepartments(allDepartments);
       } catch (err) {
         console.error("Ошибка загрузки отделов:", err);
         setError("Не удалось загрузить отделы");
