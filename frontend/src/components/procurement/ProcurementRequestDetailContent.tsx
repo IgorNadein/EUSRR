@@ -23,6 +23,9 @@ interface ProcurementRequestDetailContentProps {
   canDeleteAnyComment?: boolean;
   onUpdateItem?: (requestId: number, itemId: number, patch: Record<string, unknown>) => void | Promise<unknown>;
   onReportItemIssue?: (requestId: number, itemId: number, text?: string) => void | Promise<unknown>;
+  onCancelItemIssue?: (requestId: number, itemId: number) => void | Promise<unknown>;
+  onConfirmItemReceived?: (requestId: number, itemId: number) => void | Promise<unknown>;
+  onCancelItemReceived?: (requestId: number, itemId: number) => void | Promise<unknown>;
   onMarkAllReceived?: (requestId: number) => void | Promise<unknown>;
   itemCommentsMap?: Record<number, ProcurementItemComment[]>;
   itemCommentDrafts?: Record<number, string>;
@@ -115,11 +118,17 @@ interface ProcurementItemCardProps {
   ) => string;
   canEditItemProcessing: boolean;
   canReportIssue: boolean;
+  canCancelIssue: boolean;
+  canConfirmReceipt: boolean;
+  canCancelReceipt: boolean;
   currentUserId?: number | null;
   canDeleteAnyComment?: boolean;
   busyKey?: string | null;
   onUpdateItem?: (requestId: number, itemId: number, patch: Record<string, unknown>) => void | Promise<unknown>;
   onReportItemIssue?: (requestId: number, itemId: number, text?: string) => void | Promise<unknown>;
+  onCancelItemIssue?: (requestId: number, itemId: number) => void | Promise<unknown>;
+  onConfirmItemReceived?: (requestId: number, itemId: number) => void | Promise<unknown>;
+  onCancelItemReceived?: (requestId: number, itemId: number) => void | Promise<unknown>;
   comments?: ProcurementItemComment[];
   commentDraft?: string;
   commentsOpen?: boolean;
@@ -135,11 +144,17 @@ function ProcurementItemCard({
   displayUserName,
   canEditItemProcessing,
   canReportIssue,
+  canCancelIssue,
+  canConfirmReceipt,
+  canCancelReceipt,
   currentUserId,
   canDeleteAnyComment = false,
   busyKey,
   onUpdateItem,
   onReportItemIssue,
+  onCancelItemIssue,
+  onConfirmItemReceived,
+  onCancelItemReceived,
   comments = [],
   commentDraft = "",
   commentsOpen = false,
@@ -157,7 +172,25 @@ function ProcurementItemCard({
   const receivedQuantity = item.received_quantity ?? 0;
   const status = item.execution_status || "pending";
   const statusLabel = item.execution_status_display || executionStatusOptions.find((option) => option.value === status)?.label || "Не выполнено";
-  const canCancelReceived = canEditItemProcessing && status === "received";
+  const canCancelReceived = Boolean(
+    canCancelReceipt &&
+    onCancelItemReceived &&
+    receivedQuantity > 0
+  );
+  const canConfirmReceived = Boolean(
+    canConfirmReceipt &&
+    onConfirmItemReceived &&
+    requestedQuantity > 0 &&
+    (status === "ordered" || receivedQuantity > 0) &&
+    receivedQuantity < requestedQuantity &&
+    status !== "rejected" &&
+    status !== "defective"
+  );
+  const canCancelItemIssue = Boolean(
+    canCancelIssue &&
+    onCancelItemIssue &&
+    status === "defective"
+  );
   const canMarkIssue = Boolean(
     canReportIssue &&
     onReportItemIssue &&
@@ -186,14 +219,6 @@ function ProcurementItemCard({
       ordered_quantity: toOptionalInteger(draft.ordered_quantity),
       received_quantity: toOptionalInteger(draft.received_quantity),
       links: cleanLinkRows(draft.links),
-    });
-  };
-
-  const cancelReceived = () => {
-    const nextStatus: ProcurementItemExecutionStatus = Number(item.ordered_quantity || 0) > 0 ? "ordered" : "pending";
-    return onUpdateItem?.(requestId, item.id, {
-      execution_status: nextStatus,
-      received_quantity: 0,
     });
   };
 
@@ -320,12 +345,24 @@ function ProcurementItemCard({
         {canCancelReceived ? (
           <button
             type="button"
-            onClick={() => void cancelReceived()}
-            disabled={busyKey === `item-${item.id}`}
-            className="app-action-secondary inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium disabled:opacity-60"
+            onClick={() => void onCancelItemReceived?.(requestId, item.id)}
+            disabled={busyKey === `item-cancel-received-${item.id}`}
+            className="app-action-ghost inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium disabled:opacity-60"
           >
             <RotateCcw size={13} />
             <span>Отменить получение</span>
+          </button>
+        ) : null}
+
+        {canConfirmReceived ? (
+          <button
+            type="button"
+            onClick={() => void onConfirmItemReceived?.(requestId, item.id)}
+            disabled={busyKey === `item-confirm-received-${item.id}`}
+            className="app-action-ghost inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium disabled:opacity-60"
+          >
+            <CheckCircle2 size={13} className="text-emerald-500" />
+            <span className="text-emerald-500">Подтвердить получение</span>
           </button>
         ) : null}
 
@@ -334,10 +371,22 @@ function ProcurementItemCard({
             type="button"
             onClick={() => void onReportItemIssue?.(requestId, item.id)}
             disabled={busyKey === `item-issue-${item.id}`}
-            className="app-feedback-warning inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium disabled:opacity-60"
+            className="app-action-ghost inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium disabled:opacity-60"
           >
-            <AlertTriangle size={13} />
-            <span>Брак</span>
+            <AlertTriangle size={13} className="text-amber-500" />
+            <span className="text-amber-500">Брак</span>
+          </button>
+        ) : null}
+
+        {canCancelItemIssue ? (
+          <button
+            type="button"
+            onClick={() => void onCancelItemIssue?.(requestId, item.id)}
+            disabled={busyKey === `item-cancel-issue-${item.id}`}
+            className="app-action-ghost inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium disabled:opacity-60"
+          >
+            <RotateCcw size={13} className="text-amber-500" />
+            <span className="text-amber-500">Отменить брак</span>
           </button>
         ) : null}
       </div>
@@ -545,6 +594,9 @@ export function ProcurementRequestDetailContent({
   canDeleteAnyComment = false,
   onUpdateItem,
   onReportItemIssue,
+  onCancelItemIssue,
+  onConfirmItemReceived,
+  onCancelItemReceived,
   onMarkAllReceived,
   itemCommentsMap = {},
   itemCommentDrafts = {},
@@ -557,6 +609,7 @@ export function ProcurementRequestDetailContent({
 }: ProcurementRequestDetailContentProps) {
   const canEditItemProcessing = Boolean(canProcessItems && onUpdateItem);
   const isRequestPending = String(request.status || "").toLowerCase() === "pending";
+  const displayItems = request.items ? [...request.items].reverse() : [];
   const requestorId = typeof request.requestor === "number" ? request.requestor : request.requestor?.id ?? null;
   const executorId = typeof request.executor === "number" ? request.executor : request.executor?.id ?? null;
   const canReportIssues = Boolean(
@@ -564,6 +617,26 @@ export function ProcurementRequestDetailContent({
       canEditItemProcessing ||
       currentUserId === requestorId ||
       currentUserId === executorId
+    ),
+  );
+  const canCancelIssues = Boolean(
+    !isRequestPending && onCancelItemIssue && currentUserId && (
+      canEditItemProcessing ||
+      currentUserId === requestorId ||
+      currentUserId === executorId
+    ),
+  );
+  const canConfirmReceipt = Boolean(
+    !isRequestPending &&
+    onConfirmItemReceived &&
+    currentUserId &&
+    currentUserId === requestorId,
+  );
+  const canCancelReceipt = Boolean(
+    !isRequestPending && onCancelItemReceived && currentUserId && (
+      currentUserId === requestorId ||
+      currentUserId === executorId ||
+      canEditItemProcessing
     ),
   );
 
@@ -595,7 +668,7 @@ export function ProcurementRequestDetailContent({
         ) : null}
       </div>
 
-      {request.items && request.items.length > 0 ? (
+      {displayItems.length > 0 ? (
         <div className="app-surface rounded-xl p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold text-[var(--foreground)]">Позиции</p>
@@ -611,7 +684,7 @@ export function ProcurementRequestDetailContent({
             ) : null}
           </div>
           <div className="space-y-2">
-            {request.items.map((item) => (
+            {displayItems.map((item) => (
               <ProcurementItemCard
                 key={[
                   item.id,
@@ -627,11 +700,17 @@ export function ProcurementRequestDetailContent({
                 displayUserName={displayUserName}
                 canEditItemProcessing={canEditItemProcessing}
                 canReportIssue={canReportIssues}
+                canCancelIssue={canCancelIssues}
+                canConfirmReceipt={canConfirmReceipt}
+                canCancelReceipt={canCancelReceipt}
                 currentUserId={currentUserId}
                 canDeleteAnyComment={canDeleteAnyComment}
                 busyKey={busyKey}
                 onUpdateItem={onUpdateItem}
                 onReportItemIssue={onReportItemIssue}
+                onCancelItemIssue={onCancelItemIssue}
+                onConfirmItemReceived={onConfirmItemReceived}
+                onCancelItemReceived={onCancelItemReceived}
                 comments={itemCommentsMap[item.id] || []}
                 commentDraft={itemCommentDrafts[item.id] || ""}
                 commentsOpen={Boolean(expandedItemComments[item.id])}

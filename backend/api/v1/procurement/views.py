@@ -941,11 +941,72 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
             "comments",
             "delete_comment",
             "report_issue",
+            "confirm_received",
+            "cancel_received",
+            "cancel_issue",
         ]:
             permission_classes = [permissions.IsAuthenticated]
         else:
             permission_classes = [CanManageProcurementRequest]
         return [permission() for permission in permission_classes]
+
+    def _can_use_item_quick_action(self, user, procurement_request):
+        return (
+            procurement_request.requestor_id == user.id
+            or self._can_process_request_items(user, procurement_request)
+        )
+
+    def _validate_item_quick_action(self, user, procurement_request):
+        if not self._can_use_item_quick_action(user, procurement_request):
+            return Response(
+                {"detail": "Нет прав изменить эту позицию"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if procurement_request.status in [
+            ProcurementStatus.PENDING,
+            ProcurementStatus.CANCELLED,
+            ProcurementStatus.REJECTED,
+        ]:
+            return Response(
+                {
+                    "detail": (
+                        "Нельзя изменить позицию в заявке на согласовании, "
+                        "в отменённой или отклонённой заявке"
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return None
+
+    def _workflow_status_from_quantities(self, item):
+        received_quantity = item.received_quantity or 0
+        ordered_quantity = item.ordered_quantity or 0
+
+        if received_quantity > 0:
+            return (
+                ProcurementItemExecutionStatus.RECEIVED
+                if received_quantity >= item.quantity
+                else ProcurementItemExecutionStatus.ORDERED
+            )
+        if ordered_quantity > 0:
+            return ProcurementItemExecutionStatus.ORDERED
+        return ProcurementItemExecutionStatus.PENDING
+
+    def _reopen_completed_request(self, procurement_request, user):
+        if procurement_request.status != ProcurementStatus.COMPLETED:
+            return
+
+        procurement_request.status = (
+            ProcurementStatus.IN_PROGRESS
+            if procurement_request.executor_id
+            else ProcurementStatus.WAITING
+        )
+        procurement_request.completed_at = None
+        procurement_request._notification_actor = user
+        procurement_request.save(
+            update_fields=["status", "completed_at", "updated_at"]
+        )
 
     def perform_create(self, serializer):
         """Проверяем права при создании позиции.
@@ -1064,44 +1125,17 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         procurement_request = item.request
         user = request.user
 
-        if not (
-            procurement_request.requestor_id == user.id
-            or self._can_process_request_items(user, procurement_request)
-        ):
-            return Response(
-                {"detail": "Нет прав отметить проблему по этой позиции"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        if procurement_request.status in [
-            ProcurementStatus.PENDING,
-            ProcurementStatus.CANCELLED,
-            ProcurementStatus.REJECTED,
-        ]:
-            return Response(
-                {
-                    "detail": (
-                        "Нельзя изменить позицию в заявке на согласовании, "
-                        "в отменённой или отклонённой заявке"
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        error_response = self._validate_item_quick_action(
+            user,
+            procurement_request,
+        )
+        if error_response is not None:
+            return error_response
 
         item.execution_status = ProcurementItemExecutionStatus.DEFECTIVE
         item.save(update_fields=["execution_status"])
 
-        if procurement_request.status == ProcurementStatus.COMPLETED:
-            procurement_request.status = (
-                ProcurementStatus.IN_PROGRESS
-                if procurement_request.executor_id
-                else ProcurementStatus.WAITING
-            )
-            procurement_request.completed_at = None
-            procurement_request._notification_actor = user
-            procurement_request.save(
-                update_fields=["status", "completed_at", "updated_at"]
-            )
+        self._reopen_completed_request(procurement_request, user)
 
         text = request.data.get("text", "")
         if isinstance(text, str):
@@ -1125,6 +1159,110 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         )
         if procurement_request.requestor_id == user.id:
             notify_item_issue_reported(item, actor=user)
+
+        item.refresh_from_db()
+        serializer = self.get_serializer(item)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def cancel_received(self, request, pk=None):
+        """Отменить подтверждение получения позиции."""
+        item = self.get_object()
+        procurement_request = item.request
+        user = request.user
+
+        error_response = self._validate_item_quick_action(
+            user,
+            procurement_request,
+        )
+        if error_response is not None:
+            return error_response
+
+        if (item.received_quantity or 0) <= 0:
+            return Response(
+                {"detail": "По позиции нет подтверждённого получения"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        item.received_quantity = 0
+        item.execution_status = self._workflow_status_from_quantities(item)
+        item.save(update_fields=["execution_status", "received_quantity"])
+        self._reopen_completed_request(procurement_request, user)
+        notify_item_updated(
+            item,
+            actor=user,
+            changed_fields=["execution_status", "received_quantity"],
+        )
+
+        item.refresh_from_db()
+        serializer = self.get_serializer(item)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def cancel_issue(self, request, pk=None):
+        """Снять отметку брака/перезаказа с позиции."""
+        item = self.get_object()
+        procurement_request = item.request
+        user = request.user
+
+        error_response = self._validate_item_quick_action(
+            user,
+            procurement_request,
+        )
+        if error_response is not None:
+            return error_response
+
+        if item.execution_status != ProcurementItemExecutionStatus.DEFECTIVE:
+            return Response(
+                {"detail": "Позиция не отмечена как брак"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        item.execution_status = self._workflow_status_from_quantities(item)
+        item.save(update_fields=["execution_status"])
+        notify_item_updated(
+            item,
+            actor=user,
+            changed_fields=["execution_status"],
+        )
+
+        item.refresh_from_db()
+        serializer = self.get_serializer(item)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def confirm_received(self, request, pk=None):
+        """Подтвердить получение позиции."""
+        item = self.get_object()
+        procurement_request = item.request
+        user = request.user
+
+        error_response = self._validate_item_quick_action(
+            user,
+            procurement_request,
+        )
+        if error_response is not None:
+            return error_response
+
+        item.execution_status = ProcurementItemExecutionStatus.RECEIVED
+        item.ordered_quantity = item.quantity
+        item.received_quantity = item.quantity
+        item.save(
+            update_fields=[
+                "execution_status",
+                "ordered_quantity",
+                "received_quantity",
+            ]
+        )
+        notify_item_updated(
+            item,
+            actor=user,
+            changed_fields=[
+                "execution_status",
+                "ordered_quantity",
+                "received_quantity",
+            ],
+        )
 
         item.refresh_from_db()
         serializer = self.get_serializer(item)

@@ -93,10 +93,10 @@ export function RequestDetailModal({
                     type="button"
                     onClick={() => void onApprove(request.id)}
                     disabled={busyKey === `approve-${request.id}`}
-                    className="app-feedback-success inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-60"
+                    className="app-action-approve inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-60"
                   >
-                    <ThumbsUp size={16} />
-                    Одобрить
+                    <ThumbsUp size={16} className="text-emerald-500" />
+                    <span className="text-emerald-500">Одобрить</span>
                   </button>
                   <button
                     type="button"

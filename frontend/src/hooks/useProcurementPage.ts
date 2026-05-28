@@ -442,6 +442,27 @@ export function useProcurementPage(user: User | null) {
       return;
     }
 
+    const existingItems = detail.items || [];
+    const commentableItemIds = existingItems
+      .map((item) => item.id)
+      .filter((id): id is number => typeof id === "number");
+    if (commentableItemIds.length > 0) {
+      try {
+        const entries = await Promise.all(
+          commentableItemIds.map(async (itemId) => {
+            const comments = await apiClient.getProcurementItemComments(itemId);
+            return [itemId, Array.isArray(comments) ? comments : []] as const;
+          }),
+        );
+        setItemCommentsMap((previous) => ({
+          ...previous,
+          ...Object.fromEntries(entries),
+        }));
+      } catch (commentsError) {
+        console.error("Load procurement item comments for edit error:", commentsError);
+      }
+    }
+
     setEditingId(request.id);
     setForm({
       title: detail.title || "",
@@ -450,8 +471,8 @@ export function useProcurementPage(user: User | null) {
       requireApproval: false,
       processing_department: detail.processing_department ?? null,
       urgency: detail.urgency || "medium",
-      items: detail.items && detail.items.length > 0
-        ? detail.items.map((item) => ({
+      items: existingItems.length > 0
+        ? existingItems.map((item) => ({
             id: item.id,
             name: item.name || "",
             description: item.description || "",
@@ -918,6 +939,54 @@ export function useProcurementPage(user: User | null) {
     }
   }, [refreshAfterMutation]);
 
+  const handleCancelItemIssue = useCallback(async (requestId: number, itemId: number) => {
+    try {
+      setBusyKey(`item-cancel-issue-${itemId}`);
+      setActionError(null);
+      await apiClient.cancelProcurementItemIssue(itemId);
+      setActionSuccess("Отметка брака снята.");
+      await refreshAfterMutation(requestId);
+      return true;
+    } catch (issueError) {
+      setActionError(getReadableError(issueError, "Не удалось снять отметку брака"));
+      return false;
+    } finally {
+      setBusyKey(null);
+    }
+  }, [refreshAfterMutation]);
+
+  const handleConfirmItemReceived = useCallback(async (requestId: number, itemId: number) => {
+    try {
+      setBusyKey(`item-confirm-received-${itemId}`);
+      setActionError(null);
+      await apiClient.confirmProcurementItemReceived(itemId);
+      setActionSuccess("Получение позиции подтверждено.");
+      await refreshAfterMutation(requestId);
+      return true;
+    } catch (confirmError) {
+      setActionError(getReadableError(confirmError, "Не удалось подтвердить получение"));
+      return false;
+    } finally {
+      setBusyKey(null);
+    }
+  }, [refreshAfterMutation]);
+
+  const handleCancelItemReceived = useCallback(async (requestId: number, itemId: number) => {
+    try {
+      setBusyKey(`item-cancel-received-${itemId}`);
+      setActionError(null);
+      await apiClient.cancelProcurementItemReceived(itemId);
+      setActionSuccess("Получение позиции отменено.");
+      await refreshAfterMutation(requestId);
+      return true;
+    } catch (cancelError) {
+      setActionError(getReadableError(cancelError, "Не удалось отменить получение"));
+      return false;
+    } finally {
+      setBusyKey(null);
+    }
+  }, [refreshAfterMutation]);
+
   const handleCancel = useCallback((id: number, reason = "") => {
     return doAction(`cancel-${id}`, () => apiClient.cancelProcurementRequest(id, reason), id, "Заявка отменена.");
   }, [doAction]);
@@ -1035,6 +1104,9 @@ export function useProcurementPage(user: User | null) {
     handleMarkAllReceived,
     handleUpdateItem,
     handleReportItemIssue,
+    handleCancelItemIssue,
+    handleConfirmItemReceived,
+    handleCancelItemReceived,
     handleCancel,
     handleDelete,
     handleAddComment,

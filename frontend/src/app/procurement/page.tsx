@@ -8,7 +8,7 @@ import Link from "next/link";
 import { ProcurementRequestDetailContent } from "@/components/procurement/ProcurementRequestDetailContent";
 import ProcurementStatsPanel from "@/components/procurement/ProcurementStatsPanel";
 import ProcurementSuppliersPanel from "@/components/procurement/ProcurementSuppliersPanel";
-import type { ProcurementRequest, ProcurementStatus, UrgencyLevel } from "@/types/api";
+import type { ProcurementFulfillmentStatus, ProcurementRequest, ProcurementStatus, UrgencyLevel } from "@/types/api";
 import {
   AlertTriangle,
   ArrowUpDown,
@@ -57,6 +57,18 @@ const statusOptions = Object.entries(statusMeta) as [ProcurementStatus, { label:
 const defaultStatusMeta = { label: "—", cls: "app-badge" };
 const getStatusMeta = (status?: string | null) => (
   statusMeta[String(status || "").toLowerCase() as ProcurementStatus] ?? defaultStatusMeta
+);
+
+const fulfillmentStatusClasses: Record<ProcurementFulfillmentStatus, string> = {
+  pending: "app-badge",
+  partially_ordered: "app-feedback-warning",
+  ordered: "app-feedback-success",
+  partially_received: "app-feedback-warning",
+  completed: "app-feedback-success",
+  issues: "app-feedback-warning",
+};
+const getFulfillmentStatusClass = (status?: string | null) => (
+  fulfillmentStatusClasses[String(status || "").toLowerCase() as ProcurementFulfillmentStatus] ?? "app-badge"
 );
 
 const urgencyMeta: Record<string, { label: string; cls: string }> = {
@@ -211,10 +223,10 @@ function ProcurementRequestActionButtons({
             onClick={() => onApprove(request.id)}
             disabled={busyKey === `approve-${request.id}`}
             title="Одобрить"
-            className={buttonClass("app-feedback-success")}
+            className={buttonClass("app-action-approve")}
           >
-            <ThumbsUp size={14} />
-            {label("Одобрить")}
+            <ThumbsUp size={14} className="text-emerald-500" />
+            {showLabels ? <span className="text-emerald-500">Одобрить</span> : null}
           </button>
           <button
             type="button"
@@ -311,6 +323,9 @@ export default function ProcurementPage() {
     handleComplete,
     handleMarkAllReceived,
     handleReportItemIssue,
+    handleCancelItemIssue,
+    handleConfirmItemReceived,
+    handleCancelItemReceived,
     handleUpdateItem,
     handleDelete,
     handleLoadMore,
@@ -776,6 +791,7 @@ export default function ProcurementPage() {
               const executorName = req.executor || req.executor_name ? displayUserName(req.executor, req.executor_name || undefined) : "";
               const requestorLink = userLink(req.requestor);
               const executorLink = userLink(req.executor);
+              const fulfillmentStatus = resolvedDetail.fulfillment_status ?? req.fulfillment_status;
               const fulfillmentStatusDisplay = resolvedDetail.fulfillment_status_display ?? req.fulfillment_status_display;
               const itemsCount = resolvedDetail.items?.length ?? resolvedDetail.items_count ?? req.items_count ?? 0;
               const detailItems = resolvedDetail.items || req.items || [];
@@ -930,7 +946,7 @@ export default function ProcurementPage() {
                           {(fulfillmentStatusDisplay || itemsTotalCount > 0 || approvalsCount > 0 || nextExpectedDeliveryDate) && (
                             <div className="col-span-2 flex flex-wrap items-center gap-2 pt-0.5">
                               {fulfillmentStatusDisplay ? (
-                                <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                <span className={`${getFulfillmentStatusClass(fulfillmentStatus)} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium`}>
                                   {fulfillmentStatusDisplay}
                                 </span>
                               ) : null}
@@ -986,9 +1002,9 @@ export default function ProcurementPage() {
                                 title="Одобрить"
                                 onClick={() => openRequestActionDialog("approve", req.id)}
                                 disabled={busyKey === `approve-${req.id}`}
-                                className="app-feedback-success inline-flex items-center justify-center rounded-lg p-2 disabled:opacity-60"
+                                className="app-action-approve inline-flex items-center justify-center rounded-lg p-2 disabled:opacity-60"
                               >
-                                <ThumbsUp size={18} />
+                                <ThumbsUp size={18} className="text-emerald-500" />
                               </button>
                               <button
                                 type="button"
@@ -1057,6 +1073,9 @@ export default function ProcurementPage() {
                           canDeleteAnyComment={Boolean(user?.auth?.is_staff || user?.auth?.is_superuser)}
                           onUpdateItem={handleUpdateItem}
                           onReportItemIssue={handleReportItemIssue}
+                          onCancelItemIssue={handleCancelItemIssue}
+                          onConfirmItemReceived={handleConfirmItemReceived}
+                          onCancelItemReceived={handleCancelItemReceived}
                           onMarkAllReceived={handleMarkAllReceived}
                           itemCommentsMap={itemCommentsMap}
                           itemCommentDrafts={itemCommentDrafts}
@@ -1145,7 +1164,7 @@ export default function ProcurementPage() {
                     <span className="font-medium text-[var(--foreground)]">{money(getRequestAmount(selectedRequest))}</span>
                   ) : null}
                   {selectedRequest.fulfillment_status_display ? (
-                    <span className="app-badge rounded-full px-2 py-0.5 text-[11px] font-medium">
+                    <span className={`${getFulfillmentStatusClass(selectedRequest.fulfillment_status)} rounded-full px-2 py-0.5 text-[11px] font-medium`}>
                       {selectedRequest.fulfillment_status_display}
                     </span>
                   ) : null}
@@ -1184,6 +1203,9 @@ export default function ProcurementPage() {
               canDeleteAnyComment={Boolean(user?.auth?.is_staff || user?.auth?.is_superuser)}
               onUpdateItem={handleUpdateItem}
               onReportItemIssue={handleReportItemIssue}
+              onCancelItemIssue={handleCancelItemIssue}
+              onConfirmItemReceived={handleConfirmItemReceived}
+              onCancelItemReceived={handleCancelItemReceived}
               onMarkAllReceived={handleMarkAllReceived}
               itemCommentsMap={itemCommentsMap}
               itemCommentDrafts={itemCommentDrafts}
@@ -1457,10 +1479,38 @@ export default function ProcurementPage() {
                           <textarea
                             value={it.initial_comment}
                             onChange={(e) => updateItemRow(idx, { initial_comment: e.target.value })}
-                            placeholder="Комментарий к позиции"
+                            placeholder={modalMode === "edit" ? "Новый комментарий к позиции" : "Комментарий к позиции"}
                             rows={2}
                             className="app-input app-text-wrap w-full rounded-lg px-3 py-2 text-sm"
                           />
+                          {modalMode === "edit" && it.id && (itemCommentsMap[it.id] || []).length > 0 ? (
+                            <div className="app-surface rounded-lg px-3 py-2.5">
+                              <div className="mb-2 flex items-center justify-between gap-2">
+                                <p className="app-card-caption text-xs">Комментарии позиции</p>
+                                <span className="app-badge px-2 py-0.5 text-[10px] font-semibold">
+                                  {(itemCommentsMap[it.id] || []).length}
+                                </span>
+                              </div>
+                              <div className="max-h-40 space-y-2 overflow-y-auto pr-1">
+                                {(itemCommentsMap[it.id] || []).map((comment) => (
+                                  <div
+                                    key={comment.id}
+                                    className="border-b border-[var(--border-subtle)] pb-2 text-xs last:border-b-0 last:pb-0"
+                                  >
+                                    <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                      <span className="font-medium text-[var(--foreground)]">
+                                        {displayUserName(comment.author)}
+                                      </span>
+                                      <span className="app-text-muted text-[11px]">{fmt(comment.created_at)}</span>
+                                    </div>
+                                    <p className="app-text-wrap whitespace-pre-line leading-5 text-[var(--foreground)]">
+                                      {comment.text}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
                           <div className="grid grid-cols-4 gap-2">
                             <input
                               type="number"

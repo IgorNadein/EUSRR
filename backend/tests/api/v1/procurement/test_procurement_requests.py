@@ -1447,6 +1447,14 @@ class TestProcessingDepartmentWorkflow:
             'api:v1:procurement:procurementitem-report-issue',
             kwargs={'pk': item.id},
         )
+        confirm_received_url = reverse(
+            'api:v1:procurement:procurementitem-confirm-received',
+            kwargs={'pk': item.id},
+        )
+        cancel_received_url = reverse(
+            'api:v1:procurement:procurementitem-cancel-received',
+            kwargs={'pk': item.id},
+        )
         mark_all_url = reverse(
             'api:v1:procurement:procurementrequest-mark-all-received',
             kwargs={'pk': processing_request.id},
@@ -1470,12 +1478,16 @@ class TestProcessingDepartmentWorkflow:
             {'text': 'Брак'},
             format='json',
         )
+        confirm_received_response = api_client.post(confirm_received_url)
+        cancel_received_response = api_client.post(cancel_received_url)
         mark_all_response = api_client.post(mark_all_url)
         complete_response = api_client.post(complete_url)
         start_response = api_client.post(start_url)
 
         assert item_response.status_code == status.HTTP_403_FORBIDDEN
         assert issue_response.status_code == status.HTTP_400_BAD_REQUEST
+        assert confirm_received_response.status_code == status.HTTP_400_BAD_REQUEST
+        assert cancel_received_response.status_code == status.HTTP_400_BAD_REQUEST
         assert mark_all_response.status_code == status.HTTP_400_BAD_REQUEST
         assert complete_response.status_code == status.HTTP_403_FORBIDDEN
         assert start_response.status_code == status.HTTP_400_BAD_REQUEST
@@ -1886,12 +1898,223 @@ class TestProcessingDepartmentWorkflow:
         assert [comment.content for comment in get_comments(item)] == [
             "Обнаружен брак"
         ]
+
+        api_client.force_authenticate(user=supply_user)
+        my_work_url = reverse(
+            'api:v1:procurement:procurementrequest-list'
+        )
+        my_work_response = api_client.get(
+            my_work_url,
+            {'scope': 'my_work'},
+        )
+        assert my_work_response.status_code == status.HTTP_200_OK
+        my_work_item = next(
+            item for item in my_work_response.data["results"]
+            if item["id"] == processing_request.id
+        )
+        assert my_work_item["status"] == ProcurementStatus.IN_PROGRESS
+
         issue_recipients = [
             notification["recipient"].email
             for notification in sent
             if notification["verb"] == "procurement_item_updated"
         ]
         assert supply_user.email in issue_recipients
+
+    def test_executor_issue_reopens_request_for_requestor_and_notifies(
+        self, api_client, user, supply_user, processing_request,
+        procurement_item_factory, monkeypatch
+    ):
+        sent = []
+
+        def fake_notify_send(**kwargs):
+            sent.append(kwargs)
+
+        monkeypatch.setattr(
+            "procurement.notifications.handlers.notify.send",
+            fake_notify_send,
+        )
+
+        item = procurement_item_factory(
+            request=processing_request,
+            execution_status=ProcurementItemExecutionStatus.RECEIVED,
+            ordered_quantity=1,
+            received_quantity=1,
+        )
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.COMPLETED
+        processing_request.completed_at = timezone.now()
+        processing_request.fulfillment_status = (
+            ProcurementFulfillmentStatus.COMPLETED
+        )
+        processing_request.save()
+        sent.clear()
+
+        api_client.force_authenticate(user=supply_user)
+        url = reverse(
+            'api:v1:procurement:procurementitem-report-issue',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.post(url, {'text': 'Брак'}, format='json')
+
+        assert response.status_code == status.HTTP_200_OK
+        item.refresh_from_db()
+        processing_request.refresh_from_db()
+        assert item.execution_status == ProcurementItemExecutionStatus.DEFECTIVE
+        assert processing_request.status == ProcurementStatus.IN_PROGRESS
+        assert processing_request.completed_at is None
+
+        api_client.force_authenticate(user=user)
+        mine_url = reverse('api:v1:procurement:procurementrequest-list')
+        mine_response = api_client.get(mine_url, {'scope': 'mine'})
+        assert mine_response.status_code == status.HTTP_200_OK
+        mine_item = next(
+            item for item in mine_response.data["results"]
+            if item["id"] == processing_request.id
+        )
+        assert mine_item["status"] == ProcurementStatus.IN_PROGRESS
+
+        item_updated_recipients = [
+            notification["recipient"].email
+            for notification in sent
+            if notification["verb"] == "procurement_item_updated"
+        ]
+        in_progress_recipients = [
+            notification["recipient"].email
+            for notification in sent
+            if notification["verb"] == "procurement_in_progress"
+        ]
+        assert user.email in item_updated_recipients
+        assert user.email in in_progress_recipients
+
+    def test_requestor_can_confirm_item_received(
+        self, api_client, user, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            quantity=2,
+            ordered_quantity=1,
+            received_quantity=0,
+            execution_status=ProcurementItemExecutionStatus.ORDERED,
+        )
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save()
+
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementitem-confirm-received',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.post(url, {}, format='json')
+
+        assert response.status_code == status.HTTP_200_OK
+        item.refresh_from_db()
+        processing_request.refresh_from_db()
+        assert item.execution_status == ProcurementItemExecutionStatus.RECEIVED
+        assert item.ordered_quantity == item.quantity
+        assert item.received_quantity == item.quantity
+        assert (
+            processing_request.fulfillment_status
+            == ProcurementFulfillmentStatus.COMPLETED
+        )
+        assert processing_request.status == ProcurementStatus.COMPLETED
+        assert processing_request.completed_at is not None
+
+    def test_requestor_can_cancel_item_issue(
+        self, api_client, user, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            quantity=1,
+            ordered_quantity=1,
+            received_quantity=1,
+            execution_status=ProcurementItemExecutionStatus.DEFECTIVE,
+        )
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.fulfillment_status = ProcurementFulfillmentStatus.ISSUES
+        processing_request.save()
+
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementitem-cancel-issue',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.post(url, {}, format='json')
+
+        assert response.status_code == status.HTTP_200_OK
+        item.refresh_from_db()
+        processing_request.refresh_from_db()
+        assert item.execution_status == ProcurementItemExecutionStatus.RECEIVED
+        assert (
+            processing_request.fulfillment_status
+            == ProcurementFulfillmentStatus.COMPLETED
+        )
+        assert processing_request.status == ProcurementStatus.COMPLETED
+
+    def test_requestor_can_cancel_item_received_and_reopens_completed_request(
+        self, api_client, user, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            quantity=2,
+            ordered_quantity=2,
+            received_quantity=2,
+            execution_status=ProcurementItemExecutionStatus.RECEIVED,
+        )
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.COMPLETED
+        processing_request.completed_at = timezone.now()
+        processing_request.fulfillment_status = ProcurementFulfillmentStatus.COMPLETED
+        processing_request.save()
+
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementitem-cancel-received',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.post(url, {}, format='json')
+
+        assert response.status_code == status.HTTP_200_OK
+        item.refresh_from_db()
+        processing_request.refresh_from_db()
+        assert item.execution_status == ProcurementItemExecutionStatus.ORDERED
+        assert item.ordered_quantity == item.quantity
+        assert item.received_quantity == 0
+        assert (
+            processing_request.fulfillment_status
+            == ProcurementFulfillmentStatus.ORDERED
+        )
+        assert processing_request.status == ProcurementStatus.IN_PROGRESS
+        assert processing_request.completed_at is None
+
+    def test_outsider_cannot_confirm_item_received(
+        self, api_client, outsider, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            execution_status=ProcurementItemExecutionStatus.ORDERED,
+            ordered_quantity=1,
+        )
+
+        api_client.force_authenticate(user=outsider)
+        url = reverse(
+            'api:v1:procurement:procurementitem-confirm-received',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.post(url, {}, format='json')
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
     def test_list_exposes_procurement_progress_summary(
         self, api_client, supply_user, processing_request,

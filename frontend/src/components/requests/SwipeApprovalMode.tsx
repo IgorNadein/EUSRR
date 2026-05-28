@@ -379,10 +379,10 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
           type="button"
           onClick={() => { setFlyOut("right"); setTimeout(() => performAction("approved"), 250); }}
           disabled={busy}
-          className="app-feedback-success flex h-14 w-14 items-center justify-center rounded-full transition hover:shadow-md active:scale-95 disabled:opacity-50"
+          className="app-action-approve flex h-14 w-14 items-center justify-center rounded-full transition hover:shadow-md active:scale-95 disabled:opacity-50"
           title="Одобрить (→)"
         >
-          <ThumbsUp size={22} />
+          <ThumbsUp size={22} className="text-emerald-500" />
         </button>
       </div>
 

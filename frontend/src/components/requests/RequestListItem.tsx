@@ -269,9 +269,9 @@ export function RequestListItem({
                     title="Одобрить"
                     onClick={() => void onApprove(request.id)}
                     disabled={busyKey === `approve-${request.id}`}
-                    className="app-feedback-success inline-flex items-center justify-center rounded-lg p-2 disabled:opacity-60"
+                    className="app-action-approve inline-flex items-center justify-center rounded-lg p-2 disabled:opacity-60"
                   >
-                    <ThumbsUp size={18} />
+                    <ThumbsUp size={18} className="text-emerald-500" />
                   </button>
                   <button
                     type="button"
