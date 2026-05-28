@@ -91,6 +91,7 @@ function MessageDialogPageContent() {
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const highlightTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingRetryFilesRef = useRef<Map<string, File[]>>(new Map());
 
   /* ──────────────────────────────────────────────────────
    * HOOK: Chat messages (state, pagination, pending)
@@ -155,10 +156,19 @@ function MessageDialogPageContent() {
    * stays visible even after mark-read flushes (until user scrolls down).
    */
   const displayedUnreadCount = Math.max(cm.chat?.unread_count ?? 0, cm.newMessagesBelowCount);
+  const {
+    allowOneOlderProbe: cmAllowOneOlderProbe,
+    hasMoreOlder: cmHasMoreOlder,
+    jumpToMessage: cmJumpToMessage,
+    loadOlderMessages: cmLoadOlderMessages,
+    loadingOlder: cmLoadingOlder,
+    messagesLoading: cmMessagesLoading,
+  } = cm;
 
   /* ── UI state ── */
   const [messageText, setMessageText] = useState("");
   const [sending, setSending] = useState(false);
+  const [retryingLocalIds, setRetryingLocalIds] = useState<Set<string>>(() => new Set());
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [expandedReplyActionForId, setExpandedReplyActionForId] = useState<number | null>(null);
@@ -448,11 +458,11 @@ function MessageDialogPageContent() {
   }, [cm, markRead, scroll]);
 
   useEffect(() => {
-    if (cm.messagesLoading || cm.loadingOlder || displayMessages.length === 0) {
+    if (cmMessagesLoading || cmLoadingOlder || displayMessages.length === 0) {
       return;
     }
 
-    if (!cm.hasMoreOlder && !cm.allowOneOlderProbe) {
+    if (!cmHasMoreOlder && !cmAllowOneOlderProbe) {
       return;
     }
 
@@ -471,7 +481,7 @@ function MessageDialogPageContent() {
 
       const hasScrollableOverflow = viewport.scrollHeight > viewport.clientHeight + 8;
       if (!hasScrollableOverflow) {
-        void cm.loadOlderMessages();
+        void cmLoadOlderMessages();
       }
     });
 
@@ -480,11 +490,11 @@ function MessageDialogPageContent() {
       window.cancelAnimationFrame(frameId);
     };
   }, [
-    cm.allowOneOlderProbe,
-    cm.hasMoreOlder,
-    cm.loadingOlder,
-    cm.loadOlderMessages,
-    cm.messagesLoading,
+    cmAllowOneOlderProbe,
+    cmHasMoreOlder,
+    cmLoadOlderMessages,
+    cmLoadingOlder,
+    cmMessagesLoading,
     displayMessages.length,
   ]);
 
@@ -547,6 +557,7 @@ function MessageDialogPageContent() {
           : `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
         optimisticLocalId = localId;
         const opt = cm.buildOptimistic(text, files, localId, replyToId);
+        if (files.length > 0) pendingRetryFilesRef.current.set(localId, files);
         cm.addPending(opt);
         cm.schedulePendingTimer(localId);
         resetComposerState();
@@ -556,6 +567,7 @@ function MessageDialogPageContent() {
           : await apiClient.sendMessage(chatId, text, replyToId);
 
         cm.removePendingMessage(localId);
+        pendingRetryFilesRef.current.delete(localId);
         cm.setMessages(prev => uniqueMessagesById([...prev, sent]));
 
         if (wasNearBottom) requestAnimationFrame(() => scroll.scrollToBottom(false));
@@ -581,6 +593,47 @@ function MessageDialogPageContent() {
   const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => addAttachedFiles(Array.from(e.target.files || []));
   const removeAttachedFile = (index: number) => setAttachedFiles(prev => prev.filter((_, i) => i !== index));
   const handlePickFiles = () => { if (!editingMessageId) fileInputRef.current?.click(); };
+
+  const canRetryMessage = useCallback((message: Message): boolean => {
+    if (message.send_state !== "failed" || !message.local_id) return false;
+    const hasAttachments = Boolean(message.attachments?.length);
+    return !hasAttachments || pendingRetryFilesRef.current.has(message.local_id);
+  }, []);
+
+  const handleRetryMessage = useCallback(async (message: Message) => {
+    const localId = message.local_id;
+    if (!chatId || !localId || retryingLocalIds.has(localId) || !canRetryMessage(message)) return;
+
+    const text = (message.content || "").trim();
+    const files = pendingRetryFilesRef.current.get(localId) || [];
+    const replyToId = getReplyToId(message) ?? undefined;
+    const wasNearBottom = scroll.isNearBottom();
+
+    setRetryingLocalIds(prev => new Set(prev).add(localId));
+    cm.markPendingSending(localId);
+    cm.schedulePendingTimer(localId);
+
+    try {
+      const sent = files.length
+        ? await apiClient.sendMessageWithFiles(chatId, text, files, replyToId)
+        : await apiClient.sendMessage(chatId, text, replyToId);
+
+      cm.removePendingMessage(localId);
+      pendingRetryFilesRef.current.delete(localId);
+      cm.setMessages(prev => uniqueMessagesById([...prev, sent]));
+
+      if (wasNearBottom) requestAnimationFrame(() => scroll.scrollToBottom(false));
+    } catch (e) {
+      console.error("Ошибка переотправки сообщения:", e);
+      cm.markPendingFailed(localId);
+    } finally {
+      setRetryingLocalIds(prev => {
+        const next = new Set(prev);
+        next.delete(localId);
+        return next;
+      });
+    }
+  }, [canRetryMessage, chatId, cm, retryingLocalIds, scroll]);
 
   /* ── message actions ── */
 
@@ -738,7 +791,7 @@ function MessageDialogPageContent() {
     let cancelled = false;
 
     void (async () => {
-      const jumped = await cm.jumpToMessage(linkedMessageId);
+      const jumped = await cmJumpToMessage(linkedMessageId);
       if (cancelled) {
         return;
       }
@@ -751,7 +804,7 @@ function MessageDialogPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [clearMessageParam, cm.jumpToMessage, highlightFoundMessage, linkedMessageId]);
+  }, [clearMessageParam, cmJumpToMessage, highlightFoundMessage, linkedMessageId]);
 
   const runSearch = useCallback(async (query: string, options?: { append?: boolean; offset?: number }) => {
     const normalizedQuery = query.trim();
@@ -1114,6 +1167,9 @@ function MessageDialogPageContent() {
                               onQuickReact={handleReact}
                               onOpenReactionPicker={(msg) => setReactionPickerForMessageId(msg.id)}
                               onShowAllReaders={() => setIsReadersModalOpen(true)}
+                              onRetry={handleRetryMessage}
+                              isRetrying={Boolean(message.local_id && retryingLocalIds.has(message.local_id))}
+                              retryDisabled={!canRetryMessage(message)}
                               onReply={handleReplyToMessage}
                               onEdit={handleStartEditMessage}
                               onDelete={handleDeleteMessage}

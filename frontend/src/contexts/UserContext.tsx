@@ -36,9 +36,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
             // ApiClient автоматически обновит токен если он истёк
             const userData = await apiClient.getCurrentUser();
             setUser(userData);
-        } catch (err: any) {
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
             console.error('Ошибка загрузки пользователя:', err);
-            setError(err.message);
+            setError(message);
             setUser(null);
 
             // Токены уже очищены в ApiClient если refresh token тоже истёк
@@ -46,7 +47,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
             const hasToken = typeof window !== 'undefined' && localStorage.getItem('access_token');
             if (!hasToken) {
                 // Токены очищены - сессия истекла, redirect на login
-                if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+                if (
+                    typeof window !== 'undefined' &&
+                    !['/login', '/login/qr', '/login/qr/confirm'].includes(window.location.pathname)
+                ) {
                     window.location.href = '/login';
                 }
             }

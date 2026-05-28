@@ -372,6 +372,8 @@ DEFAULT_FROM_EMAIL = os.getenv(
 # Название сайта для email уведомлений и UI
 SITE_NAME = os.getenv("SITE_NAME", "CORP - HiRo")
 SITE_URL = os.getenv("SITE_URL", "https://corp.robotail.pro")
+QR_LOGIN_TOKEN_TTL_SECONDS = int(os.getenv("QR_LOGIN_TOKEN_TTL_SECONDS", "120"))
+QR_LOGIN_REQUEST_TTL_SECONDS = int(os.getenv("QR_LOGIN_REQUEST_TTL_SECONDS", "120"))
 
 # -----------------------------------------------------------------------------
 # NOTIFICATIONS

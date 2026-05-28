@@ -16,12 +16,39 @@ class PushNotificationSender(BaseNotificationSender):
     Доставляет уведомления в браузер даже когда вкладка закрыта.
     """
 
+    CHAT_NOTIFICATION_VERBS = {
+        "chat_new_message",
+        "chat_mention",
+        "chat_reply",
+        "announcement_new_message",
+    }
+    DEFAULT_TITLE = "Новое уведомление"
+
     def can_send(self, notification, user_preferences) -> bool:
         """Проверяет, включены ли push уведомления"""
         if not user_preferences.push_enabled:
             self.log_skip(notification, "push_enabled=False")
             return False
         return True
+
+    def _get_actor_name(self, notification) -> str:
+        actor = notification.actor
+        if not actor:
+            return ""
+        return str(actor).strip()
+
+    def _get_data_title(self, notification) -> str:
+        data = notification.data if isinstance(notification.data, dict) else {}
+        title = data.get("title")
+        if not isinstance(title, str):
+            return ""
+        return title.strip()
+
+    def _build_title(self, notification) -> str:
+        if notification.verb in self.CHAT_NOTIFICATION_VERBS:
+            return self._get_actor_name(notification) or self.DEFAULT_TITLE
+
+        return self._get_data_title(notification) or self.DEFAULT_TITLE
 
     def send(self, notification, **kwargs) -> bool:
         """
@@ -44,11 +71,8 @@ class PushNotificationSender(BaseNotificationSender):
                 self.log_skip(notification, "no active push devices")
                 return False
 
-            # Формируем данные для push
-            actor_str = (
-                str(notification.actor) if notification.actor else "Система"
-            )
-            title = f"{actor_str} {notification.verb}"
+            # Формируем данные для push без технических verb в видимом тексте.
+            title = self._build_title(notification)
 
             # Ограничиваем длину body.
             # Web Push имеет лимит ~4KB на весь payload.
@@ -66,6 +90,7 @@ class PushNotificationSender(BaseNotificationSender):
             # django-push-notifications использует другой формат
             # Формируем данные для Web Push API
             message_data = {
+                "title": title,
                 "head": title,
                 "body": body,
                 "url": notification.action_url or "/",
@@ -74,7 +99,6 @@ class PushNotificationSender(BaseNotificationSender):
                 "data": {
                     "url": notification.action_url or "/",
                     "notification_id": notification.id,
-                    "verb": notification.verb,
                 },
             }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import QRCode from "qrcode";
 import { toast } from "sonner";
 
 import { useTheme } from "@/contexts/ThemeContext";
@@ -151,6 +152,12 @@ export function useSettingsPage() {
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sessionsUnavailable, setSessionsUnavailable] = useState(false);
   const [sessionActionKey, setSessionActionKey] = useState<string | null>(null);
+  const [qrLogin, setQrLogin] = useState<{
+    loginUrl: string;
+    qrDataUrl: string;
+    expiresAt: string;
+  } | null>(null);
+  const [qrLoginLoading, setQrLoginLoading] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
     current_password: "",
     new_password: "",
@@ -513,6 +520,34 @@ export function useSettingsPage() {
     }
   };
 
+  const handleCreateQrLogin = async () => {
+    try {
+      setQrLoginLoading(true);
+      const response = await apiClient.createQrLogin();
+      const loginUrl = `${window.location.origin}/login/qr?token=${encodeURIComponent(response.token)}`;
+      const qrDataUrl = await QRCode.toDataURL(loginUrl, {
+        errorCorrectionLevel: "M",
+        margin: 1,
+        width: 224,
+        color: {
+          dark: "#111827",
+          light: "#ffffff",
+        },
+      });
+      setQrLogin({
+        loginUrl,
+        qrDataUrl,
+        expiresAt: response.expires_at,
+      });
+      toast.success("QR-вход создан");
+    } catch (error) {
+      console.error(error);
+      toast.error("Не удалось создать QR для входа");
+    } finally {
+      setQrLoginLoading(false);
+    }
+  };
+
   const handleChangePassword = async () => {
     if (
       !passwordForm.current_password ||
@@ -567,6 +602,8 @@ export function useSettingsPage() {
     profileDirty,
     profileForm,
     pushLoading,
+    qrLogin,
+    qrLoginLoading,
     resolvedTheme,
     savingContacts,
     savingPreferences,
@@ -585,6 +622,7 @@ export function useSettingsPage() {
     handleChangePassword,
     handleDndToggle,
     handleLogoutOthers,
+    handleCreateQrLogin,
     handlePushToggle,
     handleSessionLogout,
     logout,

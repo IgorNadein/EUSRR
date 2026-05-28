@@ -97,6 +97,49 @@ export interface SessionBulkActionResult {
   revoked: number;
 }
 
+export interface QrLoginCreateResult {
+  token: string;
+  expires_at: string;
+}
+
+export type QrLoginRequestStatus =
+  | "pending"
+  | "approved"
+  | "denied"
+  | "expired"
+  | "claimed";
+
+export interface QrLoginRequestCreateResult {
+  scan_token: string;
+  client_secret: string;
+  expires_at: string;
+  device_name: string;
+  ip_address?: string | null;
+}
+
+export interface QrLoginRequestStatusResult {
+  status: QrLoginRequestStatus;
+  access?: string;
+  refresh?: string;
+}
+
+export interface QrLoginRequestDetailResult {
+  status: QrLoginRequestStatus;
+  device_name: string;
+  ip_address?: string | null;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface QrLoginRequestActionResult {
+  status: QrLoginRequestStatus;
+}
+
+export interface LoginResponse {
+  access: string;
+  refresh: string;
+}
+
 export interface ChangePasswordPayload {
   current_password: string;
   new_password: string;

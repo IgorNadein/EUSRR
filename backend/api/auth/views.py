@@ -35,6 +35,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .models import UserAuthSession
@@ -46,6 +47,13 @@ from .serializers import (
     PasswordResetConfirmResponseSerializer,
     PasswordResetRequestResponseSerializer,
     PasswordResetRequestSerializer,
+    QrLoginCreateResponseSerializer,
+    QrLoginExchangeRequestSerializer,
+    QrLoginRequestActionResponseSerializer,
+    QrLoginRequestCreateResponseSerializer,
+    QrLoginRequestDetailResponseSerializer,
+    QrLoginRequestStatusRequestSerializer,
+    QrLoginRequestStatusResponseSerializer,
     SessionBulkActionResponseSerializer,
     SessionSerializer,
     SessionTokenRefreshSerializer,
@@ -53,7 +61,17 @@ from .serializers import (
     TokenRefreshRequestSerializer,
     TokenRefreshResponseSerializer,
 )
-from .services import SESSION_ID_CLAIM
+from .services import (
+    SESSION_ID_CLAIM,
+    approve_qr_login_request,
+    cancel_qr_login_request,
+    create_qr_login_request,
+    create_qr_login_token,
+    deny_qr_login_request,
+    exchange_qr_login_token,
+    get_qr_login_request_for_approval,
+    poll_qr_login_request,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +151,189 @@ class PhoneOrEmailTokenObtainPairView(TokenObtainPairView):
 )
 class JWTTokenRefreshView(TokenRefreshView):
     serializer_class = SessionTokenRefreshSerializer
+
+
+class QrLoginExchangeAPIView(AnonymousAPIView):
+    @extend_schema(
+        tags=["Auth"],
+        summary="Обменять одноразовый QR-токен на JWT access и refresh",
+        request=QrLoginExchangeRequestSerializer,
+        responses={
+            200: TokenPairResponseSerializer,
+            401: OpenApiResponse(
+                description="QR-токен недействителен, истек или уже использован."
+            ),
+        },
+    )
+    def post(self, request):
+        serializer = QrLoginExchangeRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            refresh, access = exchange_qr_login_token(
+                raw_token=serializer.validated_data["token"],
+                request=request,
+            )
+        except InvalidToken:
+            return Response(
+                {"detail": "qr_login_token_invalid"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        return Response(
+            {"refresh": refresh, "access": access},
+            status=status.HTTP_200_OK,
+        )
+
+
+def _serialize_qr_login_request(qr_request) -> dict:
+    return {
+        "status": qr_request.status,
+        "device_name": qr_request.requester_device_name,
+        "ip_address": qr_request.requester_ip_address,
+        "created_at": qr_request.created_at,
+        "expires_at": qr_request.expires_at,
+    }
+
+
+def _get_current_session_id_from_request(request) -> str | None:
+    token = getattr(request, "auth", None)
+    if token is None:
+        return None
+    return token.get(SESSION_ID_CLAIM)
+
+
+class QrLoginRequestCreateAPIView(AnonymousAPIView):
+    @extend_schema(
+        tags=["Auth"],
+        summary="Создать QR-запрос входа для подтверждения на другом устройстве",
+        responses={200: QrLoginRequestCreateResponseSerializer},
+    )
+    def post(self, request):
+        scan_token, client_secret, qr_request = create_qr_login_request(
+            request=request,
+        )
+        return Response(
+            {
+                "scan_token": scan_token,
+                "client_secret": client_secret,
+                "expires_at": qr_request.expires_at,
+                "device_name": qr_request.requester_device_name,
+                "ip_address": qr_request.requester_ip_address,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class QrLoginRequestStatusAPIView(AnonymousAPIView):
+    @extend_schema(
+        tags=["Auth"],
+        summary="Проверить статус QR-запроса входа",
+        request=QrLoginRequestStatusRequestSerializer,
+        responses={200: QrLoginRequestStatusResponseSerializer},
+    )
+    def post(self, request):
+        serializer = QrLoginRequestStatusRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            payload = poll_qr_login_request(
+                raw_client_secret=serializer.validated_data["client_secret"],
+                request=request,
+            )
+        except InvalidToken:
+            return Response(
+                {"detail": "qr_login_request_invalid"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        return Response(payload, status=status.HTTP_200_OK)
+
+
+class QrLoginRequestCancelAPIView(AnonymousAPIView):
+    @extend_schema(
+        tags=["Auth"],
+        summary="Отменить QR-запрос входа с устройства, которое показывает QR",
+        request=QrLoginRequestStatusRequestSerializer,
+        responses={200: QrLoginRequestActionResponseSerializer},
+    )
+    def post(self, request):
+        serializer = QrLoginRequestStatusRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            qr_request = cancel_qr_login_request(
+                raw_client_secret=serializer.validated_data["client_secret"],
+            )
+        except InvalidToken:
+            return Response(
+                {"detail": "qr_login_request_invalid"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        return Response({"status": qr_request.status}, status=status.HTTP_200_OK)
+
+
+class QrLoginRequestDetailAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Auth"],
+        summary="Получить параметры QR-запроса входа",
+        responses={200: QrLoginRequestDetailResponseSerializer},
+    )
+    def get(self, request, scan_token):
+        try:
+            qr_request = get_qr_login_request_for_approval(scan_token)
+        except InvalidToken:
+            return Response(
+                {"detail": "qr_login_request_invalid"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(
+            _serialize_qr_login_request(qr_request),
+            status=status.HTTP_200_OK,
+        )
+
+
+class QrLoginRequestApproveAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Auth"],
+        summary="Подтвердить QR-запрос входа",
+        responses={200: QrLoginRequestActionResponseSerializer},
+    )
+    def post(self, request, scan_token):
+        try:
+            qr_request = approve_qr_login_request(
+                raw_scan_token=scan_token,
+                user=request.user,
+                current_session_id=_get_current_session_id_from_request(request),
+            )
+        except InvalidToken:
+            return Response(
+                {"detail": "qr_login_request_invalid"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        return Response({"status": qr_request.status}, status=status.HTTP_200_OK)
+
+
+class QrLoginRequestDenyAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Auth"],
+        summary="Отклонить QR-запрос входа",
+        responses={200: QrLoginRequestActionResponseSerializer},
+    )
+    def post(self, request, scan_token):
+        try:
+            qr_request = deny_qr_login_request(
+                raw_scan_token=scan_token,
+                user=request.user,
+            )
+        except InvalidToken:
+            return Response(
+                {"detail": "qr_login_request_invalid"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        return Response({"status": qr_request.status}, status=status.HTTP_200_OK)
 
 
 class ResendEmailAPIView(AnonymousAPIView):
@@ -404,6 +605,24 @@ class SessionBaseAPIView(APIView):
         if token is None:
             return None
         return token.get(SESSION_ID_CLAIM)
+
+
+class QrLoginCreateAPIView(SessionBaseAPIView):
+    @extend_schema(
+        tags=["Auth"],
+        summary="Создать одноразовый QR-токен для входа",
+        responses={200: QrLoginCreateResponseSerializer},
+    )
+    def post(self, request):
+        raw_token, token = create_qr_login_token(
+            user=request.user,
+            request=request,
+            current_session_id=self.get_current_session_id(request),
+        )
+        return Response(
+            {"token": raw_token, "expires_at": token.expires_at},
+            status=status.HTTP_200_OK,
+        )
 
 
 class ChangePasswordAPIView(LdapPasswordMixin, SessionBaseAPIView):

@@ -3,15 +3,16 @@
  * Domain-specific methods live in separate modules.
  */
 
+import type {
+    LoginResponse,
+    QrLoginRequestCreateResult,
+    QrLoginRequestStatusResult,
+} from "@/types/api";
+
 interface LoginCredentials {
     email?: string;
     phone?: string;
     password: string;
-}
-
-interface LoginResponse {
-    access: string;
-    refresh: string;
 }
 
 export class ApiClientBase {
@@ -167,6 +168,52 @@ export class ApiClientBase {
         this.setRefreshToken(data.refresh);
     }
 
+    async loginWithQrToken(token: string): Promise<void> {
+        const response = await fetch('/api/auth/qr-login/exchange/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token }),
+        });
+        if (!response.ok) throw new Error(`QR login failed: ${response.status}`);
+        const data: LoginResponse = await response.json();
+        this.setToken(data.access);
+        this.setRefreshToken(data.refresh);
+    }
+
+    async createQrLoginRequest(): Promise<QrLoginRequestCreateResult> {
+        const response = await fetch('/api/auth/qr-login/requests/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        if (!response.ok) throw new Error(`QR request failed: ${response.status}`);
+        return response.json();
+    }
+
+    async pollQrLoginRequest(clientSecret: string): Promise<QrLoginRequestStatusResult> {
+        const response = await fetch('/api/auth/qr-login/requests/status/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ client_secret: clientSecret }),
+        });
+        if (!response.ok) throw new Error(`QR status failed: ${response.status}`);
+
+        const data: QrLoginRequestStatusResult = await response.json();
+        if (data.status === 'approved' && data.access && data.refresh) {
+            this.setToken(data.access);
+            this.setRefreshToken(data.refresh);
+        }
+        return data;
+    }
+
+    async cancelQrLoginRequest(clientSecret: string): Promise<void> {
+        const response = await fetch('/api/auth/qr-login/requests/cancel/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ client_secret: clientSecret }),
+        });
+        if (!response.ok) throw new Error(`QR cancel failed: ${response.status}`);
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async getCurrentUser(): Promise<any> {
         return this.request('/api/v1/employees/me/');
@@ -194,7 +241,7 @@ export class ApiClientBase {
         const formData = new FormData();
         Object.keys(data).forEach((key) => {
             if (Array.isArray(data[key])) {
-                data[key].forEach((value: any) => {
+                data[key].forEach((value: unknown) => {
                     if (value !== null && value !== undefined) formData.append(key, String(value));
                 });
             }

@@ -12,6 +12,7 @@ import {
   Image as ImageIcon,
   Loader2,
   PlayCircle,
+  RotateCcw,
 } from "lucide-react";
 
 import { RequestAvatar } from "@/components/requests/RequestAvatar";
@@ -73,6 +74,9 @@ type ChatMessageItemProps = {
   onQuickReact: (message: Message, emoji: string) => void;
   onOpenReactionPicker: (message: Message) => void;
   onShowAllReaders?: (message: Message) => void;
+  onRetry?: (message: Message) => void;
+  isRetrying?: boolean;
+  retryDisabled?: boolean;
   onReply: (message: Message) => void;
   onEdit: (message: Message) => void;
   onDelete: (message: Message) => void;
@@ -149,6 +153,9 @@ export default function ChatMessageItem({
   onQuickReact,
   onOpenReactionPicker,
   onShowAllReaders,
+  onRetry,
+  isRetrying = false,
+  retryDisabled = false,
   onReply,
   onEdit,
   onDelete,
@@ -448,6 +455,18 @@ export default function ChatMessageItem({
             ) : null}
 
             <div className={`mt-1 flex items-center ${isMine ? "justify-end gap-1.5" : "justify-end"}`}>
+              {isMine && sendState === "failed" && onRetry ? (
+                <button
+                  type="button"
+                  onClick={() => onRetry(message)}
+                  disabled={isRetrying || retryDisabled}
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25 focus:outline-none focus:ring-2 focus:ring-white/35 disabled:cursor-not-allowed disabled:opacity-45"
+                  title={retryDisabled ? "Вложения нужно выбрать заново" : isRetrying ? "Отправляется" : "Переотправить"}
+                  aria-label={retryDisabled ? "Нельзя переотправить: вложения нужно выбрать заново" : "Переотправить сообщение"}
+                >
+                  <RotateCcw size={12} className={isRetrying ? "animate-spin" : ""} />
+                </button>
+              ) : null}
               <p className={`text-right text-[11px] ${isMine ? "text-sky-100" : "app-text-muted"}`}>{messageTime(message)}</p>
               {isMine ? <MessageDeliveryStatus sendState={sendState} isRead={isRead} /> : null}
             </div>

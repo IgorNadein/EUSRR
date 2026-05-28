@@ -8,7 +8,7 @@ from django.core import mail
 from django.urls import reverse
 from django.utils import timezone
 from django.contrib.auth import get_user_model
-from api.auth.models import UserAuthSession
+from api.auth.models import QrLoginRequest, QrLoginToken, UserAuthSession
 from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
@@ -358,6 +358,16 @@ def test_login_wrong_password(api):
         ("api:v1:token_obtain_pair", "/api/v1/auth/token/"),
         ("api:token_refresh", "/api/auth/token/refresh/"),
         ("api:v1:token_refresh", "/api/v1/auth/token/refresh/"),
+        ("api:qr-login", "/api/auth/qr-login/"),
+        ("api:v1:qr-login", "/api/v1/auth/qr-login/"),
+        ("api:qr-login-exchange", "/api/auth/qr-login/exchange/"),
+        ("api:v1:qr-login-exchange", "/api/v1/auth/qr-login/exchange/"),
+        ("api:qr-login-request", "/api/auth/qr-login/requests/"),
+        ("api:v1:qr-login-request", "/api/v1/auth/qr-login/requests/"),
+        ("api:qr-login-request-status", "/api/auth/qr-login/requests/status/"),
+        ("api:v1:qr-login-request-status", "/api/v1/auth/qr-login/requests/status/"),
+        ("api:qr-login-request-cancel", "/api/auth/qr-login/requests/cancel/"),
+        ("api:v1:qr-login-request-cancel", "/api/v1/auth/qr-login/requests/cancel/"),
         ("api:password-reset", "/api/auth/password-reset/"),
         ("api:v1:password-reset", "/api/v1/auth/password-reset/"),
         ("api:password-reset-confirm", "/api/auth/password-reset/confirm/"),
@@ -372,6 +382,35 @@ def test_login_wrong_password(api):
 )
 def test_auth_routes_are_mirrored(route_name, path):
     assert reverse(route_name) == path
+
+
+def test_qr_login_request_action_routes_are_mirrored():
+    scan_token = "scan-token"
+
+    assert (
+        reverse("api:qr-login-request-detail", kwargs={"scan_token": scan_token})
+        == f"/api/auth/qr-login/requests/{scan_token}/"
+    )
+    assert (
+        reverse("api:v1:qr-login-request-detail", kwargs={"scan_token": scan_token})
+        == f"/api/v1/auth/qr-login/requests/{scan_token}/"
+    )
+    assert (
+        reverse("api:qr-login-request-approve", kwargs={"scan_token": scan_token})
+        == f"/api/auth/qr-login/requests/{scan_token}/approve/"
+    )
+    assert (
+        reverse("api:v1:qr-login-request-approve", kwargs={"scan_token": scan_token})
+        == f"/api/v1/auth/qr-login/requests/{scan_token}/approve/"
+    )
+    assert (
+        reverse("api:qr-login-request-deny", kwargs={"scan_token": scan_token})
+        == f"/api/auth/qr-login/requests/{scan_token}/deny/"
+    )
+    assert (
+        reverse("api:v1:qr-login-request-deny", kwargs={"scan_token": scan_token})
+        == f"/api/v1/auth/qr-login/requests/{scan_token}/deny/"
+    )
 
 
 def test_login_creates_auth_session_and_embeds_session_id(api):
@@ -391,6 +430,218 @@ def test_login_creates_auth_session_and_embeds_session_id(api):
     session = UserAuthSession.objects.get(session_id=access["session_id"])
     assert session.user.email == "ivan@example.com"
     assert session.refresh_token_hash
+
+
+def test_qr_login_creates_one_time_session(api):
+    assert register(api).status_code == status.HTTP_201_CREATED
+    code = extract_code_from_last_email()
+    assert verify(api, email="ivan@example.com", code=code).status_code in (200, 204)
+
+    login = jwt_obtain(api, email="ivan@example.com")
+    assert login.status_code == status.HTTP_200_OK
+    access = login.json()["access"]
+
+    created = api.post(reverse("api:qr-login"), **auth_headers(access))
+    assert created.status_code == status.HTTP_200_OK
+    body = created.json()
+    assert body["token"]
+    assert body["expires_at"]
+
+    qr_token = QrLoginToken.objects.get()
+    assert qr_token.user.email == "ivan@example.com"
+    assert qr_token.token_hash
+    assert qr_token.token_hash != body["token"]
+    assert qr_token.used_at is None
+
+    exchanged = api.post(
+        reverse("api:qr-login-exchange"),
+        {"token": body["token"]},
+        format="json",
+    )
+    assert exchanged.status_code == status.HTTP_200_OK
+    exchanged_body = exchanged.json()
+    assert {"access", "refresh"} <= set(exchanged_body.keys())
+
+    qr_token.refresh_from_db()
+    assert qr_token.used_at is not None
+    assert qr_token.used_session is not None
+
+    new_access = exchanged_body["access"]
+    profile = api.get(reverse("api:v1:employees-me"), **auth_headers(new_access))
+    assert profile.status_code == status.HTTP_200_OK
+
+    reused = api.post(
+        reverse("api:v1:qr-login-exchange"),
+        {"token": body["token"]},
+        format="json",
+    )
+    assert reused.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+def test_qr_login_rejects_expired_token(api, settings):
+    settings.QR_LOGIN_TOKEN_TTL_SECONDS = 30
+    assert register(api).status_code == status.HTTP_201_CREATED
+    code = extract_code_from_last_email()
+    assert verify(api, email="ivan@example.com", code=code).status_code in (200, 204)
+
+    login = jwt_obtain(api, email="ivan@example.com")
+    access = login.json()["access"]
+    created = api.post(reverse("api:v1:qr-login"), **auth_headers(access))
+    assert created.status_code == status.HTTP_200_OK
+
+    QrLoginToken.objects.update(expires_at=timezone.now() - timedelta(seconds=1))
+
+    exchanged = api.post(
+        reverse("api:qr-login-exchange"),
+        {"token": created.json()["token"]},
+        format="json",
+    )
+    assert exchanged.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+def test_qr_login_request_approval_creates_session(api):
+    assert register(api).status_code == status.HTTP_201_CREATED
+    code = extract_code_from_last_email()
+    assert verify(api, email="ivan@example.com", code=code).status_code in (200, 204)
+
+    login = jwt_obtain(api, email="ivan@example.com")
+    assert login.status_code == status.HTTP_200_OK
+    access = login.json()["access"]
+
+    created = api.post(
+        reverse("api:qr-login-request"),
+        format="json",
+        HTTP_USER_AGENT="Mozilla/5.0 (Windows NT 10.0) Chrome/124.0",
+        REMOTE_ADDR="10.10.0.25",
+    )
+    assert created.status_code == status.HTTP_200_OK
+    body = created.json()
+    assert body["scan_token"]
+    assert body["client_secret"]
+    assert body["expires_at"]
+    assert body["device_name"] == "Google Chrome on Windows"
+    assert body["ip_address"] == "10.10.0.25"
+
+    qr_request = QrLoginRequest.objects.get()
+    assert qr_request.status == "pending"
+    assert qr_request.scan_token_hash != body["scan_token"]
+    assert qr_request.client_secret_hash != body["client_secret"]
+
+    detail = api.get(
+        reverse(
+            "api:qr-login-request-detail",
+            kwargs={"scan_token": body["scan_token"]},
+        ),
+        **auth_headers(access),
+    )
+    assert detail.status_code == status.HTTP_200_OK
+    detail_body = detail.json()
+    assert detail_body["status"] == "pending"
+    assert detail_body["device_name"] == "Google Chrome on Windows"
+
+    approved = api.post(
+        reverse(
+            "api:qr-login-request-approve",
+            kwargs={"scan_token": body["scan_token"]},
+        ),
+        **auth_headers(access),
+    )
+    assert approved.status_code == status.HTTP_200_OK
+    assert approved.json()["status"] == "approved"
+
+    polled = api.post(
+        reverse("api:v1:qr-login-request-status"),
+        {"client_secret": body["client_secret"]},
+        format="json",
+        HTTP_USER_AGENT="Mozilla/5.0 (Macintosh) Chrome/124.0",
+        REMOTE_ADDR="10.10.0.26",
+    )
+    assert polled.status_code == status.HTTP_200_OK
+    polled_body = polled.json()
+    assert polled_body["status"] == "approved"
+    assert {"access", "refresh"} <= set(polled_body.keys())
+
+    qr_request.refresh_from_db()
+    assert qr_request.status == "claimed"
+    assert qr_request.used_session is not None
+    assert qr_request.used_session.user.email == "ivan@example.com"
+
+    profile = api.get(
+        reverse("api:v1:employees-me"),
+        **auth_headers(polled_body["access"]),
+    )
+    assert profile.status_code == status.HTTP_200_OK
+
+    reused = api.post(
+        reverse("api:qr-login-request-status"),
+        {"client_secret": body["client_secret"]},
+        format="json",
+    )
+    assert reused.status_code == status.HTTP_200_OK
+    assert reused.json() == {"status": "claimed"}
+
+
+def test_qr_login_request_can_be_denied(api):
+    assert register(api).status_code == status.HTTP_201_CREATED
+    code = extract_code_from_last_email()
+    assert verify(api, email="ivan@example.com", code=code).status_code in (200, 204)
+
+    login = jwt_obtain(api, email="ivan@example.com")
+    access = login.json()["access"]
+
+    created = api.post(reverse("api:qr-login-request"), format="json")
+    assert created.status_code == status.HTTP_200_OK
+    body = created.json()
+
+    denied = api.post(
+        reverse(
+            "api:qr-login-request-deny",
+            kwargs={"scan_token": body["scan_token"]},
+        ),
+        **auth_headers(access),
+    )
+    assert denied.status_code == status.HTTP_200_OK
+    assert denied.json()["status"] == "denied"
+
+    polled = api.post(
+        reverse("api:qr-login-request-status"),
+        {"client_secret": body["client_secret"]},
+        format="json",
+    )
+    assert polled.status_code == status.HTTP_200_OK
+    assert polled.json() == {"status": "denied"}
+
+
+def test_qr_login_request_rejects_expired_request(api):
+    assert register(api).status_code == status.HTTP_201_CREATED
+    code = extract_code_from_last_email()
+    assert verify(api, email="ivan@example.com", code=code).status_code in (200, 204)
+
+    login = jwt_obtain(api, email="ivan@example.com")
+    access = login.json()["access"]
+
+    created = api.post(reverse("api:qr-login-request"), format="json")
+    assert created.status_code == status.HTTP_200_OK
+    body = created.json()
+
+    QrLoginRequest.objects.update(expires_at=timezone.now() - timedelta(seconds=1))
+
+    approved = api.post(
+        reverse(
+            "api:qr-login-request-approve",
+            kwargs={"scan_token": body["scan_token"]},
+        ),
+        **auth_headers(access),
+    )
+    assert approved.status_code == status.HTTP_401_UNAUTHORIZED
+
+    polled = api.post(
+        reverse("api:qr-login-request-status"),
+        {"client_secret": body["client_secret"]},
+        format="json",
+    )
+    assert polled.status_code == status.HTTP_200_OK
+    assert polled.json() == {"status": "expired"}
 
 
 def test_sessions_list_and_logout_others_revoke_other_session(api):

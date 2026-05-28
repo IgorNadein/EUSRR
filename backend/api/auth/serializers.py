@@ -14,8 +14,7 @@ from rest_framework_simplejwt.serializers import (
 from .models import UserAuthSession
 from .services import (
     SESSION_ID_CLAIM,
-    create_auth_session,
-    hash_refresh_token,
+    create_token_pair_for_session,
     validate_refresh_session,
 )
 
@@ -25,6 +24,45 @@ User = get_user_model()
 class TokenPairResponseSerializer(serializers.Serializer):
     refresh = serializers.CharField(read_only=True)
     access = serializers.CharField(read_only=True)
+
+
+class QrLoginCreateResponseSerializer(serializers.Serializer):
+    token = serializers.CharField(read_only=True)
+    expires_at = serializers.DateTimeField(read_only=True)
+
+
+class QrLoginExchangeRequestSerializer(serializers.Serializer):
+    token = serializers.CharField(write_only=True, trim_whitespace=True)
+
+
+class QrLoginRequestCreateResponseSerializer(serializers.Serializer):
+    scan_token = serializers.CharField(read_only=True)
+    client_secret = serializers.CharField(read_only=True)
+    expires_at = serializers.DateTimeField(read_only=True)
+    device_name = serializers.CharField(read_only=True)
+    ip_address = serializers.IPAddressField(read_only=True, allow_null=True)
+
+
+class QrLoginRequestStatusRequestSerializer(serializers.Serializer):
+    client_secret = serializers.CharField(write_only=True, trim_whitespace=True)
+
+
+class QrLoginRequestStatusResponseSerializer(serializers.Serializer):
+    status = serializers.CharField(read_only=True)
+    refresh = serializers.CharField(read_only=True, required=False)
+    access = serializers.CharField(read_only=True, required=False)
+
+
+class QrLoginRequestDetailResponseSerializer(serializers.Serializer):
+    status = serializers.CharField(read_only=True)
+    device_name = serializers.CharField(read_only=True)
+    ip_address = serializers.IPAddressField(read_only=True, allow_null=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    expires_at = serializers.DateTimeField(read_only=True)
+
+
+class QrLoginRequestActionResponseSerializer(serializers.Serializer):
+    status = serializers.CharField(read_only=True)
 
 
 class TokenRefreshRequestSerializer(serializers.Serializer):
@@ -196,18 +234,14 @@ class PhoneOrEmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         if request is None:
             raise AuthenticationFailed("request_context_missing")
 
-        session = create_auth_session(user=self.user, request=request)
-        refresh = self.get_token(self.user)
-        refresh[SESSION_ID_CLAIM] = str(session.session_id)
-        access = refresh.access_token
-        access[SESSION_ID_CLAIM] = str(session.session_id)
-
-        session.refresh_token_hash = hash_refresh_token(str(refresh))
-        session.save(update_fields=["refresh_token_hash"])
+        refresh, access, _session = create_token_pair_for_session(
+            user=self.user,
+            request=request,
+        )
 
         return {
-            "refresh": str(refresh),
-            "access": str(access),
+            "refresh": refresh,
+            "access": access,
         }
 
 

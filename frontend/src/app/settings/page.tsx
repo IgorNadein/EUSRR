@@ -6,6 +6,7 @@ import {
   ArrowUp,
   Bell,
   Check,
+  Copy,
   Clock3,
   Download,
   Eye,
@@ -15,6 +16,7 @@ import {
   Mail,
   Monitor,
   Moon,
+  QrCode,
   Save,
   Smartphone,
   Sun,
@@ -149,6 +151,8 @@ export default function SettingsPage() {
     profileDirty,
     profileForm,
     pushLoading,
+    qrLogin,
+    qrLoginLoading,
     resolvedTheme,
     savingContacts,
     savingPreferences,
@@ -166,6 +170,7 @@ export default function SettingsPage() {
     handleChangePassword,
     handleDndToggle,
     handleLogoutOthers,
+    handleCreateQrLogin,
     handlePushToggle,
     handleSessionLogout,
     logout,
@@ -788,6 +793,60 @@ export default function SettingsPage() {
                       </div>
                     </div>
                   </div>
+                </div>
+
+                <div className="app-surface-muted rounded-2xl p-4">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <span className="app-badge flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+                        <QrCode size={18} />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-[var(--foreground)]">Вход по QR</p>
+                        <p className="app-text-muted mt-1 text-sm">
+                          Одноразовая ссылка для авторизации нового устройства.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleCreateQrLogin()}
+                      disabled={qrLoginLoading}
+                      className="app-action-secondary inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+                    >
+                      <QrCode size={16} />
+                      {qrLoginLoading ? "Создаем..." : qrLogin ? "Обновить QR" : "Создать QR"}
+                    </button>
+                  </div>
+
+                  {qrLogin ? (
+                    <div className="mt-4 grid gap-4 md:grid-cols-[auto,minmax(0,1fr)]">
+                      <div className="w-fit rounded-2xl bg-white p-3">
+                        <Image
+                          src={qrLogin.qrDataUrl}
+                          alt="QR для входа"
+                          width={176}
+                          height={176}
+                          unoptimized
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="app-text-muted text-sm">
+                          Действует до {formatSessionDateTime(qrLogin.expiresAt)}.
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void navigator.clipboard?.writeText(qrLogin.loginUrl)}
+                            className="app-action-secondary inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium"
+                          >
+                            <Copy size={16} />
+                            Скопировать ссылку
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="app-surface-muted rounded-2xl p-4">

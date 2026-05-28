@@ -3,6 +3,12 @@ import { apiClient } from "@/lib/api";
 import type { Chat, Message } from "@/types/api";
 import { getMessageTimestamp, uniqueMessagesById } from "@/lib/messages/chatUtils";
 import { getReplyToId } from "@/lib/messages/messageUtils";
+import {
+  getPendingMessageStorageIdentity,
+  loadStoredPendingMessages,
+  reconcileStoredPendingMessages,
+  saveStoredPendingMessages,
+} from "@/lib/messages/pendingMessageStorage";
 
 const PENDING_MESSAGE_DELAY_MS = 8000;
 
@@ -62,6 +68,8 @@ export interface UseChatMessagesReturn {
   schedulePendingTimer: (localId: string) => void;
   /** Mark a pending message as failed */
   markPendingFailed: (localId: string) => void;
+  /** Mark a failed pending message as sending again */
+  markPendingSending: (localId: string) => void;
   /** Jump to a specific date (history navigation) */
   jumpToDate: (dateISO: string) => Promise<void>;
   /** Return to unread boundary (around last_read_message_id) */
@@ -124,6 +132,7 @@ export function useChatMessages({
   const hasMoreNewerRef = useRef(false);
   const initialScrolledRef = useRef(false);
   const pendingMessagesRef = useRef<Message[]>([]);
+  const pendingStorageIdentityRef = useRef<string | null>(null);
   const localSeqRef = useRef(0);
   const pendingTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const fallbackInFlightRef = useRef(false);
@@ -135,6 +144,13 @@ export function useChatMessages({
   /* keep refs in sync */
   useEffect(() => { hasMoreNewerRef.current = hasMoreNewer; }, [hasMoreNewer]);
   useEffect(() => { pendingMessagesRef.current = pendingMessages; }, [pendingMessages]);
+  useEffect(() => {
+    if (!chatId || Number.isNaN(chatId) || !userId) return;
+    const identity = getPendingMessageStorageIdentity(chatId, userId);
+    if (pendingStorageIdentityRef.current !== identity) return;
+
+    saveStoredPendingMessages(chatId, userId, pendingMessages);
+  }, [chatId, pendingMessages, userId]);
 
   /* ── pending message helpers ── */
 
@@ -171,6 +187,10 @@ export function useChatMessages({
     clearPendingTimer(localId);
     setPendingMessages(prev => prev.map(m => m.local_id === localId ? { ...m, send_state: "failed" } : m));
   }, [clearPendingTimer]);
+
+  const markPendingSending = useCallback((localId: string) => {
+    setPendingMessages(prev => prev.map(m => m.local_id === localId ? { ...m, send_state: "pending" } : m));
+  }, []);
 
   /* ── attachment signature matching ── */
 
@@ -293,6 +313,7 @@ export function useChatMessages({
 
   useEffect(() => {
     if (!chatId || Number.isNaN(chatId)) {
+      pendingStorageIdentityRef.current = null;
       clearAllPendingTimers(); setMessages([]); setPendingMessages([]);
       setHasMoreOlder(false); setHasMoreNewer(false);
       setInitialAnchorId(null); setInitialAnchorIndex(null);
@@ -301,9 +322,14 @@ export function useChatMessages({
       resetNewMessagesBelow();
       return;
     }
-    if (userLoading || !userId) return;
+    if (userLoading || !userId) {
+      pendingStorageIdentityRef.current = null;
+      return;
+    }
 
     let cancelled = false;
+    const storageIdentity = getPendingMessageStorageIdentity(chatId, userId);
+    pendingStorageIdentityRef.current = null;
 
     (async () => {
       try {
@@ -323,8 +349,12 @@ export function useChatMessages({
         if (aroundMsgs.length > 0) {
           clearAllPendingTimers();
           const norm = uniqueMessagesById(aroundMsgs);
+          const restoredPending = reconcileStoredPendingMessages(
+            loadStoredPendingMessages(chatId, userId),
+            norm,
+          );
           setMessages(norm);
-          setPendingMessages([]);
+          setPendingMessages(restoredPending);
           setHasMoreOlder(typeof around.has_more_before === "boolean" ? around.has_more_before : norm.length >= 50);
           setHasMoreNewer(Boolean(around.has_more_after));
           setInitialAnchorId(around.anchor_id ?? null);
@@ -344,7 +374,11 @@ export function useChatMessages({
           const resp = await apiClient.getChatMessages(chatId, { limit: 50 });
           if (cancelled) return;
           const norm = uniqueMessagesById(resp.messages || []);
-          setMessages(norm); setPendingMessages([]);
+          const restoredPending = reconcileStoredPendingMessages(
+            loadStoredPendingMessages(chatId, userId),
+            norm,
+          );
+          setMessages(norm); setPendingMessages(restoredPending);
           setHasMoreOlder(Boolean(resp.has_more)); setHasMoreNewer(false);
           setInitialAnchorId(null); setInitialAnchorIndex(null); setAllowOneOlderProbe(false);
           unreadBelowIdsRef.current = new Set(
@@ -356,6 +390,7 @@ export function useChatMessages({
           setNewMessagesBelowCount(Math.max(chatDetails.unread_count ?? 0, unreadBelowIdsRef.current.size));
         }
 
+        pendingStorageIdentityRef.current = storageIdentity;
         initialScrolledRef.current = false;
         setAnchorRetryTick(0);
       } catch (err: unknown) {
@@ -416,7 +451,7 @@ export function useChatMessages({
     const newest = messages[messages.length - 1];
     try {
       setLoadingNewer(true);
-      const resp = await apiClient.getChatMessages(chatId, { limit: 10, after_id: newest.id, mark_read: false });
+      const resp = await apiClient.getChatMessages(chatId, { limit: 10, after_id: newest.id, mark_read: opts?.markRead ?? false });
       const newer = resp.messages || [];
       if (newer.length > 0) {
         newer.forEach(removePendingByServer);
@@ -605,6 +640,7 @@ export function useChatMessages({
     addPending,
     schedulePendingTimer,
     markPendingFailed,
+    markPendingSending,
     jumpToDate,
     returnToUnread,
     jumpToMessage,

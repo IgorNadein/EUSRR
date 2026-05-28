@@ -6,6 +6,9 @@ import type {
     PasswordResetConfirmResult,
     PasswordResetRequestPayload,
     PasswordResetRequestResult,
+    QrLoginCreateResult,
+    QrLoginRequestActionResult,
+    QrLoginRequestDetailResult,
     SessionBulkActionResult,
 } from "@/types/api";
 
@@ -18,6 +21,24 @@ export function createAuthApi(request: RequestFn) {
             request(`/api/auth/sessions/${sessionId}/`, { method: "DELETE" }),
         logoutOtherSessions: (): Promise<SessionBulkActionResult> =>
             request("/api/auth/sessions/logout-others/", { method: "POST" }),
+        createQrLogin: (): Promise<QrLoginCreateResult> =>
+            request("/api/auth/qr-login/", { method: "POST" }),
+        getQrLoginRequest: (
+            scanToken: string,
+        ): Promise<QrLoginRequestDetailResult> =>
+            request(`/api/auth/qr-login/requests/${encodeURIComponent(scanToken)}/`),
+        approveQrLoginRequest: (
+            scanToken: string,
+        ): Promise<QrLoginRequestActionResult> =>
+            request(`/api/auth/qr-login/requests/${encodeURIComponent(scanToken)}/approve/`, {
+                method: "POST",
+            }),
+        denyQrLoginRequest: (
+            scanToken: string,
+        ): Promise<QrLoginRequestActionResult> =>
+            request(`/api/auth/qr-login/requests/${encodeURIComponent(scanToken)}/deny/`, {
+                method: "POST",
+            }),
         changePassword: (
             payload: ChangePasswordPayload,
         ): Promise<ChangePasswordResult> =>
