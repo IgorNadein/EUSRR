@@ -416,6 +416,28 @@ html[data-bs-theme="dark"] .app-input::-webkit-calendar-picker-indicator {
   background: var(--accent-primary-strong);
 }
 
+.app-action-success {
+  border: 1px solid color-mix(in srgb, #10b981 20%, var(--border-strong));
+  background: var(--success-soft);
+  color: #059669;
+}
+
+.app-action-success:hover {
+  background: color-mix(in srgb, #10b981 18%, var(--surface-elevated));
+  border-color: color-mix(in srgb, #10b981 30%, var(--border-strong));
+}
+
+.app-action-warning {
+  border: 1px solid color-mix(in srgb, #f59e0b 20%, var(--border-strong));
+  background: var(--warning-soft);
+  color: #d97706;
+}
+
+.app-action-warning:hover {
+  background: color-mix(in srgb, #f59e0b 18%, var(--surface-elevated));
+  border-color: color-mix(in srgb, #f59e0b 30%, var(--border-strong));
+}
+
 .app-action-secondary {
   border: 1px solid var(--border-strong);
   background: var(--surface-elevated);

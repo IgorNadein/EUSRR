@@ -49,7 +49,7 @@ const statusMeta: Record<ProcurementStatus, { label: string; cls: string }> = {
   pending:     { label: "На согласовании", cls: "app-feedback-warning" },
   approved:    { label: "Одобрено",        cls: "app-feedback-success" },
   in_progress: { label: "В работе",        cls: "app-selected" },
-  completed:   { label: "Завершено",       cls: "app-selected" },
+  completed:   { label: "Завершено",       cls: "app-feedback-success" },
   rejected:    { label: "Отклонено",       cls: "app-feedback-danger" },
   cancelled:   { label: "Отменено",        cls: "app-badge" },
 };
@@ -61,8 +61,8 @@ const getStatusMeta = (status?: string | null) => (
 
 const fulfillmentStatusClasses: Record<ProcurementFulfillmentStatus, string> = {
   pending: "app-badge",
-  partially_ordered: "app-feedback-warning",
-  ordered: "app-feedback-success",
+  partially_ordered: "app-selected",
+  ordered: "app-selected",
   partially_received: "app-feedback-warning",
   completed: "app-feedback-success",
   issues: "app-feedback-warning",
@@ -70,6 +70,14 @@ const fulfillmentStatusClasses: Record<ProcurementFulfillmentStatus, string> = {
 const getFulfillmentStatusClass = (status?: string | null) => (
   fulfillmentStatusClasses[String(status || "").toLowerCase() as ProcurementFulfillmentStatus] ?? "app-badge"
 );
+
+const getOrderedProgressClass = (ordered: number, total: number) => (
+  total > 0 && ordered >= total ? "app-feedback-success" : total > 0 && ordered > 0 ? "app-selected" : "app-badge"
+);
+const getReceivedProgressClass = (received: number, total: number) => {
+  if (total <= 0 || received <= 0) return "app-badge";
+  return received >= total ? "app-feedback-success" : "app-feedback-warning";
+};
 
 const urgencyMeta: Record<string, { label: string; cls: string }> = {
   low:      { label: "Низкая",      cls: "text-gray-500" },
@@ -178,6 +186,7 @@ function ProcurementRequestActionButtons({
       showLabels ? "gap-1.5 px-3 text-xs font-medium" : "w-9"
     }`;
   const label = (text: string) => (showLabels ? <span>{text}</span> : null);
+  const approvalIconSize = showLabels ? 14 : 18;
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 pt-1">
@@ -187,7 +196,7 @@ function ProcurementRequestActionButtons({
           onClick={() => onSubmit(request.id)}
           disabled={busyKey === `submit-${request.id}`}
           title="Отправить на согласование"
-          className={buttonClass("app-action-primary")}
+          className={buttonClass("app-action-warning")}
         >
           <Send size={14} />
           {label("Отправить на согласование")}
@@ -225,7 +234,7 @@ function ProcurementRequestActionButtons({
             title="Одобрить"
             className={buttonClass("app-action-approve")}
           >
-            <ThumbsUp size={14} className="text-emerald-500" />
+            <ThumbsUp size={approvalIconSize} className="text-emerald-500" />
             {showLabels ? <span className="text-emerald-500">Одобрить</span> : null}
           </button>
           <button
@@ -235,7 +244,7 @@ function ProcurementRequestActionButtons({
             title="Отклонить"
             className={buttonClass("app-action-danger")}
           >
-            <ThumbsDown size={14} />
+            <ThumbsDown size={approvalIconSize} />
             {label("Отклонить")}
           </button>
         </>
@@ -258,7 +267,7 @@ function ProcurementRequestActionButtons({
           onClick={() => onComplete(request.id)}
           disabled={busyKey === `complete-${request.id}`}
           title="Закрыть заявку"
-          className={buttonClass("app-action-primary")}
+          className={buttonClass("app-action-success")}
         >
           <ClipboardCheck size={14} />
           {label("Закрыть заявку")}
@@ -782,6 +791,12 @@ export default function ProcurementPage() {
               const canEditThis = Boolean(isEditableStatus && isAuthor);
               const canDeleteThis = Boolean(isEditableStatus && (isAuthor || canManage));
               const canCancelThis = Boolean(isAuthor && !isFinal(st) && st !== "draft");
+              const hasInlineRequestActions = Boolean(
+                (resolvedDetail.can_current_user_submit_for_approval ?? req.can_current_user_submit_for_approval) ||
+                canApproveThis ||
+                (resolvedDetail.can_current_user_start_work ?? req.can_current_user_start_work) ||
+                (st === "in_progress" && isExecutor)
+              );
               const hasSecondaryActions = canEditThis || canDeleteThis || canCancelThis;
               const expanded = expandedIds.has(req.id);
               const comments = commentsMap[req.id] || [];
@@ -961,7 +976,7 @@ export default function ProcurementPage() {
                                 </span>
                               )}
                               {itemsTotalCount > 0 && (
-                                <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                <span className={`${getReceivedProgressClass(itemsReceivedCount, itemsTotalCount)} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium`}>
                                   <Check size={11} /> Получено {itemsReceivedCount}/{itemsTotalCount} поз.
                                 </span>
                               )}
@@ -971,17 +986,17 @@ export default function ProcurementPage() {
                                 </span>
                               )}
                               {totalRequestedQuantity > 0 && (
-                                <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                <span className={`${getOrderedProgressClass(totalOrderedQuantity, totalRequestedQuantity)} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium`}>
                                   Заказано {totalOrderedQuantity}/{totalRequestedQuantity} шт.
                                 </span>
                               )}
                               {totalRequestedQuantity > 0 && (
-                                <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                <span className={`${getReceivedProgressClass(totalReceivedQuantity, totalRequestedQuantity)} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium`}>
                                   Получено {totalReceivedQuantity}/{totalRequestedQuantity} шт.
                                 </span>
                               )}
                               {itemsPendingCount > 0 && (
-                                <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                <span className="app-feedback-warning inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
                                   Не обработано {itemsPendingCount}
                                 </span>
                               )}
@@ -994,28 +1009,25 @@ export default function ProcurementPage() {
                           )}
                         </div>
 
-                        {canApproveThis ? (
-                          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                            <span className="ml-auto inline-flex items-center gap-2">
-                              <button
-                                type="button"
-                                title="Одобрить"
-                                onClick={() => openRequestActionDialog("approve", req.id)}
-                                disabled={busyKey === `approve-${req.id}`}
-                                className="app-action-approve inline-flex items-center justify-center rounded-lg p-2 disabled:opacity-60"
-                              >
-                                <ThumbsUp size={18} className="text-emerald-500" />
-                              </button>
-                              <button
-                                type="button"
-                                title="Отклонить"
-                                onClick={() => openRequestActionDialog("reject", req.id)}
-                                disabled={busyKey === `reject-${req.id}`}
-                                className="app-action-danger inline-flex items-center justify-center rounded-lg p-2 disabled:opacity-60"
-                              >
-                                <ThumbsDown size={18} />
-                              </button>
-                            </span>
+                        {hasInlineRequestActions ? (
+                          <div className="mt-3 flex justify-end">
+                            <ProcurementRequestActionButtons
+                              request={resolvedDetail}
+                              busyKey={busyKey}
+                              canManage={canManage}
+                              isAuthor={isAuthor}
+                              isExecutor={isExecutor}
+                              isFinal={isFinal}
+                              showSecondaryActions={false}
+                              onSubmit={handleSubmit}
+                              onEdit={openEdit}
+                              onDelete={handleDelete}
+                              onApprove={(id) => openRequestActionDialog("approve", id)}
+                              onReject={(id) => openRequestActionDialog("reject", id)}
+                              onStart={handleStart}
+                              onComplete={handleComplete}
+                              onCancel={handleCancel}
+                            />
                           </div>
                         ) : null}
 
@@ -1132,6 +1144,27 @@ export default function ProcurementPage() {
         title={selectedRequest?.title || "Карточка заявки"}
         size="lg"
         closeOnClickOutside
+        footer={selectedRequest ? (
+          <div className="flex justify-end">
+            <ProcurementRequestActionButtons
+              request={selectedRequest}
+              busyKey={busyKey}
+              canManage={canManage}
+              isAuthor={Boolean(resolveUserId(selectedRequest.requestor) && user?.id && resolveUserId(selectedRequest.requestor) === user.id)}
+              isExecutor={Boolean(resolveUserId(selectedRequest.executor) && user?.id && resolveUserId(selectedRequest.executor) === user.id)}
+              isFinal={isFinal}
+              showLabels
+              onSubmit={handleSubmit}
+              onEdit={openEdit}
+              onDelete={(id) => openRequestActionDialog("delete", id)}
+              onApprove={(id) => openRequestActionDialog("approve", id)}
+              onReject={(id) => openRequestActionDialog("reject", id)}
+              onStart={handleStart}
+              onComplete={handleComplete}
+              onCancel={(id) => openRequestActionDialog("cancel", id)}
+            />
+          </div>
+        ) : null}
       >
         {detailModalLoading ? (
           <div className="py-12 text-center">
@@ -1214,25 +1247,6 @@ export default function ProcurementPage() {
               onItemCommentDraftChange={(itemId, value) => setItemCommentDrafts((previous) => ({ ...previous, [itemId]: value }))}
               onAddItemComment={handleAddItemComment}
               onDeleteItemComment={handleDeleteItemComment}
-              footer={(
-                <ProcurementRequestActionButtons
-                  request={selectedRequest}
-                  busyKey={busyKey}
-                  canManage={canManage}
-                  isAuthor={Boolean(resolveUserId(selectedRequest.requestor) && user?.id && resolveUserId(selectedRequest.requestor) === user.id)}
-                  isExecutor={Boolean(resolveUserId(selectedRequest.executor) && user?.id && resolveUserId(selectedRequest.executor) === user.id)}
-                  isFinal={isFinal}
-                  showLabels
-                  onSubmit={handleSubmit}
-                  onEdit={openEdit}
-                  onDelete={(id) => openRequestActionDialog("delete", id)}
-                  onApprove={(id) => openRequestActionDialog("approve", id)}
-                  onReject={(id) => openRequestActionDialog("reject", id)}
-                  onStart={handleStart}
-                  onComplete={handleComplete}
-                  onCancel={(id) => openRequestActionDialog("cancel", id)}
-                />
-              )}
             />
 
             <div className="app-surface rounded-xl p-4">

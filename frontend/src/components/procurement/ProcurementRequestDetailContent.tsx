@@ -63,7 +63,8 @@ const problemExecutionStatuses = new Set<ProcurementItemExecutionStatus>([
 ]);
 
 const executionStatusBadgeClass = (status?: ProcurementItemExecutionStatus) => {
-  if (status === "ordered" || status === "received") return "app-feedback-success";
+  if (status === "ordered") return "app-selected";
+  if (status === "received") return "app-feedback-success";
   if (status === "rejected") return "app-feedback-danger";
   if (status && problemExecutionStatuses.has(status)) return "app-feedback-warning";
   return "app-badge";
