@@ -541,7 +541,7 @@ export interface ProcurementItem {
   total_price?: string | number;
   supplier_info?: string;
   links?: string[];
-  expected_delivery_date?: string | null;
+  expected_delivery_dates?: string[];
   actual_unit_price?: string | number | null;
   execution_status?: ProcurementItemExecutionStatus;
   execution_status_display?: string;

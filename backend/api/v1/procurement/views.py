@@ -836,7 +836,7 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         "ordered_quantity",
         "received_quantity",
         "links",
-        "expected_delivery_date",
+        "expected_delivery_dates",
         "actual_unit_price",
         "execution_status",
         "executor_comment",

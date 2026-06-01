@@ -294,6 +294,7 @@ class TestProcurementRequestCreate:
                     'unit': 'шт',
                     'estimated_unit_price': '25000.00',
                     'description': '4K, IPS',
+                    'expected_delivery_dates': ['2026-06-10', '2026-06-12'],
                 },
                 {
                     'name': 'Монитор 24"',
@@ -315,6 +316,10 @@ class TestProcurementRequestCreate:
         request = ProcurementRequest.objects.get(id=request_id)
         assert request.items.count() == 2
         assert request.total_cost == Decimal('305000.00')  # 5*25k + 10*18k
+        assert request.items.get(name='Монитор 27"').expected_delivery_dates == [
+            '2026-06-10',
+            '2026-06-12',
+        ]
 
     def test_create_request_for_other_department(
         self, api_client, user, db
@@ -1595,13 +1600,15 @@ class TestProcessingDepartmentWorkflow:
             {
                 'execution_status': ProcurementItemExecutionStatus.ORDERED,
                 'actual_unit_price': '120.00',
-                'expected_delivery_date': '2026-05-25',
+                'expected_delivery_dates': ['2026-05-25', '2026-05-29'],
                 'links': ['https://example.com/item'],
             },
             format='json',
         )
 
         assert response.status_code == status.HTTP_200_OK
+        assert response.data["expected_delivery_dates"] == ["2026-05-25", "2026-05-29"]
+        assert "expected_delivery_date" not in response.data
         item_notifications = [
             item for item in sent
             if item["verb"] == "procurement_item_updated"
@@ -1612,10 +1619,62 @@ class TestProcessingDepartmentWorkflow:
         assert sorted(item_notifications[0]["data"]["changed_fields"]) == [
             "actual_unit_price",
             "execution_status",
-            "expected_delivery_date",
+            "expected_delivery_dates",
             "links",
             "ordered_quantity",
         ]
+
+    def test_item_expected_delivery_dates_must_be_valid_dates(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(request=processing_request)
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save()
+
+        api_client.force_authenticate(user=supply_user)
+        item_url = reverse(
+            'api:v1:procurement:procurementitem-detail',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.patch(
+            item_url,
+            {'expected_delivery_dates': ['2026-02-31']},
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_item_expected_delivery_dates_accepts_empty_list(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            expected_delivery_dates=["2026-05-25"],
+        )
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save()
+
+        api_client.force_authenticate(user=supply_user)
+        item_url = reverse(
+            'api:v1:procurement:procurementitem-detail',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.patch(
+            item_url,
+            {'expected_delivery_dates': []},
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["expected_delivery_dates"] == []
+        item.refresh_from_db()
+        assert item.expected_delivery_dates == []
 
     def test_item_quantities_cannot_exceed_requested_quantity(
         self, api_client, supply_user, processing_request,
@@ -2124,7 +2183,7 @@ class TestProcessingDepartmentWorkflow:
             execution_status=ProcurementItemExecutionStatus.RECEIVED,
             ordered_quantity=5,
             received_quantity=3,
-            expected_delivery_date="2026-05-28",
+            expected_delivery_dates=["2026-05-28"],
         )
         procurement_item_factory(
             request=processing_request,
@@ -2132,7 +2191,7 @@ class TestProcessingDepartmentWorkflow:
             quantity=2,
             execution_status=ProcurementItemExecutionStatus.DEFECTIVE,
             ordered_quantity=1,
-            expected_delivery_date="2026-05-27",
+            expected_delivery_dates=["2026-05-31", "2026-05-27"],
         )
         procurement_item_factory(
             request=processing_request,
@@ -2170,7 +2229,7 @@ class TestProcessingDepartmentWorkflow:
             execution_status=ProcurementItemExecutionStatus.RECEIVED,
             ordered_quantity=1,
             received_quantity=1,
-            expected_delivery_date="2026-05-28",
+            expected_delivery_dates=["2026-05-28"],
         )
         procurement_item_factory(
             request=processing_request,
@@ -2179,7 +2238,7 @@ class TestProcessingDepartmentWorkflow:
             execution_status=ProcurementItemExecutionStatus.RECEIVED,
             ordered_quantity=1,
             received_quantity=1,
-            expected_delivery_date="2026-05-30",
+            expected_delivery_dates=["2026-05-30", "2026-06-01"],
         )
         api_client.force_authenticate(user=supply_user)
         url = reverse('api:v1:procurement:procurementrequest-list')
@@ -2191,7 +2250,37 @@ class TestProcessingDepartmentWorkflow:
             item for item in response.data["results"]
             if item["id"] == processing_request.id
         )
-        assert result["next_expected_delivery_date"] == "2026-05-30"
+        assert result["next_expected_delivery_date"] == "2026-06-01"
+
+    def test_list_expected_date_is_null_when_pending_items_have_no_dates(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        procurement_item_factory(
+            request=processing_request,
+            quantity=1,
+            execution_status=ProcurementItemExecutionStatus.RECEIVED,
+            ordered_quantity=1,
+            received_quantity=1,
+            expected_delivery_dates=["2026-05-28"],
+        )
+        procurement_item_factory(
+            request=processing_request,
+            name="Без ожидаемой даты",
+            quantity=1,
+            execution_status=ProcurementItemExecutionStatus.PENDING,
+        )
+        api_client.force_authenticate(user=supply_user)
+        url = reverse('api:v1:procurement:procurementrequest-list')
+
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        result = next(
+            item for item in response.data["results"]
+            if item["id"] == processing_request.id
+        )
+        assert result["next_expected_delivery_date"] is None
 
     def test_requestor_item_update_does_not_notify_self(
         self, api_client, user, processing_request,

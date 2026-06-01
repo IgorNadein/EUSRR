@@ -30,7 +30,7 @@ class ProcurementItemInline(admin.TabularInline):
         "ordered_quantity",
         "received_quantity",
         "execution_status",
-        "expected_delivery_date",
+        "expected_delivery_dates",
         "supplier_info",
     ]
 
@@ -188,7 +188,7 @@ class ProcurementItemAdmin(admin.ModelAdmin):
         "ordered_quantity",
         "received_quantity",
         "execution_status",
-        "expected_delivery_date",
+        "expected_delivery_dates",
         "total_price",
     ]
     list_filter = ["unit", "execution_status", "created_at"]

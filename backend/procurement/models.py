@@ -289,10 +289,11 @@ class ProcurementItem(models.Model):
         blank=True,
         help_text="Список ссылок на позицию",
     )
-    expected_delivery_date = models.DateField(
-        "Ожидаемая дата поступления",
-        null=True,
+    expected_delivery_dates = models.JSONField(
+        "Ожидаемые даты поступления",
+        default=list,
         blank=True,
+        help_text="Список ожидаемых дат поступления в формате YYYY-MM-DD",
     )
     actual_unit_price = models.DecimalField(
         "Фактическая цена за единицу",

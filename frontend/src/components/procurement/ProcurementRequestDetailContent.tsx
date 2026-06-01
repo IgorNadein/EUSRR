@@ -39,7 +39,7 @@ interface ProcurementRequestDetailContentProps {
 
 type ItemProcessingDraft = {
   execution_status: ProcurementItemExecutionStatus;
-  expected_delivery_date: string;
+  expected_delivery_dates: string[];
   actual_unit_price: string;
   links: string[];
   ordered_quantity: string;
@@ -81,6 +81,16 @@ const toOptionalInteger = (value: string): number | null => {
   return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : null;
 };
 
+const toDateRows = (dates?: string[] | null): string[] => (
+  Array.isArray(dates)
+    ? dates.map((date) => String(date || "").trim()).filter(Boolean)
+    : []
+);
+
+const cleanDateRows = (dates: string[]): string[] => (
+  dates.map((date) => date.trim()).filter(Boolean)
+);
+
 const approvalIconByStatus = (status?: string) => {
   const normalized = String(status || "").toLowerCase();
   if (normalized === "approved") {
@@ -102,7 +112,7 @@ const initialsFromName = (name: string) =>
 
 const normalizeItemDraft = (item: ProcurementItem): ItemProcessingDraft => ({
   execution_status: item.execution_status || "pending",
-  expected_delivery_date: item.expected_delivery_date || "",
+  expected_delivery_dates: toDateRows(item.expected_delivery_dates),
   actual_unit_price: item.actual_unit_price ? String(item.actual_unit_price) : "",
   links: toLinkRows(item.links),
   ordered_quantity: item.ordered_quantity === null || item.ordered_quantity === undefined ? "" : String(item.ordered_quantity),
@@ -167,6 +177,7 @@ function ProcurementItemCard({
   const [draft, setDraft] = useState<ItemProcessingDraft>(() => normalizeItemDraft(item));
   const [processingOpen, setProcessingOpen] = useState(false);
   const links = Array.isArray(item.links) ? item.links.filter(Boolean) : [];
+  const expectedDeliveryDates = toDateRows(item.expected_delivery_dates);
   const commentsTotal = item.comments_count ?? comments.length;
   const requestedQuantity = Math.max(0, Math.trunc(toNumber(item.quantity)));
   const orderedQuantity = item.ordered_quantity ?? 0;
@@ -215,7 +226,7 @@ function ProcurementItemCard({
   const saveItemProcessing = () => {
     return onUpdateItem?.(requestId, item.id, {
       execution_status: draft.execution_status,
-      expected_delivery_date: draft.expected_delivery_date || null,
+      expected_delivery_dates: cleanDateRows(draft.expected_delivery_dates),
       actual_unit_price: draft.actual_unit_price || null,
       ordered_quantity: toOptionalInteger(draft.ordered_quantity),
       received_quantity: toOptionalInteger(draft.received_quantity),
@@ -251,10 +262,18 @@ function ProcurementItemCard({
               </p>
             </div>
             <div className="min-w-0">
-              <p className="app-text-muted text-[11px]">Дата поступления</p>
-              <p className="app-text-wrap mt-0.5 font-medium text-[var(--foreground)]">
-                {formatDate(item.expected_delivery_date) || "—"}
-              </p>
+              <p className="app-text-muted text-[11px]">Ожидаемые даты</p>
+              {expectedDeliveryDates.length > 0 ? (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {expectedDeliveryDates.map((date, dateIndex) => (
+                    <span key={`${item.id}-date-${dateIndex}`} className="app-badge px-2 py-0.5 text-[11px] font-medium">
+                      {formatDate(date)}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="app-text-wrap mt-0.5 font-medium text-[var(--foreground)]">—</p>
+              )}
             </div>
             <div className="min-w-0">
               <p className="app-text-muted text-[11px]">Заказано</p>
@@ -448,13 +467,44 @@ function ProcurementItemCard({
             </select>
           </div>
           <div>
-            <label className="app-text-muted mb-1 block text-[11px] font-medium">Ожидаемая дата</label>
-            <input
-              type="date"
-              value={draft.expected_delivery_date}
-              onChange={(event) => updateDraft({ expected_delivery_date: event.target.value })}
-              className="app-input w-full rounded-lg px-3 py-2 text-xs"
-            />
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <label className="app-text-muted block text-[11px] font-medium">Ожидаемые даты</label>
+              <button
+                type="button"
+                onClick={() => updateDraft({ expected_delivery_dates: ["", ...draft.expected_delivery_dates] })}
+                className="app-link-accent inline-flex items-center gap-1 text-[11px] font-medium"
+              >
+                <Plus size={12} /> Добавить дату
+              </button>
+            </div>
+            <div className="space-y-2">
+              {draft.expected_delivery_dates.map((date, dateIndex) => (
+                <div key={dateIndex} className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(event) => updateDraft({
+                      expected_delivery_dates: draft.expected_delivery_dates.map((currentDate, currentIndex) => (
+                        currentIndex === dateIndex ? event.target.value : currentDate
+                      )),
+                    })}
+                    className="app-input min-w-0 flex-1 rounded-lg px-3 py-2 text-xs"
+                  />
+                  {draft.expected_delivery_dates.length > 1 ? (
+                    <button
+                      type="button"
+                      onClick={() => updateDraft({
+                        expected_delivery_dates: draft.expected_delivery_dates.filter((_, currentIndex) => currentIndex !== dateIndex),
+                      })}
+                      className="app-action-secondary inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                      title="Удалить дату"
+                    >
+                      <X size={12} />
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
           </div>
           <div>
             <label className="app-text-muted mb-1 block text-[11px] font-medium">Фактическая цена/ед.</label>
@@ -690,7 +740,7 @@ export function ProcurementRequestDetailContent({
                 key={[
                   item.id,
                   item.execution_status || "",
-                  item.expected_delivery_date || "",
+                  Array.isArray(item.expected_delivery_dates) ? item.expected_delivery_dates.join("|") : "",
                   item.actual_unit_price || "",
                   item.ordered_quantity ?? "",
                   item.received_quantity ?? "",

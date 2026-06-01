@@ -2,6 +2,9 @@
 Сериализаторы для модуля закупок.
 """
 
+import re
+from datetime import date
+
 from drf_spectacular.utils import extend_schema_field
 from django.db import transaction
 from rest_framework import serializers
@@ -32,6 +35,45 @@ PROBLEM_ITEM_STATUSES = {
     ProcurementItemExecutionStatus.EDITED,
     ProcurementItemExecutionStatus.DEFECTIVE,
 }
+
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _validate_expected_delivery_dates(value):
+    if value in (None, ""):
+        return []
+    if not isinstance(value, list):
+        raise serializers.ValidationError("Ожидаемые даты должны быть списком.")
+
+    result = []
+    for raw in value:
+        item = str(raw or "").strip()
+        if not item:
+            continue
+        if not DATE_RE.fullmatch(item):
+            raise serializers.ValidationError(
+                "Каждая ожидаемая дата должна быть в формате YYYY-MM-DD."
+            )
+        try:
+            parsed = date.fromisoformat(item)
+        except ValueError as exc:
+            raise serializers.ValidationError(
+                "Каждая ожидаемая дата должна быть корректной календарной датой."
+            ) from exc
+        result.append(parsed.isoformat())
+    return result
+
+
+def _expected_delivery_date_values(item):
+    dates = []
+    for raw in item.expected_delivery_dates or []:
+        if not isinstance(raw, str) or not DATE_RE.fullmatch(raw):
+            continue
+        try:
+            dates.append(date.fromisoformat(raw))
+        except ValueError:
+            continue
+    return dates
 
 
 def _validate_item_quantities(attrs, instance=None):
@@ -69,20 +111,29 @@ class ProcurementRequestSummaryMixin(serializers.Serializer):
 
     @extend_schema_field(serializers.DateField(allow_null=True))
     def get_next_expected_delivery_date(self, obj):
-        dated_items = [
-            item for item in _request_items(obj)
-            if item.expected_delivery_date
-        ]
-        if not dated_items:
+        items = _request_items(obj)
+        all_dates = []
+        pending_dates = []
+        all_items_received = all(
+            item.execution_status == ProcurementItemExecutionStatus.RECEIVED
+            for item in items
+        )
+        for item in items:
+            item_dates = _expected_delivery_date_values(item)
+            if not item_dates:
+                continue
+            all_dates.extend(item_dates)
+            if item.execution_status != ProcurementItemExecutionStatus.RECEIVED:
+                pending_dates.extend(item_dates)
+
+        if not all_dates:
             return None
 
-        pending_dates = [
-            item.expected_delivery_date for item in dated_items
-            if item.execution_status != ProcurementItemExecutionStatus.RECEIVED
-        ]
         if pending_dates:
             return min(pending_dates).isoformat()
-        return max(item.expected_delivery_date for item in dated_items).isoformat()
+        if all_items_received:
+            return max(all_dates).isoformat()
+        return None
 
     @extend_schema_field(serializers.IntegerField())
     def get_items_total_count(self, obj):
@@ -141,6 +192,11 @@ class ProcurementItemSerializer(serializers.ModelSerializer):
         allow_null=True,
         min_value=0,
     )
+    expected_delivery_dates = serializers.ListField(
+        child=serializers.CharField(allow_blank=False, trim_whitespace=True),
+        required=False,
+        allow_empty=True,
+    )
     initial_comment = serializers.CharField(
         write_only=True,
         required=False,
@@ -181,7 +237,7 @@ class ProcurementItemSerializer(serializers.ModelSerializer):
             "received_quantity",
             "supplier_info",
             "links",
-            "expected_delivery_date",
+            "expected_delivery_dates",
             "actual_unit_price",
             "execution_status",
             "execution_status_display",
@@ -201,6 +257,9 @@ class ProcurementItemSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         return _validate_item_quantities(attrs, self.instance)
+
+    def validate_expected_delivery_dates(self, value):
+        return _validate_expected_delivery_dates(value)
 
     def create(self, validated_data):
         initial_comment = validated_data.pop("initial_comment", "").strip()
@@ -235,6 +294,11 @@ class ProcurementItemCreateSerializer(serializers.ModelSerializer):
         allow_null=True,
         min_value=0,
     )
+    expected_delivery_dates = serializers.ListField(
+        child=serializers.CharField(allow_blank=False, trim_whitespace=True),
+        required=False,
+        allow_empty=True,
+    )
     initial_comment = serializers.CharField(
         write_only=True,
         required=False,
@@ -253,7 +317,7 @@ class ProcurementItemCreateSerializer(serializers.ModelSerializer):
             "received_quantity",
             "supplier_info",
             "links",
-            "expected_delivery_date",
+            "expected_delivery_dates",
             "actual_unit_price",
             "execution_status",
             "executor_comment",
@@ -262,6 +326,9 @@ class ProcurementItemCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         return _validate_item_quantities(attrs, self.instance)
+
+    def validate_expected_delivery_dates(self, value):
+        return _validate_expected_delivery_dates(value)
 
 
 class ProcurementItemEditSerializer(ProcurementItemCreateSerializer):
