@@ -3,10 +3,8 @@
 
 Сценарии:
 1. Создание заявки:
-   - admin/staff/superuser → любой отдел
-   - модельные права (add_procurementrequest) → любой отдел
-   - сотрудник отдела → только свой отдел
-   - сотрудник без отдела → запрещено
+   - любой аутентифицированный пользователь → любой отдел
+   - requestor всегда текущий пользователь
 
 2. Изменение заявки:
    - admin/staff/superuser → любая заявка в DRAFT
@@ -292,14 +290,16 @@ class TestProcurementRequestCreateAccess:
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data['department'] == dept_it.id
 
-    def test_dept_member_cannot_create_in_other_dept(
+    def test_dept_member_can_create_in_other_dept(
         self, api_client, dept_member, dept_hr
     ):
-        """Сотрудник отдела НЕ может создать заявку в ЧУЖОМ отделе."""
+        """Сотрудник отдела может создать заявку в чужом отделе."""
         api_client.force_authenticate(user=dept_member)
         data = valid_request_data(dept_hr)
         response = api_client.post(request_list_url(), data, format="json")
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['department'] == dept_hr.id
+        assert response.data['requestor'] == dept_member.id
 
     def test_dept_head_can_create_in_own_dept(
         self, api_client, dept_head, dept_it
@@ -310,23 +310,27 @@ class TestProcurementRequestCreateAccess:
         response = api_client.post(request_list_url(), data, format="json")
         assert response.status_code == status.HTTP_201_CREATED
 
-    def test_dept_head_cannot_create_in_other_dept(
+    def test_dept_head_can_create_in_other_dept(
         self, api_client, dept_head, dept_hr
     ):
-        """Начальник отдела НЕ может создать заявку в чужом отделе."""
+        """Начальник отдела может создать заявку в чужом отделе."""
         api_client.force_authenticate(user=dept_head)
         data = valid_request_data(dept_hr)
         response = api_client.post(request_list_url(), data, format="json")
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['department'] == dept_hr.id
+        assert response.data['requestor'] == dept_head.id
 
-    def test_user_without_dept_cannot_create(
+    def test_user_without_dept_can_create(
         self, api_client, user_without_dept, dept_it
     ):
-        """Пользователь без отдела НЕ может создавать заявки."""
+        """Пользователь без отдела может создать заявку в выбранном отделе."""
         api_client.force_authenticate(user=user_without_dept)
         data = valid_request_data(dept_it)
         response = api_client.post(request_list_url(), data, format="json")
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['department'] == dept_it.id
+        assert response.data['requestor'] == user_without_dept.id
 
     def test_requestor_is_set_to_current_user(
         self, api_client, dept_member, dept_it

@@ -316,10 +316,10 @@ class TestProcurementRequestCreate:
         assert request.items.count() == 2
         assert request.total_cost == Decimal('305000.00')  # 5*25k + 10*18k
 
-    def test_create_request_wrong_department(
+    def test_create_request_for_other_department(
         self, api_client, user, db
     ):
-        """Нельзя создать заявку для чужого отдела."""
+        """Можно создать заявку для любого отдела."""
         other_dept = Department.objects.create(
             name="HR отдел", description="Другой отдел"
         )
@@ -336,11 +336,9 @@ class TestProcurementRequestCreate:
         }
         
         response = api_client.post(url, data, format='json')
-        # Должна быть ошибка валидации
-        assert response.status_code in [
-            status.HTTP_400_BAD_REQUEST,
-            status.HTTP_403_FORBIDDEN
-        ]
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['department'] == other_dept.id
+        assert response.data['requestor'] == user.id
 
     def test_create_processing_department_request_skips_approvals(
         self, api_client, user, department, db

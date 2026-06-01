@@ -96,10 +96,8 @@ class CanManageProcurementRequest(permissions.BasePermission):
     - Просмотр (SAFE_METHODS): любой аутентифицированный (фильтрация в queryset)
 
     - Создание:
-        - admin/staff/superuser → любой отдел
-        - модельные права (add_procurementrequest) → любой отдел
-        - сотрудник отдела → только свой отдел
-        - без отдела → запрещено
+        - любой аутентифицированный пользователь → любой отдел
+        - requestor всегда задаётся текущим пользователем в сериализаторе
 
     - Изменение:
         - admin/staff/superuser → любая заявка в DRAFT
@@ -130,24 +128,6 @@ class CanManageProcurementRequest(permissions.BasePermission):
         }
         perm = perm_map.get(action)
         return perm and user.has_perm(perm)
-
-    def _get_user_departments(self, user) -> list[int]:
-        """Возвращает список ID отделов, где пользователь состоит."""
-        return list(
-            EmployeeDepartment.objects.filter(
-                employee_id=user.id, is_active=True
-            ).values_list("department_id", flat=True)
-        )
-
-    def _get_dept_id_from_request(self, request) -> int | None:
-        """Извлекает ID отдела из данных запроса."""
-        dept_id = request.data.get("department")
-        if dept_id is not None:
-            try:
-                return int(dept_id)
-            except (ValueError, TypeError):
-                pass
-        return None
 
     def _is_dept_head(self, user, dept_id: int) -> bool:
         """Проверяет, является ли пользователь начальником отдела."""
@@ -180,22 +160,9 @@ class CanManageProcurementRequest(permissions.BasePermission):
         if self._has_model_perm(user, action):
             return True
 
-        # Для создания проверяем отдел
+        # Любой аутентифицированный пользователь может создать заявку
+        # от имени любого отдела. Валидность department проверит сериализатор.
         if action == "create":
-            dept_id = self._get_dept_id_from_request(request)
-            if dept_id is None:
-                return False
-
-            # Пользователь должен состоять в указанном отделе
-            user_depts = self._get_user_departments(user)
-            if not user_depts:
-                # Пользователь без отдела не может создавать
-                return False
-
-            if dept_id not in user_depts:
-                # Нельзя создавать заявку в чужом отделе
-                return False
-
             return True
 
         # Для update/delete проверка на уровне объекта
