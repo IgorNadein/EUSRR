@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { ChevronRight, ChevronDown, Folder, FolderOpen, Plus, Edit2, Trash2 } from "lucide-react";
 
 export interface FolderNode {
@@ -29,7 +29,7 @@ export function FolderTree({
   onEditFolder,
   onDeleteFolder,
 }: FolderTreeProps) {
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const [collapsedIds, setCollapsedIds] = useState<Set<number>>(new Set());
   const [hoveredId, setHoveredId] = useState<number | null>(null);
 
   // Построение дерева из плоского списка
@@ -61,7 +61,7 @@ export function FolderTree({
   const tree = buildTree(folders);
 
   const toggleExpand = (folderId: number) => {
-    setExpandedIds((prev) => {
+    setCollapsedIds((prev) => {
       const next = new Set(prev);
       if (next.has(folderId)) {
         next.delete(folderId);
@@ -73,9 +73,9 @@ export function FolderTree({
   };
 
   const renderNode = (node: FolderNode, level: number = 0) => {
-    const isExpanded = expandedIds.has(node.id);
     const isSelected = selectedFolderId === node.id;
     const hasChildren = node.children && node.children.length > 0;
+    const isExpanded = Boolean(hasChildren && !collapsedIds.has(node.id));
     const isHovered = hoveredId === node.id;
 
     return (

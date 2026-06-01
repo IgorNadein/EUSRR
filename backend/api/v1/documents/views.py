@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 
+import io
+import posixpath
+import zipfile
+
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, QuerySet, Q
@@ -187,6 +191,108 @@ class DocumentViewSet(ModelViewSet):
         """Частичное обновление (PATCH) — аналогично update, но partial=True."""
         kwargs["partial"] = True
         return self.update(request, *args, **kwargs)
+
+    def _safe_archive_part(self, value: object, fallback: str) -> str:
+        """Очищает часть ZIP-пути без потери кириллицы."""
+        raw = str(value or fallback)
+        cleaned = "".join(
+            "_" if char in {"/", "\\"} or ord(char) < 32 else char
+            for char in raw
+        ).strip(" .")
+        return cleaned or fallback
+
+    def _unique_archive_path(
+        self, archive_path: str, used_paths: set[str]
+    ) -> str:
+        """Делает путь файла уникальным внутри архива."""
+        if archive_path not in used_paths:
+            used_paths.add(archive_path)
+            return archive_path
+
+        directory = posixpath.dirname(archive_path)
+        filename = posixpath.basename(archive_path)
+        stem, ext = posixpath.splitext(filename)
+        counter = 2
+
+        while True:
+            candidate_name = f"{stem} ({counter}){ext}"
+            candidate = (
+                posixpath.join(directory, candidate_name)
+                if directory
+                else candidate_name
+            )
+            if candidate not in used_paths:
+                used_paths.add(candidate)
+                return candidate
+            counter += 1
+
+    @action(detail=False, methods=["post"], url_path="archive")
+    def archive(self, request):
+        """Выгрузить выбранные документы одним ZIP-архивом."""
+        raw_ids = request.data.get("document_ids", [])
+        if not isinstance(raw_ids, list):
+            return Response(
+                {"detail": "document_ids должен быть списком."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        document_ids: list[int] = []
+        for raw_id in raw_ids:
+            try:
+                document_ids.append(int(raw_id))
+            except (TypeError, ValueError):
+                continue
+
+        if not document_ids:
+            return Response(
+                {"detail": "Передайте хотя бы один документ."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        documents = (
+            self.get_queryset()
+            .filter(id__in=document_ids)
+            .select_related("file", "folder")
+            .order_by("title", "id")
+        )
+
+        archive_buffer = io.BytesIO()
+        used_file_paths: set[str] = set()
+
+        with zipfile.ZipFile(
+            archive_buffer, mode="w", compression=zipfile.ZIP_DEFLATED
+        ) as zip_file:
+            for document in documents:
+                if not document.file:
+                    continue
+
+                file_name = (
+                    getattr(document.file, "original_filename", "")
+                    or getattr(document.file, "name", "")
+                    or document.title
+                    or f"document-{document.id}"
+                )
+                safe_file_name = self._safe_archive_part(
+                    file_name, f"document-{document.id}"
+                )
+                archive_path = self._unique_archive_path(
+                    safe_file_name, used_file_paths
+                )
+
+                file_obj = document.file.file
+                try:
+                    file_obj.open("rb")
+                    zip_file.writestr(archive_path, file_obj.read())
+                finally:
+                    file_obj.close()
+
+        archive_buffer.seek(0)
+        return FileResponse(
+            archive_buffer,
+            as_attachment=True,
+            filename="documents.zip",
+            content_type="application/zip",
+        )
 
     @action(methods=["post"], detail=True)
     def acknowledge(self, request, pk=None):
@@ -706,6 +812,180 @@ class FolderViewSet(ModelViewSet):
 
         result = FolderSerializer(folder).data
         return Response(result, status=status.HTTP_201_CREATED)
+
+    def _collect_descendant_folder_ids(self, folder: Folder) -> set[int]:
+        """Возвращает ID папки и всех её подпапок."""
+        folder_ids = {folder.id}
+        current_level = [folder.id]
+
+        while current_level:
+            child_ids = list(
+                Folder.objects.filter(parent_id__in=current_level)
+                .values_list("id", flat=True)
+            )
+            folder_ids.update(child_ids)
+            current_level = child_ids
+
+        return folder_ids
+
+    def _collect_document_ids_for_delete(
+        self, folder_ids: set[int]
+    ) -> set[int]:
+        """Возвращает документы в папках и прямо связанные с ними."""
+        document_ids = set(
+            Document.objects.filter(folder_id__in=folder_ids)
+            .values_list("id", flat=True)
+        )
+
+        if not document_ids:
+            return document_ids
+
+        related_ids = set(
+            Document.objects.filter(related_documents__id__in=document_ids)
+            .values_list("id", flat=True)
+        )
+        document_ids.update(related_ids)
+
+        return document_ids
+
+    def _safe_archive_part(self, value: object, fallback: str) -> str:
+        """Очищает часть ZIP-пути без потери кириллицы."""
+        raw = str(value or fallback)
+        cleaned = "".join(
+            "_" if char in {"/", "\\"} or ord(char) < 32 else char
+            for char in raw
+        ).strip(" .")
+        return cleaned or fallback
+
+    def _unique_archive_path(
+        self, archive_path: str, used_paths: set[str]
+    ) -> str:
+        """Делает путь файла уникальным внутри архива."""
+        if archive_path not in used_paths:
+            used_paths.add(archive_path)
+            return archive_path
+
+        directory = posixpath.dirname(archive_path)
+        filename = posixpath.basename(archive_path)
+        stem, ext = posixpath.splitext(filename)
+        counter = 2
+
+        while True:
+            candidate_name = f"{stem} ({counter}){ext}"
+            candidate = (
+                posixpath.join(directory, candidate_name)
+                if directory
+                else candidate_name
+            )
+            if candidate not in used_paths:
+                used_paths.add(candidate)
+                return candidate
+            counter += 1
+
+    def _folder_archive_paths(
+        self, folder_ids: set[int]
+    ) -> dict[int, str]:
+        """Возвращает ZIP-пути для папок внутри удаляемого дерева."""
+        folders = {
+            folder.id: folder
+            for folder in Folder.objects.filter(id__in=folder_ids)
+            .select_related("parent")
+        }
+        archive_paths: dict[int, str] = {}
+
+        def build_path(folder: Folder) -> str:
+            if folder.id in archive_paths:
+                return archive_paths[folder.id]
+
+            folder_name = self._safe_archive_part(
+                folder.name, f"folder-{folder.id}"
+            )
+            if folder.parent_id in folders:
+                archive_path = posixpath.join(
+                    build_path(folders[folder.parent_id]), folder_name
+                )
+            else:
+                archive_path = folder_name
+
+            archive_paths[folder.id] = archive_path
+            return archive_path
+
+        for folder in folders.values():
+            build_path(folder)
+
+        return archive_paths
+
+    @action(detail=True, methods=["get"], url_path="archive")
+    def archive(self, request, pk=None):
+        """Выгрузить папку со всеми подпапками и документами в ZIP."""
+        folder = self.get_object()
+        folder_ids = self._collect_descendant_folder_ids(folder)
+        folder_paths = self._folder_archive_paths(folder_ids)
+        archive_buffer = io.BytesIO()
+        used_file_paths: set[str] = set()
+
+        documents = (
+            Document.objects.filter(folder_id__in=folder_ids)
+            .select_related("file", "folder")
+            .order_by("folder_id", "title", "id")
+        )
+
+        with zipfile.ZipFile(
+            archive_buffer, mode="w", compression=zipfile.ZIP_DEFLATED
+        ) as zip_file:
+            for folder_id, archive_path in sorted(
+                folder_paths.items(), key=lambda item: item[1]
+            ):
+                zip_file.writestr(f"{archive_path}/", b"")
+
+            for document in documents:
+                if not document.file:
+                    continue
+
+                file_name = (
+                    getattr(document.file, "original_filename", "")
+                    or getattr(document.file, "name", "")
+                    or document.title
+                    or f"document-{document.id}"
+                )
+                safe_file_name = self._safe_archive_part(
+                    file_name, f"document-{document.id}"
+                )
+                folder_path = folder_paths.get(document.folder_id, "")
+                archive_path = self._unique_archive_path(
+                    posixpath.join(folder_path, safe_file_name),
+                    used_file_paths,
+                )
+
+                file_obj = document.file.file
+                try:
+                    file_obj.open("rb")
+                    zip_file.writestr(archive_path, file_obj.read())
+                finally:
+                    file_obj.close()
+
+        archive_buffer.seek(0)
+        archive_name = f"{self._safe_archive_part(folder.name, 'folder')}.zip"
+        return FileResponse(
+            archive_buffer,
+            as_attachment=True,
+            filename=archive_name,
+            content_type="application/zip",
+        )
+
+    @transaction.atomic
+    def destroy(self, request, *args, **kwargs):
+        """Удаляет папку вместе с подпапками и связанными документами."""
+        folder = self.get_object()
+        folder_ids = self._collect_descendant_folder_ids(folder)
+        document_ids = self._collect_document_ids_for_delete(folder_ids)
+
+        if document_ids:
+            Document.objects.filter(id__in=document_ids).delete()
+
+        Folder.objects.filter(id__in=folder_ids).delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["get"])
     def children(self, request, pk=None):

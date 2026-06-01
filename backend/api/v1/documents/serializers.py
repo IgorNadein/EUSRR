@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any, Dict, Sequence, Iterable
 
 from drf_spectacular.utils import extend_schema_field
@@ -313,6 +314,13 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
         - tag_ids (теги)
     """
 
+    title = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=255,
+        help_text="Название документа. Если пусто, будет взято из имени файла.",
+    )
+
     recipient_ids = RecipientIDsField(
         write_only=True,
         required=False,
@@ -369,8 +377,23 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             serializers.ValidationError: Если sent_to_all=false
                 и нет recipient_ids или department_ids.
         """
-        if self.instance is None and not attrs.get("file"):
+        file_obj = attrs.get("file")
+
+        if self.instance is None and not file_obj:
             raise serializers.ValidationError({"file": "Обязательное поле."})
+
+        if not str(attrs.get("title") or "").strip():
+            if file_obj:
+                file_name = (
+                    getattr(file_obj, "original_filename", "")
+                    or getattr(file_obj, "name", "")
+                )
+                default_title = os.path.splitext(os.path.basename(file_name))[
+                    0
+                ].strip()
+                attrs["title"] = default_title or file_name or "Документ"
+            elif self.instance is not None:
+                attrs.pop("title", None)
 
         sent_to_all = attrs.get("sent_to_all", True)
         recipient_ids = attrs.get("recipient_ids", [])

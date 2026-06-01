@@ -1,19 +1,18 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
+  ChevronDown,
   CheckSquare,
-  Square,
+  Download,
   Folder,
   Tag,
-  RefreshCw,
   Trash2,
   X,
   Loader2,
   Undo2,
   CheckCircle2,
 } from "lucide-react";
-import { Document as ApiDocument } from "@/types/api";
 
 export interface Document {
   id: number;
@@ -42,10 +41,10 @@ export interface BatchOperationResult {
 
 interface BulkActionsToolbarProps {
   selectedIds: number[];
-  documents: Document[];
   onMove?: (folderId: string, documentIds: number[]) => Promise<void>;
   onAddTags?: (tagIds: string[], documentIds: number[]) => Promise<void>;
   onChangeStatus?: (status: string, documentIds: number[]) => Promise<void>;
+  onDownload?: (documentIds: number[]) => Promise<void>;
   onDelete?: (documentIds: number[]) => Promise<void>;
   onClearSelection: () => void;
   availableFolders?: Array<{ id: string; name: string }>;
@@ -55,10 +54,10 @@ interface BulkActionsToolbarProps {
 
 export function BulkActionsToolbar({
   selectedIds,
-  documents,
   onMove,
   onAddTags,
   onChangeStatus,
+  onDownload,
   onDelete,
   onClearSelection,
   availableFolders = [],
@@ -70,34 +69,36 @@ export function BulkActionsToolbar({
   const [progress, setProgress] = useState(0);
   const [history, setHistory] = useState<BatchOperationResult[]>([]);
   const [showUndoNotification, setShowUndoNotification] = useState(false);
+  const [openActionMenu, setOpenActionMenu] = useState<"move" | "tag" | "status" | null>(null);
+  const actionMenuRef = useRef<HTMLDivElement | null>(null);
 
-  // Выбранные документы
-  const selectedDocuments = useMemo(
-    () => documents.filter((doc) => selectedIds.includes(doc.id)),
-    [documents, selectedIds]
-  );
+  useEffect(() => {
+    if (!openActionMenu) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target as Node)) {
+        setOpenActionMenu(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [openActionMenu]);
 
   // Выполнение batch операции с прогрессом
   const executeBatchOperation = useCallback(
     async (
       action: string,
-      operation: (id: number) => Promise<void>,
+      operation: () => Promise<void>,
       onSuccess?: () => void
     ) => {
       setIsProcessing(true);
       setCurrentAction(action);
-      setProgress(0);
-
-      const total = selectedIds.length;
-      let completed = 0;
+      setProgress(15);
 
       try {
-        // Выполняем операцию для каждого документа
-        for (const id of selectedIds) {
-          await operation(id);
-          completed++;
-          setProgress(Math.round((completed / total) * 100));
-        }
+        await operation();
+        setProgress(100);
 
         // Успех
         if (onSuccess) onSuccess();
@@ -112,7 +113,7 @@ export function BulkActionsToolbar({
         setProgress(0);
       }
     },
-    [selectedIds]
+    []
   );
 
   // Переместить в папку
@@ -214,6 +215,15 @@ export function BulkActionsToolbar({
     [selectedIds, onChangeStatus, executeBatchOperation, onClearSelection]
   );
 
+  // Скачать выбранные
+  const handleDownload = useCallback(async () => {
+    if (!onDownload) return;
+
+    await executeBatchOperation("Подготовка архива", async () => {
+      await onDownload(selectedIds);
+    });
+  }, [selectedIds, onDownload, executeBatchOperation]);
+
   // Удалить
   const handleDelete = useCallback(async () => {
     if (!onDelete) return;
@@ -264,101 +274,175 @@ export function BulkActionsToolbar({
   return (
     <>
       {/* Toolbar */}
-      <div className="app-selected sticky top-0 z-10 rounded-lg p-3 shadow-[var(--shadow-card)]">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="app-accent-text flex items-center gap-2 text-sm font-medium">
-              <CheckSquare size={16} />
-              <span>
-                Выбрано: <span className="font-bold">{selectedIds.length}</span>
-              </span>
-            </div>
+      <div className="app-selected sticky top-0 z-10 rounded-xl px-3 py-2.5 shadow-[var(--shadow-card)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="app-accent-text flex h-8 shrink-0 items-center gap-2 rounded-full bg-[color:var(--accent-soft)] px-3 text-sm font-semibold">
+            <CheckSquare size={16} className="shrink-0" />
+            <span>
+              Выбрано: <span className="font-bold">{selectedIds.length}</span>
+            </span>
+          </div>
 
-            {/* Действия */}
-            <div className="flex items-center gap-2">
-              {/* Переместить */}
-              {onMove && availableFolders.length > 0 && (
-                <select
-                  onChange={(e) => handleMove(e.target.value)}
-                  value=""
-                  disabled={isProcessing}
-                  className="app-select rounded px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <option value="">Переместить в...</option>
-                  {availableFolders.map((folder) => (
-                    <option key={folder.id} value={folder.id}>
-                      📁 {folder.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-
-              {/* Добавить теги */}
-              {onAddTags && availableTags.length > 0 && (
-                <select
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value) {
-                      handleAddTags([value]);
-                      e.target.value = "";
-                    }
-                  }}
-                  value=""
-                  disabled={isProcessing}
-                  className="app-select rounded px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <option value="">Добавить тег...</option>
-                  {availableTags.map((tag) => (
-                    <option key={tag.id} value={tag.id}>
-                      🏷️ {tag.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-
-              {/* Изменить статус */}
-              {onChangeStatus && availableStatuses.length > 0 && (
-                <select
-                  onChange={(e) => handleChangeStatus(e.target.value)}
-                  value=""
-                  disabled={isProcessing}
-                  className="app-select rounded px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <option value="">Изменить статус...</option>
-                  {availableStatuses.map((status) => (
-                    <option key={status.id} value={status.id}>
-                      {status.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-
-              {/* Удалить */}
-              {onDelete && (
+          {/* Действия */}
+          <div ref={actionMenuRef} className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            {/* Переместить */}
+            {onMove && availableFolders.length > 0 && (
+              <div className="relative">
                 <button
-                  onClick={handleDelete}
+                  type="button"
+                  onClick={() => setOpenActionMenu((prev) => (prev === "move" ? null : "move"))}
                   disabled={isProcessing}
-                  className="app-action-danger flex items-center gap-1 rounded px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-                  title="Удалить выбранные"
+                  className="app-action-secondary flex h-8 items-center gap-1.5 rounded-full px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Переместить выбранные"
+                  aria-expanded={openActionMenu === "move"}
+                  aria-haspopup="menu"
                 >
-                  <Trash2 size={14} />
-                  Удалить
+                  <Folder size={14} />
+                  Переместить
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform ${openActionMenu === "move" ? "rotate-180" : ""}`}
+                  />
                 </button>
-              )}
-            </div>
+
+                {openActionMenu === "move" && (
+                  <div className="app-menu absolute left-0 top-full z-30 mt-2 max-h-64 w-64 overflow-y-auto rounded-xl py-1.5">
+                    {availableFolders.map((folder) => (
+                      <button
+                        key={folder.id}
+                        type="button"
+                        onClick={() => {
+                          setOpenActionMenu(null);
+                          void handleMove(folder.id);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                      >
+                        <Folder size={14} className="shrink-0" />
+                        <span className="truncate">{folder.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Добавить теги */}
+            {onAddTags && availableTags.length > 0 && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setOpenActionMenu((prev) => (prev === "tag" ? null : "tag"))}
+                  disabled={isProcessing}
+                  className="app-action-secondary flex h-8 items-center gap-1.5 rounded-full px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Добавить тег к выбранным"
+                  aria-expanded={openActionMenu === "tag"}
+                  aria-haspopup="menu"
+                >
+                  <Tag size={14} />
+                  Тег
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform ${openActionMenu === "tag" ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {openActionMenu === "tag" && (
+                  <div className="app-menu absolute left-0 top-full z-30 mt-2 max-h-64 w-56 overflow-y-auto rounded-xl py-1.5">
+                    {availableTags.map((tag) => (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        onClick={() => {
+                          setOpenActionMenu(null);
+                          void handleAddTags([tag.id]);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                      >
+                        <Tag size={14} className="shrink-0" />
+                        <span className="truncate">{tag.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Изменить статус */}
+            {onChangeStatus && availableStatuses.length > 0 && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setOpenActionMenu((prev) => (prev === "status" ? null : "status"))}
+                  disabled={isProcessing}
+                  className="app-action-secondary flex h-8 items-center gap-1.5 rounded-full px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Изменить статус выбранных"
+                  aria-expanded={openActionMenu === "status"}
+                  aria-haspopup="menu"
+                >
+                  Статус
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform ${openActionMenu === "status" ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {openActionMenu === "status" && (
+                  <div className="app-menu absolute left-0 top-full z-30 mt-2 max-h-64 w-56 overflow-y-auto rounded-xl py-1.5">
+                    {availableStatuses.map((status) => (
+                      <button
+                        key={status.id}
+                        type="button"
+                        onClick={() => {
+                          setOpenActionMenu(null);
+                          void handleChangeStatus(status.id);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                      >
+                        <span className="truncate">{status.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Скачать */}
+            {onDownload && (
+              <button
+                onClick={handleDownload}
+                disabled={isProcessing}
+                className="app-action-secondary flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                title="Скачать выбранные архивом"
+              >
+                <Download size={14} />
+                Скачать
+              </button>
+            )}
+
+            {/* Удалить */}
+            {onDelete && (
+              <button
+                onClick={handleDelete}
+                disabled={isProcessing}
+                className="app-action-danger flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                title="Удалить выбранные"
+              >
+                <Trash2 size={14} />
+                Удалить
+              </button>
+            )}
           </div>
 
           {/* Очистить выбор */}
           <button
             onClick={onClearSelection}
             disabled={isProcessing}
-            className="app-text-muted flex items-center gap-1 text-sm hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="app-text-muted ml-auto flex h-8 shrink-0 items-center gap-1 rounded-full px-2.5 text-sm hover:bg-[var(--surface-secondary)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <X size={14} />
             Отменить
           </button>
         </div>
-
         {/* Прогресс */}
         {isProcessing && (
           <div className="mt-3">

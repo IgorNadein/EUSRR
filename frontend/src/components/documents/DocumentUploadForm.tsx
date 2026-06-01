@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useDropzone } from "react-dropzone";
 import { 
   Upload, 
@@ -30,10 +30,90 @@ interface User {
   email?: string;
 }
 
+interface DocumentTagOption {
+  id: number;
+  name: string;
+  color?: string;
+}
+
+interface FolderOption {
+  id: number;
+  name: string;
+  parent_id: number | null;
+  path?: string;
+}
+
+interface FolderOptionRow {
+  folder: FolderOption;
+  level: number;
+}
+
 interface DocumentUploadFormProps {
   onSuccess?: () => void;
   onCancel?: () => void;
   currentFolderId?: number | null;
+}
+
+interface UploadFileItem {
+  id: string;
+  file: File;
+  processedFile?: File | Blob;
+  extractedText: string;
+  processingError?: string;
+}
+
+function getDefaultDocumentTitle(fileName: string): string {
+  return fileName.replace(/\.[^/.]+$/, "").trim() || fileName;
+}
+
+function createUploadItem(file: File): UploadFileItem {
+  return {
+    id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
+    file,
+    extractedText: "",
+  };
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} МБ`;
+}
+
+function getFileForUpload(item: UploadFileItem): File | Blob {
+  if (!item.processedFile) return item.file;
+  if (item.processedFile instanceof File) return item.processedFile;
+
+  return new File([item.processedFile], item.file.name, {
+    type: item.processedFile.type || item.file.type,
+    lastModified: item.file.lastModified,
+  });
+}
+
+function buildFolderOptionRows(folders: FolderOption[]): FolderOptionRow[] {
+  const childrenByParent = new Map<number | null, FolderOption[]>();
+
+  folders.forEach((folder) => {
+    const parentId = folder.parent_id ?? null;
+    const children = childrenByParent.get(parentId) || [];
+    children.push(folder);
+    childrenByParent.set(parentId, children);
+  });
+
+  childrenByParent.forEach((children) => {
+    children.sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  });
+
+  const rows: FolderOptionRow[] = [];
+  const appendChildren = (parentId: number | null, level: number) => {
+    (childrenByParent.get(parentId) || []).forEach((folder) => {
+      rows.push({ folder, level });
+      appendChildren(folder.id, level + 1);
+    });
+  };
+
+  appendChildren(null, 0);
+  return rows;
 }
 
 // Сообщения для различных этапов обработки
@@ -48,9 +128,7 @@ const STAGE_MESSAGES: Record<string, string> = {
 export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: DocumentUploadFormProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [processedFile, setProcessedFile] = useState<File | Blob | null>(null);
-  const [extractedText, setExtractedText] = useState("");
+  const [uploadItems, setUploadItems] = useState<UploadFileItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState<ProcessingProgress | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -63,16 +141,24 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
   const [selectedRecipients, setSelectedRecipients] = useState<number[]>([]);
   
   // Metadata fields
+  const [selectedFolderId, setSelectedFolderId] = useState<number | null>(currentFolderId ?? null);
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   
   // Data for selects
   const [departments, setDepartments] = useState<Department[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
-  const [documentTags, setDocumentTags] = useState<any[]>([]);
+  const [folders, setFolders] = useState<FolderOption[]>([]);
+  const [documentTags, setDocumentTags] = useState<DocumentTagOption[]>([]);
   
   const [loadingDepartments, setLoadingDepartments] = useState(false);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
+  const [loadingFolders, setLoadingFolders] = useState(false);
   const [loadingDocumentTags, setLoadingDocumentTags] = useState(false);
+  const folderOptionRows = useMemo(() => buildFolderOptionRows(folders), [folders]);
+
+  useEffect(() => {
+    setSelectedFolderId(currentFolderId ?? null);
+  }, [currentFolderId]);
 
   // Load departments and employees
   useEffect(() => {
@@ -96,6 +182,17 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
       } finally {
         setLoadingEmployees(false);
       }
+
+      try {
+        setLoadingFolders(true);
+        const foldersResponse = await apiClient.getFolders({});
+        const foldersData = foldersResponse.results || foldersResponse;
+        setFolders(Array.isArray(foldersData) ? foldersData : []);
+      } catch (err) {
+        console.error("Ошибка загрузки папок:", err);
+      } finally {
+        setLoadingFolders(false);
+      }
       
       try {
         setLoadingDocumentTags(true);
@@ -112,79 +209,126 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
   }, []);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 0) {
-      const selectedFile = acceptedFiles[0];
-      setFile(selectedFile);
-      setError(null);
-      
-      // Автоматически заполняем название, если оно пустое
-      if (!title && selectedFile.name) {
-        setTitle(selectedFile.name.replace(/\.[^/.]+$/, "")); // Убираем расширение
-      }
+    if (acceptedFiles.length === 0) return;
 
-      // Проверяем, требуется ли обработка файла
-      if (needsProcessing(selectedFile)) {
-        setIsProcessing(true);
-        setProcessingProgress({ 
-          stage: "compressing", 
-          progress: 0,
-          message: "Начало обработки..."
-        });
+    const newItems = acceptedFiles.map(createUploadItem);
+    const totalAfterDrop = uploadItems.length + newItems.length;
+
+    setUploadItems((prev) => [...prev, ...newItems]);
+    setError(null);
+
+    if (totalAfterDrop === 1 && !title.trim()) {
+      setTitle(getDefaultDocumentTitle(newItems[0].file.name));
+    } else if (totalAfterDrop > 1) {
+      setTitle("");
+    }
+
+    if (!newItems.some((item) => needsProcessing(item.file))) return;
+
+    setIsProcessing(true);
+    setProcessingProgress({
+      stage: "compressing",
+      progress: 0,
+      message: "Начало обработки...",
+    });
+
+    let hasProcessingErrors = false;
+
+    try {
+      for (const [index, item] of newItems.entries()) {
+        if (!needsProcessing(item.file)) continue;
 
         try {
-          const result = await processDocument(selectedFile, {
+          const result = await processDocument(item.file, {
             enableOCR: true,
             enableCompression: true,
             enableTextExtraction: true,
             enableThumbnail: true,
             onProgress: (progress) => {
-              setProcessingProgress(progress);
+              setProcessingProgress({
+                ...progress,
+                progress: Math.round(progress.progress),
+                message:
+                  newItems.length > 1
+                    ? `Файл ${index + 1} из ${newItems.length}: ${progress.message}`
+                    : progress.message,
+              });
             },
           });
 
-          // Сохраняем извлеченный текст
-          if (result.extractedText) {
-            setExtractedText(result.extractedText);
-          }
-
-          // Если файл был обработан (сжат), используем обработанную версию
-          if (result.processedFile) {
-            setProcessedFile(result.processedFile);
-          }
-
-          toast.success("Документ обработан успешно");
+          setUploadItems((prev) =>
+            prev.map((current) =>
+              current.id === item.id
+                ? {
+                    ...current,
+                    processedFile: result.processedFile,
+                    extractedText: result.extractedText || current.extractedText,
+                    processingError: undefined,
+                  }
+                : current
+            )
+          );
         } catch (err) {
+          hasProcessingErrors = true;
           console.error("Ошибка обработки документа:", err);
-          setError(err instanceof Error ? err.message : "Не удалось обработать документ");
-          toast.error("Ошибка обработки документа");
-        } finally {
-          setIsProcessing(false);
-          setProcessingProgress(null);
+          setUploadItems((prev) =>
+            prev.map((current) =>
+              current.id === item.id
+                ? {
+                    ...current,
+                    processingError:
+                      err instanceof Error ? err.message : "Не удалось обработать документ",
+                  }
+                : current
+            )
+          );
         }
       }
+
+      if (hasProcessingErrors) {
+        setError("Некоторые файлы не удалось обработать. Они будут загружены в исходном виде.");
+        toast("Некоторые файлы не удалось обработать");
+      } else {
+        toast.success(newItems.length > 1 ? "Файлы обработаны успешно" : "Документ обработан успешно");
+      }
+    } finally {
+      setIsProcessing(false);
+      setProcessingProgress(null);
     }
-  }, [title]);
+  }, [title, uploadItems.length]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    multiple: false,
-    accept: {
-      'application/pdf': ['.pdf'],
-      'application/msword': ['.doc'],
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-      'application/vnd.ms-excel': ['.xls'],
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-      'image/*': ['.png', '.jpg', '.jpeg', '.gif'],
-      'text/*': ['.txt', '.csv'],
-    },
+    multiple: true,
+    disabled: isProcessing || isSubmitting,
   });
+
+  const removeUploadItem = (id: string) => {
+    const next = uploadItems.filter((item) => item.id !== id);
+
+    setUploadItems(next);
+
+    if (next.length === 0) {
+      setTitle("");
+    } else if (next.length === 1 && !title.trim()) {
+      setTitle(getDefaultDocumentTitle(next[0].file.name));
+    }
+  };
+
+  const updateSingleExtractedText = (value: string) => {
+    setUploadItems((prev) =>
+      prev.map((item, index) =>
+        index === 0 ? { ...item, extractedText: value } : item
+      )
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!title || !file) {
-      setError("Заполните все обязательные поля");
+    if (uploadItems.length === 0) {
+      setError("Выберите хотя бы один файл");
       return;
     }
 
@@ -197,30 +341,37 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
     setIsSubmitting(true);
 
     try {
-      // Используем обработанный файл, если он есть, иначе оригинальный
-      const fileToUpload = processedFile || file;
+      for (const item of uploadItems) {
+        const documentTitle =
+          uploadItems.length === 1
+            ? title.trim() || getDefaultDocumentTitle(item.file.name)
+            : getDefaultDocumentTitle(item.file.name);
 
-      await apiClient.createDocument({
-        title,
-        description,
-        file: fileToUpload,
-        extracted_text: extractedText || undefined,
-        folder_id: currentFolderId || undefined,
-        sent_to_all: sentToAll,
-        department_ids: sentToAll ? undefined : selectedDepartments,
-        recipient_ids: sentToAll ? undefined : selectedRecipients,
-        acknowledgement_required: acknowledgementRequired,
-        tag_ids: selectedTags.length > 0 ? selectedTags : undefined,
-      });
+        await apiClient.createDocument({
+          title: documentTitle,
+          description,
+          file: getFileForUpload(item),
+          extracted_text: item.extractedText || undefined,
+          folder_id: selectedFolderId ?? undefined,
+          sent_to_all: sentToAll,
+          department_ids: sentToAll ? undefined : selectedDepartments,
+          recipient_ids: sentToAll ? undefined : selectedRecipients,
+          acknowledgement_required: acknowledgementRequired,
+          tag_ids: selectedTags.length > 0 ? selectedTags : undefined,
+        });
+      }
 
-      toast.success("Документ успешно загружен");
+      toast.success(
+        uploadItems.length > 1
+          ? `${uploadItems.length} документов успешно загружено`
+          : "Документ успешно загружен"
+      );
       
       // Сброс формы
       setTitle("");
       setDescription("");
-      setFile(null);
-      setProcessedFile(null);
-      setExtractedText("");
+      setUploadItems([]);
+      setSelectedFolderId(currentFolderId ?? null);
       setSentToAll(true);
       setAcknowledgementRequired(false);
       setSelectedDepartments([]);
@@ -248,63 +399,87 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
         </div>
       )}
 
-      {/* Current folder info */}
-      {currentFolderId && (
-        <div className="app-selected app-accent-text rounded-lg p-3 text-sm">
-          <div className="flex items-center gap-2">
-            <FolderOpen size={16} />
-            <span>Документ будет сохранён в выбранной папке</span>
-          </div>
-        </div>
-      )}
-
       {/* File Upload */}
       <div>
         <label className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
-          Файл <span className="text-red-500">*</span>
+          Файлы <span className="text-red-500">*</span>
         </label>
         
-        {!file ? (
-          <div
-            {...getRootProps()}
-            className={`cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition ${
-              isDragActive
-                ? "border-[var(--accent-primary)] bg-[color:color-mix(in_srgb,var(--accent-primary)_10%,var(--surface-secondary))]"
-                : "border-[var(--border-strong)] bg-[var(--surface-secondary)] hover:border-[var(--accent-primary)] hover:bg-[color:color-mix(in_srgb,var(--accent-primary)_8%,var(--surface-secondary))]"
-            }`}
-          >
-            <input {...getInputProps()} />
-            <Upload size={32} className="app-text-muted mx-auto mb-3" />
-            <p className="text-sm font-medium text-[var(--foreground)]">
-              {isDragActive ? "Отпустите файл здесь" : "Перетащите файл или нажмите для выбора"}
-            </p>
-            <p className="app-text-muted mt-1 text-xs">
-              PDF, Word, Excel, изображения, текстовые файлы
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="app-surface flex items-center gap-3 rounded-lg p-3">
-              <FileText size={20} className="app-accent-text shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-[var(--foreground)]">{file.name}</p>
-                <p className="app-text-muted text-xs">
-                  {(file.size / 1024 / 1024).toFixed(2)} МБ
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setFile(null);
-                  setProcessedFile(null);
-                  setExtractedText("");
-                }}
-                disabled={isProcessing}
-                className="app-action-ghost app-text-muted shrink-0 rounded-full p-1 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <X size={16} />
-              </button>
+        <div
+          {...getRootProps()}
+          className={`cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition ${
+            isDragActive
+              ? "border-[var(--accent-primary)] bg-[color:color-mix(in_srgb,var(--accent-primary)_10%,var(--surface-secondary))]"
+              : "border-[var(--border-strong)] bg-[var(--surface-secondary)] hover:border-[var(--accent-primary)] hover:bg-[color:color-mix(in_srgb,var(--accent-primary)_8%,var(--surface-secondary))]"
+          } ${isProcessing || isSubmitting ? "cursor-not-allowed opacity-60" : ""}`}
+        >
+          <input {...getInputProps()} />
+          <Upload size={32} className="app-text-muted mx-auto mb-3" />
+          <p className="text-sm font-medium text-[var(--foreground)]">
+            {isDragActive
+              ? "Отпустите файлы здесь"
+              : uploadItems.length > 0
+                ? "Добавьте ещё файлы или нажмите для выбора"
+                : "Перетащите файлы или нажмите для выбора"}
+          </p>
+          <p className="app-text-muted mt-1 text-xs">
+            Можно выбрать несколько файлов любых форматов
+          </p>
+        </div>
+
+        {uploadItems.length > 0 && (
+          <div className="mt-3 space-y-3">
+            <div className="app-text-muted text-xs">
+              Выбрано файлов: {uploadItems.length}
             </div>
+
+            <div className="flex flex-wrap gap-2">
+              {uploadItems.map((item) => (
+                <span
+                  key={item.id}
+                  className={`inline-flex max-w-full items-center gap-2 rounded-full px-2.5 py-1.5 ${
+                    item.processingError ? "app-feedback-danger" : "app-badge"
+                  }`}
+                  title={item.processingError || item.file.name}
+                >
+                  <FileText size={16} className="app-accent-text shrink-0" />
+                  <span className="min-w-0">
+                    <span className="block max-w-[14rem] truncate text-sm font-medium text-[var(--foreground)]">
+                      {item.file.name}
+                    </span>
+                    <span className="app-text-muted block truncate text-xs">
+                      {formatFileSize(item.file.size)}
+                      {item.extractedText ? " · текст извлечён" : ""}
+                      {item.processedFile
+                        ? ` · сжато до ${formatFileSize(item.processedFile.size)}`
+                        : ""}
+                      {item.processingError ? " · ошибка обработки" : ""}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeUploadItem(item.id)}
+                    disabled={isProcessing}
+                    className="app-action-ghost app-text-muted -mr-1 shrink-0 rounded-full p-1 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label={`Убрать файл ${item.file.name}`}
+                  >
+                    <X size={14} />
+                  </button>
+                </span>
+              ))}
+            </div>
+
+            {uploadItems.some((item) => item.processingError) && (
+              <div className="space-y-1">
+                {uploadItems.map((item) =>
+                  item.processingError ? (
+                    <p key={item.id} className="text-xs text-red-500">
+                      {item.file.name}: {item.processingError}
+                    </p>
+                  ) : null
+                )}
+              </div>
+            )}
 
             {/* Индикатор обработки */}
             {isProcessing && processingProgress && (
@@ -322,15 +497,8 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
                   />
                 </div>
                 <p className="app-accent-text mt-1 text-xs">
-                  {processingProgress.progress}%
+                  {processingProgress.message} · {processingProgress.progress}%
                 </p>
-              </div>
-            )}
-
-            {/* Сообщение о сжатии */}
-            {processedFile && !isProcessing && (
-              <div className="app-feedback-success rounded-lg p-2 text-xs">
-                ✓ Изображение сжато: {(file.size / 1024 / 1024).toFixed(2)} МБ → {(processedFile.size / 1024 / 1024).toFixed(2)} МБ
               </div>
             )}
           </div>
@@ -338,20 +506,28 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
       </div>
 
       {/* Title */}
-      <div>
-        <label htmlFor="title" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
-          Название <span className="text-red-500">*</span>
-        </label>
-        <input
-          id="title"
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Введите название документа"
-          required
-          className="app-input w-full rounded-lg px-3 py-2 text-sm"
-        />
-      </div>
+      {uploadItems.length <= 1 ? (
+        <div>
+          <label htmlFor="title" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
+            Название
+          </label>
+          <input
+            id="title"
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="По умолчанию — название файла"
+            className="app-input w-full rounded-lg px-3 py-2 text-sm"
+          />
+          <p className="app-text-muted mt-1 text-xs">
+            Поле необязательное. Если оставить пустым, будет использовано имя файла без расширения.
+          </p>
+        </div>
+      ) : (
+        <div className="app-selected app-accent-text rounded-lg p-3 text-sm">
+          Для каждого документа название будет взято из имени соответствующего файла.
+        </div>
+      )}
 
       {/* Description */}
       <div>
@@ -376,42 +552,92 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
         </h3>
       </div>
 
-      {/* Tags */}
+      {/* Folder */}
       <div>
-        <label htmlFor="tags" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
-          Теги
+        <label htmlFor="folder" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
+          <FolderOpen size={14} className="mr-1 inline" />
+          Папка
         </label>
         <select
-          id="tags"
-          multiple
-          value={selectedTags.map(String)}
-          onChange={(e) => {
-            const values = Array.from(e.target.selectedOptions, (option) => Number(option.value));
-            setSelectedTags(values);
-          }}
-          disabled={loadingDocumentTags}
+          id="folder"
+          value={selectedFolderId ?? ""}
+          onChange={(e) => setSelectedFolderId(e.target.value ? Number(e.target.value) : null)}
+          disabled={loadingFolders}
           className="app-select w-full rounded-lg px-3 py-2 text-sm"
-          size={4}
         >
-          {loadingDocumentTags ? (
+          <option value="">Без папки</option>
+          {loadingFolders ? (
             <option disabled>Загрузка...</option>
-          ) : documentTags.length === 0 ? (
-            <option disabled>Нет доступных тегов</option>
+          ) : folderOptionRows.length === 0 ? (
+            <option disabled>Нет доступных папок</option>
           ) : (
-            documentTags.map((tag) => (
-              <option key={tag.id} value={tag.id}>
-                {tag.name}
+            folderOptionRows.map(({ folder, level }) => (
+              <option key={folder.id} value={folder.id}>
+                {`${"— ".repeat(level)}${folder.name}`}
               </option>
             ))
           )}
         </select>
         <p className="app-text-muted mt-1 text-xs">
-          Удерживайте Ctrl/Cmd для выбора нескольких тегов
+          Выбранная папка будет применена ко всем загружаемым документам.
+        </p>
+      </div>
+
+      {/* Tags */}
+      <div>
+        <div id="document-upload-tags-label" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
+          Теги
+        </div>
+        <div
+          role="group"
+          aria-labelledby="document-upload-tags-label"
+          className="app-surface-muted flex min-h-12 flex-wrap items-center gap-2 rounded-lg p-2"
+        >
+          {loadingDocumentTags ? (
+            <span className="app-text-muted px-1 text-sm">Загрузка тегов...</span>
+          ) : documentTags.length === 0 ? (
+            <span className="app-text-muted px-1 text-sm">Нет доступных тегов</span>
+          ) : (
+            documentTags.map((tag) => (
+              <button
+                key={tag.id}
+                type="button"
+                onClick={() =>
+                  setSelectedTags((prev) =>
+                    prev.includes(tag.id)
+                      ? prev.filter((id) => id !== tag.id)
+                      : [...prev, tag.id]
+                  )
+                }
+                className={`inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                  selectedTags.includes(tag.id)
+                    ? "app-badge app-badge-accent"
+                    : "app-badge hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
+                }`}
+                aria-pressed={selectedTags.includes(tag.id)}
+              >
+                {tag.color && (
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: tag.color }}
+                  />
+                )}
+                <span className="truncate">{tag.name}</span>
+              </button>
+            ))
+          )}
+        </div>
+        <p className="app-text-muted mt-1 text-xs">
+          {selectedTags.length > 0 ? (
+            <>Выбрано: {selectedTags.length}</>
+          ) : (
+            <>Нажмите на тег, чтобы добавить его к документу</>
+          )}
         </p>
       </div>
 
       {/* Извлеченный текст */}
-      {extractedText && (
+      {uploadItems.length === 1 && uploadItems[0].extractedText && (
         <div>
           <label htmlFor="extractedText" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
             Извлеченный текст
@@ -421,15 +647,21 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
           </label>
           <textarea
             id="extractedText"
-            value={extractedText}
-            onChange={(e) => setExtractedText(e.target.value)}
+            value={uploadItems[0].extractedText}
+            onChange={(e) => updateSingleExtractedText(e.target.value)}
             placeholder="Текст, извлеченный из документа"
             rows={5}
             className="app-input w-full rounded-lg px-3 py-2 text-sm font-mono"
           />
           <p className="app-text-muted mt-1 text-xs">
-            Символов: {extractedText.length}
+            Символов: {uploadItems[0].extractedText.length}
           </p>
+        </div>
+      )}
+
+      {uploadItems.length > 1 && uploadItems.some((item) => item.extractedText) && (
+        <div className="app-selected app-accent-text rounded-lg p-3 text-sm">
+          Текст извлечён для {uploadItems.filter((item) => item.extractedText).length} файлов и будет сохранён для поиска.
         </div>
       )}
 
@@ -571,13 +803,19 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
       </div>
 
       {/* Buttons */}
-      <div className="flex gap-3">
+      <div className="app-divider sticky bottom-0 z-10 -mx-4 flex gap-3 border-t bg-[var(--surface-elevated)] px-4 py-3 sm:-mx-6 sm:px-6">
         <button
           type="submit"
-          disabled={isSubmitting || isProcessing || !title || !file}
+          disabled={isSubmitting || isProcessing || uploadItems.length === 0}
           className="app-action-primary flex-1 rounded-lg px-4 py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isSubmitting ? "Загрузка..." : isProcessing ? "Обработка..." : "Загрузить документ"}
+          {isSubmitting
+            ? "Загрузка..."
+            : isProcessing
+              ? "Обработка..."
+              : uploadItems.length > 1
+                ? `Загрузить ${uploadItems.length} документов`
+                : "Загрузить документ"}
         </button>
         
         {onCancel && (

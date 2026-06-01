@@ -44,6 +44,7 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
         if request.method in SAFE_METHODS or action in (
             "acknowledge",
             "download",
+            "archive",
         ):
             return bool(request.user and request.user.is_authenticated)
 
@@ -103,6 +104,7 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
         if request.method in SAFE_METHODS or action in (
             "acknowledge",
             "download",
+            "archive",
         ):
             if getattr(obj, "sent_to_all", False):
                 return True

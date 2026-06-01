@@ -16,6 +16,8 @@ from __future__ import annotations
 """
 
 import tempfile
+import io
+import zipfile
 from typing import Iterable
 
 import pytest
@@ -26,7 +28,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from django.utils import timezone
 from documents.models import Document, DocumentAcknowledgement
-from filer.models import File as FilerFile
+from filer.models import File as FilerFile, Folder
 from rest_framework import status
 from rest_framework.test import APIClient
 from tests.conftest import _unique_phone
@@ -156,10 +158,19 @@ def api_urls():
     def _ack(pk: int) -> str:
         return reverse("api:v1:documents-acknowledge", args=[pk])
 
+    def _folder_detail(pk: int) -> str:
+        return reverse("api:v1:folders-detail", args=[pk])
+
+    def _folder_archive(pk: int) -> str:
+        return reverse("api:v1:folders-archive", args=[pk])
+
     return {
         "list": reverse("api:v1:documents-list"),
+        "archive": reverse("api:v1:documents-archive"),
         "detail": _detail,
         "ack": _ack,
+        "folder_detail": _folder_detail,
+        "folder_archive": _folder_archive,
     }
 
 @pytest.fixture(autouse=True)
@@ -374,6 +385,29 @@ class TestCreate:
         assert doc.title == "Title"
         assert doc.sent_to_all is True
 
+    def test_create_allows_arbitrary_file_format(
+        self, auth_client, make_user, api_urls
+    ):
+        """API принимает файл с любым расширением и MIME-типом."""
+        uploader = make_user("any-format-uploader@example.com", staff=True)
+        client = auth_client(uploader)
+        arbitrary_file = SimpleUploadedFile(
+            name="archive.custom-format",
+            content=b"custom payload",
+            content_type="application/octet-stream",
+        )
+
+        response = client.post(
+            api_urls["list"],
+            {"file": arbitrary_file, "sent_to_all": True},
+            format="multipart",
+        )
+
+        assert response.status_code in (200, 201), response.content
+        body = response.json()
+        assert body["title"] == "archive"
+        assert body["file_name"] == "archive.custom-format"
+
     def test_create_sent_to_all_false_with_recipients_variants(
         self, auth_client, make_user, api_urls
     ):
@@ -427,9 +461,14 @@ class TestCreate:
         client = auth_client(uploader)
         url = api_urls["list"]
 
-        # нет title
-        r = client.post(url, {"file": _file(), "sent_to_all": True}, format="multipart")
-        assert r.status_code == 400
+        # title можно не передавать: он берется из имени файла
+        r = client.post(
+            url,
+            {"file": _file(name="derived-title.pdf"), "sent_to_all": True},
+            format="multipart",
+        )
+        assert r.status_code in (200, 201), r.content
+        assert r.json()["title"] == "derived-title"
 
         # нет file
         r = client.post(url, {"title": "T", "sent_to_all": True}, format="multipart")
@@ -701,6 +740,157 @@ class TestDelete:
 
         # каскад: записей нет
         assert not DocumentAcknowledgement.objects.filter(document=d).exists()
+
+    def test_delete_folder_removes_nested_folders_documents_and_related(
+        self, auth_client, make_user, api_urls
+    ):
+        """DELETE папки удаляет её дерево, документы внутри и связанные документы."""
+        owner = make_user("folder-owner@example.com")
+        client = auth_client(owner)
+        root = Folder.objects.create(name="Root", owner=owner)
+        child = Folder.objects.create(name="Child", parent=root, owner=owner)
+        other = Folder.objects.create(name="Other", owner=owner)
+
+        root_doc = make_document(title="Root doc", uploaded_by=owner)
+        root_doc.folder = root
+        root_doc.save(update_fields=["folder"])
+
+        child_doc = make_document(title="Child doc", uploaded_by=owner)
+        child_doc.folder = child
+        child_doc.save(update_fields=["folder"])
+
+        related_doc = make_document(title="Related doc", uploaded_by=owner)
+        related_doc.folder = other
+        related_doc.save(update_fields=["folder"])
+        root_doc.related_documents.add(related_doc)
+
+        unrelated_doc = make_document(title="Unrelated doc", uploaded_by=owner)
+        unrelated_doc.folder = other
+        unrelated_doc.save(update_fields=["folder"])
+
+        response = client.delete(api_urls["folder_detail"](root.pk))
+
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert not Folder.objects.filter(pk__in=[root.pk, child.pk]).exists()
+        assert Folder.objects.filter(pk=other.pk).exists()
+        assert not Document.objects.filter(
+            pk__in=[root_doc.pk, child_doc.pk, related_doc.pk]
+        ).exists()
+        assert Document.objects.filter(pk=unrelated_doc.pk).exists()
+
+
+# -------------------- E2. Папки --------------------
+
+class TestFolders:
+    """E2. Операции с папками документов."""
+
+    def test_documents_archive_contains_selected_documents(
+        self, auth_client, make_user, api_urls
+    ):
+        """POST archive отдаёт ZIP только с выбранными документами."""
+        owner = make_user("documents-archive-owner@example.com")
+        client = auth_client(owner)
+
+        first_file = _filer_file(
+            name="first.txt", content=b"first payload", owner=owner
+        )
+        second_file = _filer_file(
+            name="second.txt", content=b"second payload", owner=owner
+        )
+        other_file = _filer_file(
+            name="other.txt", content=b"other payload", owner=owner
+        )
+
+        first = Document.objects.create(
+            title="First doc",
+            file=first_file,
+            uploaded_by=owner,
+            sent_to_all=True,
+        )
+        second = Document.objects.create(
+            title="Second doc",
+            file=second_file,
+            uploaded_by=owner,
+            sent_to_all=True,
+        )
+        Document.objects.create(
+            title="Other doc",
+            file=other_file,
+            uploaded_by=owner,
+            sent_to_all=True,
+        )
+
+        response = client.post(
+            api_urls["archive"],
+            {"document_ids": [first.pk, second.pk]},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response["Content-Type"] == "application/zip"
+
+        archive_bytes = b"".join(response.streaming_content)
+        archive = zipfile.ZipFile(io.BytesIO(archive_bytes))
+
+        assert archive.read("first.txt") == b"first payload"
+        assert archive.read("second.txt") == b"second payload"
+        assert "other.txt" not in archive.namelist()
+
+    def test_folder_archive_contains_nested_documents(
+        self, auth_client, make_user, api_urls
+    ):
+        """GET archive отдаёт ZIP с папкой, подпапками и документами."""
+        owner = make_user("folder-archive-owner@example.com")
+        client = auth_client(owner)
+        root = Folder.objects.create(name="Root", owner=owner)
+        child = Folder.objects.create(name="Child", parent=root, owner=owner)
+        other = Folder.objects.create(name="Other", owner=owner)
+
+        root_file = _filer_file(
+            name="root.txt", content=b"root payload", owner=owner
+        )
+        child_file = _filer_file(
+            name="child.txt", content=b"child payload", owner=owner
+        )
+        other_file = _filer_file(
+            name="other.txt", content=b"other payload", owner=owner
+        )
+
+        Document.objects.create(
+            title="Root doc",
+            file=root_file,
+            folder=root,
+            uploaded_by=owner,
+            sent_to_all=True,
+        )
+        Document.objects.create(
+            title="Child doc",
+            file=child_file,
+            folder=child,
+            uploaded_by=owner,
+            sent_to_all=True,
+        )
+        Document.objects.create(
+            title="Other doc",
+            file=other_file,
+            folder=other,
+            uploaded_by=owner,
+            sent_to_all=True,
+        )
+
+        response = client.get(api_urls["folder_archive"](root.pk))
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response["Content-Type"] == "application/zip"
+
+        archive_bytes = b"".join(response.streaming_content)
+        archive = zipfile.ZipFile(io.BytesIO(archive_bytes))
+
+        assert "Root/" in archive.namelist()
+        assert "Root/Child/" in archive.namelist()
+        assert archive.read("Root/root.txt") == b"root payload"
+        assert archive.read("Root/Child/child.txt") == b"child payload"
+        assert "Other/other.txt" not in archive.namelist()
 
 # -------------------- F. Экшен acknowledge --------------------
 

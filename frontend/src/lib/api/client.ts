@@ -84,7 +84,7 @@ export class ApiClientBase {
         return data.access;
     }
 
-    async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    private buildHeaders(options: RequestInit): Record<string, string> {
         const headers: Record<string, string> = {
             ...(options.headers as Record<string, string>),
         };
@@ -98,6 +98,20 @@ export class ApiClientBase {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
+        return headers;
+    }
+
+    private async parseErrorDetails(response: Response): Promise<string> {
+        try {
+            const data = await response.json();
+            return data.detail || JSON.stringify(data);
+        } catch {
+            return response.statusText;
+        }
+    }
+
+    async requestRaw(endpoint: string, options: RequestInit = {}): Promise<Response> {
+        const headers = this.buildHeaders(options);
         const response = await fetch(endpoint, { ...options, headers });
 
         if (response.status === 401 && this.getRefreshToken()) {
@@ -112,8 +126,60 @@ export class ApiClientBase {
                     const retryResponse = await fetch(endpoint, { ...options, headers });
 
                     if (!retryResponse.ok) {
-                        let errorDetails = '';
-                        try { const d = await retryResponse.json(); errorDetails = d.detail || JSON.stringify(d); } catch { errorDetails = retryResponse.statusText; }
+                        const errorDetails = await this.parseErrorDetails(retryResponse);
+                        throw new Error(`API Error: ${retryResponse.status} ${errorDetails}`);
+                    }
+
+                    return retryResponse;
+                } catch (refreshError) {
+                    this.isRefreshing = false;
+                    this.refreshSubscribers = [];
+                    throw refreshError;
+                }
+            }
+
+            return new Promise((resolve, reject) => {
+                this.addRefreshSubscriber((newToken: string) => {
+                    headers['Authorization'] = `Bearer ${newToken}`;
+                    fetch(endpoint, { ...options, headers })
+                        .then(async (res) => {
+                            if (!res.ok) {
+                                const errorDetails = await this.parseErrorDetails(res);
+                                reject(new Error(`API Error: ${res.status} ${errorDetails}`));
+                                return;
+                            }
+                            resolve(res);
+                        })
+                        .catch(reject);
+                });
+            });
+        }
+
+        if (!response.ok) {
+            const errorDetails = await this.parseErrorDetails(response);
+            throw new Error(`API Error: ${response.status} ${errorDetails}`);
+        }
+
+        return response;
+    }
+
+    async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+        const headers = this.buildHeaders(options);
+        const response = await fetch(endpoint, { ...options, headers });
+
+        if (response.status === 401 && this.getRefreshToken()) {
+            if (!this.isRefreshing) {
+                this.isRefreshing = true;
+                try {
+                    const newToken = await this.refreshAccessToken();
+                    this.isRefreshing = false;
+                    this.onRefreshed(newToken);
+
+                    headers['Authorization'] = `Bearer ${newToken}`;
+                    const retryResponse = await fetch(endpoint, { ...options, headers });
+
+                    if (!retryResponse.ok) {
+                        const errorDetails = await this.parseErrorDetails(retryResponse);
                         throw new Error(`API Error: ${retryResponse.status} ${errorDetails}`);
                     }
                     if (options.method === 'DELETE' && retryResponse.status === 204) return undefined as T;
@@ -143,8 +209,7 @@ export class ApiClientBase {
         }
 
         if (!response.ok) {
-            let errorDetails = '';
-            try { const d = await response.json(); errorDetails = d.detail || JSON.stringify(d); } catch { errorDetails = response.statusText; }
+            const errorDetails = await this.parseErrorDetails(response);
             throw new Error(`API Error: ${response.status} ${errorDetails}`);
         }
 

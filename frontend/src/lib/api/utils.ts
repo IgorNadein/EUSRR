@@ -13,4 +13,5 @@ export function buildQuery(params?: Record<string, string | number | boolean | u
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type RequestFn = (endpoint: string, options?: RequestInit) => Promise<any>;
+export type RawRequestFn = (endpoint: string, options?: RequestInit) => Promise<Response>;
 export type GetTokenFn = () => string | null;

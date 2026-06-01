@@ -1,22 +1,67 @@
-import type { RequestFn } from './utils';
+import type { GetTokenFn, RawRequestFn, RequestFn } from './utils';
 
-export function createDocumentsApi(request: RequestFn) {
+function parseDownloadFilename(response: Response, fallback: string): string {
+    const disposition = response.headers.get('content-disposition') || '';
+    const encodedMatch = disposition.match(/filename\*=UTF-8''([^;]+)/);
+    const plainMatch = disposition.match(/filename="?([^"]+)"?/);
+    return encodedMatch?.[1]
+        ? decodeURIComponent(encodedMatch[1])
+        : plainMatch?.[1] || fallback;
+}
+
+async function fetchDownload(
+    endpoint: string,
+    options: RequestInit,
+    fallbackFilename: string,
+    requestRaw?: RawRequestFn,
+    getToken?: GetTokenFn
+): Promise<{ blob: Blob; filename: string }> {
+    let response: Response;
+
+    if (requestRaw) {
+        response = await requestRaw(endpoint, options);
+    } else {
+        const headers: Record<string, string> = {
+            ...(options.headers as Record<string, string>),
+        };
+        const token = getToken?.();
+        if (token) headers.Authorization = `Bearer ${token}`;
+        response = await fetch(endpoint, { ...options, headers });
+
+        if (!response.ok) {
+            let errorDetails = response.statusText;
+            try {
+                const data = await response.json();
+                errorDetails = data.detail || JSON.stringify(data);
+            } catch {}
+            throw new Error(`API Error: ${response.status} ${errorDetails}`);
+        }
+    }
+
     return {
-        getDocuments: (params?: { search?: string; type?: string; status?: string; page?: number; limit?: number; folder_id?: number }) => {
+        blob: await response.blob(),
+        filename: parseDownloadFilename(response, fallbackFilename),
+    };
+}
+
+export function createDocumentsApi(request: RequestFn, getToken?: GetTokenFn, requestRaw?: RawRequestFn) {
+    return {
+        getDocuments: (params?: { search?: string; type?: string; status?: string; page?: number; page_size?: number; limit?: number; folder_id?: number }) => {
             const qp = new URLSearchParams();
             if (params?.search) qp.append('search', params.search);
             if (params?.type) qp.append('type', params.type);
             if (params?.status) qp.append('status', params.status);
             if (params?.page) qp.append('page', params.page.toString());
-            if (params?.limit) qp.append('limit', params.limit.toString());
+            const pageSize = params?.page_size ?? params?.limit;
+            if (pageSize) qp.append('page_size', pageSize.toString());
             if (params?.folder_id !== undefined) qp.append('folder_id', params.folder_id.toString());
             const qs = qp.toString();
             return request(`/api/v1/documents/${qs ? '?' + qs : ''}`);
         },
         getDocument: (id: number) => request(`/api/v1/documents/${id}/`),
-        createDocument: (data: { title: string; description?: string; file: File | Blob; extracted_text?: string; sent_to_all?: boolean; recipient_ids?: number[]; department_ids?: number[]; folder_id?: number | null; acknowledgement_required?: boolean; tag_ids?: number[] }) => {
+        createDocument: (data: { title?: string; description?: string; file: File | Blob; extracted_text?: string; sent_to_all?: boolean; recipient_ids?: number[]; department_ids?: number[]; folder_id?: number | null; acknowledgement_required?: boolean; tag_ids?: number[] }) => {
             const fd = new FormData();
-            fd.append('title', data.title);
+            if (data.title?.trim()) fd.append('title', data.title.trim());
             if (data.description) fd.append('description', data.description);
             if (data.extracted_text) fd.append('extracted_text', data.extracted_text);
             if (data.folder_id) fd.append('folder', String(data.folder_id));
@@ -38,6 +83,19 @@ export function createDocumentsApi(request: RequestFn) {
             return request(`/api/v1/documents/${id}/`, { method: 'PATCH', body: fd });
         },
         deleteDocument: (id: number): Promise<void> => request(`/api/v1/documents/${id}/`, { method: 'DELETE' }),
+        downloadDocumentsArchive: async (ids: number[]): Promise<{ blob: Blob; filename: string }> => {
+            return fetchDownload(
+                '/api/v1/documents/archive/',
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ document_ids: ids }),
+                },
+                'documents.zip',
+                requestRaw,
+                getToken
+            );
+        },
         acknowledgeDocument: (id: number) => request(`/api/v1/documents/${id}/acknowledge/`, { method: 'POST', body: JSON.stringify({}) }),
         getDocumentAcknowledgements: (id: number, search?: string) => {
             const qp = new URLSearchParams();
@@ -46,10 +104,13 @@ export function createDocumentsApi(request: RequestFn) {
             return request(`/api/v1/documents/${id}/acknowledgements/${qs ? '?' + qs : ''}`);
         },
         // Folders
-        getFolders: (params?: { parent_id?: number; root?: boolean }) => {
+        getFolders: (params?: { parent_id?: number; root?: boolean; page?: number; page_size?: number; limit?: number }) => {
             const qp = new URLSearchParams();
             if (params?.parent_id !== undefined) qp.append('parent_id', params.parent_id.toString());
             if (params?.root) qp.append('root', 'true');
+            if (params?.page) qp.append('page', params.page.toString());
+            const pageSize = params?.page_size ?? params?.limit;
+            if (pageSize) qp.append('page_size', pageSize.toString());
             const qs = qp.toString();
             return request(`/api/v1/folders/${qs ? '?' + qs : ''}`);
         },
@@ -57,6 +118,15 @@ export function createDocumentsApi(request: RequestFn) {
         createFolder: (data: { name: string; parent?: number | null }) => request('/api/v1/folders/', { method: 'POST', body: JSON.stringify(data) }),
         updateFolder: (id: number, data: { name?: string; parent?: number | null }) => request(`/api/v1/folders/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
         deleteFolder: (id: number): Promise<void> => request(`/api/v1/folders/${id}/`, { method: 'DELETE' }),
+        downloadFolderArchive: async (id: number): Promise<{ blob: Blob; filename: string }> => {
+            return fetchDownload(
+                `/api/v1/folders/${id}/archive/`,
+                {},
+                `folder-${id}.zip`,
+                requestRaw,
+                getToken
+            );
+        },
         getFolderChildren: (id: number) => request(`/api/v1/folders/${id}/children/`),
         getFolderDocuments: (id: number) => request(`/api/v1/folders/${id}/documents/`),
         // Comments
@@ -67,7 +137,14 @@ export function createDocumentsApi(request: RequestFn) {
         deleteDocumentComment: (id: number): Promise<void> => request(`/api/v1/document-comments/${id}/`, { method: 'DELETE' }),
         getCommentReplies: (commentId: number) => request(`/api/v1/document-comments/${commentId}/replies/`),
         // Tags
-        getDocumentTags: () => request('/api/v1/document-tags/'),
+        getDocumentTags: (params?: { page?: number; page_size?: number; limit?: number }) => {
+            const qp = new URLSearchParams();
+            if (params?.page) qp.append('page', params.page.toString());
+            const pageSize = params?.page_size ?? params?.limit;
+            if (pageSize) qp.append('page_size', pageSize.toString());
+            const qs = qp.toString();
+            return request(`/api/v1/document-tags/${qs ? '?' + qs : ''}`);
+        },
         getDocumentTag: (id: number) => request(`/api/v1/document-tags/${id}/`),
         createDocumentTag: (data: { name: string; color?: string }) => request('/api/v1/document-tags/', { method: 'POST', body: JSON.stringify(data) }),
         updateDocumentTag: (id: number, data: { name?: string; color?: string }) => request(`/api/v1/document-tags/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),

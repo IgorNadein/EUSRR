@@ -18,11 +18,12 @@ import { createAttendanceApi } from './attendance';
 const base = new ApiClientBase();
 const req = base.request.bind(base);
 const tok = base.getToken.bind(base);
+const raw = base.requestRaw.bind(base);
 
 export const apiClient = Object.assign(base, {
     ...createAuthApi(req),
     ...createEmployeesApi(req),
-    ...createDocumentsApi(req),
+    ...createDocumentsApi(req, tok, raw),
     ...createMessagesApi(req, tok),
     ...createNotificationsApi(req),
     ...createCalendarApi(req, tok),
