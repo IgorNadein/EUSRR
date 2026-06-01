@@ -433,19 +433,19 @@ function getMonthKeysBetween(start: string, end: string) {
 }
 
 function matrixCellTone(status: string) {
-  if (status === "technical") return "bg-red-500/15 text-red-200 hover:bg-red-500/20";
+  if (status === "technical") return "attendance-matrix-cell--technical";
   if (
     status === "personnel_issue"
     || status === "underwork"
     || status === "late"
     || status === "absent"
   ) {
-    return "bg-amber-500/15 text-amber-100 hover:bg-amber-500/20";
+    return "attendance-matrix-cell--issue";
   }
-  if (status === "overtime") return "bg-emerald-500/15 text-emerald-100 hover:bg-emerald-500/20";
-  if (status === "non_working") return "bg-slate-500/15 text-slate-300 hover:bg-slate-500/20";
-  if (status === "normal") return "bg-[var(--surface-primary)] text-[var(--foreground)] hover:bg-[var(--surface-tertiary)]";
-  return "bg-transparent text-[var(--muted-foreground)] hover:bg-[var(--surface-secondary)]";
+  if (status === "overtime") return "attendance-matrix-cell--overtime";
+  if (status === "non_working") return "attendance-matrix-cell--non-working";
+  if (status === "normal") return "attendance-matrix-cell--normal";
+  return "attendance-matrix-cell--empty";
 }
 
 function matrixCellSourceTone(cell: MonthlyAttendanceMatrixCell) {
@@ -2112,7 +2112,7 @@ export default function AttendancePage() {
                       <tr key={row.date}>
                         <th className={`sticky left-0 z-10 border-b border-r border-[var(--border-subtle)] px-3 py-2 text-left font-medium ${
                           row.is_weekend
-                            ? "bg-slate-500/10 text-slate-300"
+                            ? "attendance-matrix-date--weekend"
                             : "bg-[var(--surface-secondary)] text-[var(--foreground)]"
                         }`}>
                           {row.label}
@@ -2138,7 +2138,7 @@ export default function AttendancePage() {
                                   }`}
                                   title={cell.primary_label || matrixStatusLabel(cell.status)}
                                 >
-                                  <span className="block truncate font-medium">
+                                  <span className="block truncate font-semibold">
                                     {matrixCellDisplay(cell)}
                                   </span>
                                 </button>
@@ -2258,14 +2258,14 @@ export default function AttendancePage() {
                   {matrixCellIssueLabels(selectedCell.cell).length > 0 ? (
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {matrixCellIssueLabels(selectedCell.cell).map((issue) => (
-                        <span key={issue} className="app-status-pill bg-amber-500/15 text-amber-300">
+                        <span key={issue} className="app-status-pill attendance-matrix-issue-pill">
                           {formatAttendanceIssueLabel(issue)}
                         </span>
                       ))}
                     </div>
                   ) : null}
                   {selectedCell.cell.is_manually_edited ? (
-                    <div className="mt-3 inline-flex rounded-lg border border-violet-400/30 bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-200">
+                    <div className="attendance-matrix-manual-pill mt-3 inline-flex rounded-lg px-2.5 py-1 text-xs font-medium">
                       Ручная корректировка EUSRR
                     </div>
                   ) : null}

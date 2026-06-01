@@ -438,6 +438,17 @@ html[data-bs-theme="dark"] .app-input::-webkit-calendar-picker-indicator {
   border-color: color-mix(in srgb, #f59e0b 30%, var(--border-strong));
 }
 
+.app-action-approval {
+  border: 1px solid #ea580c;
+  background: #f97316;
+  color: #ffffff;
+}
+
+.app-action-approval:hover {
+  background: #ea580c;
+  border-color: #c2410c;
+}
+
 .app-action-secondary {
   border: 1px solid var(--border-strong);
   background: var(--surface-elevated);
@@ -552,6 +563,133 @@ html[data-bs-theme="dark"] .app-input::-webkit-calendar-picker-indicator {
   border: 1px solid color-mix(in srgb, #f59e0b 20%, var(--border-subtle));
   background: var(--warning-soft);
   color: #b45309;
+}
+
+.app-feedback-approval {
+  border: 1px solid color-mix(in srgb, #f97316 24%, var(--border-subtle));
+  background: color-mix(in srgb, #f97316 14%, var(--surface-primary));
+  color: #c2410c;
+}
+
+.attendance-matrix-cell--technical {
+  background: color-mix(in srgb, #ef4444 14%, var(--surface-primary));
+  color: #b91c1c;
+}
+
+.attendance-matrix-cell--technical:hover {
+  background: color-mix(in srgb, #ef4444 20%, var(--surface-primary));
+}
+
+.attendance-matrix-cell--issue {
+  background: color-mix(in srgb, #f59e0b 20%, var(--surface-primary));
+  color: #92400e;
+}
+
+.attendance-matrix-cell--issue:hover {
+  background: color-mix(in srgb, #f59e0b 28%, var(--surface-primary));
+}
+
+.attendance-matrix-cell--overtime {
+  background: color-mix(in srgb, #10b981 16%, var(--surface-primary));
+  color: #047857;
+}
+
+.attendance-matrix-cell--overtime:hover {
+  background: color-mix(in srgb, #10b981 22%, var(--surface-primary));
+}
+
+.attendance-matrix-cell--non-working {
+  background: color-mix(in srgb, #64748b 14%, var(--surface-primary));
+  color: #475569;
+}
+
+.attendance-matrix-cell--non-working:hover {
+  background: color-mix(in srgb, #64748b 20%, var(--surface-primary));
+}
+
+.attendance-matrix-cell--normal {
+  background: var(--surface-primary);
+  color: var(--foreground);
+}
+
+.attendance-matrix-cell--normal:hover,
+.attendance-matrix-cell--empty:hover {
+  background: var(--surface-tertiary);
+}
+
+.attendance-matrix-cell--empty {
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+.attendance-matrix-date--weekend {
+  background: color-mix(in srgb, #64748b 10%, var(--surface-secondary));
+  color: #64748b;
+}
+
+.attendance-matrix-issue-pill {
+  border-color: color-mix(in srgb, #f59e0b 24%, var(--border-subtle));
+  background: color-mix(in srgb, #f59e0b 16%, var(--surface-primary));
+  color: #92400e;
+}
+
+.attendance-matrix-manual-pill {
+  border: 1px solid color-mix(in srgb, #8b5cf6 26%, var(--border-subtle));
+  background: color-mix(in srgb, #8b5cf6 12%, var(--surface-primary));
+  color: #6d28d9;
+}
+
+html[data-bs-theme="dark"] .attendance-matrix-cell--technical {
+  background: color-mix(in srgb, #ef4444 18%, transparent);
+  color: #fecaca;
+}
+
+html[data-bs-theme="dark"] .attendance-matrix-cell--technical:hover {
+  background: color-mix(in srgb, #ef4444 24%, transparent);
+}
+
+html[data-bs-theme="dark"] .attendance-matrix-cell--issue {
+  background: color-mix(in srgb, #f59e0b 18%, transparent);
+  color: #fde68a;
+}
+
+html[data-bs-theme="dark"] .attendance-matrix-cell--issue:hover {
+  background: color-mix(in srgb, #f59e0b 24%, transparent);
+}
+
+html[data-bs-theme="dark"] .attendance-matrix-cell--overtime {
+  background: color-mix(in srgb, #10b981 17%, transparent);
+  color: #a7f3d0;
+}
+
+html[data-bs-theme="dark"] .attendance-matrix-cell--overtime:hover {
+  background: color-mix(in srgb, #10b981 23%, transparent);
+}
+
+html[data-bs-theme="dark"] .attendance-matrix-cell--non-working {
+  background: color-mix(in srgb, #64748b 18%, transparent);
+  color: #cbd5e1;
+}
+
+html[data-bs-theme="dark"] .attendance-matrix-cell--non-working:hover {
+  background: color-mix(in srgb, #64748b 24%, transparent);
+}
+
+html[data-bs-theme="dark"] .attendance-matrix-date--weekend {
+  background: color-mix(in srgb, #64748b 16%, var(--surface-secondary));
+  color: #cbd5e1;
+}
+
+html[data-bs-theme="dark"] .attendance-matrix-issue-pill {
+  border-color: color-mix(in srgb, #f59e0b 32%, var(--border-subtle));
+  background: color-mix(in srgb, #f59e0b 16%, transparent);
+  color: #fde68a;
+}
+
+html[data-bs-theme="dark"] .attendance-matrix-manual-pill {
+  border-color: color-mix(in srgb, #a78bfa 34%, var(--border-subtle));
+  background: color-mix(in srgb, #8b5cf6 16%, transparent);
+  color: #ddd6fe;
 }
 
 .reaction-picker-surface {

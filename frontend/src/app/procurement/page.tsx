@@ -46,7 +46,7 @@ import { Modal } from "@/components/ui";
 const statusMeta: Record<ProcurementStatus, { label: string; cls: string }> = {
   draft:       { label: "Черновик",        cls: "app-badge" },
   waiting:     { label: "Ожидает",         cls: "app-feedback-warning" },
-  pending:     { label: "На согласовании", cls: "app-feedback-warning" },
+  pending:     { label: "На согласовании", cls: "app-feedback-approval" },
   approved:    { label: "Одобрено",        cls: "app-feedback-success" },
   in_progress: { label: "В работе",        cls: "app-selected" },
   completed:   { label: "Завершено",       cls: "app-feedback-success" },
@@ -196,7 +196,7 @@ function ProcurementRequestActionButtons({
           onClick={() => onSubmit(request.id)}
           disabled={busyKey === `submit-${request.id}`}
           title="Отправить на согласование"
-          className={buttonClass("app-action-warning")}
+          className={buttonClass("app-action-approval")}
         >
           <Send size={14} />
           {label("Отправить на согласование")}
