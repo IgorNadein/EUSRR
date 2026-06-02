@@ -46,7 +46,7 @@ const navItems = [
   { href: "/attendance", label: "Посещаемость", icon: CalendarCheck },
   { href: "/requests", label: "Заявления", icon: FileSignature, category: "Заявки" },
   // { href: "/equipment", label: "Оборудование", icon: Monitor },
-  { href: "/procurement", label: "Закупки", icon: ShoppingCart, category: "Закупки" },
+  { href: "/procurement", label: "Закупки", icon: ShoppingCart, category: "Закупки", autoReadOnNavigate: false },
   { href: "/documents", label: "Документы", icon: FileText, category: "Документы" },
   // { href: "/finances", label: "Финансы", icon: Wallet },
 ];
@@ -340,9 +340,9 @@ function LeftNavContent({ onNavigate }: LeftNavContentProps) {
     return counts;
   }, [notifications]);
 
-  const handleNavClick = async (category?: string) => {
+  const handleNavClick = async (category?: string, autoReadOnNavigate = true) => {
     // Помечаем уведомления категории как прочитанные
-    if (category && category !== "Сообщения" && categoryCounts[category] > 0) {
+    if (autoReadOnNavigate && category && category !== "Сообщения" && categoryCounts[category] > 0) {
       await markCategoryAsRead(category);
     }
     
@@ -361,7 +361,7 @@ function LeftNavContent({ onNavigate }: LeftNavContentProps) {
   return (
     <div className="app-surface rounded-2xl p-5">
       <div className="space-y-2 text-sm">
-        {visibleNavItems.map(({ href, label, icon: Icon, category }) => {
+        {visibleNavItems.map(({ href, label, icon: Icon, category, autoReadOnNavigate }) => {
           const count = category ? categoryCounts[category] || 0 : 0;
           
           return (
@@ -369,7 +369,7 @@ function LeftNavContent({ onNavigate }: LeftNavContentProps) {
               key={href} 
               href={href} 
               className={navLinkClass(href)} 
-              onClick={() => handleNavClick(category)}
+              onClick={() => handleNavClick(category, autoReadOnNavigate)}
             >
               <Icon size={18} className={navIconClass(href)} />
               <span className="flex-1">{label}</span>
