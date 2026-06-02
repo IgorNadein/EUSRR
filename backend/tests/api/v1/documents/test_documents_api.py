@@ -8,9 +8,10 @@ from __future__ import annotations
 - Создавать — все аутентифицированные пользователи (документы создаются в draft).
 - Редактировать/удалять — только создатель, админы или обладатели модельных прав.
 - Approve/Publish — только пользователи с правом change_document (django-rules).
-- Читать/скачивать/ознакомливаться — только аутентифицированные, и только документы,
-  предназначенные им (или с sent_to_all=True). Обычные пользователи видят только PUBLISHED
-  документы (кроме своих собственных).
+- Читать/скачивать — только аутентифицированные, и только документы,
+  предназначенные им (или с sent_to_all=True). Ознакомливаться можно только
+  с документами, где acknowledgement_required=True. Обычные пользователи
+  видят только PUBLISHED документы (кроме своих собственных).
 
 Все функции и классы снабжены докстрингами (Google-style).
 """
@@ -101,6 +102,7 @@ def make_document(
     uploaded_by: User,
     description: str = "desc",
     sent_to_all: bool = True,
+    acknowledgement_required: bool = False,
     recipients: Iterable[User] | None = None,
 ) -> Document:
     """Создаёт Document напрямую (минует API).
@@ -110,6 +112,7 @@ def make_document(
         uploaded_by (User): Кто загрузил.
         description (str): Описание.
         sent_to_all (bool): Признак рассылки всем.
+        acknowledgement_required (bool): Требуется ли ознакомление.
         recipients (Iterable[User] | None): Конкретные получатели при sent_to_all=false.
 
     Returns:
@@ -124,6 +127,7 @@ def make_document(
         uploaded_by=uploaded_by,
         uploaded_at=timezone.now(),
         sent_to_all=sent_to_all,
+        acknowledgement_required=acknowledgement_required,
         file=filer_file,
     )
     if not sent_to_all and recipients:
@@ -892,6 +896,107 @@ class TestFolders:
         assert archive.read("Root/Child/child.txt") == b"child payload"
         assert "Other/other.txt" not in archive.namelist()
 
+
+# -------------------- E3. Уведомления --------------------
+
+class TestDocumentNotifications:
+    """E3. Уведомления о новых документах и ознакомлении."""
+
+    def test_required_document_notification_mentions_acknowledgement(
+        self, monkeypatch, make_user
+    ):
+        """Документ на ознакомление получает требовательный текст."""
+        from documents.notifications.handlers import notify_document_ready
+
+        calls = []
+
+        def fake_notify_send(**kwargs):
+            calls.append(kwargs)
+
+        monkeypatch.setattr(
+            "documents.notifications.handlers.notify.send",
+            fake_notify_send,
+        )
+        author = make_user("required-document-author@example.com")
+        viewer = make_user("required-document-viewer@example.com")
+        doc = make_document(
+            title="Регламент",
+            uploaded_by=author,
+            sent_to_all=False,
+            acknowledgement_required=True,
+        )
+
+        notify_document_ready(doc, viewer)
+
+        assert len(calls) == 1
+        payload = calls[0]
+        assert payload["recipient"] == viewer
+        assert payload["verb"] == "document_ready"
+        assert "Требуется ознакомление" in payload["description"]
+        assert payload["data"]["title"] == "Новый документ на ознакомление"
+        assert payload["data"]["acknowledgement_required"] is True
+
+    def test_optional_document_notification_is_neutral(
+        self, monkeypatch, make_user
+    ):
+        """Документ без ознакомления уведомляет без требования ознакомиться."""
+        from documents.notifications.handlers import notify_document_ready
+
+        calls = []
+
+        def fake_notify_send(**kwargs):
+            calls.append(kwargs)
+
+        monkeypatch.setattr(
+            "documents.notifications.handlers.notify.send",
+            fake_notify_send,
+        )
+        author = make_user("optional-document-author@example.com")
+        viewer = make_user("optional-document-viewer@example.com")
+        doc = make_document(
+            title="Справка",
+            uploaded_by=author,
+            sent_to_all=False,
+            acknowledgement_required=False,
+        )
+
+        notify_document_ready(doc, viewer)
+
+        assert len(calls) == 1
+        payload = calls[0]
+        assert payload["recipient"] == viewer
+        assert payload["verb"] == "document_ready"
+        assert "Требуется ознакомление" not in payload["description"]
+        assert payload["description"].endswith('загрузил документ "Справка".')
+        assert payload["data"]["title"] == "Новый документ"
+        assert payload["data"]["acknowledgement_required"] is False
+
+    def test_optional_document_acknowledgement_does_not_notify_uploader(
+        self, monkeypatch, make_user
+    ):
+        """Ручные ACK по необязательному документу не запускают итоговое уведомление."""
+        calls = []
+
+        def fake_notify_all_acknowledged(*args):
+            calls.append(args)
+
+        monkeypatch.setattr(
+            "documents.notifications.signals.notify_all_acknowledged",
+            fake_notify_all_acknowledged,
+        )
+        author = make_user("optional-ack-author@example.com")
+        viewer = make_user("optional-ack-viewer@example.com")
+        doc = make_document(
+            uploaded_by=author,
+            sent_to_all=False,
+            acknowledgement_required=False,
+        )
+
+        DocumentAcknowledgement.objects.create(document=doc, user=viewer)
+
+        assert calls == []
+
+
 # -------------------- F. Экшен acknowledge --------------------
 
 class TestAcknowledge:
@@ -906,7 +1011,9 @@ class TestAcknowledge:
         client = auth_client(any_user)
 
         d = make_document(
-            uploaded_by=author, sent_to_all=True
+            uploaded_by=author,
+            sent_to_all=True,
+            acknowledgement_required=True,
         )  # доступен всем аутентифицированным
 
         r1 = client.post(api_urls["ack"](d.pk), {})
@@ -953,6 +1060,28 @@ class TestAcknowledge:
             api_urls["ack"](make_document(uploaded_by=author, sent_to_all=False).pk), {}
         )
         assert r.status_code == 404
+
+    def test_ack_rejects_document_without_required_acknowledgement(
+        self, auth_client, make_user, api_urls
+    ):
+        """Документ без обязательного ознакомления нельзя отметить через API."""
+        author = make_user("optional-author@example.com")
+        viewer = make_user("optional-viewer@example.com")
+        client = auth_client(viewer)
+        doc = make_document(
+            uploaded_by=author,
+            sent_to_all=True,
+            acknowledgement_required=False,
+        )
+
+        response = client.post(api_urls["ack"](doc.pk), {})
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "не требуется" in response.json()["detail"]
+        assert not DocumentAcknowledgement.objects.filter(
+            document=doc,
+            user=viewer,
+        ).exists()
 
 # -------------------- G. Сериализация и данные --------------------
 

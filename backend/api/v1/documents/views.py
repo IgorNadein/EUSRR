@@ -306,6 +306,16 @@ class DocumentViewSet(ModelViewSet):
             Response: {"ok": true, "already": bool}
         """
         doc = self.get_object()
+        if not doc.acknowledgement_required:
+            return Response(
+                {
+                    "detail": (
+                        "Для этого документа не требуется подтверждение "
+                        "ознакомления."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         obj, created = DocumentAcknowledgement.objects.get_or_create(
             document=doc, user=request.user
         )

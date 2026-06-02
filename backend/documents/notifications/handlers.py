@@ -27,6 +27,29 @@ logger = logging.getLogger(__name__)
 Employee = get_user_model()
 
 
+def _document_ready_payload(document, uploader_name):
+    """Собирает единый текст и данные уведомления о новом документе."""
+    acknowledgement_required = bool(document.acknowledgement_required)
+    return {
+        "description": MessageTemplates.document_ready(
+            uploader_name,
+            document.title,
+            acknowledgement_required=acknowledgement_required,
+        ),
+        "data": {
+            "title": MessageTemplates.document_ready_title(
+                acknowledgement_required=acknowledgement_required,
+            ),
+            "document_id": document.id,
+            "uploaded_by_id": (
+                document.uploaded_by.id if document.uploaded_by else None
+            ),
+            "sent_to_all": document.sent_to_all,
+            "acknowledgement_required": acknowledgement_required,
+        },
+    }
+
+
 def notify_document_ready(document, recipient):
     """
     Отправляет уведомление конкретному получателю о новом документе.
@@ -41,24 +64,16 @@ def notify_document_ready(document, recipient):
     )
 
     uploader_name = get_uploader_name(document.uploaded_by)
+    payload = _document_ready_payload(document, uploader_name)
 
     notify.send(
         sender=document.uploaded_by,
         recipient=recipient,
         verb=NotificationVerbs.DOCUMENT_READY,
         action_object=document,
-        description=MessageTemplates.document_ready(
-            uploader_name, document.title
-        ),
+        description=payload["description"],
         action_url=ActionURLs.DOCUMENTS,
-        data={
-            "title": MessageTemplates.document_ready_title(),
-            "document_id": document.id,
-            "uploaded_by_id": document.uploaded_by.id
-            if document.uploaded_by
-            else None,
-            "sent_to_all": document.sent_to_all,
-        },
+        data=payload["data"],
     )
 
 
@@ -86,6 +101,7 @@ def notify_all_employees(document):
     # Создаём уведомления
     created_count = 0
     uploader_name = get_uploader_name(document.uploaded_by)
+    payload = _document_ready_payload(document, uploader_name)
 
     for employee in active_employees:
         try:
@@ -94,20 +110,9 @@ def notify_all_employees(document):
                 recipient=employee,
                 verb=NotificationVerbs.DOCUMENT_READY,
                 action_object=document,
-                description=MessageTemplates.document_ready(
-                    uploader_name, document.title
-                ),
+                description=payload["description"],
                 action_url=ActionURLs.DOCUMENTS,
-                data={
-                    "title": MessageTemplates.document_ready_title(),
-                    "document_id": document.id,
-                    "uploaded_by_id": (
-                        document.uploaded_by.id
-                        if document.uploaded_by
-                        else None
-                    ),
-                    "sent_to_all": document.sent_to_all,
-                },
+                data=payload["data"],
             )
             created_count += 1
         except Exception as e:
@@ -164,6 +169,7 @@ def notify_specific_users(document, user_ids):
     # Уведомляем получателей
     created_count = 0
     uploader_name = get_uploader_name(document.uploaded_by)
+    payload = _document_ready_payload(document, uploader_name)
 
     for user_id in user_ids:
         try:
@@ -174,20 +180,9 @@ def notify_specific_users(document, user_ids):
                 recipient=user,
                 verb=NotificationVerbs.DOCUMENT_READY,
                 action_object=document,
-                description=MessageTemplates.document_ready(
-                    uploader_name, document.title
-                ),
+                description=payload["description"],
                 action_url=ActionURLs.DOCUMENTS,
-                data={
-                    "title": MessageTemplates.document_ready_title(),
-                    "document_id": document.id,
-                    "uploaded_by_id": (
-                        document.uploaded_by.id
-                        if document.uploaded_by
-                        else None
-                    ),
-                    "sent_to_all": document.sent_to_all,
-                },
+                data=payload["data"],
             )
             created_count += 1
         except Employee.DoesNotExist:
@@ -259,6 +254,7 @@ def notify_department_employees(document, department_ids):
     # Создаём уведомления
     created_count = 0
     uploader_name = get_uploader_name(document.uploaded_by)
+    payload = _document_ready_payload(document, uploader_name)
 
     for employee in all_employees:
         try:
@@ -267,20 +263,9 @@ def notify_department_employees(document, department_ids):
                 recipient=employee,
                 verb=NotificationVerbs.DOCUMENT_READY,
                 action_object=document,
-                description=MessageTemplates.document_ready(
-                    uploader_name, document.title
-                ),
+                description=payload["description"],
                 action_url=ActionURLs.DOCUMENTS,
-                data={
-                    "title": MessageTemplates.document_ready_title(),
-                    "document_id": document.id,
-                    "uploaded_by_id": (
-                        document.uploaded_by.id
-                        if document.uploaded_by
-                        else None
-                    ),
-                    "sent_to_all": document.sent_to_all,
-                },
+                data=payload["data"],
             )
             created_count += 1
         except Exception as e:

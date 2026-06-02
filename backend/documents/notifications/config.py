@@ -23,16 +23,22 @@ class MessageTemplates:
     """Шаблоны сообщений для уведомлений documents."""
 
     @staticmethod
-    def document_ready(uploader_name: str, document_title: str) -> str:
-        """Шаблон для нового документа на ознакомление."""
-        return (
-            f'{uploader_name} загрузил документ "{document_title}". '
-            f'Требуется ознакомление.'
-        )
+    def document_ready(
+        uploader_name: str,
+        document_title: str,
+        acknowledgement_required: bool = True,
+    ) -> str:
+        """Шаблон для нового документа."""
+        message = f'{uploader_name} загрузил документ "{document_title}".'
+        if acknowledgement_required:
+            return f"{message} Требуется ознакомление."
+        return message
 
     @staticmethod
-    def document_ready_title() -> str:
+    def document_ready_title(acknowledgement_required: bool = True) -> str:
         """Заголовок для нового документа."""
+        if not acknowledgement_required:
+            return 'Новый документ'
         return 'Новый документ на ознакомление'
 
     @staticmethod

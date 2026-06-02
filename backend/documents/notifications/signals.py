@@ -127,6 +127,12 @@ def check_all_acknowledged(sender, instance, created, **kwargs):
 
     acknowledgement = instance
     document = acknowledgement.document
+    if not document.acknowledgement_required:
+        logger.info(
+            "[signals] Skipping full acknowledgement notification "
+            f"for optional document id={document.pk}"
+        )
+        return
 
     # Определяем общее количество получателей
     if document.sent_to_all:
