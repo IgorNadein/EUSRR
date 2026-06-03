@@ -62,6 +62,99 @@ function formatDate(value?: string): string {
   });
 }
 
+const DOCUMENT_PREVIEW_EXTENSIONS = new Set([
+  "pdf",
+  "jpg",
+  "jpeg",
+  "png",
+  "gif",
+  "webp",
+  "svg",
+  "bmp",
+  "ico",
+  "avif",
+  "docx",
+  "xls",
+  "xlsx",
+  "xlsm",
+  "xlsb",
+  "ods",
+  "csv",
+  "tsv",
+  "txt",
+  "text",
+  "md",
+  "markdown",
+  "json",
+  "xml",
+  "html",
+  "htm",
+  "css",
+  "scss",
+  "sass",
+  "less",
+  "js",
+  "jsx",
+  "ts",
+  "tsx",
+  "mjs",
+  "cjs",
+  "yml",
+  "yaml",
+  "ini",
+  "conf",
+  "cfg",
+  "log",
+  "sql",
+  "py",
+  "java",
+  "c",
+  "cpp",
+  "h",
+  "hpp",
+  "cs",
+  "go",
+  "rs",
+  "php",
+  "rb",
+  "kt",
+  "kts",
+  "swift",
+  "sh",
+  "bash",
+  "zsh",
+  "ps1",
+  "bat",
+  "cmd",
+  "properties",
+  "env",
+  "rtf",
+  "mp4",
+  "webm",
+  "ogg",
+  "ogv",
+  "mov",
+  "m4v",
+  "mp3",
+  "wav",
+  "oga",
+  "m4a",
+  "aac",
+  "flac",
+]);
+const DOCUMENT_PREVIEW_FILE_NAMES = new Set(["dockerfile", "makefile", "readme", "license", ".gitignore", ".env"]);
+
+function getDocumentFileExtension(fileName?: string | null): string {
+  const cleanName = (fileName || "").toLowerCase().split("?")[0].split("#")[0];
+  return cleanName.match(/\.([^.]+)$/)?.[1] || "";
+}
+
+function canPreviewDocument(fileName?: string | null): boolean {
+  const lowerName = (fileName || "").toLowerCase();
+  const extension = getDocumentFileExtension(fileName);
+  return DOCUMENT_PREVIEW_EXTENSIONS.has(extension) || DOCUMENT_PREVIEW_FILE_NAMES.has(lowerName);
+}
+
 function formatFileSize(value?: number): string {
   if (!value || value <= 0) return "";
   if (value < 1024) return `${value} Б`;
@@ -549,12 +642,17 @@ function DocumentsPageContent() {
     setDocumentMenuOpenId(null);
   };
 
-  const openDocumentPdfFromMenu = (documentItem: Document) => {
+  const openDocumentPreviewFromMenu = (documentItem: Document) => {
     if (!documentItem.file_url) return;
-    setPdfViewerFile({
+    const previewFile = {
       url: documentItem.file_url,
       name: documentItem.file_name || documentItem.title,
-    });
+    };
+    if (getDocumentFileExtension(documentItem.file_name) === "pdf") {
+      setPdfViewerFile(previewFile);
+    } else {
+      setPreviewFile(previewFile);
+    }
     setDocumentMenuOpenId(null);
   };
 
@@ -1129,7 +1227,7 @@ function DocumentsPageContent() {
                           const fileSize = formatFileSize(doc.file_size);
                           const recipientsCount = doc.recipients?.length || 0;
                           const departmentsCount = doc.departments?.length || 0;
-                          const hasPreview = Boolean(doc.file_url && doc.file_name?.toLowerCase().endsWith(".pdf"));
+                          const hasPreview = Boolean(doc.file_url && canPreviewDocument(doc.file_name || doc.title));
 
                           // DEBUG: Проверка данных документа
                           if (!authorName || !createdDate) {
@@ -1309,11 +1407,11 @@ function DocumentsPageContent() {
                                               {hasPreview && (
                                                 <button
                                                   type="button"
-                                                  onClick={() => openDocumentPdfFromMenu(doc)}
+                                                  onClick={() => openDocumentPreviewFromMenu(doc)}
                                                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
                                                 >
                                                   <Eye size={14} />
-                                                  Открыть PDF
+                                                  Предпросмотр
                                                 </button>
                                               )}
 

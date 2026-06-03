@@ -28,13 +28,13 @@ import {
 import { DocumentAcknowledgement } from "./DocumentAcknowledgement";
 import { DocumentComments } from "./DocumentComments";
 import { DocumentRelated } from "./DocumentRelated";
+import { DocumentPreviewPane } from "./DocumentPreview";
 
 interface DocumentDetailModalProps {
   document: Document | null;
   isOpen: boolean;
   onClose: () => void;
   onUpdate?: () => void;
-  onPreview?: (url: string, name: string) => void;
   onEditMetadata?: () => void;
   onViewReport?: () => void;
   onNavigateToRelated?: (docId: number) => void;
@@ -47,7 +47,6 @@ export function DocumentDetailModal({
   isOpen,
   onClose,
   onUpdate,
-  onPreview,
   onEditMetadata,
   onViewReport,
   onNavigateToRelated,
@@ -94,41 +93,11 @@ export function DocumentDetailModal({
       );
     }
 
-    const fileExt = document.file_name?.toLowerCase().split(".").pop() || "";
-    const isImage = ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"].includes(fileExt);
-    const isPDF = fileExt === "pdf";
-
-    if (isImage) {
-      return (
-        <div className="flex h-full items-center justify-center bg-[var(--background)] p-4">
-          <img
-            src={document.file_url}
-            alt={document.file_name || "Preview"}
-            className="max-h-full max-w-full object-contain"
-          />
-        </div>
-      );
-    }
-
-    if (isPDF) {
-      return (
-        <iframe
-          src={`${document.file_url}#page=1&view=FitH`}
-          className="h-full w-full border-0"
-          title="PDF Preview"
-        />
-      );
-    }
-
     return (
-      <div className="app-surface-muted flex h-full items-center justify-center">
-        <div className="text-center">
-          <FileText size={64} className="app-text-muted mx-auto" />
-          <p className="mt-4 text-sm font-medium text-[var(--foreground)]">{document.file_name}</p>
-          <p className="app-text-muted mt-1 text-xs uppercase">{fileExt} файл</p>
-          <p className="app-text-muted mt-3 text-xs">Предпросмотр недоступен</p>
-        </div>
-      </div>
+      <DocumentPreviewPane
+        fileUrl={document.file_url}
+        fileName={document.file_name || document.title}
+      />
     );
   };
 
