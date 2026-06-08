@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { Modal } from "@/components/ui/Modal";
 import type { Document } from "@/types/api";
 import {
@@ -28,7 +29,18 @@ import {
 import { DocumentAcknowledgement } from "./DocumentAcknowledgement";
 import { DocumentComments } from "./DocumentComments";
 import { DocumentRelated } from "./DocumentRelated";
-import { DocumentPreviewPane } from "./DocumentPreview";
+
+const DocumentPreviewPane = dynamic(
+  () => import("./DocumentPreview").then((mod) => mod.DocumentPreviewPane),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="app-surface-muted flex h-full items-center justify-center">
+        <p className="app-text-muted text-sm">Загружаем предпросмотр...</p>
+      </div>
+    ),
+  },
+);
 
 interface DocumentDetailModalProps {
   document: Document | null;
