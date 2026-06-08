@@ -28,10 +28,12 @@ import ScrollableMessageList, { ScrollableMessageListInner } from "@/components/
 /* ─── types ─── */
 
 type ReplyTarget = { id: number; author: string; preview: string };
+type TypingUser = { id: number; name: string };
 /* ─── constants ─── */
 
 const RECENT_REACTIONS_KEY = "eusrr_recent_reactions";
 const MAX_RECENT_REACTIONS = 5;
+const TYPING_INDICATOR_TIMEOUT_MS = 3000;
 const ALL_REACTIONS = [
   "👍","❤️","😂","🔥","👏","🎉","😊","😉","😁","🤝",
   "🙏","😮","😢","😡","💯","✅","👀","🤔","😍","😎",
@@ -53,6 +55,15 @@ function getMessageDayKey(message: Message): string | null {
 
 function formatDateInputValue(date: Date): string {
   return `${date.getFullYear()}-${`${date.getMonth()+1}`.padStart(2,"0")}-${`${date.getDate()}`.padStart(2,"0")}`;
+}
+
+function formatTypingIndicatorText(users: TypingUser[]): string {
+  if (users.length === 0) return "";
+  if (users.length === 1) return `${users[0].name} печатает...`;
+
+  const additionalCount = users.length - 1;
+  const additionalLabel = additionalCount === 1 ? "человек" : "человека";
+  return `${users[0].name} и ещё ${additionalCount} ${additionalLabel} печатают...`;
 }
 
 /* ─── component ─── */
@@ -180,8 +191,8 @@ function MessageDialogPageContent() {
   const [brokenMedia, setBrokenMedia] = useState<Record<number, boolean>>({});
   const [useOriginalImage, setUseOriginalImage] = useState<Record<number, boolean>>({});
   const [mediaPreview, setMediaPreview] = useState<MediaPreview | null>(null);
-  const [isTyping, setIsTyping] = useState(false);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
+  const typingTimeoutsRef = useRef<Map<number, NodeJS.Timeout>>(new Map());
   const [isPinned, setIsPinned] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [jumpingToDate, setJumpingToDate] = useState(false);
@@ -204,6 +215,12 @@ function MessageDialogPageContent() {
       setNotificationsEnabled(cm.chat.notifications_enabled ?? true);
     }
   }, [cm.chat]);
+
+  useEffect(() => {
+    setTypingUsers([]);
+    typingTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
+    typingTimeoutsRef.current.clear();
+  }, [chatId]);
 
   useEffect(() => {
     if (!isSearchOpen) {
@@ -232,6 +249,7 @@ function MessageDialogPageContent() {
   const selectedActionRecentReactions = useMemo(() => uniqueEmoji(recentReactions).slice(0, MAX_RECENT_REACTIONS), [recentReactions]);
   const selectedActionReaders = selectedActionMessage?.read_by || [];
   const sendingComposer = Boolean(editingMessageId && sending);
+  const typingIndicatorText = useMemo(() => formatTypingIndicatorText(typingUsers), [typingUsers]);
 
   /* ── reactions ── */
   useEffect(() => {
@@ -333,13 +351,35 @@ function MessageDialogPageContent() {
         cm.setMessages(prev => prev.map(m => m.id === edited.id ? { ...m, ...edited } : m));
       } else if (data.type === "message_deleted") {
         cm.setMessages(prev => prev.filter(m => m.id !== data.message_id));
-      } else if (data.type === "typing_start" && data.user_id !== user?.id) {
-        setIsTyping(true);
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 3000);
-      } else if (data.type === "typing_stop" && data.user_id !== user?.id) {
-        setIsTyping(false);
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      } else if (data.type === "typing_start" && typeof data.user_id === "number" && data.user_id !== user?.id) {
+        const typingUserId = data.user_id;
+        const userName = typeof data.user_name === "string" && data.user_name.trim()
+          ? data.user_name.trim()
+          : "Собеседник";
+
+        setTypingUsers(prev => {
+          const existing = prev.find(item => item.id === typingUserId);
+          if (existing) {
+            return prev.map(item => item.id === typingUserId ? { ...item, name: userName } : item);
+          }
+          return [...prev, { id: typingUserId, name: userName }];
+        });
+
+        const existingTimeout = typingTimeoutsRef.current.get(typingUserId);
+        if (existingTimeout) clearTimeout(existingTimeout);
+        const timeout = setTimeout(() => {
+          setTypingUsers(prev => prev.filter(item => item.id !== typingUserId));
+          typingTimeoutsRef.current.delete(typingUserId);
+        }, TYPING_INDICATOR_TIMEOUT_MS);
+        typingTimeoutsRef.current.set(typingUserId, timeout);
+      } else if (data.type === "typing_stop" && typeof data.user_id === "number" && data.user_id !== user?.id) {
+        const typingUserId = data.user_id;
+        setTypingUsers(prev => prev.filter(item => item.id !== typingUserId));
+        const existingTimeout = typingTimeoutsRef.current.get(typingUserId);
+        if (existingTimeout) {
+          clearTimeout(existingTimeout);
+          typingTimeoutsRef.current.delete(typingUserId);
+        }
       } else if (data.type === "reaction_added" || data.type === "reaction_removed") {
         if (data.reactions_summary && typeof data.message_id === "number") {
           updateMessageReactionsSummary(data.message_id, data.reactions_summary);
@@ -375,7 +415,8 @@ function MessageDialogPageContent() {
 
   /* ── cleanup timers ── */
   useEffect(() => () => {
-    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
+    typingTimeoutsRef.current.clear();
     if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
   }, []);
 
@@ -1203,14 +1244,14 @@ function MessageDialogPageContent() {
 
                 {/* Composer area */}
                 <div className="app-divider shrink-0 border-t bg-transparent px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.25rem)] lg:app-header lg:px-0 lg:pb-0">
-                  {isTyping && (
+                  {typingIndicatorText && (
                     <div className="app-text-muted mb-2 flex items-center gap-2 text-xs italic">
                       <div className="flex gap-1">
                         <span className="app-text-muted inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-current" style={{ animationDelay: "0ms" }} />
                         <span className="app-text-muted inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-current" style={{ animationDelay: "150ms" }} />
                         <span className="app-text-muted inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-current" style={{ animationDelay: "300ms" }} />
                       </div>
-                      <span>Собеседник печатает...</span>
+                      <span>{typingIndicatorText}</span>
                     </div>
                   )}
 
