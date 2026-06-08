@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
+from push_notifications.models import WebPushDevice
 from notifications.models import Notification
 from notifications.models import UserChannelPreferences
 
@@ -158,3 +159,54 @@ class TestNotificationPreferencesApi:
         assert response.status_code == 200
         prefs = UserChannelPreferences.objects.get(user=user)
         assert prefs.email_frequency == "never"
+
+    def test_subscribe_push_enables_push_preferences(
+        self, api_client, user_factory
+    ):
+        user = user_factory()
+        UserChannelPreferences.objects.create(user=user, push_enabled=False)
+        api_client.force_authenticate(user=user)
+
+        response = api_client.post(
+            "/api/v1/notifications/push/subscribe/",
+            {
+                "endpoint": "https://push.example.test/endpoint-1",
+                "keys": {"p256dh": "test-p256dh", "auth": "test-auth"},
+                "device_name": "Chrome",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        prefs = UserChannelPreferences.objects.get(user=user)
+        assert prefs.push_enabled is True
+        assert WebPushDevice.objects.filter(
+            user=user,
+            registration_id="https://push.example.test/endpoint-1",
+            active=True,
+        ).exists()
+
+    def test_unsubscribe_last_push_device_disables_push_preferences(
+        self, api_client, user_factory
+    ):
+        user = user_factory()
+        UserChannelPreferences.objects.create(user=user, push_enabled=True)
+        WebPushDevice.objects.create(
+            user=user,
+            registration_id="https://push.example.test/endpoint-1",
+            p256dh="test-p256dh",
+            auth="test-auth",
+            browser="Chrome",
+            active=True,
+        )
+        api_client.force_authenticate(user=user)
+
+        response = api_client.delete(
+            "/api/v1/notifications/push/unsubscribe/",
+            {"endpoint": "https://push.example.test/endpoint-1"},
+            format="json",
+        )
+
+        assert response.status_code == 200
+        prefs = UserChannelPreferences.objects.get(user=user)
+        assert prefs.push_enabled is False

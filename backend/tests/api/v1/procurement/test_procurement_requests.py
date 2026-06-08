@@ -3,11 +3,13 @@
 """
 
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth.models import Permission
 from django.urls import reverse
 from django.utils import timezone
+from push_notifications.models import WebPushDevice
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -33,6 +35,7 @@ from procurement.models import (
     ProcurementItem,
     ProcurementRequest,
 )
+from notifications.models import Notification, UserChannelPreferences
 
 
 pytestmark = pytest.mark.django_db
@@ -1636,6 +1639,63 @@ class TestProcessingDepartmentWorkflow:
             "links",
             "ordered_quantity",
         ]
+
+    @pytest.mark.django_db(transaction=True)
+    def test_item_order_update_routes_push_to_requestor(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            quantity=3,
+        )
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save()
+        UserChannelPreferences.objects.update_or_create(
+            user=processing_request.requestor,
+            defaults={
+                "web_enabled": False,
+                "email_enabled": False,
+                "push_enabled": True,
+                "disabled_verbs": [],
+            },
+        )
+        WebPushDevice.objects.create(
+            user=processing_request.requestor,
+            registration_id="https://push.example.test/procurement-item",
+            p256dh="test-p256dh",
+            auth="test-auth",
+            browser="Chrome",
+            active=True,
+        )
+
+        api_client.force_authenticate(user=supply_user)
+        item_url = reverse(
+            'api:v1:procurement:procurementitem-detail',
+            kwargs={'pk': item.id},
+        )
+
+        with patch(
+            "notifications.tasks.send_push_notification.delay"
+        ) as send_push:
+            response = api_client.patch(
+                item_url,
+                {"ordered_quantity": 2},
+                format="json",
+            )
+
+        assert response.status_code == status.HTTP_200_OK
+        notification = Notification.objects.get(
+            recipient=processing_request.requestor,
+            verb="procurement_item_updated",
+            data__item_id=item.id,
+        )
+        assert notification.data["changed_fields"] == [
+            "ordered_quantity",
+            "execution_status",
+        ]
+        send_push.assert_called_once_with(notification.id)
 
     def test_item_expected_delivery_dates_must_be_valid_dates(
         self, api_client, supply_user, processing_request,

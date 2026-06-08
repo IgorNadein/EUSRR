@@ -590,6 +590,13 @@ def subscribe_push(request):
         }
     )
 
+    prefs, _ = UserChannelPreferences.objects.get_or_create(
+        user=request.user,
+    )
+    if not prefs.push_enabled:
+        prefs.push_enabled = True
+        prefs.save(update_fields=["push_enabled"])
+
     return Response({
         'status': 'success',
         'message': (
@@ -627,6 +634,18 @@ def unsubscribe_push(request):
         deleted_count, _ = WebPushDevice.objects.filter(
             user=request.user
         ).delete()
+
+    has_active_devices = WebPushDevice.objects.filter(
+        user=request.user,
+        active=True,
+    ).exists()
+    if not has_active_devices:
+        prefs, _ = UserChannelPreferences.objects.get_or_create(
+            user=request.user,
+        )
+        if prefs.push_enabled:
+            prefs.push_enabled = False
+            prefs.save(update_fields=["push_enabled"])
 
     return Response({
         'status': 'success',
