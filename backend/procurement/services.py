@@ -243,6 +243,7 @@ class ProcurementApprovalResolver:
         if procurement_request.status not in {
             ProcurementStatus.WAITING,
             ProcurementStatus.IN_PROGRESS,
+            ProcurementStatus.COMPLETED,
         }:
             return False
 

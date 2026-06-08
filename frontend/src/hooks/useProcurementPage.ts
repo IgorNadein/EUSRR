@@ -527,6 +527,21 @@ export function useProcurementPage(user: User | null) {
     await refreshCurrentView();
   }, [refreshCurrentView, refreshOne]);
 
+  const applyRequestStateUpdate = useCallback((updated: ProcurementRequest) => {
+    setRequests((previous) => previous.map((request) => (
+      request.id === updated.id ? { ...request, ...updated } : request
+    )));
+    setDetailsCache((previous) => {
+      const cached = previous[updated.id] || detailsCacheRef.current[updated.id];
+      const next = {
+        ...previous,
+        [updated.id]: cached ? { ...cached, ...updated } : updated,
+      };
+      detailsCacheRef.current = next;
+      return next;
+    });
+  }, []);
+
   const ensureRequestDetail = useCallback(async (id: number) => {
     const cached = detailsCacheRef.current[id];
     if (cached) {
@@ -900,6 +915,37 @@ export function useProcurementPage(user: User | null) {
     "Все позиции отмечены полученными.",
   ), [doAction]);
 
+  const handleToggleViewed = useCallback(async (id: number, isViewed: boolean) => {
+    try {
+      setBusyKey(`viewed-${id}`);
+      setActionError(null);
+      const updated = await apiClient.setProcurementRequestViewed(id, isViewed) as ProcurementRequest;
+      applyRequestStateUpdate(updated);
+      if (isViewed) {
+        setExpandedIds((previous) => {
+          if (!previous.has(id)) {
+            return previous;
+          }
+          const next = new Set(previous);
+          next.delete(id);
+          return next;
+        });
+        setExpandedComments((previous) => {
+          if (!previous[id]) {
+            return previous;
+          }
+          return { ...previous, [id]: false };
+        });
+      }
+      return true;
+    } catch (viewedError) {
+      setActionError(getReadableError(viewedError, "Не удалось обновить отметку просмотра"));
+      return false;
+    } finally {
+      setBusyKey(null);
+    }
+  }, [applyRequestStateUpdate]);
+
   const handleUpdateItem = useCallback(async (requestId: number, itemId: number, patch: Record<string, unknown>) => {
     try {
       setBusyKey(`item-${itemId}`);
@@ -1102,6 +1148,7 @@ export function useProcurementPage(user: User | null) {
     handleStart,
     handleComplete,
     handleMarkAllReceived,
+    handleToggleViewed,
     handleUpdateItem,
     handleReportItemIssue,
     handleCancelItemIssue,

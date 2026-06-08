@@ -12,6 +12,7 @@ from .models import (
     MaintenanceRecord,
     ProcurementItem,
     ProcurementRequest,
+    ProcurementRequestView,
     Supplier,
 )
 
@@ -50,6 +51,27 @@ class ApprovalInline(admin.TabularInline):
     ]
     readonly_fields = ["created_at"]
     can_delete = False
+
+
+@admin.register(ProcurementRequestView)
+class ProcurementRequestViewAdmin(admin.ModelAdmin):
+    """Админка для персональных отметок просмотра заявок."""
+
+    list_display = [
+        "request",
+        "user",
+        "is_viewed",
+        "viewed_at",
+        "updated_at",
+    ]
+    list_filter = ["is_viewed", "viewed_at", "updated_at"]
+    search_fields = [
+        "request__title",
+        "user__email",
+        "user__first_name",
+        "user__last_name",
+    ]
+    readonly_fields = ["updated_at"]
 
 
 @admin.register(ProcurementRequest)

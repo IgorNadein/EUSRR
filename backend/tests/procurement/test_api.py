@@ -6,6 +6,7 @@ from decimal import Decimal
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -17,6 +18,7 @@ from procurement.models import (
     EquipmentCategory,
     ProcurementItem,
     ProcurementRequest,
+    ProcurementRequestView,
     Supplier,
 )
 
@@ -97,6 +99,22 @@ class TestProcurementRequestAPI:
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data['results']) == 1
         assert response.data['results'][0]['title'] == "Тестовая заявка"
+
+    def test_list_completed_request_includes_completed_at(
+        self, api_client, user, procurement_request
+    ):
+        """Тест: список отдаёт дату завершения для завершённых заявок."""
+        procurement_request.status = ProcurementStatus.COMPLETED
+        procurement_request.completed_at = timezone.now()
+        procurement_request.save(update_fields=["status", "completed_at"])
+
+        api_client.force_authenticate(user=user)
+        url = reverse('api:v1:procurement:procurementrequest-list')
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['results'][0]['status'] == ProcurementStatus.COMPLETED
+        assert response.data['results'][0]['completed_at'] is not None
 
     def test_create_request(
         self, api_client, user, department, link_factory
@@ -187,6 +205,35 @@ class TestProcurementRequestAPI:
 
         assert response.status_code == status.HTTP_200_OK
         assert response.data['results'][0]['quantity_unit_label'] == "единиц"
+
+    def test_set_request_viewed_flag(
+        self, api_client, user, procurement_request
+    ):
+        """Тест: пользователь может отметить видимую заявку просмотренной."""
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-set-viewed',
+            kwargs={'pk': procurement_request.id},
+        )
+
+        response = api_client.post(url, {'is_viewed': True}, format='json')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['is_viewed'] is True
+        view_state = ProcurementRequestView.objects.get(
+            request=procurement_request,
+            user=user,
+        )
+        assert view_state.is_viewed is True
+        assert view_state.viewed_at is not None
+
+        response = api_client.post(url, {'is_viewed': False}, format='json')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['is_viewed'] is False
+        view_state.refresh_from_db()
+        assert view_state.is_viewed is False
+        assert view_state.viewed_at is None
 
     def test_update_own_request_draft(
         self, api_client, user, procurement_request

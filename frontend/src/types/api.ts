@@ -591,6 +591,7 @@ export interface ProcurementRequest {
   required_approval_priorities?: number[];
   actual_cost?: string | number | null;
   is_editable?: boolean;
+  is_viewed?: boolean;
   total_cost?: string | number;
   total_estimated_cost?: string | number;
   items_count?: number;

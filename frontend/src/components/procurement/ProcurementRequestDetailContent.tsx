@@ -76,6 +76,26 @@ const toNumber = (value?: string | number | null): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const effectiveOrderedQuantity = (item: ProcurementItem, requestedQuantity: number): number => {
+  if (item.ordered_quantity !== null && item.ordered_quantity !== undefined) {
+    return item.ordered_quantity;
+  }
+  if (item.execution_status === "ordered" || item.execution_status === "received") {
+    return requestedQuantity;
+  }
+  return 0;
+};
+
+const effectiveReceivedQuantity = (item: ProcurementItem, requestedQuantity: number): number => {
+  if (item.received_quantity !== null && item.received_quantity !== undefined) {
+    return item.received_quantity;
+  }
+  if (item.execution_status === "received") {
+    return requestedQuantity;
+  }
+  return 0;
+};
+
 const toOptionalInteger = (value: string): number | null => {
   if (value.trim() === "") return null;
   const parsed = Number(value);
@@ -181,8 +201,8 @@ function ProcurementItemCard({
   const expectedDeliveryDates = toDateRows(item.expected_delivery_dates);
   const commentsTotal = item.comments_count ?? comments.length;
   const requestedQuantity = Math.max(0, Math.trunc(toNumber(item.quantity)));
-  const orderedQuantity = item.ordered_quantity ?? 0;
-  const receivedQuantity = item.received_quantity ?? 0;
+  const orderedQuantity = effectiveOrderedQuantity(item, requestedQuantity);
+  const receivedQuantity = effectiveReceivedQuantity(item, requestedQuantity);
   const itemUnitLabel = getProcurementUnitLabel(item.unit);
   const status = item.execution_status || "pending";
   const statusLabel = item.execution_status_display || executionStatusOptions.find((option) => option.value === status)?.label || "Не выполнено";
@@ -209,8 +229,7 @@ function ProcurementItemCard({
     canReportIssue &&
     onReportItemIssue &&
     status !== "rejected" &&
-    status !== "defective" &&
-    (canEditItemProcessing || status === "received")
+    status !== "defective"
   );
 
   const updateDraft = (patch: Partial<ItemProcessingDraft>) => {
@@ -662,6 +681,7 @@ export function ProcurementRequestDetailContent({
 }: ProcurementRequestDetailContentProps) {
   const canEditItemProcessing = Boolean(canProcessItems && onUpdateItem);
   const isRequestPending = String(request.status || "").toLowerCase() === "pending";
+  const canMarkAllReceived = canEditItemProcessing && ["waiting", "in_progress"].includes(String(request.status || "").toLowerCase());
   const displayItems = request.items ? [...request.items].reverse() : [];
   const requestorId = typeof request.requestor === "number" ? request.requestor : request.requestor?.id ?? null;
   const executorId = typeof request.executor === "number" ? request.executor : request.executor?.id ?? null;
@@ -725,7 +745,7 @@ export function ProcurementRequestDetailContent({
         <div className="app-surface rounded-xl p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold text-[var(--foreground)]">Позиции</p>
-            {canEditItemProcessing && onMarkAllReceived ? (
+            {canMarkAllReceived && onMarkAllReceived ? (
               <button
                 type="button"
                 onClick={() => onMarkAllReceived(request.id)}

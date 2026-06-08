@@ -17,6 +17,8 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardCheck,
+  Eye,
+  EyeOff,
   Filter,
   Loader2,
   MessageSquare,
@@ -117,6 +119,15 @@ const periodOptions = [
 const fmt = formatDate;
 const money = formatMoney;
 type RequestActionDialogKind = "approve" | "reject" | "cancel" | "delete";
+
+const getRequestListDateLabel = (request: ProcurementRequest, status: string) => {
+  const createdAt = fmt(request.created_at);
+  if (status === "completed" && request.completed_at) {
+    const completedAt = fmt(request.completed_at);
+    return completedAt ? `${createdAt} - ${completedAt}` : createdAt;
+  }
+  return createdAt;
+};
 
 const getReadableError = (error: unknown, fallback: string): string => {
   const raw = String((error as Error)?.message || fallback);
@@ -332,6 +343,7 @@ export default function ProcurementPage() {
     handleCancel,
     handleComplete,
     handleMarkAllReceived,
+    handleToggleViewed,
     handleReportItemIssue,
     handleCancelItemIssue,
     handleConfirmItemReceived,
@@ -803,6 +815,12 @@ export default function ProcurementPage() {
               const comments = commentsMap[req.id] || [];
               const commentsOpen = Boolean(expandedComments[req.id]);
               const commentsTotal = resolvedDetail.comments_count ?? req.comments_count ?? comments.length;
+              const isViewed = Boolean(resolvedDetail.is_viewed ?? req.is_viewed);
+              const rowExpanded = !isViewed && expanded;
+              const rowCommentsOpen = !isViewed && commentsOpen;
+              const showInlineRequestActions = !isViewed && hasInlineRequestActions;
+              const showSecondaryActions = !isViewed && hasSecondaryActions;
+              const requestMenuOpen = showSecondaryActions && procurementMenuOpenId === req.id;
               const requestorName = displayUserName(req.requestor, req.requestor_name, req.requestor_email);
               const executorName = req.executor || req.executor_name ? displayUserName(req.executor, req.executor_name || undefined) : "";
               const requestorLink = userLink(req.requestor);
@@ -824,30 +842,48 @@ export default function ProcurementPage() {
               );
               const nextExpectedDeliveryDate = resolvedDetail.next_expected_delivery_date ?? req.next_expected_delivery_date ?? null;
               const approvalsCount = resolvedDetail.approvals?.length ?? 0;
+              const requestDateLabel = getRequestListDateLabel(resolvedDetail, st);
 
               return (
-                <article key={req.id} className={`app-surface-muted rounded-xl transition hover:border-[var(--border-strong)] ${procurementMenuOpenId === req.id ? "relative z-20 overflow-visible" : "overflow-hidden"}`}>
-                  <div className="px-4 py-3">
+                <article key={req.id} className={`app-surface-muted rounded-xl transition hover:border-[var(--border-strong)] ${requestMenuOpen ? "relative z-20 overflow-visible" : "overflow-hidden"}`}>
+                  <div className={isViewed ? "px-4 py-2.5" : "px-4 py-3"}>
                     <div className="flex items-start gap-3">
-                      <div className="flex shrink-0 flex-col items-center gap-3 pt-0.5">
+                      <div className={`flex shrink-0 flex-col items-center ${isViewed ? "gap-0 pt-0.5" : "gap-3 pt-0.5"}`}>
+                        {!isViewed ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => toggleExpand(req.id)}
+                              aria-label={rowExpanded ? "Свернуть детали" : "Развернуть детали"}
+                              className="app-action-secondary inline-flex h-8 w-8 items-center justify-center rounded-lg"
+                            >
+                              <ChevronDown size={15} className={`transition ${rowExpanded ? "rotate-180" : ""}`} />
+                            </button>
+                            <button
+                              type="button"
+                              title={`Комментарии (${commentsTotal})`}
+                              onClick={() => void toggleComments(req.id)}
+                              className="app-action-secondary relative inline-flex h-8 w-8 items-center justify-center rounded-lg"
+                            >
+                              <MessageSquare size={15} />
+                              {commentsTotal > 0 && (
+                                <span className="app-counter absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center px-1 py-0.5 text-[10px] font-bold text-white">{commentsTotal}</span>
+                              )}
+                            </button>
+                          </>
+                        ) : null}
                         <button
                           type="button"
-                          onClick={() => toggleExpand(req.id)}
-                          aria-label={expanded ? "Свернуть детали" : "Развернуть детали"}
-                          className="app-action-secondary inline-flex h-8 w-8 items-center justify-center rounded-lg"
+                          title={isViewed ? "Отметить непросмотренной" : "Отметить просмотренной"}
+                          aria-label={isViewed ? "Отметить заявку непросмотренной" : "Отметить заявку просмотренной"}
+                          disabled={busyKey === `viewed-${req.id}`}
+                          onClick={() => {
+                            setProcurementMenuOpenId(null);
+                            void handleToggleViewed(req.id, !isViewed);
+                          }}
+                          className={`${isViewed ? "app-selected app-accent-text" : "app-action-secondary"} inline-flex h-8 w-8 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-60`}
                         >
-                          <ChevronDown size={15} className={`transition ${expanded ? "rotate-180" : ""}`} />
-                        </button>
-                        <button
-                          type="button"
-                          title={`Комментарии (${commentsTotal})`}
-                          onClick={() => void toggleComments(req.id)}
-                          className="app-action-secondary relative inline-flex h-8 w-8 items-center justify-center rounded-lg"
-                        >
-                          <MessageSquare size={15} />
-                          {commentsTotal > 0 && (
-                            <span className="app-counter absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center px-1 py-0.5 text-[10px] font-bold text-white">{commentsTotal}</span>
-                          )}
+                          {isViewed ? <Eye size={15} /> : <EyeOff size={15} />}
                         </button>
                       </div>
 
@@ -862,23 +898,23 @@ export default function ProcurementPage() {
                                 className="truncate text-left text-sm font-semibold text-[var(--foreground)] transition hover:text-[var(--accent-primary-strong)]"
                                 title="Открыть карточку заявки"
                               >
-                                {req.title || "Без названия"}
+                              {req.title || "Без названия"}
                               </button>
                             </div>
                             <div className="app-text-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                               <span>Отдел-заказчик: <span className="font-medium text-[var(--foreground)]">{getDeptName(req)}</span></span>
-                              <span>{fmt(req.created_at)}</span>
+                              <span>{requestDateLabel}</span>
                               {getRequestAmount(req) && <span className="font-medium text-[var(--foreground)]">{money(getRequestAmount(req))}</span>}
                             </div>
                           </div>
 
                           <div
-                            ref={procurementMenuOpenId === req.id ? procurementMenuRef : null}
+                            ref={requestMenuOpen ? procurementMenuRef : null}
                             className="flex shrink-0 flex-col items-end gap-2"
                           >
                             <div className="flex items-center gap-2">
                               <span className={`app-status-pill shrink-0 ${sMeta.cls}`}>{sMeta.label}</span>
-                              {hasSecondaryActions ? (
+                              {showSecondaryActions ? (
                                 <div className="relative">
                                   <button
                                     type="button"
@@ -886,15 +922,15 @@ export default function ProcurementPage() {
                                     className="app-action-ghost flex h-8 w-8 items-center justify-center rounded-md"
                                     title="Действия с заявкой"
                                     aria-label="Действия с заявкой"
-                                    aria-expanded={procurementMenuOpenId === req.id}
+                                    aria-expanded={requestMenuOpen}
                                     aria-haspopup="menu"
                                   >
                                     <ChevronRight
                                       size={15}
-                                      className={`transition-transform duration-200 ${procurementMenuOpenId === req.id ? "rotate-90" : ""}`}
+                                      className={`transition-transform duration-200 ${requestMenuOpen ? "rotate-90" : ""}`}
                                     />
                                   </button>
-                                  {procurementMenuOpenId === req.id ? (
+                                  {requestMenuOpen ? (
                                     <div className="app-menu absolute right-0 top-full z-20 mt-2 w-44 rounded-xl py-1.5">
                                       {canCancelThis ? (
                                         <button
@@ -942,79 +978,83 @@ export default function ProcurementPage() {
                                 </div>
                               ) : null}
                             </div>
-                            <span className={`text-[11px] font-medium ${urg.cls}`}>{urg.label} срочность</span>
+                            {!isViewed ? (
+                              <span className={`text-[11px] font-medium ${urg.cls}`}>{urg.label} срочность</span>
+                            ) : null}
                           </div>
                         </div>
 
-                        <div className="app-text-muted mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-xs sm:grid-cols-2">
-                          <div className="min-w-0">
-                            <span>Заявитель:</span>{" "}
-                            {requestorLink
-                              ? <Link href={requestorLink} className="font-medium text-[var(--accent-primary-strong)] hover:text-[var(--accent-primary)]">{requestorName}</Link>
-                              : <span className="font-medium text-[var(--foreground)]">{requestorName}</span>}
-                          </div>
-                          <div className="min-w-0">
-                            <span>Исполнитель:</span>{" "}
-                            {req.executor ? (
-                              executorLink
-                                ? <Link href={executorLink} className="font-medium text-[var(--accent-primary-strong)] hover:text-[var(--accent-primary)]">{executorName}</Link>
-                                : <span className="font-medium text-[var(--foreground)]">{executorName}</span>
-                            ) : (
-                              <span>не назначен</span>
-                            )}
-                          </div>
-                          {(fulfillmentStatusDisplay || itemsTotalCount > 0 || approvalsCount > 0 || nextExpectedDeliveryDate) && (
-                            <div className="col-span-2 flex flex-wrap items-center gap-2 pt-0.5">
-                              {fulfillmentStatusDisplay ? (
-                                <span className={`${getFulfillmentStatusClass(fulfillmentStatus)} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium`}>
-                                  {fulfillmentStatusDisplay}
-                                </span>
-                              ) : null}
-                              {nextExpectedDeliveryDate ? (
-                                <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
-                                  <CalendarDays size={11} /> {fmt(nextExpectedDeliveryDate)}
-                                </span>
-                              ) : null}
-                              {itemsTotalCount > 0 && (
-                                <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
-                                  <Package size={11} /> {itemsTotalCount} поз.
-                                </span>
-                              )}
-                              {itemsTotalCount > 0 && (
-                                <span className={`${getReceivedProgressClass(itemsReceivedCount, itemsTotalCount)} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium`}>
-                                  <Check size={11} /> Получено {itemsReceivedCount}/{itemsTotalCount} поз.
-                                </span>
-                              )}
-                              {itemsProblemCount > 0 && (
-                                <span className="app-feedback-warning inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
-                                  <AlertTriangle size={11} /> Проблемы {itemsProblemCount}/{itemsTotalCount} поз.
-                                </span>
-                              )}
-                              {totalRequestedQuantity > 0 && (
-                                <span className={`${getOrderedProgressClass(totalOrderedQuantity, totalRequestedQuantity)} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium`}>
-                                  Заказано {totalOrderedQuantity}/{totalRequestedQuantity} {quantityUnitLabel}
-                                </span>
-                              )}
-                              {totalRequestedQuantity > 0 && (
-                                <span className={`${getReceivedProgressClass(totalReceivedQuantity, totalRequestedQuantity)} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium`}>
-                                  Получено {totalReceivedQuantity}/{totalRequestedQuantity} {quantityUnitLabel}
-                                </span>
-                              )}
-                              {itemsPendingCount > 0 && (
-                                <span className="app-feedback-warning inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
-                                  Не обработано {itemsPendingCount}
-                                </span>
-                              )}
-                              {approvalsCount > 0 && (
-                                <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
-                                  <Check size={11} /> {approvalsCount} соглас.
-                                </span>
+                        {!isViewed ? (
+                          <div className="app-text-muted mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-xs sm:grid-cols-2">
+                            <div className="min-w-0">
+                              <span>Заявитель:</span>{" "}
+                              {requestorLink
+                                ? <Link href={requestorLink} className="font-medium text-[var(--accent-primary-strong)] hover:text-[var(--accent-primary)]">{requestorName}</Link>
+                                : <span className="font-medium text-[var(--foreground)]">{requestorName}</span>}
+                            </div>
+                            <div className="min-w-0">
+                              <span>Исполнитель:</span>{" "}
+                              {req.executor ? (
+                                executorLink
+                                  ? <Link href={executorLink} className="font-medium text-[var(--accent-primary-strong)] hover:text-[var(--accent-primary)]">{executorName}</Link>
+                                  : <span className="font-medium text-[var(--foreground)]">{executorName}</span>
+                              ) : (
+                                <span>не назначен</span>
                               )}
                             </div>
-                          )}
-                        </div>
+                            {(fulfillmentStatusDisplay || itemsTotalCount > 0 || approvalsCount > 0 || nextExpectedDeliveryDate) && (
+                              <div className="col-span-2 flex flex-wrap items-center gap-2 pt-0.5">
+                                {fulfillmentStatusDisplay ? (
+                                  <span className={`${getFulfillmentStatusClass(fulfillmentStatus)} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium`}>
+                                    {fulfillmentStatusDisplay}
+                                  </span>
+                                ) : null}
+                                {nextExpectedDeliveryDate ? (
+                                  <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                    <CalendarDays size={11} /> {fmt(nextExpectedDeliveryDate)}
+                                  </span>
+                                ) : null}
+                                {itemsTotalCount > 0 && (
+                                  <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                    <Package size={11} /> {itemsTotalCount} поз.
+                                  </span>
+                                )}
+                                {itemsTotalCount > 0 && (
+                                  <span className={`${getReceivedProgressClass(itemsReceivedCount, itemsTotalCount)} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium`}>
+                                    <Check size={11} /> Получено {itemsReceivedCount}/{itemsTotalCount} поз.
+                                  </span>
+                                )}
+                                {itemsProblemCount > 0 && (
+                                  <span className="app-feedback-warning inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                    <AlertTriangle size={11} /> Проблемы {itemsProblemCount}/{itemsTotalCount} поз.
+                                  </span>
+                                )}
+                                {totalRequestedQuantity > 0 && (
+                                  <span className={`${getOrderedProgressClass(totalOrderedQuantity, totalRequestedQuantity)} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium`}>
+                                    Заказано {totalOrderedQuantity}/{totalRequestedQuantity} {quantityUnitLabel}
+                                  </span>
+                                )}
+                                {totalRequestedQuantity > 0 && (
+                                  <span className={`${getReceivedProgressClass(totalReceivedQuantity, totalRequestedQuantity)} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium`}>
+                                    Получено {totalReceivedQuantity}/{totalRequestedQuantity} {quantityUnitLabel}
+                                  </span>
+                                )}
+                                {itemsPendingCount > 0 && (
+                                  <span className="app-feedback-warning inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                    Не обработано {itemsPendingCount}
+                                  </span>
+                                )}
+                                {approvalsCount > 0 && (
+                                  <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                    <Check size={11} /> {approvalsCount} соглас.
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ) : null}
 
-                        {hasInlineRequestActions ? (
+                        {showInlineRequestActions ? (
                           <div className="mt-3 flex justify-end">
                             <ProcurementRequestActionButtons
                               request={resolvedDetail}
@@ -1040,10 +1080,10 @@ export default function ProcurementPage() {
                     </div>
                   </div>
 
-                  {(expanded || commentsOpen) && (
+                  {(rowExpanded || rowCommentsOpen) && (
                     <div className="mt-4 space-y-3 px-4 pb-4">
-                      {commentsOpen ? (
-                        <div className={expanded ? "app-surface rounded-xl p-3" : "app-surface-elevated rounded-xl p-3"}>
+                      {rowCommentsOpen ? (
+                        <div className={rowExpanded ? "app-surface rounded-xl p-3" : "app-surface-elevated rounded-xl p-3"}>
                           <div className="space-y-2">
                             {comments.length === 0 ? (
                               <p className="app-text-muted text-xs">Комментариев пока нет</p>
@@ -1080,7 +1120,7 @@ export default function ProcurementPage() {
                         </div>
                       ) : null}
 
-                      {expanded ? (
+                      {rowExpanded ? (
                         <ProcurementRequestDetailContent
                           currentUserId={user?.id}
                           request={resolvedDetail}

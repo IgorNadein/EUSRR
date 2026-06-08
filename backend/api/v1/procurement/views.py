@@ -24,6 +24,7 @@ from procurement.models import (
     MaintenanceRecord,
     ProcurementItem,
     ProcurementRequest,
+    ProcurementRequestView,
     Supplier,
 )
 from procurement.notifications.handlers import (
@@ -97,6 +98,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             "complete",
             "cancel",
             "mark_all_received",
+            "set_viewed",
         ]:
             return ProcurementRequestDetailSerializer
         return ProcurementRequestListSerializer
@@ -105,7 +107,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         """Выбрать права доступа в зависимости от действия."""
         if self.action in ["approve", "reject"]:
             permission_classes = [CanApproveProcurementRequest]
-        elif self.action == "submit":
+        elif self.action in ["submit", "set_viewed"]:
             permission_classes = [permissions.IsAuthenticated]
         else:
             # Для create, update, delete и остальных действий
@@ -116,7 +118,15 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         """Фильтровать заявки в зависимости от роли пользователя и scope."""
         from datetime import timedelta
         from django.contrib.contenttypes.models import ContentType
-        from django.db.models import Count, IntegerField, OuterRef, Subquery, Value
+        from django.db.models import (
+            BooleanField,
+            Count,
+            Exists,
+            IntegerField,
+            OuterRef,
+            Subquery,
+            Value,
+        )
         from django.db.models.functions import Coalesce
         from django.utils import timezone
         from communications.models import Chat
@@ -136,14 +146,27 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             .values("msg_count")[:1]
         )
 
+        user = self.request.user
+        viewed_annotation = (
+            Exists(
+                ProcurementRequestView.objects.filter(
+                    request_id=OuterRef("pk"),
+                    user=user,
+                    is_viewed=True,
+                )
+            )
+            if user and user.is_authenticated
+            else Value(False, output_field=BooleanField())
+        )
+
         queryset = super().get_queryset().annotate(
             comments_count=Coalesce(
                 Subquery(comments_sub, output_field=IntegerField()),
                 Value(0),
                 output_field=IntegerField(),
-            )
+            ),
+            is_viewed_for_current_user=viewed_annotation,
         )
-        user = self.request.user
         scope = self.request.query_params.get("scope", None)
         period = self.request.query_params.get("period", None)
         participant_department_ids = (
@@ -789,6 +812,49 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=True, methods=["post"])
+    def set_viewed(self, request, pk=None):
+        """Установить отметку просмотра заявки."""
+        procurement_request = self.get_object()
+        raw_value = request.data.get("is_viewed", True)
+
+        if isinstance(raw_value, bool):
+            is_viewed = raw_value
+        elif isinstance(raw_value, str):
+            normalized = raw_value.strip().lower()
+            if normalized in {"true", "1", "yes", "y", "on"}:
+                is_viewed = True
+            elif normalized in {"false", "0", "no", "n", "off"}:
+                is_viewed = False
+            else:
+                return Response(
+                    {"is_viewed": "Ожидается булево значение."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            return Response(
+                {"is_viewed": "Ожидается булево значение."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        view_state, _ = ProcurementRequestView.objects.get_or_create(
+            request=procurement_request,
+            user=request.user,
+            defaults={
+                "is_viewed": is_viewed,
+                "viewed_at": timezone.now() if is_viewed else None,
+            },
+        )
+        if view_state.is_viewed != is_viewed:
+            view_state.is_viewed = is_viewed
+            view_state.viewed_at = timezone.now() if is_viewed else None
+            view_state.save(update_fields=["is_viewed", "viewed_at", "updated_at"])
+
+        procurement_request.is_viewed_for_current_user = is_viewed
+
+        serializer = self.get_serializer(procurement_request)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
         """Отменить заявку."""
         procurement_request = self.get_object()
@@ -1178,20 +1244,33 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         if error_response is not None:
             return error_response
 
-        if (item.received_quantity or 0) <= 0:
+        if item.effective_received_quantity <= 0:
             return Response(
                 {"detail": "По позиции нет подтверждённого получения"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        effective_ordered_quantity = item.effective_ordered_quantity
         item.received_quantity = 0
+        if item.ordered_quantity is None and effective_ordered_quantity > 0:
+            item.ordered_quantity = min(effective_ordered_quantity, item.quantity)
         item.execution_status = self._workflow_status_from_quantities(item)
-        item.save(update_fields=["execution_status", "received_quantity"])
+        item.save(
+            update_fields=[
+                "execution_status",
+                "ordered_quantity",
+                "received_quantity",
+            ]
+        )
         self._reopen_completed_request(procurement_request, user)
         notify_item_updated(
             item,
             actor=user,
-            changed_fields=["execution_status", "received_quantity"],
+            changed_fields=[
+                "execution_status",
+                "ordered_quantity",
+                "received_quantity",
+            ],
         )
 
         item.refresh_from_db()

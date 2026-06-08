@@ -1037,6 +1037,19 @@ class TestProcessingDepartmentWorkflow:
         assert role_response.data["can_current_user_start_work"] is True
         assert role_response.data["can_current_user_process_items"] is True
 
+        processing_request.status = ProcurementStatus.COMPLETED
+        processing_request.completed_at = timezone.now()
+        processing_request.save(
+            update_fields=["status", "completed_at", "updated_at"],
+        )
+
+        completed_role_response = api_client.get(detail_url)
+        assert completed_role_response.status_code == status.HTTP_200_OK
+        assert (
+            completed_role_response.data["can_current_user_process_items"]
+            is True
+        )
+
     def test_outsider_cannot_start_processing_department_request(
         self, api_client, outsider, processing_request, procurement_item_factory
     ):
@@ -2150,6 +2163,47 @@ class TestProcessingDepartmentWorkflow:
             processing_request.fulfillment_status
             == ProcurementFulfillmentStatus.ORDERED
         )
+        assert processing_request.status == ProcurementStatus.IN_PROGRESS
+        assert processing_request.completed_at is None
+
+    def test_cancel_received_uses_received_status_as_effective_quantity(
+        self, api_client, user, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            quantity=2,
+            ordered_quantity=2,
+            received_quantity=2,
+            execution_status=ProcurementItemExecutionStatus.RECEIVED,
+        )
+        ProcurementItem.objects.filter(pk=item.pk).update(
+            ordered_quantity=None,
+            received_quantity=None,
+            execution_status=ProcurementItemExecutionStatus.RECEIVED,
+        )
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.COMPLETED
+        processing_request.completed_at = timezone.now()
+        processing_request.fulfillment_status = (
+            ProcurementFulfillmentStatus.COMPLETED
+        )
+        processing_request.save()
+
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementitem-cancel-received',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.post(url, {}, format='json')
+
+        assert response.status_code == status.HTTP_200_OK
+        item.refresh_from_db()
+        processing_request.refresh_from_db()
+        assert item.execution_status == ProcurementItemExecutionStatus.ORDERED
+        assert item.ordered_quantity == item.quantity
+        assert item.received_quantity == 0
         assert processing_request.status == ProcurementStatus.IN_PROGRESS
         assert processing_request.completed_at is None
 

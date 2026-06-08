@@ -24,6 +24,7 @@ from procurement.models import (
     MaintenanceRecord,
     ProcurementItem,
     ProcurementRequest,
+    ProcurementRequestView,
     Supplier,
 )
 from ..employees.serializers import EmployeeBriefSerializer
@@ -129,6 +130,7 @@ def _effective_received_quantity(item):
 
 
 class ProcurementRequestSummaryMixin(serializers.Serializer):
+    is_viewed = serializers.SerializerMethodField()
     next_expected_delivery_date = serializers.SerializerMethodField()
     items_total_count = serializers.SerializerMethodField()
     items_received_count = serializers.SerializerMethodField()
@@ -138,6 +140,23 @@ class ProcurementRequestSummaryMixin(serializers.Serializer):
     total_ordered_quantity = serializers.SerializerMethodField()
     total_received_quantity = serializers.SerializerMethodField()
     quantity_unit_label = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_is_viewed(self, obj):
+        annotated_value = getattr(obj, "is_viewed_for_current_user", None)
+        if annotated_value is not None:
+            return bool(annotated_value)
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return False
+
+        return ProcurementRequestView.objects.filter(
+            request=obj,
+            user=user,
+            is_viewed=True,
+        ).exists()
 
     @extend_schema_field(serializers.DateField(allow_null=True))
     def get_next_expected_delivery_date(self, obj):
@@ -525,6 +544,7 @@ class ProcurementRequestListSerializer(
             "urgency_display",
             "fulfillment_status",
             "fulfillment_status_display",
+            "is_viewed",
             "total_cost",
             "items_count",
             "next_expected_delivery_date",
@@ -545,12 +565,14 @@ class ProcurementRequestListSerializer(
             "created_at",
             "submitted_at",
             "started_at",
+            "completed_at",
         ]
         read_only_fields = [
             "id",
             "created_at",
             "submitted_at",
             "started_at",
+            "completed_at",
             "department_name",
             "processing_department_name",
             "requestor_name",
@@ -559,6 +581,7 @@ class ProcurementRequestListSerializer(
             "urgency_display",
             "fulfillment_status",
             "fulfillment_status_display",
+            "is_viewed",
             "items_count",
             "total_cost",
             "next_expected_delivery_date",
@@ -761,6 +784,7 @@ class ProcurementRequestDetailSerializer(
             "urgency_display",
             "fulfillment_status",
             "fulfillment_status_display",
+            "is_viewed",
             "total_cost",
             "actual_cost",
             "next_expected_delivery_date",
@@ -795,6 +819,7 @@ class ProcurementRequestDetailSerializer(
             "started_at",
             "completed_at",
             "is_editable",
+            "is_viewed",
             "total_cost",
             "next_expected_delivery_date",
             "items_total_count",

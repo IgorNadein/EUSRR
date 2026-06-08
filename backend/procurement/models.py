@@ -108,7 +108,6 @@ class ProcurementRequest(models.Model):
         blank=True,
         validators=[MinValueValidator(Decimal("0.01"))],
     )
-
     # Даты
     created_at = models.DateTimeField("Создано", auto_now_add=True)
     updated_at = models.DateTimeField("Обновлено", auto_now=True)
@@ -242,6 +241,43 @@ class ProcurementRequest(models.Model):
         if save:
             self.save(update_fields=update_fields)
         return new_status
+
+
+class ProcurementRequestView(models.Model):
+    """Персональная отметка просмотра заявки пользователем."""
+
+    request = models.ForeignKey(
+        ProcurementRequest,
+        on_delete=models.CASCADE,
+        related_name="view_states",
+        verbose_name="Заявка",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="procurement_request_views",
+        verbose_name="Пользователь",
+    )
+    is_viewed = models.BooleanField("Просмотрено", default=True)
+    viewed_at = models.DateTimeField(
+        "Просмотрено в",
+        null=True,
+        blank=True,
+    )
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+
+    class Meta:
+        verbose_name = "Отметка просмотра заявки"
+        verbose_name_plural = "Отметки просмотра заявок"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["request", "user"],
+                name="unique_procurement_request_view_user",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.request_id}: {self.user_id} viewed={self.is_viewed}"
 
 
 class ProcurementItem(models.Model):
