@@ -38,6 +38,7 @@ import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
 import { formatDate, formatMoney } from "@/lib/shared";
 import { useProcurementPage } from "@/hooks/useProcurementPage";
 import { Modal } from "@/components/ui";
+import { getProcurementQuantityUnitLabel, getProcurementUnitOptions } from "@/lib/procurementUnits";
 
 /* ══════════════════════════════════════════════════════
    Constants & helpers
@@ -817,6 +818,10 @@ export default function ProcurementPage() {
               const totalRequestedQuantity = resolvedDetail.total_requested_quantity ?? req.total_requested_quantity ?? detailItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
               const totalOrderedQuantity = resolvedDetail.total_ordered_quantity ?? req.total_ordered_quantity ?? detailItems.reduce((sum, item) => sum + Number(item.ordered_quantity || 0), 0);
               const totalReceivedQuantity = resolvedDetail.total_received_quantity ?? req.total_received_quantity ?? detailItems.reduce((sum, item) => sum + Number(item.received_quantity || 0), 0);
+              const quantityUnitLabel = getProcurementQuantityUnitLabel(
+                detailItems,
+                resolvedDetail.quantity_unit_label ?? req.quantity_unit_label,
+              );
               const nextExpectedDeliveryDate = resolvedDetail.next_expected_delivery_date ?? req.next_expected_delivery_date ?? null;
               const approvalsCount = resolvedDetail.approvals?.length ?? 0;
 
@@ -987,12 +992,12 @@ export default function ProcurementPage() {
                               )}
                               {totalRequestedQuantity > 0 && (
                                 <span className={`${getOrderedProgressClass(totalOrderedQuantity, totalRequestedQuantity)} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium`}>
-                                  Заказано {totalOrderedQuantity}/{totalRequestedQuantity} шт.
+                                  Заказано {totalOrderedQuantity}/{totalRequestedQuantity} {quantityUnitLabel}
                                 </span>
                               )}
                               {totalRequestedQuantity > 0 && (
                                 <span className={`${getReceivedProgressClass(totalReceivedQuantity, totalRequestedQuantity)} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium`}>
-                                  Получено {totalReceivedQuantity}/{totalRequestedQuantity} шт.
+                                  Получено {totalReceivedQuantity}/{totalRequestedQuantity} {quantityUnitLabel}
                                 </span>
                               )}
                               {itemsPendingCount > 0 && (
@@ -1525,7 +1530,7 @@ export default function ProcurementPage() {
                               </div>
                             </div>
                           ) : null}
-                          <div className="grid grid-cols-4 gap-2">
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                             <input
                               type="number"
                               value={it.quantity}
@@ -1534,12 +1539,18 @@ export default function ProcurementPage() {
                               min={1}
                               className="app-input rounded-lg px-3 py-2 text-sm"
                             />
-                            <input
+                            <select
                               value={it.unit}
                               onChange={(e) => updateItemRow(idx, { unit: e.target.value })}
-                              placeholder="Ед."
-                              className="app-input rounded-lg px-3 py-2 text-sm"
-                            />
+                              aria-label="Единица измерения"
+                              className="app-select min-w-0 rounded-lg px-3 py-2 text-sm"
+                            >
+                              {getProcurementUnitOptions(it.unit).map((unit) => (
+                                <option key={unit.value} value={unit.value}>
+                                  {unit.label}
+                                </option>
+                              ))}
+                            </select>
                             <input
                               type="number"
                               step="0.01"

@@ -7,6 +7,7 @@ import { RequestAvatar } from "@/components/requests/RequestAvatar";
 import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
 
 import { cleanLinkRows, linkHref, toLinkRows } from "@/lib/procurementLinks";
+import { getProcurementUnitLabel } from "@/lib/procurementUnits";
 import { formatDate, formatMoney, userProfileLink } from "@/lib/shared";
 import type { ProcurementItem, ProcurementItemComment, ProcurementItemExecutionStatus, ProcurementRequest, User } from "@/types/api";
 
@@ -182,6 +183,7 @@ function ProcurementItemCard({
   const requestedQuantity = Math.max(0, Math.trunc(toNumber(item.quantity)));
   const orderedQuantity = item.ordered_quantity ?? 0;
   const receivedQuantity = item.received_quantity ?? 0;
+  const itemUnitLabel = getProcurementUnitLabel(item.unit);
   const status = item.execution_status || "pending";
   const statusLabel = item.execution_status_display || executionStatusOptions.find((option) => option.value === status)?.label || "Не выполнено";
   const canCancelReceived = Boolean(
@@ -258,7 +260,7 @@ function ProcurementItemCard({
             <div className="min-w-0">
               <p className="app-text-muted text-[11px]">Количество</p>
               <p className="app-text-wrap mt-0.5 font-medium text-[var(--foreground)]">
-                {item.quantity} {item.unit}
+                {item.quantity} {itemUnitLabel}
               </p>
             </div>
             <div className="min-w-0">
@@ -278,13 +280,13 @@ function ProcurementItemCard({
             <div className="min-w-0">
               <p className="app-text-muted text-[11px]">Заказано</p>
               <p className="app-text-wrap mt-0.5 font-medium text-[var(--foreground)]">
-                {orderedQuantity}/{requestedQuantity}
+                {orderedQuantity}/{requestedQuantity} {itemUnitLabel}
               </p>
             </div>
             <div className="min-w-0">
               <p className="app-text-muted text-[11px]">Получено</p>
               <p className="app-text-wrap mt-0.5 font-medium text-[var(--foreground)]">
-                {receivedQuantity}/{requestedQuantity}
+                {receivedQuantity}/{requestedQuantity} {itemUnitLabel}
               </p>
             </div>
           </div>
@@ -517,7 +519,7 @@ function ProcurementItemCard({
             />
           </div>
           <div>
-            <label className="app-text-muted mb-1 block text-[11px] font-medium">Заказано, шт.</label>
+            <label className="app-text-muted mb-1 block text-[11px] font-medium">Заказано, {itemUnitLabel}</label>
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -550,7 +552,7 @@ function ProcurementItemCard({
             </div>
           </div>
           <div>
-            <label className="app-text-muted mb-1 block text-[11px] font-medium">Получено, шт.</label>
+            <label className="app-text-muted mb-1 block text-[11px] font-medium">Получено, {itemUnitLabel}</label>
             <div className="flex items-center gap-2">
               <button
                 type="button"

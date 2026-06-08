@@ -37,6 +37,35 @@ PROBLEM_ITEM_STATUSES = {
 }
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+UNIT_DISPLAY_LABELS = {
+    "шт": "штуки",
+    "компл": "комплекты",
+    "упак": "упаковки",
+    "короб": "короба",
+    "пачка": "пачки",
+    "кг": "килограммы",
+    "г": "граммы",
+    "л": "литры",
+    "мл": "миллилитры",
+    "м": "метры",
+    "кв. м": "кв. метры",
+    "куб. м": "куб. метры",
+    "рулон": "рулоны",
+    "пара": "пары",
+    "услуга": "услуги",
+    "час": "часы",
+}
+
+
+def _normalize_unit(value):
+    return re.sub(r"\s+", " ", str(value or "").strip()).lower()
+
+
+def _unit_display_label(value):
+    unit = _normalize_unit(value)
+    if not unit:
+        return "единиц"
+    return UNIT_DISPLAY_LABELS.get(unit, unit)
 
 
 def _validate_expected_delivery_dates(value):
@@ -108,6 +137,7 @@ class ProcurementRequestSummaryMixin(serializers.Serializer):
     total_requested_quantity = serializers.SerializerMethodField()
     total_ordered_quantity = serializers.SerializerMethodField()
     total_received_quantity = serializers.SerializerMethodField()
+    quantity_unit_label = serializers.SerializerMethodField()
 
     @extend_schema_field(serializers.DateField(allow_null=True))
     def get_next_expected_delivery_date(self, obj):
@@ -171,6 +201,17 @@ class ProcurementRequestSummaryMixin(serializers.Serializer):
     @extend_schema_field(serializers.IntegerField())
     def get_total_received_quantity(self, obj):
         return sum(_effective_received_quantity(item) for item in _request_items(obj))
+
+    @extend_schema_field(serializers.CharField())
+    def get_quantity_unit_label(self, obj):
+        units = {
+            _normalize_unit(item.unit)
+            for item in _request_items(obj)
+            if _normalize_unit(item.unit)
+        }
+        if len(units) == 1:
+            return _unit_display_label(next(iter(units)))
+        return "единиц"
 
 
 class ProcurementItemSerializer(serializers.ModelSerializer):
@@ -494,6 +535,7 @@ class ProcurementRequestListSerializer(
             "total_requested_quantity",
             "total_ordered_quantity",
             "total_received_quantity",
+            "quantity_unit_label",
             "comments_count",
             "can_current_user_approve",
             "can_current_user_submit_for_approval",
@@ -527,6 +569,7 @@ class ProcurementRequestListSerializer(
             "total_requested_quantity",
             "total_ordered_quantity",
             "total_received_quantity",
+            "quantity_unit_label",
             "comments_count",
             "can_current_user_approve",
             "can_current_user_submit_for_approval",
@@ -728,6 +771,7 @@ class ProcurementRequestDetailSerializer(
             "total_requested_quantity",
             "total_ordered_quantity",
             "total_received_quantity",
+            "quantity_unit_label",
             "items",
             "approvals",
             "required_approval_priorities",
@@ -760,6 +804,7 @@ class ProcurementRequestDetailSerializer(
             "total_requested_quantity",
             "total_ordered_quantity",
             "total_received_quantity",
+            "quantity_unit_label",
             "executor_name",
             "fulfillment_status",
             "processing_department_name",

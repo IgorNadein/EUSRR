@@ -15,6 +15,7 @@ from procurement.models import (
     Budget,
     Equipment,
     EquipmentCategory,
+    ProcurementItem,
     ProcurementRequest,
     Supplier,
 )
@@ -144,6 +145,48 @@ class TestProcurementRequestAPI:
         assert 'total_cost' in response.data
         assert 'required_approval_priorities' in response.data
         assert 'is_editable' in response.data
+
+    def test_list_request_quantity_unit_label_single_unit(
+        self, api_client, user, procurement_request
+    ):
+        """Тест: для одной единицы измерения возвращается ее подпись."""
+        ProcurementItem.objects.create(
+            request=procurement_request,
+            name="Кабель",
+            quantity=20,
+            unit="м",
+        )
+
+        api_client.force_authenticate(user=user)
+        url = reverse('api:v1:procurement:procurementrequest-list')
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['results'][0]['quantity_unit_label'] == "метры"
+
+    def test_list_request_quantity_unit_label_mixed_units(
+        self, api_client, user, procurement_request
+    ):
+        """Тест: для смешанных единиц возвращается обобщенная подпись."""
+        ProcurementItem.objects.create(
+            request=procurement_request,
+            name="Кабель",
+            quantity=20,
+            unit="м",
+        )
+        ProcurementItem.objects.create(
+            request=procurement_request,
+            name="Крепеж",
+            quantity=10,
+            unit="шт",
+        )
+
+        api_client.force_authenticate(user=user)
+        url = reverse('api:v1:procurement:procurementrequest-list')
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['results'][0]['quantity_unit_label'] == "единиц"
 
     def test_update_own_request_draft(
         self, api_client, user, procurement_request

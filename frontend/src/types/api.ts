@@ -602,6 +602,7 @@ export interface ProcurementRequest {
   total_requested_quantity?: number;
   total_ordered_quantity?: number;
   total_received_quantity?: number;
+  quantity_unit_label?: string;
   comments_count?: number;
   can_current_user_approve?: boolean;
   can_current_user_submit_for_approval?: boolean;
