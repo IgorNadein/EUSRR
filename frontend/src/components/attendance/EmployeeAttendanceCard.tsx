@@ -174,6 +174,25 @@ function hasWorked(record: AttendanceRecord) {
   return Boolean(record.arrival_time || record.departure_time || hours > 0);
 }
 
+function hasAbsenceIssue(values: Array<unknown> | undefined) {
+  return Boolean(values?.some((value) => {
+    const normalized = String(value).trim().toLowerCase();
+    return (
+      normalized.includes("absence")
+      || normalized.includes("absent")
+      || normalized.includes("отсутств")
+    );
+  }));
+}
+
+function attendanceRecordHasAbsence(record: AttendanceRecord) {
+  return Boolean(
+    record.is_absent
+    || hasAbsenceIssue(record.employee_issues)
+    || hasAbsenceIssue(record.statuses),
+  );
+}
+
 function isRemotePersonnelMeta(personnelMeta?: PersonnelDayMeta | null) {
   return personnelMeta?.action.action === "remote";
 }
@@ -211,6 +230,14 @@ function issueLabels(record: AttendanceRecord, personnelMeta?: PersonnelDayMeta 
 function getRecordTone(record: AttendanceRecord, personnelMeta?: PersonnelDayMeta | null) {
   const nonWorking = personnelMeta?.nonWorking || record.effective_is_workday === false || record.is_workday === false;
 
+  if (nonWorking && record.is_overtime) {
+    return {
+      dotClassName: "bg-emerald-500",
+      pillClassName: "app-feedback-success",
+      label: "Переработка",
+    };
+  }
+
   if (nonWorking && hasWorked(record)) {
     return {
       dotClassName: "bg-sky-500",
@@ -219,13 +246,51 @@ function getRecordTone(record: AttendanceRecord, personnelMeta?: PersonnelDayMet
     };
   }
 
-  const labels = issueLabels(record, personnelMeta);
+  if (!nonWorking && record.technical_issues?.length) {
+    return {
+      dotClassName: "bg-rose-500",
+      pillClassName: "app-feedback-danger",
+      label: "Техсбой",
+    };
+  }
 
-  if (labels.length > 0) {
+  if (!nonWorking && attendanceRecordHasAbsence(record)) {
+    return {
+      dotClassName: "bg-red-500",
+      pillClassName: "app-feedback-danger",
+      label: "Отсутствие",
+    };
+  }
+
+  if (!nonWorking && record.is_underwork) {
     return {
       dotClassName: "bg-amber-500",
       pillClassName: "app-feedback-warning",
-      label: "Есть замечания",
+      label: "Недоработка",
+    };
+  }
+
+  if (!nonWorking && record.is_late) {
+    return {
+      dotClassName: "bg-amber-500",
+      pillClassName: "app-feedback-warning",
+      label: "Опоздание",
+    };
+  }
+
+  if (!nonWorking && record.is_early_leave) {
+    return {
+      dotClassName: "bg-amber-500",
+      pillClassName: "app-feedback-warning",
+      label: "Ранний уход",
+    };
+  }
+
+  if (!nonWorking && record.is_overtime) {
+    return {
+      dotClassName: "bg-emerald-500",
+      pillClassName: "app-feedback-success",
+      label: "Переработка",
     };
   }
 
