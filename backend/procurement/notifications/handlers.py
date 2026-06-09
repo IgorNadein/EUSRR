@@ -420,6 +420,36 @@ def notify_request_in_progress(request, executor):
     )
 
 
+def notify_executor_reassigned(request, previous_executor, actor):
+    """Уведомить прежнего исполнителя о перехвате адресной заявки."""
+    if not previous_executor:
+        return
+    if actor and previous_executor.id == actor.id:
+        return
+
+    notification_title, description = MessageTemplates.executor_reassigned(
+        request.title,
+        _actor_name(actor),
+    )
+    _send_procurement_notification(
+        recipient=previous_executor,
+        verb=NotificationVerbs.EXECUTOR_REASSIGNED,
+        procurement_request=request,
+        title=notification_title,
+        description=description,
+        actor=actor,
+        extra_data={
+            "old_executor_id": previous_executor.id,
+            "new_executor_id": actor.id if actor else None,
+        },
+    )
+
+    logger.info(
+        f"[Procurement] Исполнитель заявки #{request.id} изменён: "
+        f"{previous_executor.id} -> {_actor_id(actor)}"
+    )
+
+
 def notify_request_cancelled(request):
     """
     Уведомить об отмене заявки.

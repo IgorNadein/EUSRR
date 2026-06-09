@@ -28,6 +28,7 @@ from procurement.models import (
     Supplier,
 )
 from procurement.notifications.handlers import (
+    notify_executor_reassigned,
     notify_item_comment,
     notify_item_issue_reported,
     notify_item_updated,
@@ -192,11 +193,18 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(executor=user)
         elif scope == "available":
             queryset = queryset.filter(
-                status__in=[
-                    ProcurementStatus.WAITING,
-                    ProcurementStatus.APPROVED,
-                ],
-                executor__isnull=True,
+                Q(
+                    status__in=[
+                        ProcurementStatus.WAITING,
+                        ProcurementStatus.APPROVED,
+                    ],
+                    executor__isnull=True,
+                )
+                | Q(
+                    status=ProcurementStatus.IN_PROGRESS,
+                    processing_department__isnull=False,
+                    executor__isnull=False,
+                )
             )
             if not (
                 user.is_superuser
@@ -213,6 +221,18 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                         status=ProcurementStatus.APPROVED,
                         processing_department__isnull=True,
                     )
+                    | (
+                        Q(
+                            status=ProcurementStatus.IN_PROGRESS,
+                            processing_department_id__in=participant_department_ids,
+                        )
+                        & ~Q(executor=user)
+                    )
+                )
+            else:
+                queryset = queryset.exclude(
+                    status=ProcurementStatus.IN_PROGRESS,
+                    executor=user,
                 )
         elif scope == "all":
             # Все заявки - применяем стандартную логику прав
@@ -227,6 +247,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 user.has_perm("procurement.view_procurementrequest")
                 or user.has_perm("procurement.change_procurementrequest")
                 or user.has_perm("procurement.delete_procurementrequest")
+                or user.has_perm("procurement.execute_procurement")
             ):
                 pass
             else:
@@ -639,11 +660,18 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         """Получить заявки, доступные для взятия в работу."""
         queryset = self.filter_queryset(
             self.get_queryset().filter(
-                status__in=[
-                    ProcurementStatus.WAITING,
-                    ProcurementStatus.APPROVED,
-                ],
-                executor__isnull=True,
+                Q(
+                    status__in=[
+                        ProcurementStatus.WAITING,
+                        ProcurementStatus.APPROVED,
+                    ],
+                    executor__isnull=True,
+                )
+                | Q(
+                    status=ProcurementStatus.IN_PROGRESS,
+                    processing_department__isnull=False,
+                    executor__isnull=False,
+                )
             )
         )
 
@@ -667,6 +695,18 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                     status=ProcurementStatus.APPROVED,
                     processing_department__isnull=True,
                 )
+                | (
+                    Q(
+                        status=ProcurementStatus.IN_PROGRESS,
+                        processing_department_id__in=participant_department_ids,
+                    )
+                    & ~Q(executor=request.user)
+                )
+            )
+        else:
+            queryset = queryset.exclude(
+                status=ProcurementStatus.IN_PROGRESS,
+                executor=request.user,
             )
 
         page = self.paginate_queryset(queryset)
@@ -683,15 +723,52 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 
         Общий пул может взять любой авторизованный пользователь.
         Адресную заявку может взять сотрудник отдела-исполнителя.
+        Адресную заявку в работе может забрать другой сотрудник отдела.
         """
         procurement_request = self.get_object()
         self.check_object_permissions(request, procurement_request)
 
-        # Проверяем текущий статус
-        if procurement_request.status not in [
+        is_reassignment = (
+            procurement_request.status == ProcurementStatus.IN_PROGRESS
+            and procurement_request.processing_department_id
+            and procurement_request.executor_id
+        )
+
+        if is_reassignment:
+            previous_executor = procurement_request.executor
+            if previous_executor == request.user:
+                return Response(
+                    {"error": "Вы уже являетесь исполнителем заявки"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if not ProcurementApprovalResolver.user_can_start_work(
+                request.user,
+                procurement_request,
+            ):
+                return Response(
+                    {"error": "Вы не можете забрать эту заявку в работу"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            procurement_request.executor = request.user
+            procurement_request.started_at = timezone.now()
+            procurement_request.save(
+                update_fields=["executor", "started_at", "updated_at"],
+            )
+            notify_executor_reassigned(
+                procurement_request,
+                previous_executor,
+                request.user,
+            )
+
+            serializer = self.get_serializer(procurement_request)
+            return Response(serializer.data)
+
+        if procurement_request.status not in {
             ProcurementStatus.APPROVED,
             ProcurementStatus.WAITING,
-        ]:
+        }:
             return Response(
                 {
                     "error": (
@@ -712,6 +789,15 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not ProcurementApprovalResolver.user_can_start_work(
+            request.user,
+            procurement_request,
+        ):
+            return Response(
+                {"error": "Вы не можете взять эту заявку в работу"},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         # Назначаем исполнителя и меняем статус

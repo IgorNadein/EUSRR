@@ -212,19 +212,37 @@ class ProcurementApprovalResolver:
         if not user or not user.is_authenticated:
             return False
 
-        if (
-            procurement_request.status
-            not in {ProcurementStatus.APPROVED, ProcurementStatus.WAITING}
-            or procurement_request.executor_id
-        ):
-            return False
-
-        if (
+        has_execute_access = (
             user.is_superuser
             or user.is_staff
             or user.has_perm("procurement.change_procurementrequest")
             or user.has_perm("procurement.execute_procurement")
+        )
+
+        if (
+            procurement_request.status == ProcurementStatus.IN_PROGRESS
+            and procurement_request.processing_department_id
+            and procurement_request.executor_id
         ):
+            if procurement_request.executor_id == user.id:
+                return False
+            if has_execute_access:
+                return True
+            return cls.user_is_processing_department_member(
+                user,
+                procurement_request,
+            )
+
+        if procurement_request.status not in {
+            ProcurementStatus.APPROVED,
+            ProcurementStatus.WAITING,
+        }:
+            return False
+
+        if procurement_request.executor_id:
+            return False
+
+        if has_execute_access:
             return True
 
         if procurement_request.processing_department_id:

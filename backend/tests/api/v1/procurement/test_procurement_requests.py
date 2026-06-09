@@ -769,6 +769,42 @@ class TestProcessingDepartmentWorkflow:
         return employee
 
     @pytest.fixture
+    def supply_replacement_user(self, db, supply_department):
+        employee = Employee.objects.create_user(
+            email="supply-replacement@example.com",
+            password="testpass123",
+            phone_number="+79998888893",
+            first_name="Новый",
+            last_name="Исполнитель",
+            is_active=True,
+            email_verified=True,
+            send_activation_email=False,
+        )
+        EmployeeDepartment.objects.create(
+            employee=employee,
+            department=supply_department,
+            is_active=True,
+        )
+        return employee
+
+    @pytest.fixture
+    def procurement_execute_user(self, db):
+        employee = Employee.objects.create_user(
+            email="procurement-execute@example.com",
+            password="testpass123",
+            phone_number="+79998888894",
+            first_name="Права",
+            last_name="Закупок",
+            is_active=True,
+            email_verified=True,
+            send_activation_email=False,
+        )
+        employee.user_permissions.add(
+            Permission.objects.get(codename="execute_procurement")
+        )
+        return employee
+
+    @pytest.fixture
     def outsider(self, db):
         return Employee.objects.create_user(
             email="outsider@example.com",
@@ -1053,6 +1089,42 @@ class TestProcessingDepartmentWorkflow:
             is True
         )
 
+    def test_processing_permission_flags_allow_reassignment_for_other_member(
+        self, api_client, user, supply_user, supply_replacement_user,
+        processing_request, procurement_item_factory
+    ):
+        procurement_item_factory(request=processing_request)
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.executor = supply_user
+        processing_request.started_at = timezone.now()
+        processing_request.save(
+            update_fields=[
+                "status",
+                "executor",
+                "started_at",
+                "updated_at",
+            ],
+        )
+        detail_url = reverse(
+            'api:v1:procurement:procurementrequest-detail',
+            kwargs={'pk': processing_request.id},
+        )
+
+        api_client.force_authenticate(user=supply_user)
+        executor_response = api_client.get(detail_url)
+        assert executor_response.status_code == status.HTTP_200_OK
+        assert executor_response.data["can_current_user_start_work"] is False
+
+        api_client.force_authenticate(user=supply_replacement_user)
+        replacement_response = api_client.get(detail_url)
+        assert replacement_response.status_code == status.HTTP_200_OK
+        assert replacement_response.data["can_current_user_start_work"] is True
+
+        api_client.force_authenticate(user=user)
+        author_response = api_client.get(detail_url)
+        assert author_response.status_code == status.HTTP_200_OK
+        assert author_response.data["can_current_user_start_work"] is False
+
     def test_outsider_cannot_start_processing_department_request(
         self, api_client, outsider, processing_request, procurement_item_factory
     ):
@@ -1117,6 +1189,264 @@ class TestProcessingDepartmentWorkflow:
         processing_request.refresh_from_db()
         assert processing_request.executor == supply_role_user
         assert processing_request.status == ProcurementStatus.IN_PROGRESS
+
+    def test_processing_department_user_can_reassign_in_progress_request(
+        self, api_client, supply_user, supply_replacement_user,
+        processing_request, procurement_item_factory
+    ):
+        procurement_item_factory(request=processing_request)
+        previous_started_at = timezone.now()
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.executor = supply_user
+        processing_request.started_at = previous_started_at
+        processing_request.save(
+            update_fields=[
+                "status",
+                "executor",
+                "started_at",
+                "updated_at",
+            ],
+        )
+        api_client.force_authenticate(user=supply_replacement_user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-start-work',
+            kwargs={'pk': processing_request.id},
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        processing_request.refresh_from_db()
+        assert processing_request.executor == supply_replacement_user
+        assert processing_request.status == ProcurementStatus.IN_PROGRESS
+        assert processing_request.started_at > previous_started_at
+        assert response.data["executor"] == supply_replacement_user.id
+        assert response.data["executor_name"] == (
+            supply_replacement_user.get_full_name()
+        )
+
+    def test_available_scope_includes_reassignable_processing_request(
+        self, api_client, supply_user, supply_replacement_user,
+        processing_request, procurement_item_factory
+    ):
+        procurement_item_factory(request=processing_request)
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.executor = supply_user
+        processing_request.started_at = timezone.now()
+        processing_request.save(
+            update_fields=[
+                "status",
+                "executor",
+                "started_at",
+                "updated_at",
+            ],
+        )
+        api_client.force_authenticate(user=supply_replacement_user)
+        url = reverse('api:v1:procurement:procurementrequest-list')
+
+        response = api_client.get(f"{url}?scope=available")
+
+        assert response.status_code == status.HTTP_200_OK
+        ids = [item['id'] for item in response.data['results']]
+        assert processing_request.id in ids
+
+    def test_procurement_execute_permission_can_reassign_addressed_request(
+        self, api_client, supply_user, procurement_execute_user,
+        processing_request, procurement_item_factory
+    ):
+        procurement_item_factory(request=processing_request)
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.executor = supply_user
+        processing_request.started_at = timezone.now()
+        processing_request.save(
+            update_fields=[
+                "status",
+                "executor",
+                "started_at",
+                "updated_at",
+            ],
+        )
+        api_client.force_authenticate(user=procurement_execute_user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-start-work',
+            kwargs={'pk': processing_request.id},
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        processing_request.refresh_from_db()
+        assert processing_request.executor == procurement_execute_user
+
+    def test_processing_department_role_user_can_reassign_in_progress_request(
+        self, api_client, supply_user, supply_role_user,
+        processing_request, procurement_item_factory
+    ):
+        procurement_item_factory(request=processing_request)
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.executor = supply_user
+        processing_request.started_at = timezone.now()
+        processing_request.save(
+            update_fields=[
+                "status",
+                "executor",
+                "started_at",
+                "updated_at",
+            ],
+        )
+        api_client.force_authenticate(user=supply_role_user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-start-work',
+            kwargs={'pk': processing_request.id},
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        processing_request.refresh_from_db()
+        assert processing_request.executor == supply_role_user
+        assert processing_request.status == ProcurementStatus.IN_PROGRESS
+
+    def test_reassign_in_progress_request_notifies_previous_executor_only(
+        self, api_client, user, supply_user, supply_replacement_user,
+        processing_request, procurement_item_factory, monkeypatch
+    ):
+        sent = []
+
+        def fake_notify_send(**kwargs):
+            sent.append(kwargs)
+
+        monkeypatch.setattr(
+            "procurement.notifications.handlers.notify.send",
+            fake_notify_send,
+        )
+
+        procurement_item_factory(request=processing_request)
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.executor = supply_user
+        processing_request.started_at = timezone.now()
+        processing_request.save(
+            update_fields=[
+                "status",
+                "executor",
+                "started_at",
+                "updated_at",
+            ],
+        )
+        sent.clear()
+        api_client.force_authenticate(user=supply_replacement_user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-start-work',
+            kwargs={'pk': processing_request.id},
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        reassignment_notifications = [
+            item for item in sent
+            if item["verb"] == "procurement_executor_reassigned"
+        ]
+        assert len(reassignment_notifications) == 1
+        notification = reassignment_notifications[0]
+        assert notification["recipient"] == supply_user
+        assert notification["sender"] == supply_replacement_user
+        assert notification["data"]["title"] == (
+            "Заявку забрал другой сотрудник"
+        )
+        assert notification["description"] == (
+            f'{supply_replacement_user.get_full_name()} взял в работу заявку '
+            f'"{processing_request.title}".'
+        )
+        assert user not in [
+            item["recipient"] for item in reassignment_notifications
+        ]
+        assert "procurement_in_progress" not in [
+            item["verb"] for item in sent
+        ]
+
+    def test_current_executor_cannot_reassign_same_request(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        procurement_item_factory(request=processing_request)
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.executor = supply_user
+        processing_request.started_at = timezone.now()
+        processing_request.save(
+            update_fields=[
+                "status",
+                "executor",
+                "started_at",
+                "updated_at",
+            ],
+        )
+        api_client.force_authenticate(user=supply_user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-start-work',
+            kwargs={'pk': processing_request.id},
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        processing_request.refresh_from_db()
+        assert processing_request.executor == supply_user
+
+    def test_outsider_cannot_reassign_in_progress_request(
+        self, api_client, outsider, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        procurement_item_factory(request=processing_request)
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.executor = supply_user
+        processing_request.started_at = timezone.now()
+        processing_request.save(
+            update_fields=[
+                "status",
+                "executor",
+                "started_at",
+                "updated_at",
+            ],
+        )
+        api_client.force_authenticate(user=outsider)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-start-work',
+            kwargs={'pk': processing_request.id},
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        processing_request.refresh_from_db()
+        assert processing_request.executor == supply_user
+
+    def test_non_processing_in_progress_request_cannot_be_reassigned(
+        self, api_client, user, staff_user, procurement_request,
+        procurement_item
+    ):
+        procurement_request.status = ProcurementStatus.IN_PROGRESS
+        procurement_request.executor = staff_user
+        procurement_request.started_at = timezone.now()
+        procurement_request.save(
+            update_fields=[
+                "status",
+                "executor",
+                "started_at",
+                "updated_at",
+            ],
+        )
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-start-work',
+            kwargs={'pk': procurement_request.id},
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        procurement_request.refresh_from_db()
+        assert procurement_request.executor == staff_user
 
     def test_processing_department_role_user_can_manage_items(
         self, api_client, supply_role_user, processing_request,

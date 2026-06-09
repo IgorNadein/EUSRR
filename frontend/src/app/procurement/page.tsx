@@ -191,6 +191,7 @@ function ProcurementRequestActionButtons({
   const isPending = status === "pending";
   const canStartWork = Boolean(request.can_current_user_start_work);
   const isInProgress = status === "in_progress";
+  const startWorkLabel = isInProgress ? "Забрать в работу" : "Взять в работу";
   const canApproveThis = Boolean(request.can_current_user_approve);
   const canSubmitForApproval = Boolean(request.can_current_user_submit_for_approval);
   const buttonClass = (variantClass: string) =>
@@ -266,11 +267,11 @@ function ProcurementRequestActionButtons({
           type="button"
           onClick={() => onStart(request.id)}
           disabled={busyKey === `start-${request.id}`}
-          title="Взять в работу"
+          title={startWorkLabel}
           className={buttonClass("app-action-primary")}
         >
           <Play size={14} />
-          {label("Взять в работу")}
+          {label(startWorkLabel)}
         </button>
       ) : null}
       {isInProgress && isExecutor ? (

@@ -129,6 +129,12 @@ class CanManageProcurementRequest(permissions.BasePermission):
         perm = perm_map.get(action)
         return perm and user.has_perm(perm)
 
+    def _has_procurement_execute_perm(self, user) -> bool:
+        return (
+            user.has_perm("procurement.change_procurementrequest")
+            or user.has_perm("procurement.execute_procurement")
+        )
+
     def _is_dept_head(self, user, dept_id: int) -> bool:
         """Проверяет, является ли пользователь начальником отдела."""
         return Department.objects.filter(id=dept_id, head_id=user.id).exists()
@@ -211,6 +217,8 @@ class CanManageProcurementRequest(permissions.BasePermission):
 
         # Start_work: общий пул может взять любой, адресную заявку - отдел.
         if action == "start_work":
+            if self._has_procurement_execute_perm(user):
+                return True
             if obj.processing_department_id:
                 return self._is_dept_member(
                     user,

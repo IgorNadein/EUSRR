@@ -22,6 +22,7 @@ class NotificationVerbs:
     APPROVED = 'procurement_approved'
     REJECTED = 'procurement_rejected'
     IN_PROGRESS = 'procurement_in_progress'
+    EXECUTOR_REASSIGNED = 'procurement_executor_reassigned'
     COMPLETED = 'procurement_completed'
     CANCELLED = 'procurement_cancelled'
 
@@ -138,6 +139,16 @@ class MessageTemplates:
         description = (
             f'{approver_name} отклонил заявку "{title}". '
             f'Причина: {comment}'
+        )
+        return notification_title, description
+
+    @staticmethod
+    def executor_reassigned(
+        title: str, executor_name: str
+    ) -> tuple[str, str]:
+        notification_title = 'Заявку забрал другой сотрудник'
+        description = (
+            f'{executor_name} взял в работу заявку "{title}".'
         )
         return notification_title, description
 
