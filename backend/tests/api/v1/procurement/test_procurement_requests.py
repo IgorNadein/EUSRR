@@ -2484,6 +2484,83 @@ class TestProcessingDepartmentWorkflow:
         assert processing_request.status == ProcurementStatus.COMPLETED
         assert processing_request.completed_at is not None
 
+    def test_requestor_can_confirm_partial_item_received(
+        self, api_client, user, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            quantity=3,
+            ordered_quantity=3,
+            received_quantity=0,
+            execution_status=ProcurementItemExecutionStatus.ORDERED,
+        )
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save()
+
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementitem-confirm-received',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.post(
+            url,
+            {'received_quantity': 2},
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        item.refresh_from_db()
+        processing_request.refresh_from_db()
+        assert item.execution_status == ProcurementItemExecutionStatus.ORDERED
+        assert item.ordered_quantity == 3
+        assert item.received_quantity == 2
+        assert (
+            processing_request.fulfillment_status
+            == ProcurementFulfillmentStatus.PARTIALLY_RECEIVED
+        )
+        assert processing_request.status == ProcurementStatus.IN_PROGRESS
+        assert processing_request.completed_at is None
+
+    def test_confirm_item_received_rejects_invalid_quantity(
+        self, api_client, user, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            quantity=2,
+            ordered_quantity=2,
+            received_quantity=1,
+            execution_status=ProcurementItemExecutionStatus.ORDERED,
+        )
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save()
+
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementitem-confirm-received',
+            kwargs={'pk': item.id},
+        )
+
+        too_low_response = api_client.post(
+            url,
+            {'received_quantity': 1},
+            format='json',
+        )
+        too_high_response = api_client.post(
+            url,
+            {'received_quantity': 3},
+            format='json',
+        )
+
+        assert too_low_response.status_code == status.HTTP_400_BAD_REQUEST
+        assert too_high_response.status_code == status.HTTP_400_BAD_REQUEST
+        item.refresh_from_db()
+        assert item.received_quantity == 1
+
     def test_requestor_can_cancel_item_issue(
         self, api_client, user, supply_user, processing_request,
         procurement_item_factory
@@ -2555,6 +2632,82 @@ class TestProcessingDepartmentWorkflow:
         )
         assert processing_request.status == ProcurementStatus.IN_PROGRESS
         assert processing_request.completed_at is None
+
+    def test_requestor_can_cancel_partial_item_received(
+        self, api_client, user, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            quantity=4,
+            ordered_quantity=4,
+            received_quantity=3,
+            execution_status=ProcurementItemExecutionStatus.ORDERED,
+        )
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save()
+
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementitem-cancel-received',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.post(
+            url,
+            {'cancel_quantity': 1},
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        item.refresh_from_db()
+        processing_request.refresh_from_db()
+        assert item.execution_status == ProcurementItemExecutionStatus.ORDERED
+        assert item.ordered_quantity == 4
+        assert item.received_quantity == 2
+        assert (
+            processing_request.fulfillment_status
+            == ProcurementFulfillmentStatus.PARTIALLY_RECEIVED
+        )
+        assert processing_request.status == ProcurementStatus.IN_PROGRESS
+
+    def test_cancel_item_received_rejects_invalid_quantity(
+        self, api_client, user, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            quantity=2,
+            ordered_quantity=2,
+            received_quantity=1,
+            execution_status=ProcurementItemExecutionStatus.ORDERED,
+        )
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save()
+
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementitem-cancel-received',
+            kwargs={'pk': item.id},
+        )
+
+        too_low_response = api_client.post(
+            url,
+            {'cancel_quantity': 0},
+            format='json',
+        )
+        too_high_response = api_client.post(
+            url,
+            {'cancel_quantity': 2},
+            format='json',
+        )
+
+        assert too_low_response.status_code == status.HTTP_400_BAD_REQUEST
+        assert too_high_response.status_code == status.HTTP_400_BAD_REQUEST
+        item.refresh_from_db()
+        assert item.received_quantity == 1
 
     def test_cancel_received_uses_received_status_as_effective_quantity(
         self, api_client, user, supply_user, processing_request,

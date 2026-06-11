@@ -80,6 +80,28 @@ const preferencesSignature = (value: NotificationPreferences | null) => {
 const isApiNotFoundError = (error: unknown) =>
   error instanceof Error && error.message.includes("API Error: 404");
 
+function buildCroppedAvatarFileName(fileName: string) {
+  const baseName = fileName.trim().replace(/\.[^.]+$/, "") || "avatar";
+  return `${baseName}.jpg`;
+}
+
+function dataUrlToFile(dataUrl: string, fileName: string) {
+  const [header, base64Data] = dataUrl.split(",");
+  if (!base64Data) {
+    throw new Error("Invalid image data URL");
+  }
+
+  const mime = header.match(/^data:(.*?);base64$/)?.[1] || "image/jpeg";
+  const binary = window.atob(base64Data);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new File([bytes], fileName, { type: mime });
+}
+
 export function settingsInitials(firstName?: string, lastName?: string) {
   return `${lastName?.[0] || ""}${firstName?.[0] || ""}`.trim() || "П";
 }
@@ -138,6 +160,8 @@ export function useSettingsPage() {
   });
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarCropperImage, setAvatarCropperImage] = useState<string | null>(null);
+  const [avatarCropperFileName, setAvatarCropperFileName] = useState("avatar.jpg");
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingContacts, setSavingContacts] = useState(false);
 
@@ -356,6 +380,10 @@ export function useSettingsPage() {
 
   const handleAvatarChange = (file: File | null) => {
     if (!file) return;
+    if (avatarInputRef.current) {
+      avatarInputRef.current.value = "";
+    }
+
     if (!file.type.startsWith("image/")) {
       toast.error("Можно загрузить только изображение");
       return;
@@ -365,12 +393,35 @@ export function useSettingsPage() {
       return;
     }
 
-    setAvatarFile(file);
     const reader = new FileReader();
     reader.onload = () => {
-      setAvatarPreview(typeof reader.result === "string" ? reader.result : null);
+      if (typeof reader.result !== "string") {
+        toast.error("Не удалось прочитать изображение");
+        return;
+      }
+
+      setAvatarCropperFileName(buildCroppedAvatarFileName(file.name));
+      setAvatarCropperImage(reader.result);
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleAvatarCropComplete = (croppedImage: string) => {
+    try {
+      const croppedFile = dataUrlToFile(croppedImage, avatarCropperFileName);
+      setAvatarFile(croppedFile);
+      setAvatarPreview(croppedImage);
+      setAvatarCropperImage(null);
+      setAvatarCropperFileName("avatar.jpg");
+    } catch (error) {
+      console.error(error);
+      toast.error("Не удалось обработать обрезанное фото");
+    }
+  };
+
+  const handleAvatarCropCancel = () => {
+    setAvatarCropperImage(null);
+    setAvatarCropperFileName("avatar.jpg");
   };
 
   const handlePushToggle = async (enabled: boolean) => {
@@ -617,8 +668,11 @@ export function useSettingsPage() {
     unreadVerbCount,
     user,
     verbTypes,
+    avatarCropperImage,
     avatarPreview,
     handleAvatarChange,
+    handleAvatarCropCancel,
+    handleAvatarCropComplete,
     handleChangePassword,
     handleDndToggle,
     handleLogoutOthers,

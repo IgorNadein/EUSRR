@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import {
   ArrowDown,
   ArrowUp,
@@ -40,6 +41,10 @@ const themeIcons = {
   Moon,
   Monitor,
 } as const;
+
+const AvatarCropper = dynamic(() => import("@/components/AvatarCropper"), {
+  ssr: false,
+});
 
 const mobileNavCards = [
   {
@@ -133,6 +138,7 @@ export default function SettingsPage() {
   const { canInstall, install, isInstalled, isRegistrationReady } = usePwa();
   const {
     activeVerbCount,
+    avatarCropperImage,
     avatarInputRef,
     changingPassword,
     contactsDirty,
@@ -167,6 +173,8 @@ export default function SettingsPage() {
     user,
     verbTypes,
     handleAvatarChange,
+    handleAvatarCropCancel,
+    handleAvatarCropComplete,
     handleChangePassword,
     handleDndToggle,
     handleLogoutOthers,
@@ -201,8 +209,9 @@ export default function SettingsPage() {
   }
 
   return (
-    <AppShell>
-      <div className="space-y-6">
+    <>
+      <AppShell>
+        <div className="space-y-6">
         {/* <PageHeader
           title="Настройки"
           subtitle="Единая точка для темы, профиля, контактов и правил доставки уведомлений."
@@ -1149,7 +1158,16 @@ export default function SettingsPage() {
               </div>
             </SectionCard>
         </div>
-      </div>
-    </AppShell>
+        </div>
+      </AppShell>
+
+      {avatarCropperImage ? (
+        <AvatarCropper
+          initialImage={avatarCropperImage}
+          onCropComplete={handleAvatarCropComplete}
+          onCancel={handleAvatarCropCancel}
+        />
+      ) : null}
+    </>
   );
 }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, Check, CheckCircle2, CircleDot, ExternalLink, MessageSquare, Minus, Plus, RotateCcw, Save, SlidersHorizontal, X } from "lucide-react";
 import { RequestAvatar } from "@/components/requests/RequestAvatar";
 import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
+import { Modal } from "@/components/ui";
 
 import { cleanLinkRows, linkHref, toLinkRows } from "@/lib/procurementLinks";
 import { getProcurementUnitLabel } from "@/lib/procurementUnits";
@@ -25,8 +26,8 @@ interface ProcurementRequestDetailContentProps {
   onUpdateItem?: (requestId: number, itemId: number, patch: Record<string, unknown>) => void | Promise<unknown>;
   onReportItemIssue?: (requestId: number, itemId: number, text?: string) => void | Promise<unknown>;
   onCancelItemIssue?: (requestId: number, itemId: number) => void | Promise<unknown>;
-  onConfirmItemReceived?: (requestId: number, itemId: number) => void | Promise<unknown>;
-  onCancelItemReceived?: (requestId: number, itemId: number) => void | Promise<unknown>;
+  onConfirmItemReceived?: (requestId: number, itemId: number, receivedQuantity?: number) => void | Promise<unknown>;
+  onCancelItemReceived?: (requestId: number, itemId: number, cancelQuantity?: number) => void | Promise<unknown>;
   onMarkAllReceived?: (requestId: number) => void | Promise<unknown>;
   itemCommentsMap?: Record<number, ProcurementItemComment[]>;
   itemCommentDrafts?: Record<number, string>;
@@ -159,8 +160,8 @@ interface ProcurementItemCardProps {
   onUpdateItem?: (requestId: number, itemId: number, patch: Record<string, unknown>) => void | Promise<unknown>;
   onReportItemIssue?: (requestId: number, itemId: number, text?: string) => void | Promise<unknown>;
   onCancelItemIssue?: (requestId: number, itemId: number) => void | Promise<unknown>;
-  onConfirmItemReceived?: (requestId: number, itemId: number) => void | Promise<unknown>;
-  onCancelItemReceived?: (requestId: number, itemId: number) => void | Promise<unknown>;
+  onConfirmItemReceived?: (requestId: number, itemId: number, receivedQuantity?: number) => void | Promise<unknown>;
+  onCancelItemReceived?: (requestId: number, itemId: number, cancelQuantity?: number) => void | Promise<unknown>;
   comments?: ProcurementItemComment[];
   commentDraft?: string;
   commentsOpen?: boolean;
@@ -197,12 +198,17 @@ function ProcurementItemCard({
 }: ProcurementItemCardProps) {
   const [draft, setDraft] = useState<ItemProcessingDraft>(() => normalizeItemDraft(item));
   const [processingOpen, setProcessingOpen] = useState(false);
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false);
+  const [receiptQuantity, setReceiptQuantity] = useState("1");
+  const [cancelReceiptModalOpen, setCancelReceiptModalOpen] = useState(false);
+  const [cancelReceiptQuantity, setCancelReceiptQuantity] = useState("1");
   const links = Array.isArray(item.links) ? item.links.filter(Boolean) : [];
   const expectedDeliveryDates = toDateRows(item.expected_delivery_dates);
   const commentsTotal = item.comments_count ?? comments.length;
   const requestedQuantity = Math.max(0, Math.trunc(toNumber(item.quantity)));
   const orderedQuantity = effectiveOrderedQuantity(item, requestedQuantity);
   const receivedQuantity = effectiveReceivedQuantity(item, requestedQuantity);
+  const remainingQuantity = Math.max(0, requestedQuantity - receivedQuantity);
   const itemUnitLabel = getProcurementUnitLabel(item.unit);
   const status = item.execution_status || "pending";
   const statusLabel = item.execution_status_display || executionStatusOptions.find((option) => option.value === status)?.label || "Не выполнено";
@@ -242,6 +248,79 @@ function ProcurementItemCard({
       const next = Math.min(requestedQuantity, Math.max(0, current + delta));
       return { ...previous, [field]: String(next) };
     });
+  };
+
+  const adjustReceiptQuantity = (delta: number) => {
+    setReceiptQuantity((current) => {
+      const parsed = toOptionalInteger(current) ?? 1;
+      return String(Math.min(remainingQuantity, Math.max(1, parsed + delta)));
+    });
+  };
+
+  const adjustCancelReceiptQuantity = (delta: number) => {
+    setCancelReceiptQuantity((current) => {
+      const parsed = toOptionalInteger(current) ?? 1;
+      return String(Math.min(receivedQuantity, Math.max(1, parsed + delta)));
+    });
+  };
+
+  const openReceiptModal = () => {
+    setReceiptQuantity(String(remainingQuantity));
+    setReceiptModalOpen(true);
+  };
+
+  const openCancelReceiptModal = () => {
+    setCancelReceiptQuantity(String(receivedQuantity));
+    setCancelReceiptModalOpen(true);
+  };
+
+  const confirmReceipt = (quantityReceivedNow: number) => {
+    const normalizedQuantity = Math.min(remainingQuantity, Math.max(1, Math.trunc(quantityReceivedNow)));
+    const nextReceivedQuantity = receivedQuantity + normalizedQuantity;
+    return onConfirmItemReceived?.(requestId, item.id, nextReceivedQuantity);
+  };
+
+  const handleConfirmReceiptClick = () => {
+    if (remainingQuantity > 1) {
+      openReceiptModal();
+      return;
+    }
+
+    void confirmReceipt(remainingQuantity);
+  };
+
+  const cancelReceipt = (quantityToCancel: number) => {
+    const normalizedQuantity = Math.min(receivedQuantity, Math.max(1, Math.trunc(quantityToCancel)));
+    return onCancelItemReceived?.(requestId, item.id, normalizedQuantity);
+  };
+
+  const handleCancelReceiptClick = () => {
+    if (receivedQuantity > 1) {
+      openCancelReceiptModal();
+      return;
+    }
+
+    void cancelReceipt(receivedQuantity);
+  };
+
+  const submitReceiptModal = async () => {
+    const parsedQuantity = toOptionalInteger(receiptQuantity);
+    if (!parsedQuantity || parsedQuantity < 1 || parsedQuantity > remainingQuantity) return;
+
+    const result = await confirmReceipt(parsedQuantity);
+    if (result !== false) {
+      setReceiptModalOpen(false);
+    }
+  };
+
+  const submitCancelReceiptModal = async () => {
+    const parsedQuantity = toOptionalInteger(cancelReceiptQuantity);
+    if (!parsedQuantity || parsedQuantity < 1 || parsedQuantity > receivedQuantity) return;
+
+    const result = await cancelReceipt(parsedQuantity);
+    if (result !== false) {
+      setCancelReceiptModalOpen(false);
+    }
   };
 
   const saveItemProcessing = () => {
@@ -386,7 +465,7 @@ function ProcurementItemCard({
         {canCancelReceived ? (
           <button
             type="button"
-            onClick={() => void onCancelItemReceived?.(requestId, item.id)}
+            onClick={handleCancelReceiptClick}
             disabled={busyKey === `item-cancel-received-${item.id}`}
             className="app-action-ghost inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium disabled:opacity-60"
           >
@@ -398,7 +477,7 @@ function ProcurementItemCard({
         {canConfirmReceived ? (
           <button
             type="button"
-            onClick={() => void onConfirmItemReceived?.(requestId, item.id)}
+            onClick={handleConfirmReceiptClick}
             disabled={busyKey === `item-confirm-received-${item.id}`}
             className="app-action-ghost inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium disabled:opacity-60"
           >
@@ -652,6 +731,158 @@ function ProcurementItemCard({
             </button>
           </div>
         </div>
+      ) : null}
+
+      {receiptModalOpen ? (
+        <Modal
+          isOpen
+          onClose={() => setReceiptModalOpen(false)}
+          title="Подтвердить получение"
+          size="sm"
+          footer={
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setReceiptModalOpen(false)}
+                disabled={busyKey === `item-confirm-received-${item.id}`}
+                className="app-action-secondary flex-1 rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitReceiptModal()}
+                disabled={
+                  busyKey === `item-confirm-received-${item.id}` ||
+                  !toOptionalInteger(receiptQuantity) ||
+                  Number(receiptQuantity) < 1 ||
+                  Number(receiptQuantity) > remainingQuantity
+                }
+                className="app-action-primary flex-1 rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+              >
+                Подтвердить
+              </button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <div>
+              <p className="app-text-wrap text-sm font-semibold text-[var(--foreground)]">{item.name}</p>
+              <p className="app-text-muted mt-1 text-sm">
+                Получено {receivedQuantity}/{requestedQuantity} {itemUnitLabel}. Осталось {remainingQuantity} {itemUnitLabel}.
+              </p>
+            </div>
+            <label className="block">
+              <span className="app-text-muted mb-2 block text-sm">Получено сейчас, {itemUnitLabel}</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => adjustReceiptQuantity(-1)}
+                  className="app-action-secondary inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+                  disabled={busyKey === `item-confirm-received-${item.id}`}
+                >
+                  <Minus size={14} />
+                </button>
+                <input
+                  type="number"
+                  min={1}
+                  max={remainingQuantity}
+                  value={receiptQuantity}
+                  onChange={(event) => {
+                    const parsed = toOptionalInteger(event.target.value);
+                    setReceiptQuantity(parsed === null ? "" : String(Math.min(remainingQuantity, parsed)));
+                  }}
+                  className="app-input min-w-0 flex-1 rounded-lg px-4 py-2.5 text-sm"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => adjustReceiptQuantity(1)}
+                  className="app-action-secondary inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+                  disabled={busyKey === `item-confirm-received-${item.id}`}
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+            </label>
+          </div>
+        </Modal>
+      ) : null}
+
+      {cancelReceiptModalOpen ? (
+        <Modal
+          isOpen
+          onClose={() => setCancelReceiptModalOpen(false)}
+          title="Отменить получение"
+          size="sm"
+          footer={
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setCancelReceiptModalOpen(false)}
+                disabled={busyKey === `item-cancel-received-${item.id}`}
+                className="app-action-secondary flex-1 rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitCancelReceiptModal()}
+                disabled={
+                  busyKey === `item-cancel-received-${item.id}` ||
+                  !toOptionalInteger(cancelReceiptQuantity) ||
+                  Number(cancelReceiptQuantity) < 1 ||
+                  Number(cancelReceiptQuantity) > receivedQuantity
+                }
+                className="app-action-primary flex-1 rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+              >
+                Отменить получение
+              </button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <div>
+              <p className="app-text-wrap text-sm font-semibold text-[var(--foreground)]">{item.name}</p>
+              <p className="app-text-muted mt-1 text-sm">
+                Сейчас получено {receivedQuantity}/{requestedQuantity} {itemUnitLabel}.
+              </p>
+            </div>
+            <label className="block">
+              <span className="app-text-muted mb-2 block text-sm">Отменить сейчас, {itemUnitLabel}</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => adjustCancelReceiptQuantity(-1)}
+                  className="app-action-secondary inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+                  disabled={busyKey === `item-cancel-received-${item.id}`}
+                >
+                  <Minus size={14} />
+                </button>
+                <input
+                  type="number"
+                  min={1}
+                  max={receivedQuantity}
+                  value={cancelReceiptQuantity}
+                  onChange={(event) => {
+                    const parsed = toOptionalInteger(event.target.value);
+                    setCancelReceiptQuantity(parsed === null ? "" : String(Math.min(receivedQuantity, parsed)));
+                  }}
+                  className="app-input min-w-0 flex-1 rounded-lg px-4 py-2.5 text-sm"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => adjustCancelReceiptQuantity(1)}
+                  className="app-action-secondary inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+                  disabled={busyKey === `item-cancel-received-${item.id}`}
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+            </label>
+          </div>
+        </Modal>
       ) : null}
     </div>
   );

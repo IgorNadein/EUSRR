@@ -1001,11 +1001,11 @@ export function useProcurementPage(user: User | null) {
     }
   }, [refreshAfterMutation]);
 
-  const handleConfirmItemReceived = useCallback(async (requestId: number, itemId: number) => {
+  const handleConfirmItemReceived = useCallback(async (requestId: number, itemId: number, receivedQuantity?: number) => {
     try {
       setBusyKey(`item-confirm-received-${itemId}`);
       setActionError(null);
-      await apiClient.confirmProcurementItemReceived(itemId);
+      await apiClient.confirmProcurementItemReceived(itemId, receivedQuantity);
       setActionSuccess("Получение позиции подтверждено.");
       await refreshAfterMutation(requestId);
       return true;
@@ -1017,11 +1017,11 @@ export function useProcurementPage(user: User | null) {
     }
   }, [refreshAfterMutation]);
 
-  const handleCancelItemReceived = useCallback(async (requestId: number, itemId: number) => {
+  const handleCancelItemReceived = useCallback(async (requestId: number, itemId: number, cancelQuantity?: number) => {
     try {
       setBusyKey(`item-cancel-received-${itemId}`);
       setActionError(null);
-      await apiClient.cancelProcurementItemReceived(itemId);
+      await apiClient.cancelProcurementItemReceived(itemId, cancelQuantity);
       setActionSuccess("Получение позиции отменено.");
       await refreshAfterMutation(requestId);
       return true;

@@ -1330,14 +1330,42 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         if error_response is not None:
             return error_response
 
-        if item.effective_received_quantity <= 0:
+        current_received_quantity = item.effective_received_quantity
+        if current_received_quantity <= 0:
             return Response(
                 {"detail": "По позиции нет подтверждённого получения"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        target_received_quantity = 0
+        if "cancel_quantity" in request.data:
+            raw_cancel_quantity = request.data.get("cancel_quantity")
+            try:
+                cancel_quantity = int(raw_cancel_quantity)
+            except (TypeError, ValueError):
+                return Response(
+                    {"cancel_quantity": "Укажите целое число отменяемых единиц"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if cancel_quantity < 1:
+                return Response(
+                    {"cancel_quantity": "Количество должно быть больше 0"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if cancel_quantity > current_received_quantity:
+                return Response(
+                    {
+                        "cancel_quantity": (
+                            "Не может быть больше текущего полученного количества"
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            target_received_quantity = current_received_quantity - cancel_quantity
+
         effective_ordered_quantity = item.effective_ordered_quantity
-        item.received_quantity = 0
+        item.received_quantity = target_received_quantity
         if item.ordered_quantity is None and effective_ordered_quantity > 0:
             item.ordered_quantity = min(effective_ordered_quantity, item.quantity)
         item.execution_status = self._workflow_status_from_quantities(item)
@@ -1409,9 +1437,49 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         if error_response is not None:
             return error_response
 
-        item.execution_status = ProcurementItemExecutionStatus.RECEIVED
-        item.ordered_quantity = item.quantity
-        item.received_quantity = item.quantity
+        current_received_quantity = item.effective_received_quantity
+        target_received_quantity = item.quantity
+
+        if "received_quantity" in request.data:
+            raw_received_quantity = request.data.get("received_quantity")
+            try:
+                target_received_quantity = int(raw_received_quantity)
+            except (TypeError, ValueError):
+                return Response(
+                    {"received_quantity": "Укажите целое число полученных единиц"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if target_received_quantity < 1:
+                return Response(
+                    {"received_quantity": "Количество должно быть больше 0"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if target_received_quantity > item.quantity:
+                return Response(
+                    {
+                        "received_quantity": (
+                            "Не может быть больше количества позиции"
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if target_received_quantity <= current_received_quantity:
+                return Response(
+                    {
+                        "received_quantity": (
+                            "Должно быть больше текущего полученного количества"
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        item.received_quantity = target_received_quantity
+        item.ordered_quantity = min(
+            item.quantity,
+            max(item.effective_ordered_quantity, target_received_quantity),
+        )
+        item.execution_status = self._workflow_status_from_quantities(item)
         item.save(
             update_fields=[
                 "execution_status",

@@ -34,8 +34,18 @@ export function createProcurementApi(request: RequestFn) {
         reportProcurementItemIssue: (id: number, text?: string) =>
             request(`/api/v1/procurement/items/${id}/report_issue/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: text || '' }) }),
         cancelProcurementItemIssue: (id: number) => request(`/api/v1/procurement/items/${id}/cancel_issue/`, { method: 'POST' }),
-        confirmProcurementItemReceived: (id: number) => request(`/api/v1/procurement/items/${id}/confirm_received/`, { method: 'POST' }),
-        cancelProcurementItemReceived: (id: number) => request(`/api/v1/procurement/items/${id}/cancel_received/`, { method: 'POST' }),
+        confirmProcurementItemReceived: (id: number, receivedQuantity?: number) =>
+            request(`/api/v1/procurement/items/${id}/confirm_received/`, {
+                method: 'POST',
+                headers: receivedQuantity === undefined ? undefined : { 'Content-Type': 'application/json' },
+                body: receivedQuantity === undefined ? undefined : JSON.stringify({ received_quantity: receivedQuantity }),
+            }),
+        cancelProcurementItemReceived: (id: number, cancelQuantity?: number) =>
+            request(`/api/v1/procurement/items/${id}/cancel_received/`, {
+                method: 'POST',
+                headers: cancelQuantity === undefined ? undefined : { 'Content-Type': 'application/json' },
+                body: cancelQuantity === undefined ? undefined : JSON.stringify({ cancel_quantity: cancelQuantity }),
+            }),
         deleteProcurementItem: (id: number): Promise<void> => request(`/api/v1/procurement/items/${id}/`, { method: 'DELETE' }),
         getProcurementItemComments: (itemId: number) => request(`/api/v1/procurement/items/${itemId}/comments/`),
         addProcurementItemComment: (itemId: number, text: string) =>
