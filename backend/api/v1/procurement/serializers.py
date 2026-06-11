@@ -131,6 +131,10 @@ def _effective_received_quantity(item):
 
 class ProcurementRequestSummaryMixin(serializers.Serializer):
     is_viewed = serializers.SerializerMethodField()
+    last_arrival_notice_at = serializers.DateTimeField(
+        read_only=True,
+        allow_null=True,
+    )
     next_expected_delivery_date = serializers.SerializerMethodField()
     items_total_count = serializers.SerializerMethodField()
     items_received_count = serializers.SerializerMethodField()
@@ -545,6 +549,7 @@ class ProcurementRequestListSerializer(
             "fulfillment_status",
             "fulfillment_status_display",
             "is_viewed",
+            "last_arrival_notice_at",
             "total_cost",
             "items_count",
             "next_expected_delivery_date",
@@ -582,6 +587,7 @@ class ProcurementRequestListSerializer(
             "fulfillment_status",
             "fulfillment_status_display",
             "is_viewed",
+            "last_arrival_notice_at",
             "items_count",
             "total_cost",
             "next_expected_delivery_date",
@@ -785,6 +791,7 @@ class ProcurementRequestDetailSerializer(
             "fulfillment_status",
             "fulfillment_status_display",
             "is_viewed",
+            "last_arrival_notice_at",
             "total_cost",
             "actual_cost",
             "next_expected_delivery_date",
@@ -820,6 +827,7 @@ class ProcurementRequestDetailSerializer(
             "completed_at",
             "is_editable",
             "is_viewed",
+            "last_arrival_notice_at",
             "total_cost",
             "next_expected_delivery_date",
             "items_total_count",

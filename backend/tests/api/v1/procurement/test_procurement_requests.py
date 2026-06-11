@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 from django.contrib.auth.models import Permission
 from django.urls import reverse
+from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from push_notifications.models import WebPushDevice
 from rest_framework import status
@@ -3115,6 +3116,59 @@ class TestProcessingDepartmentWorkflow:
         assert all(
             item["data"]["request_id"] == processing_request.id
             for item in arrival_notifications
+        )
+
+    def test_notify_arrival_exposes_last_notice_timestamp(
+        self, api_client, user, supply_user, processing_request
+    ):
+        processing_request.executor = supply_user
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.save()
+
+        api_client.force_authenticate(user=supply_user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-notify-arrival',
+            kwargs={'pk': processing_request.id},
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        notice = Notification.objects.get(
+            recipient=user,
+            verb="procurement_arrival_notice",
+            target_object_id=str(processing_request.id),
+        )
+        assert (
+            parse_datetime(response.data["last_arrival_notice_at"])
+            == notice.timestamp
+        )
+
+        list_response = api_client.get(
+            reverse('api:v1:procurement:procurementrequest-list'),
+        )
+        assert list_response.status_code == status.HTTP_200_OK
+        list_payload = list_response.json()
+        list_items = list_payload.get("results", list_payload)
+        list_item = next(
+            item for item in list_items
+            if item["id"] == processing_request.id
+        )
+        assert (
+            parse_datetime(list_item["last_arrival_notice_at"])
+            == notice.timestamp
+        )
+
+        detail_response = api_client.get(
+            reverse(
+                'api:v1:procurement:procurementrequest-detail',
+                kwargs={'pk': processing_request.id},
+            ),
+        )
+        assert detail_response.status_code == status.HTTP_200_OK
+        assert (
+            parse_datetime(detail_response.data["last_arrival_notice_at"])
+            == notice.timestamp
         )
 
     def test_notify_arrival_is_not_available_after_request_completed(

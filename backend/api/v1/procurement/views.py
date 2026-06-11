@@ -35,6 +35,7 @@ from procurement.notifications.handlers import (
     notify_request_arrival,
     notify_request_comment,
 )
+from procurement.notifications.config import NotificationVerbs
 from communications import comments_helpers
 from communications.models import Message
 from procurement.services import ProcurementApprovalResolver
@@ -100,6 +101,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             "complete",
             "cancel",
             "mark_all_received",
+            "notify_arrival",
             "set_viewed",
         ]:
             return ProcurementRequestDetailSerializer
@@ -122,16 +124,19 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         from django.contrib.contenttypes.models import ContentType
         from django.db.models import (
             BooleanField,
+            CharField,
             Count,
+            DateTimeField,
             Exists,
             IntegerField,
             OuterRef,
             Subquery,
             Value,
         )
-        from django.db.models.functions import Coalesce
+        from django.db.models.functions import Cast, Coalesce
         from django.utils import timezone
         from communications.models import Chat
+        from notifications.models import Notification
 
         ct = ContentType.objects.get_for_model(ProcurementRequest)
         comments_sub = (
@@ -146,6 +151,18 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 )
             )
             .values("msg_count")[:1]
+        )
+        arrival_notice_sub = (
+            Notification.objects.filter(
+                verb=NotificationVerbs.ARRIVAL_NOTICE,
+                target_content_type=ct,
+                target_object_id=Cast(
+                    OuterRef("pk"),
+                    output_field=CharField(),
+                ),
+            )
+            .order_by("-timestamp")
+            .values("timestamp")[:1]
         )
 
         user = self.request.user
@@ -168,6 +185,10 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 output_field=IntegerField(),
             ),
             is_viewed_for_current_user=viewed_annotation,
+            last_arrival_notice_at=Subquery(
+                arrival_notice_sub,
+                output_field=DateTimeField(),
+            ),
         )
         scope = self.request.query_params.get("scope", None)
         period = self.request.query_params.get("period", None)
@@ -919,6 +940,24 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             )
 
         notify_request_arrival(procurement_request, actor=request.user)
+        from django.contrib.contenttypes.models import ContentType
+        from notifications.models import Notification
+
+        request_content_type = ContentType.objects.get_for_model(
+            ProcurementRequest,
+        )
+        latest_notice_at = (
+            Notification.objects.filter(
+                verb=NotificationVerbs.ARRIVAL_NOTICE,
+                target_content_type=request_content_type,
+                target_object_id=str(procurement_request.pk),
+            )
+            .order_by("-timestamp")
+            .values_list("timestamp", flat=True)
+            .first()
+        )
+        if latest_notice_at:
+            procurement_request.last_arrival_notice_at = latest_notice_at
 
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)

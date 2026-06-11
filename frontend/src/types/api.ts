@@ -595,6 +595,7 @@ export interface ProcurementRequest {
   total_cost?: string | number;
   total_estimated_cost?: string | number;
   items_count?: number;
+  last_arrival_notice_at?: string | null;
   next_expected_delivery_date?: string | null;
   items_total_count?: number;
   items_received_count?: number;

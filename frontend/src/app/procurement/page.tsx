@@ -37,7 +37,7 @@ import {
 } from "lucide-react";
 import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
 import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
-import { formatDate, formatMoney } from "@/lib/shared";
+import { formatDate, formatDateTime, formatMoney } from "@/lib/shared";
 import { useProcurementPage } from "@/hooks/useProcurementPage";
 import { Modal } from "@/components/ui";
 import { getProcurementQuantityUnitLabel, getProcurementUnitOptions } from "@/lib/procurementUnits";
@@ -117,6 +117,7 @@ const periodOptions = [
 ];
 
 const fmt = formatDate;
+const fmtDateTime = formatDateTime;
 const money = formatMoney;
 type RequestActionDialogKind = "approve" | "reject" | "cancel" | "delete";
 
@@ -859,6 +860,7 @@ export default function ProcurementPage() {
                 resolvedDetail.quantity_unit_label ?? req.quantity_unit_label,
               );
               const nextExpectedDeliveryDate = resolvedDetail.next_expected_delivery_date ?? req.next_expected_delivery_date ?? null;
+              const lastArrivalNoticeAt = resolvedDetail.last_arrival_notice_at ?? req.last_arrival_notice_at ?? null;
               const approvalsCount = resolvedDetail.approvals?.length ?? 0;
               const requestDateLabel = getRequestListDateLabel(resolvedDetail, st);
 
@@ -1020,7 +1022,7 @@ export default function ProcurementPage() {
                                 <span>не назначен</span>
                               )}
                             </div>
-                            {(fulfillmentStatusDisplay || itemsTotalCount > 0 || approvalsCount > 0 || nextExpectedDeliveryDate) && (
+                            {(fulfillmentStatusDisplay || itemsTotalCount > 0 || approvalsCount > 0 || nextExpectedDeliveryDate || lastArrivalNoticeAt) && (
                               <div className="col-span-2 flex flex-wrap items-center gap-2 pt-0.5">
                                 {fulfillmentStatusDisplay ? (
                                   <span className={`${getFulfillmentStatusClass(fulfillmentStatus)} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium`}>
@@ -1030,6 +1032,11 @@ export default function ProcurementPage() {
                                 {nextExpectedDeliveryDate ? (
                                   <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
                                     <CalendarDays size={11} /> {fmt(nextExpectedDeliveryDate)}
+                                  </span>
+                                ) : null}
+                                {lastArrivalNoticeAt ? (
+                                  <span className="app-feedback-notify inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                    Уведомлён {fmtDateTime(lastArrivalNoticeAt)}
                                   </span>
                                 ) : null}
                                 {itemsTotalCount > 0 && (
