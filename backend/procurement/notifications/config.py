@@ -23,6 +23,7 @@ class NotificationVerbs:
     REJECTED = 'procurement_rejected'
     IN_PROGRESS = 'procurement_in_progress'
     EXECUTOR_REASSIGNED = 'procurement_executor_reassigned'
+    ARRIVAL_NOTICE = 'procurement_arrival_notice'
     COMPLETED = 'procurement_completed'
     CANCELLED = 'procurement_cancelled'
 
@@ -208,6 +209,15 @@ class MessageTemplates:
         """
         notification_title = 'Заявка завершена'
         description = f'Заявка "{title}" успешно завершена.'
+        return notification_title, description
+
+    @staticmethod
+    def arrival_notice(title: str) -> tuple[str, str]:
+        notification_title = 'Поступление по закупке'
+        description = (
+            f'По заявке "{title}" есть поступление. '
+            f'Проверьте позиции и подтвердите получение.'
+        )
         return notification_title, description
 
     @staticmethod

@@ -390,34 +390,36 @@ def notify_request_completed(request):
     )
 
 
+def notify_request_arrival(request, actor=None):
+    """Вручную уведомить заказчика о поступлении по заявке."""
+    notification_title, description = MessageTemplates.arrival_notice(
+        request.title,
+    )
+    notify_requestor(
+        request,
+        NotificationVerbs.ARRIVAL_NOTICE,
+        notification_title,
+        description,
+        actor=actor,
+        extra_data={
+            "status": request.status,
+            "fulfillment_status": request.fulfillment_status,
+        },
+    )
+
+
 def notify_request_in_progress(request, executor):
     """
     Уведомить о взятии заявки в работу.
 
-    Отправляет уведомления:
-    - Создателю заявки (если он не сам взял в работу)
+    Заказчика не уведомляем: это промежуточный статус обработки.
+    Финальные статусы и комментарии остаются основными сигналами.
 
     Args:
         request: Объект ProcurementRequest
         executor: Пользователь, взявший заявку в работу
     """
-    executor_name = executor.get_full_name() if executor else 'Сотрудник'
-
-    notification_title, description = MessageTemplates.in_progress_requestor(
-        request.title, executor_name
-    )
-    notify_requestor(
-        request,
-        NotificationVerbs.IN_PROGRESS,
-        notification_title,
-        description,
-        actor=executor,
-        extra_data={
-            "old_status": getattr(request, "_original_status", None),
-            "new_status": request.status,
-            "executor_id": executor.id if executor else None,
-        },
-    )
+    return
 
 
 def notify_executor_reassigned(request, previous_executor, actor):
@@ -488,22 +490,8 @@ def notify_stage_approved(approval):
     Args:
         approval: Объект Approval
     """
-    approver_name = approval.approver.get_full_name()
-    notification_title, description = MessageTemplates.stage_approved(
-        approver_name, approval.request.title
-    )
-
-    notify_requestor(
-        approval.request,
-        NotificationVerbs.STAGE_APPROVED,
-        notification_title,
-        description,
-        actor=approval.approver,
-        extra_data={
-            "approval_id": approval.id,
-            "approval_priority": approval.priority,
-        },
-    )
+    # Не уведомляем заказчика о каждом промежуточном этапе согласования.
+    # Следующий согласующий всё ещё должен получить pending-уведомление.
     notify_approvers(approval.request)
 
 
@@ -534,26 +522,8 @@ def notify_stage_rejected(approval):
 
 
 def notify_item_updated(item, actor=None, changed_fields=None):
-    """Уведомить автора заявки об изменении позиции."""
-    procurement_request = item.request
-    actor_name = _actor_name(actor)
-    notification_title, description = MessageTemplates.item_updated(
-        procurement_request.title,
-        item.name,
-        actor_name,
-    )
-    notify_requestor(
-        procurement_request,
-        NotificationVerbs.ITEM_UPDATED,
-        notification_title,
-        description,
-        actor=actor,
-        extra_data={
-            "item_id": item.id,
-            "item_name": item.name,
-            "changed_fields": changed_fields or [],
-        },
-    )
+    """Не уведомлять заказчика о технических изменениях позиции."""
+    return
 
 
 def notify_item_issue_reported(item, actor=None):

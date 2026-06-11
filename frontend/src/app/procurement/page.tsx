@@ -166,6 +166,7 @@ function ProcurementRequestActionButtons({
   onReject,
   onStart,
   onComplete,
+  onNotifyArrival,
   onCancel,
 }: {
   request: ProcurementRequest;
@@ -184,6 +185,7 @@ function ProcurementRequestActionButtons({
   onReject: (id: number) => void | Promise<unknown>;
   onStart: (id: number) => void | Promise<unknown>;
   onComplete: (id: number) => void | Promise<unknown>;
+  onNotifyArrival: (id: number) => void | Promise<unknown>;
   onCancel: (id: number) => void | Promise<unknown>;
 }) {
   const status = String(request.status || "").toLowerCase();
@@ -191,6 +193,10 @@ function ProcurementRequestActionButtons({
   const isPending = status === "pending";
   const canStartWork = Boolean(request.can_current_user_start_work);
   const isInProgress = status === "in_progress";
+  const canNotifyArrival = Boolean(
+    request.can_current_user_process_items &&
+    (status === "waiting" || status === "in_progress")
+  );
   const startWorkLabel = isInProgress ? "Забрать в работу" : "Взять в работу";
   const canApproveThis = Boolean(request.can_current_user_approve);
   const canSubmitForApproval = Boolean(request.can_current_user_submit_for_approval);
@@ -286,6 +292,18 @@ function ProcurementRequestActionButtons({
           {label("Закрыть заявку")}
         </button>
       ) : null}
+      {canNotifyArrival ? (
+        <button
+          type="button"
+          onClick={() => onNotifyArrival(request.id)}
+          disabled={busyKey === `notify-arrival-${request.id}`}
+          title="Уведомить о поступлении"
+          className={buttonClass("app-action-notify")}
+        >
+          <Package size={14} />
+          {label("Уведомить о поступлении")}
+        </button>
+      ) : null}
       {showSecondaryActions && isAuthor && !isFinal(status) && status !== "draft" ? (
         <button
           type="button"
@@ -312,7 +330,6 @@ export default function ProcurementPage() {
     activeFilterCount,
     activeSection,
     actionError,
-    actionSuccess,
     addItemRow,
     busyKey,
     canManage,
@@ -344,6 +361,7 @@ export default function ProcurementPage() {
     handleCancel,
     handleComplete,
     handleMarkAllReceived,
+    handleNotifyArrival,
     handleToggleViewed,
     handleReportItemIssue,
     handleCancelItemIssue,
@@ -635,7 +653,6 @@ export default function ProcurementPage() {
 
           {/* ── alerts ── */}
           {actionError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
-          {actionSuccess && <p className="app-feedback-success mb-3 rounded-lg px-3 py-2 text-sm">{actionSuccess}</p>}
 
           {activeSection === "stats" && <ProcurementStatsPanel />}
 
@@ -1072,6 +1089,7 @@ export default function ProcurementPage() {
                               onReject={(id) => openRequestActionDialog("reject", id)}
                               onStart={handleStart}
                               onComplete={handleComplete}
+                              onNotifyArrival={handleNotifyArrival}
                               onCancel={handleCancel}
                             />
                           </div>
@@ -1159,6 +1177,7 @@ export default function ProcurementPage() {
                               onReject={handleReject}
                               onStart={handleStart}
                               onComplete={handleComplete}
+                              onNotifyArrival={handleNotifyArrival}
                               onCancel={handleCancel}
                             />
                           )}
@@ -1207,6 +1226,7 @@ export default function ProcurementPage() {
               onReject={(id) => openRequestActionDialog("reject", id)}
               onStart={handleStart}
               onComplete={handleComplete}
+              onNotifyArrival={handleNotifyArrival}
               onCancel={(id) => openRequestActionDialog("cancel", id)}
             />
           </div>

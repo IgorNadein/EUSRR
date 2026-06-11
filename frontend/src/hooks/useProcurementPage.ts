@@ -5,6 +5,7 @@ import { apiClient } from "@/lib/api";
 import { canManageRequests, canManageSupplier } from "@/lib/permissions";
 import { cleanLinkRows, toLinkRows, validateLinkRows } from "@/lib/procurementLinks";
 import { displayUserName, extractNextPage, loadAllPages } from "@/lib/shared";
+import { toast } from "sonner";
 import type {
   Department,
   ProcurementComment,
@@ -142,7 +143,6 @@ export function useProcurementPage(user: User | null) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [nextPage, setNextPage] = useState<number | null>(null);
   const [scopeCounts, setScopeCounts] = useState<Record<ScopeTab, number>>({
@@ -412,14 +412,12 @@ export function useProcurementPage(user: User | null) {
     setEditingId(null);
     resetForm();
     setActionError(null);
-    setActionSuccess(null);
     setCreateOpen(true);
   }, [resetForm]);
 
   const openEdit = useCallback(async (request: ProcurementRequest) => {
     setCreateOpen(false);
     setActionError(null);
-    setActionSuccess(null);
 
     let detail: ProcurementRequest;
     try {
@@ -614,7 +612,7 @@ export function useProcurementPage(user: User | null) {
 
       if (modalMode === "create") {
         await apiClient.createProcurementRequest(payload) as ProcurementRequest;
-        setActionSuccess("Заявка создана и направлена в отдел.");
+        toast.success("Заявка создана и направлена в отдел.");
         setCreateOpen(false);
       } else if (editingId) {
         await apiClient.updateProcurementRequest(editingId, {
@@ -624,7 +622,7 @@ export function useProcurementPage(user: User | null) {
           processing_department: payload.processing_department,
           items: payload.items,
         });
-        setActionSuccess("Заявка обновлена.");
+        toast.success("Заявка обновлена.");
         setEditingId(null);
       }
 
@@ -644,7 +642,7 @@ export function useProcurementPage(user: User | null) {
       setBusyKey(key);
       setActionError(null);
       await action();
-      setActionSuccess(successMessage);
+      toast.success(successMessage);
       await refreshAfterMutation(id);
       return true;
     } catch (actionErrorValue) {
@@ -915,6 +913,13 @@ export function useProcurementPage(user: User | null) {
     "Все позиции отмечены полученными.",
   ), [doAction]);
 
+  const handleNotifyArrival = useCallback((id: number) => doAction(
+    `notify-arrival-${id}`,
+    () => apiClient.notifyProcurementRequestArrival(id),
+    id,
+    "Заказчик уведомлён о поступлении.",
+  ), [doAction]);
+
   const handleToggleViewed = useCallback(async (id: number, isViewed: boolean) => {
     try {
       setBusyKey(`viewed-${id}`);
@@ -958,7 +963,7 @@ export function useProcurementPage(user: User | null) {
         }
       }
       await apiClient.updateProcurementItem(itemId, patch);
-      setActionSuccess("Позиция обновлена.");
+      toast.success("Позиция обновлена.");
       await refreshAfterMutation(requestId);
       return true;
     } catch (updateError) {
@@ -974,7 +979,7 @@ export function useProcurementPage(user: User | null) {
       setBusyKey(`item-issue-${itemId}`);
       setActionError(null);
       await apiClient.reportProcurementItemIssue(itemId, text);
-      setActionSuccess("Позиция отмечена как проблемная.");
+      toast.success("Позиция отмечена как проблемная.");
       await refreshAfterMutation(requestId);
       return true;
     } catch (issueError) {
@@ -990,7 +995,7 @@ export function useProcurementPage(user: User | null) {
       setBusyKey(`item-cancel-issue-${itemId}`);
       setActionError(null);
       await apiClient.cancelProcurementItemIssue(itemId);
-      setActionSuccess("Отметка брака снята.");
+      toast.success("Отметка брака снята.");
       await refreshAfterMutation(requestId);
       return true;
     } catch (issueError) {
@@ -1006,7 +1011,7 @@ export function useProcurementPage(user: User | null) {
       setBusyKey(`item-confirm-received-${itemId}`);
       setActionError(null);
       await apiClient.confirmProcurementItemReceived(itemId, receivedQuantity);
-      setActionSuccess("Получение позиции подтверждено.");
+      toast.success("Получение позиции подтверждено.");
       await refreshAfterMutation(requestId);
       return true;
     } catch (confirmError) {
@@ -1022,7 +1027,7 @@ export function useProcurementPage(user: User | null) {
       setBusyKey(`item-cancel-received-${itemId}`);
       setActionError(null);
       await apiClient.cancelProcurementItemReceived(itemId, cancelQuantity);
-      setActionSuccess("Получение позиции отменено.");
+      toast.success("Получение позиции отменено.");
       await refreshAfterMutation(requestId);
       return true;
     } catch (cancelError) {
@@ -1049,7 +1054,7 @@ export function useProcurementPage(user: User | null) {
         detailsCacheRef.current = next;
         return next;
       });
-      setActionSuccess("Заявка удалена.");
+      toast.success("Заявка удалена.");
       await refreshCurrentView();
       return true;
     } catch (deleteError) {
@@ -1093,7 +1098,6 @@ export function useProcurementPage(user: User | null) {
     loadingMore,
     error,
     actionError,
-    actionSuccess,
     busyKey,
     nextPage,
     scopeCounts,
@@ -1148,6 +1152,7 @@ export function useProcurementPage(user: User | null) {
     handleStart,
     handleComplete,
     handleMarkAllReceived,
+    handleNotifyArrival,
     handleToggleViewed,
     handleUpdateItem,
     handleReportItemIssue,

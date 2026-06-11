@@ -32,6 +32,7 @@ from procurement.notifications.handlers import (
     notify_item_comment,
     notify_item_issue_reported,
     notify_item_updated,
+    notify_request_arrival,
     notify_request_comment,
 )
 from communications import comments_helpers
@@ -893,6 +894,31 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         procurement_request._notification_actor = request.user
         procurement_request.recalculate_fulfillment_status(save=True)
         procurement_request.refresh_from_db()
+
+        serializer = self.get_serializer(procurement_request)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def notify_arrival(self, request, pk=None):
+        """Вручную уведомить заказчика о поступлении по заявке."""
+        procurement_request = self.get_object()
+        self.check_object_permissions(request, procurement_request)
+
+        if procurement_request.status not in [
+            ProcurementStatus.WAITING,
+            ProcurementStatus.IN_PROGRESS,
+        ]:
+            return Response(
+                {
+                    "error": (
+                        "Уведомить о поступлении можно только по ожидающей "
+                        "или взятой в работу заявке"
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        notify_request_arrival(procurement_request, actor=request.user)
 
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)

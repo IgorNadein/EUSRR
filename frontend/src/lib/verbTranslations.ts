@@ -45,11 +45,14 @@ export const VERB_CATEGORIES: Record<string, string> = {
   procurement_rejected: 'Закупки',
   procurement_in_progress: 'Закупки',
   procurement_executor_reassigned: 'Закупки',
+  procurement_arrival_notice: 'Закупки',
   procurement_completed: 'Закупки',
   procurement_cancelled: 'Закупки',
   procurement_item_updated: 'Закупки',
   procurement_request_commented: 'Закупки',
   procurement_item_commented: 'Закупки',
+  equipment_transferred: 'Закупки',
+  equipment_maintenance: 'Закупки',
   
   // Новости
   feed_new_post: 'Новости',
@@ -101,11 +104,14 @@ export const VERB_NAMES: Record<string, string> = {
   procurement_rejected: 'Закупка отклонена',
   procurement_in_progress: 'Закупка взята в работу',
   procurement_executor_reassigned: 'Заявку забрал другой сотрудник',
+  procurement_arrival_notice: 'Поступление по закупке',
   procurement_completed: 'Закупка завершена',
   procurement_cancelled: 'Закупка отменена',
   procurement_item_updated: 'Позиция закупки изменена',
   procurement_request_commented: 'Комментарий к закупке',
   procurement_item_commented: 'Комментарий к позиции закупки',
+  equipment_transferred: 'Оборудование передано',
+  equipment_maintenance: 'Обслуживание оборудования',
   
   // Новости
   feed_new_post: 'Новая публикация',
@@ -121,7 +127,9 @@ export const VERB_NAMES: Record<string, string> = {
  * Получить категорию для verb
  */
 export function getVerbCategory(verb: string): string {
-  return VERB_CATEGORIES[verb] || 'Общее';
+  if (VERB_CATEGORIES[verb]) return VERB_CATEGORIES[verb];
+  if (verb.startsWith('procurement_') || verb.startsWith('equipment_')) return 'Закупки';
+  return 'Общее';
 }
 
 /**

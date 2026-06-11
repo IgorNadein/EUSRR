@@ -230,7 +230,7 @@ class CanManageProcurementRequest(permissions.BasePermission):
         if action == "complete":
             return obj.executor == user
 
-        if action == "mark_all_received":
+        if action in ("mark_all_received", "notify_arrival"):
             if obj.executor == user:
                 return True
             if obj.processing_department_id:
