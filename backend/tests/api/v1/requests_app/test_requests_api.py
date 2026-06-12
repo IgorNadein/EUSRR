@@ -389,6 +389,12 @@ def test_create_request_sends_notification_to_cc_users(
     ).first()
     assert cc_notification is not None
     assert cc_notification.data["is_cc"] is True
+    author_name = regular_user.get_full_name() or regular_user.username
+    assert cc_notification.data["title"] == "Новое заявление"
+    assert (
+        f"{author_name} поставил вас в копию заявления"
+        in cc_notification.description
+    )
 
 
 def test_create_draft_allows_minimal_payload(

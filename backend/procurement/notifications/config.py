@@ -39,7 +39,11 @@ class MessageTemplates:
     """Шаблоны сообщений для уведомлений."""
 
     @staticmethod
-    def new_request(title: str, total_cost: float) -> tuple[str, str]:
+    def new_request(
+        title: str,
+        total_cost: float,
+        author_name: str,
+    ) -> tuple[str, str]:
         """
         Шаблон для новой заявки.
 
@@ -47,16 +51,21 @@ class MessageTemplates:
             tuple: (notification_title, description)
         """
         notification_title = 'Новая заявка на закупку'
-        description = f'Создана заявка "{title}" на сумму {total_cost}₽'
+        description = (
+            f'{author_name} создал заявку "{title}" '
+            f'на сумму {total_cost}₽'
+        )
         return notification_title, description
 
     @staticmethod
     def department_request(
-        title: str, department_name: str
+        title: str,
+        department_name: str,
+        author_name: str,
     ) -> tuple[str, str]:
-        notification_title = 'Новая заявка для отдела'
+        notification_title = 'Новая заявка на закупку'
         description = (
-            f'Заявка "{title}" направлена в отдел '
+            f'{author_name} направил заявку "{title}" в отдел '
             f'{department_name}.'
         )
         return notification_title, description

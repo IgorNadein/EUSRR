@@ -8,14 +8,14 @@
 // Маппинг verb → категория для группировки
 export const VERB_CATEGORIES: Record<string, string> = {
   // Заявки
-  request_new: 'Заявки',
-  request_created: 'Заявки',
-  request_updated: 'Заявки',
-  request_approved: 'Заявки',
-  request_rejected: 'Заявки',
-  request_comment: 'Заявки',
-  request_commented: 'Заявки',
-  request_status_changed: 'Заявки',
+  request_new: 'Заявления',
+  request_created: 'Заявления',
+  request_updated: 'Заявления',
+  request_approved: 'Заявления',
+  request_rejected: 'Заявления',
+  request_comment: 'Заявления',
+  request_commented: 'Заявления',
+  request_status_changed: 'Заявления',
   
   // Сообщения и чат
   chat_new_message: 'Сообщения',
@@ -24,17 +24,34 @@ export const VERB_CATEGORIES: Record<string, string> = {
   chat_added_to_chat: 'Чат',
   announcement_new_message: 'Объявления',
   message_received: 'Сообщения',
+  commented: 'Комментарии',
+  liked: 'Реакции',
+  approved: 'Согласования',
+  reminder: 'Напоминания',
   mention: 'Упоминания',
+  mentioned: 'Упоминания',
+  replied: 'Сообщения',
   
   // Документы
   document_ready: 'Документы',
   document_uploaded: 'Документы',
   document_shared: 'Документы',
+  document_signed_all: 'Документы',
+  document_reminder: 'Документы',
+  document_comment: 'Документы',
+  document_comment_reply: 'Документы',
+  document_related: 'Документы',
   
   // Календарь
   calendar_invitation: 'Календарь',
   calendar_event: 'Календарь',
   event_created: 'Календарь',
+  event_changed: 'Календарь',
+  event_updated: 'Календарь',
+  event_cancelled: 'Календарь',
+  event_reminder: 'Календарь',
+  event_reminder_hour: 'Календарь',
+  event_reminder_day: 'Календарь',
   
   // Закупки
   procurement_new_request: 'Закупки',
@@ -58,55 +75,91 @@ export const VERB_CATEGORIES: Record<string, string> = {
   feed_new_post: 'Новости',
   feed_post_comment: 'Новости',
   feed_post_reaction: 'Новости',
+
+  // Отделы
+  department_new_employee: 'Отдел',
+  department_employee_left: 'Отдел',
+  department_structure_changed: 'Отдел',
+  department_new_head: 'Отдел',
+  department_announcement: 'Отдел',
+
+  // Профиль
+  profile_data_changed: 'Профиль',
+  profile_password_changed: 'Профиль',
+  profile_email_changed: 'Профиль',
+  profile_messenger_linked: 'Профиль',
+  profile_new_login: 'Профиль',
   
   // Системные
+  notification: 'Система',
+  system_notice: 'Система',
+  system_maintenance: 'Система',
   system_announcement: 'Система',
+  system_new_feature: 'Система',
+  system_policy_change: 'Система',
   system_notification: 'Система',
 };
 
 // Маппинг verb → название для UI (используется когда нет title в data)
 export const VERB_NAMES: Record<string, string> = {
   // Заявки
-  request_new: 'Новая заявка',
-  request_created: 'Новая заявка',
-  request_updated: 'Заявка обновлена',
-  request_approved: 'Заявка одобрена',
-  request_rejected: 'Заявка отклонена',
-  request_comment: 'Комментарий к заявке',
-  request_commented: 'Комментарий к заявке',
-  request_status_changed: 'Статус заявки изменен',
+  request_new: 'Новое заявление',
+  request_created: 'Новое заявление',
+  request_updated: 'Заявление обновлено',
+  request_approved: 'Заявление одобрено',
+  request_rejected: 'Заявление отклонено',
+  request_comment: 'Комментарий к заявлению',
+  request_commented: 'Комментарий к заявлению',
+  request_status_changed: 'Статус заявления изменён',
   
   // Сообщения и чат
   chat_new_message: 'Новое сообщение',
   chat_mention: 'Вас упомянули',
   chat_reply: 'Ответ на сообщение',
-  chat_added_to_chat: 'Добавлены в чат',
+  chat_added_to_chat: 'Добавление в чат',
   announcement_new_message: 'Новое объявление',
-  message_received: 'Новое сообщение',
+  message_received: 'Личное сообщение',
+  commented: 'Новый комментарий',
+  liked: 'Новая реакция',
+  approved: 'Одобрение',
+  reminder: 'Напоминание',
   mention: 'Вас упомянули',
+  mentioned: 'Вас упомянули',
+  replied: 'Ответ на сообщение',
   
   // Документы
-  document_ready: 'Документ готов',
+  document_ready: 'Документ на ознакомление',
   document_uploaded: 'Новый документ',
   document_shared: 'Документ предоставлен',
+  document_signed_all: 'Все ознакомились с документом',
+  document_reminder: 'Напоминание об ознакомлении',
+  document_comment: 'Комментарий к документу',
+  document_comment_reply: 'Ответ на комментарий к документу',
+  document_related: 'Связанный документ',
   
   // Календарь
   calendar_invitation: 'Приглашение на событие',
   calendar_event: 'Событие календаря',
   event_created: 'Событие создано',
+  event_changed: 'Событие изменено',
+  event_updated: 'Событие изменено',
+  event_cancelled: 'Событие отменено',
+  event_reminder: 'Напоминание о событии',
+  event_reminder_hour: 'Напоминание за час',
+  event_reminder_day: 'Напоминание за день',
   
   // Закупки
-  procurement_new_request: 'Новая закупка',
-  procurement_department_request: 'Новая заявка для отдела',
+  procurement_new_request: 'Новая заявка на закупку',
+  procurement_department_request: 'Заявка на закупку для отдела',
   procurement_pending_approval: 'Требуется согласование закупки',
   procurement_stage_approved: 'Этап согласования закупки пройден',
-  procurement_approved: 'Закупка одобрена',
-  procurement_rejected: 'Закупка отклонена',
-  procurement_in_progress: 'Закупка взята в работу',
+  procurement_approved: 'Заявка на закупку одобрена',
+  procurement_rejected: 'Заявка на закупку отклонена',
+  procurement_in_progress: 'Заявка на закупку взята в работу',
   procurement_executor_reassigned: 'Заявку забрал другой сотрудник',
   procurement_arrival_notice: 'Поступление по закупке',
-  procurement_completed: 'Закупка завершена',
-  procurement_cancelled: 'Закупка отменена',
+  procurement_completed: 'Заявка на закупку завершена',
+  procurement_cancelled: 'Заявка на закупку отменена',
   procurement_item_updated: 'Позиция закупки изменена',
   procurement_request_commented: 'Комментарий к закупке',
   procurement_item_commented: 'Комментарий к позиции закупки',
@@ -117,10 +170,67 @@ export const VERB_NAMES: Record<string, string> = {
   feed_new_post: 'Новая публикация',
   feed_post_comment: 'Комментарий к публикации',
   feed_post_reaction: 'Реакция на публикацию',
+
+  // Отделы
+  department_new_employee: 'Новый сотрудник в отделе',
+  department_employee_left: 'Сотрудник покинул отдел',
+  department_structure_changed: 'Структура отдела изменена',
+  department_new_head: 'Новый руководитель отдела',
+  department_announcement: 'Объявление отдела',
+
+  // Профиль
+  profile_data_changed: 'Данные профиля изменены',
+  profile_password_changed: 'Пароль изменён',
+  profile_email_changed: 'Email изменён',
+  profile_messenger_linked: 'Мессенджер привязан',
+  profile_new_login: 'Вход из нового места',
   
   // Системные
+  notification: 'Уведомление',
+  system_notice: 'Системное уведомление',
+  system_maintenance: 'Технические работы',
   system_announcement: 'Системное объявление',
+  system_new_feature: 'Новый функционал',
+  system_policy_change: 'Изменение политик',
   system_notification: 'Системное уведомление',
+};
+
+const VERB_TOKEN_NAMES: Record<string, string> = {
+  announcement: 'объявление',
+  approval: 'согласование',
+  approved: 'одобрено',
+  cancelled: 'отменено',
+  changed: 'изменено',
+  chat: 'чат',
+  comment: 'комментарий',
+  commented: 'комментарий',
+  completed: 'завершено',
+  created: 'создано',
+  day: 'за день',
+  document: 'документ',
+  employee: 'сотрудник',
+  event: 'событие',
+  feed: 'лента',
+  hour: 'за час',
+  item: 'позиция',
+  maintenance: 'обслуживание',
+  message: 'сообщение',
+  new: 'новое',
+  notification: 'уведомление',
+  pending: 'ожидает',
+  post: 'публикация',
+  procurement: 'закупка',
+  profile: 'профиль',
+  reaction: 'реакция',
+  rejected: 'отклонено',
+  reminder: 'напоминание',
+  reply: 'ответ',
+  request: 'заявка',
+  signed: 'подписан',
+  status: 'статус',
+  system: 'система',
+  transferred: 'передано',
+  updated: 'обновлено',
 };
 
 /**
@@ -145,7 +255,7 @@ export function getVerbsByCategory(category: string): string[] {
  * Получить название для verb (fallback если нет title в notification.data)
  */
 export function getVerbName(verb: string): string {
-  return VERB_NAMES[verb] || verb.replace(/_/g, ' ');
+  return VERB_NAMES[verb] || humanizeVerb(verb);
 }
 
 /**
@@ -153,8 +263,10 @@ export function getVerbName(verb: string): string {
  * Преобразует snake_case в Title Case
  */
 export function humanizeVerb(verb: string): string {
-  return verb
+  const translated = verb
     .split('_')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .map((word) => VERB_TOKEN_NAMES[word] || word)
     .join(' ');
+
+  return translated.charAt(0).toUpperCase() + translated.slice(1);
 }

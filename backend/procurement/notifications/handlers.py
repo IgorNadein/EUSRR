@@ -149,12 +149,15 @@ def notify_new_request(request):
         )
         return
 
+    actor = request.requestor
     notification_title, description = MessageTemplates.new_request(
-        request.title, request.total_cost
+        request.title,
+        request.total_cost,
+        _actor_name(actor),
     )
 
     notify.send(
-        sender=None,
+        sender=actor,
         recipient=request.department.head,
         verb=NotificationVerbs.NEW_REQUEST,
         action_object=request,
@@ -178,10 +181,12 @@ def notify_processing_department_request(request, actor=None):
     if not request.processing_department_id:
         return
 
+    actor = actor or request.requestor
     department_name = request.processing_department.name
     notification_title, description = MessageTemplates.department_request(
         request.title,
         department_name,
+        _actor_name(actor),
     )
     recipients = _processing_department_recipients(request)
     _notify_many(

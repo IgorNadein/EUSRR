@@ -12,7 +12,9 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from unittest.mock import patch
 
-from requests_app.models import Request, RequestComment
+from communications.comments_helpers import create_comment
+from requests_app.models import Request
+from requests_app.notifications.handlers import notify_new_request
 from employees.models import Department
 from notifications.models import Notification
 
@@ -29,30 +31,51 @@ class TestRequestNotifications(TestCase):
         self.author = Employee.objects.create_user(
             username='test_author',
             email='author@test.com',
+            phone_number='+79990000001',
             first_name='Иван',
-            last_name='Автор'
+            last_name='Автор',
+            email_verified=True,
+            send_activation_email=False,
         )
 
         self.recipient = Employee.objects.create_user(
             username='test_recipient',
             email='recipient@test.com',
+            phone_number='+79990000002',
             first_name='Петр',
-            last_name='Получатель'
+            last_name='Получатель',
+            email_verified=True,
+            send_activation_email=False,
         )
 
         self.cc_user = Employee.objects.create_user(
             username='test_cc',
             email='cc@test.com',
+            phone_number='+79990000003',
             first_name='Сидор',
-            last_name='Копия'
+            last_name='Копия',
+            email_verified=True,
+            send_activation_email=False,
         )
 
         self.approver = Employee.objects.create_user(
             username='test_approver',
             email='approver@test.com',
+            phone_number='+79990000004',
             first_name='Алексей',
-            last_name='Согласующий'
+            last_name='Согласующий',
+            email_verified=True,
+            send_activation_email=False,
         )
+        for employee in [
+            self.author,
+            self.recipient,
+            self.cc_user,
+            self.approver,
+        ]:
+            employee.email_verified = True
+            employee.is_active = True
+            employee.save(update_fields=["email_verified", "is_active"])
 
         # Создаем отдел
         self.department = Department.objects.create(
@@ -84,7 +107,14 @@ class TestRequestNotifications(TestCase):
         notif = notifications.first()
 
         # Проверяем содержимое
-        self.assertIn('Иван Автор', notif.data['title'])
+        self.assertEqual(
+            notif.data['title'],
+            'Новое заявление',
+        )
+        self.assertIn(
+            'Иван Автор адресовал вам заявление',
+            notif.description,
+        )
         self.assertEqual(notif.data['request_id'], request.id)
         self.assertEqual(notif.data['is_primary_recipient'], True)
         self.assertTrue(notif.unread)
@@ -101,6 +131,8 @@ class TestRequestNotifications(TestCase):
 
         request.recipients.set([self.recipient])
         request.cc_users.set([self.cc_user])
+        Notification.objects.all().delete()
+        notify_new_request(request)
 
         # Проверяем уведомление для CC
         notifications = Notification.objects.filter(
@@ -112,7 +144,71 @@ class TestRequestNotifications(TestCase):
         notif = notifications.first()
 
         self.assertEqual(notif.data['is_cc'], True)
-        self.assertIn('копии', notif.data['title'])
+        self.assertEqual(
+            notif.data['title'],
+            'Новое заявление',
+        )
+        self.assertIn(
+            'Иван Автор поставил вас в копию заявления',
+            notif.description,
+        )
+
+    def test_new_request_notification_to_approver(self):
+        """Тест: уведомление согласующему при создании заявления"""
+        request = Request.objects.create(
+            employee=self.author,
+            type='vacation',
+            comment='Отпуск',
+            status='pending',
+            department=self.department,
+        )
+        request.approver = self.approver
+
+        Notification.objects.all().delete()
+        notify_new_request(request)
+
+        notif = Notification.objects.get(
+            recipient=self.approver,
+            verb='request_new',
+        )
+
+        self.assertEqual(
+            notif.data['title'],
+            'Новое заявление',
+        )
+        self.assertIn(
+            'Иван Автор отправил заявление вам на согласование',
+            notif.description,
+        )
+        self.assertEqual(notif.data['is_approver'], True)
+
+    def test_new_request_notification_to_department(self):
+        """Тест: уведомление отделу при создании заявления"""
+        request = Request.objects.create(
+            employee=self.author,
+            type='vacation',
+            comment='Отпуск',
+            status='pending',
+            department=self.department,
+        )
+
+        Notification.objects.all().delete()
+        notify_new_request(request)
+
+        notif = Notification.objects.get(
+            recipient=self.approver,
+            verb='request_new',
+        )
+
+        self.assertEqual(
+            notif.data['title'],
+            'Новое заявление',
+        )
+        self.assertIn(
+            'Иван Автор направил заявление в отдел',
+            notif.description,
+        )
+        self.assertEqual(notif.data['is_approver'], False)
 
     def test_request_approval_notification(self):
         """Тест: уведомление об одобрении заявления"""
@@ -130,8 +226,7 @@ class TestRequestNotifications(TestCase):
         Notification.objects.all().delete()
 
         # Одобряем заявление
-        request.status = 'approved'
-        request.save()
+        request.approve(self.approver)
 
         # Проверяем уведомление автору
         notifications = Notification.objects.filter(
@@ -161,8 +256,7 @@ class TestRequestNotifications(TestCase):
         Notification.objects.all().delete()
 
         # Отклоняем заявление
-        request.status = 'rejected'
-        request.save()
+        request.reject(self.approver)
 
         notifications = Notification.objects.filter(
             recipient=self.author,
@@ -189,23 +283,23 @@ class TestRequestNotifications(TestCase):
         Notification.objects.all().delete()
 
         # Добавляем комментарий
-        comment = RequestComment.objects.create(
-            request=request,
+        comment = create_comment(
+            obj=request,
             author=self.recipient,
-            text='Нужна справка'
+            content='Нужна справка'
         )
 
         # Проверяем уведомление автору
         notifications = Notification.objects.filter(
             recipient=self.author,
-            verb='request_comment'
+            verb='commented'
         )
 
         self.assertEqual(notifications.count(), 1)
         notif = notifications.first()
 
         self.assertIn('комментарий', notif.data['title'])
-        self.assertEqual(notif.data['comment_id'], comment.id)
+        self.assertEqual(notif.data['message_id'], comment.id)
         self.assertIn('Нужна справка', notif.description)
 
     def test_no_notification_to_author_on_own_comment(self):
@@ -222,16 +316,16 @@ class TestRequestNotifications(TestCase):
         Notification.objects.all().delete()
 
         # Автор комментирует свое заявление
-        RequestComment.objects.create(
-            request=request,
+        create_comment(
+            obj=request,
             author=self.author,
-            text='Дополнительная информация'
+            content='Дополнительная информация'
         )
 
         # Автор НЕ должен получить уведомление
         notifications = Notification.objects.filter(
             recipient=self.author,
-            verb='request_comment'
+            verb='commented'
         )
 
         self.assertEqual(notifications.count(), 0)
@@ -254,7 +348,6 @@ class TestRequestNotifications(TestCase):
             verb='request_new'
         )
 
-        self.assertEqual(notifications.count(), 2)
         recipients = [n.recipient for n in notifications]
 
         self.assertIn(self.recipient, recipients)

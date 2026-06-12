@@ -75,7 +75,7 @@ function Toggle({
   disabled?: boolean;
 }) {
   return (
-    <label className="relative inline-flex cursor-pointer items-center">
+    <label className="relative inline-flex shrink-0 cursor-pointer items-center">
       <input
         type="checkbox"
         checked={checked}
@@ -83,7 +83,7 @@ function Toggle({
         disabled={disabled}
         className="peer sr-only"
       />
-      <div className="h-6 w-11 rounded-full bg-[var(--surface-tertiary)] transition after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition-all after:content-[''] peer-checked:bg-[var(--accent-primary)] peer-checked:after:translate-x-full peer-disabled:cursor-not-allowed peer-disabled:opacity-50" />
+      <div className="h-6 w-11 shrink-0 rounded-full bg-[var(--surface-tertiary)] transition after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition-all after:content-[''] peer-checked:bg-[var(--accent-primary)] peer-checked:after:translate-x-full peer-disabled:cursor-not-allowed peer-disabled:opacity-50" />
     </label>
   );
 }
@@ -731,15 +731,15 @@ export default function SettingsPage() {
                         return (
                           <label
                             key={verbType.verb}
-                            className={`flex cursor-pointer items-center justify-between rounded-xl px-4 py-3 transition ${
+                            className={`grid w-full max-w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 overflow-hidden rounded-xl px-3 py-3 transition sm:px-4 ${
                               enabled ? "app-surface" : "app-surface-muted opacity-80"
                             }`}
                           >
-                            <div className="min-w-0 pr-4">
-                              <p className="truncate text-sm font-medium text-[var(--foreground)]">
+                            <div className="min-w-0 flex-1">
+                              <p className="app-text-wrap whitespace-normal text-sm font-medium leading-snug text-[var(--foreground)]">
                                 {getVerbName(verbType.verb) || verbType.name}
                               </p>
-                              <p className="app-text-muted mt-1 text-xs">
+                              <p className="app-text-muted app-text-wrap mt-1 text-xs leading-snug">
                                 Всего: {verbType.total} · Непрочитано: {verbType.unread}
                               </p>
                             </div>

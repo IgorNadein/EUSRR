@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.contenttypes.models import ContentType
+from django.test import override_settings
 from push_notifications.models import WebPushDevice
 
 from notifications.models import Notification, UserChannelPreferences
@@ -83,8 +84,42 @@ class TestPushNotificationSenderPayload:
             "url": "/messages/123",
             "notification_id": notification.id,
         }
+        assert "icon" not in payload
         assert "chat_new_message" not in json.dumps(payload)
         assert "verb" not in payload["data"]
+
+    @override_settings(SITE_URL="https://corp.example.test")
+    def test_chat_push_uses_actor_avatar_as_icon(self, user_factory):
+        recipient = user_factory(email="avatar-recipient@example.com")
+        actor = user_factory(
+            email="avatar-actor@example.com",
+            first_name="Олеся",
+            last_name="Рубцова",
+        )
+        actor.avatar = "users/avatars/actor.jpg"
+        actor.save(update_fields=["avatar"])
+        _make_push_device(recipient)
+
+        notification = _make_notification(
+            recipient,
+            actor_content_type=ContentType.objects.get_for_model(actor),
+            actor_object_id=actor.pk,
+            verb="chat_new_message",
+            description="Полинина",
+            action_url="/messages/123",
+            data={
+                "title": "Новое сообщение от Рубцова Олеся",
+                "chat_id": 123,
+                "message_id": 456,
+            },
+        )
+
+        payload = _send_and_load_payload(notification)
+
+        assert (
+            payload["icon"]
+            == "https://corp.example.test/media/users/avatars/actor.jpg"
+        )
 
     def test_non_chat_push_uses_notification_data_title(self, user_factory):
         recipient = user_factory(email="request-recipient@example.com")
@@ -102,6 +137,27 @@ class TestPushNotificationSenderPayload:
         assert payload["title"] == "Заявка одобрена"
         assert payload["head"] == "Заявка одобрена"
         assert "request_approved" not in json.dumps(payload)
+
+    def test_non_chat_push_does_not_use_actor_avatar_icon(self, user_factory):
+        recipient = user_factory(email="request-avatar-recipient@example.com")
+        actor = user_factory(email="request-avatar-actor@example.com")
+        actor.avatar = "users/avatars/request-actor.jpg"
+        actor.save(update_fields=["avatar"])
+        _make_push_device(recipient)
+
+        notification = _make_notification(
+            recipient,
+            actor_content_type=ContentType.objects.get_for_model(actor),
+            actor_object_id=actor.pk,
+            verb="request_approved",
+            description="Ваша заявка одобрена",
+            action_url="/requests?request=10",
+            data={"title": "Заявка одобрена"},
+        )
+
+        payload = _send_and_load_payload(notification)
+
+        assert "icon" not in payload
 
     def test_push_title_falls_back_without_actor_or_data_title(
         self, user_factory

@@ -4,6 +4,7 @@ Web Push отправитель для browser push notifications
 
 import json
 
+from django.conf import settings
 from push_notifications.models import WebPushDevice
 
 from .base import BaseNotificationSender
@@ -43,6 +44,42 @@ class PushNotificationSender(BaseNotificationSender):
         if not isinstance(title, str):
             return ""
         return title.strip()
+
+    def _get_site_url(self) -> str:
+        site_url = getattr(settings, "SITE_URL", "").strip()
+        if site_url:
+            return site_url.rstrip("/")
+
+        if settings.ALLOWED_HOSTS and settings.ALLOWED_HOSTS[0] != "*":
+            protocol = (
+                "https"
+                if getattr(settings, "SECURE_SSL_REDIRECT", False)
+                else "http"
+            )
+            return f"{protocol}://{settings.ALLOWED_HOSTS[0]}"
+
+        return "http://localhost:9000"
+
+    def _get_actor_avatar_url(self, notification) -> str:
+        actor = notification.actor
+        if not actor:
+            return ""
+
+        try:
+            avatar = getattr(actor, "avatar", None)
+            if not avatar:
+                return ""
+            avatar_url = avatar.url
+        except Exception:
+            return ""
+
+        if not avatar_url:
+            return ""
+        if avatar_url.startswith(("http://", "https://")):
+            return avatar_url
+        if avatar_url.startswith("/"):
+            return f"{self._get_site_url()}{avatar_url}"
+        return f"{self._get_site_url()}/{avatar_url}"
 
     def _build_title(self, notification) -> str:
         if notification.verb in self.CHAT_NOTIFICATION_VERBS:
@@ -84,6 +121,11 @@ class PushNotificationSender(BaseNotificationSender):
                 body = body[:297] + "..."
 
             # Получаем иконки из конфигурации (None = browser default)
+            actor_icon = (
+                self._get_actor_avatar_url(notification)
+                if notification.verb in self.CHAT_NOTIFICATION_VERBS
+                else ""
+            )
             default_icon = get("PUSH_DEFAULT_ICON")
             default_badge = get("PUSH_DEFAULT_BADGE")
 
@@ -102,8 +144,10 @@ class PushNotificationSender(BaseNotificationSender):
                 },
             }
 
-            # Добавляем иконки только если они настроены
-            if default_icon:
+            # Для сообщений используем аватар автора, иначе текущую иконку.
+            if actor_icon:
+                message_data["icon"] = actor_icon
+            elif default_icon:
                 message_data["icon"] = default_icon
             if default_badge:
                 message_data["badge"] = default_badge

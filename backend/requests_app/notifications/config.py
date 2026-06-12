@@ -37,8 +37,11 @@ class MessageTemplates:
         Returns:
             tuple: (title, message)
         """
-        title = f"📩 Вам адресовано заявление от {author_name}"
-        message = f'Тип: "{request_type}". {comment_preview}'
+        title = "Новое заявление"
+        message = (
+            f'{author_name} адресовал вам заявление. '
+            f'Тип: "{request_type}". {comment_preview}'
+        )
         return title, message
 
     @staticmethod
@@ -51,8 +54,11 @@ class MessageTemplates:
         Returns:
             tuple: (title, message)
         """
-        title = f"📋 Вы в копии заявления от {author_name}"
-        message = f'Тип: "{request_type}". {comment_preview}'
+        title = "Новое заявление"
+        message = (
+            f'{author_name} поставил вас в копию заявления. '
+            f'Тип: "{request_type}". {comment_preview}'
+        )
         return title, message
 
     @staticmethod
@@ -65,8 +71,11 @@ class MessageTemplates:
         Returns:
             tuple: (title, message)
         """
-        title = f"✅ Новое заявление на согласование от {author_name}"
-        message = f'Тип: "{request_type}". {comment_preview}'
+        title = "Новое заявление"
+        message = (
+            f'{author_name} отправил заявление вам на согласование. '
+            f'Тип: "{request_type}". {comment_preview}'
+        )
         return title, message
 
     @staticmethod
@@ -79,8 +88,11 @@ class MessageTemplates:
         Returns:
             tuple: (title, message)
         """
-        title = f"📝 Новое заявление в отделе от {author_name}"
-        message = f'Тип: "{request_type}". {comment_preview}'
+        title = "Новое заявление"
+        message = (
+            f'{author_name} направил заявление в отдел. '
+            f'Тип: "{request_type}". {comment_preview}'
+        )
         return title, message
 
     @staticmethod

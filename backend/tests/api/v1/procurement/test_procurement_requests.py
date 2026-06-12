@@ -36,6 +36,7 @@ from procurement.models import (
     ProcurementItem,
     ProcurementRequest,
 )
+from procurement.notifications.handlers import notify_new_request
 from notifications.models import Notification, UserChannelPreferences
 
 
@@ -976,10 +977,13 @@ class TestProcessingDepartmentWorkflow:
 
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data["status"] == ProcurementStatus.WAITING
-        recipients = sorted(
-            item["recipient"].email
+        department_notifications = [
+            item
             for item in sent
             if item["verb"] == "procurement_department_request"
+        ]
+        recipients = sorted(
+            item["recipient"].email for item in department_notifications
         )
         assert recipients == [
             "role-supply@example.com",
@@ -987,6 +991,54 @@ class TestProcessingDepartmentWorkflow:
             "supply@example.com",
         ]
         assert user.email not in recipients
+        author_name = user.get_full_name() or user.username
+        assert all(
+            item["sender"] == user for item in department_notifications
+        )
+        assert all(
+            item["data"]["title"] == "Новая заявка на закупку"
+            for item in department_notifications
+        )
+        assert all(
+            f'{author_name} направил заявку "Расходники"'
+            in item["description"]
+            for item in department_notifications
+        )
+
+    def test_legacy_new_request_notification_uses_requestor_as_sender(
+        self, user, department, department_head, monkeypatch
+    ):
+        sent = []
+
+        def fake_notify_send(**kwargs):
+            sent.append(kwargs)
+
+        monkeypatch.setattr(
+            "procurement.notifications.handlers.notify.send",
+            fake_notify_send,
+        )
+        procurement_request = ProcurementRequest.objects.create(
+            title="Расходники",
+            description="Нужно для производства",
+            department=department,
+            requestor=user,
+            status=ProcurementStatus.DRAFT,
+            urgency=UrgencyLevel.MEDIUM,
+        )
+
+        notify_new_request(procurement_request)
+
+        assert len(sent) == 1
+        author_name = user.get_full_name() or user.username
+        notification = sent[0]
+        assert notification["sender"] == user
+        assert notification["recipient"] == department_head
+        assert notification["verb"] == "procurement_new_request"
+        assert notification["data"]["title"] == "Новая заявка на закупку"
+        assert (
+            f'{author_name} создал заявку "Расходники"'
+            in notification["description"]
+        )
 
     def test_available_shows_processing_department_requests(
         self, api_client, supply_user, processing_request, procurement_item_factory
