@@ -107,8 +107,9 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
-backend/.env.domen
+.env*
+!.env.example
+!**/.env.example
 .venv
 .kali
 env/
@@ -155,6 +156,8 @@ dmypy.json
 # Медиа файлы (загруженные пользователями)
 # Игнорируем все файлы в media/, но сохраняем структуру папок через .gitkeep
 */media/*
+media/
+uploads/
 
 # Устаревшие пути (deprecated)
 smedia/
@@ -183,10 +186,23 @@ ooo.html
 # Archive files (should not be in git)
 *.zip
 *.tar.gz
+*.tgz
 *.rar
+*.7z
+
+# Certificates and private keys
+*.pem
+*.key
+*.crt
+*.cer
+*.csr
+*.p12
+*.pfx
 
 # Test reports
 newman-report*.json
 *-report.json
 dump.rdb
 .playwright-cli/
+.ruff_cache/
+.pytest_cache/

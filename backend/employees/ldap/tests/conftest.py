@@ -2,6 +2,8 @@
 Pytest конфигурация и фикстуры для тестирования LDAP модуля.
 """
 
+import os
+
 import pytest
 from unittest.mock import Mock, patch
 from django.contrib.auth.models import Group as DjangoGroup
@@ -271,7 +273,10 @@ def ldap_test_settings(settings):
     settings.LDAP_HOST = 'ldaps://test.example.com:636'
     settings.LDAP_BASE_DN = 'DC=example,DC=com'
     settings.LDAP_BIND_DN = 'CN=TestUser,DC=example,DC=com'
-    settings.LDAP_BIND_PASSWORD = 'test_password'
+    settings.LDAP_BIND_PASSWORD = os.getenv(
+        'LDAP_BIND_PASSWORD',
+        'test-ldap-bind-password',
+    )
     settings.LDAP_GROUPS_BASE = 'OU=Groups,DC=example,DC=com'
     settings.LDAP_POSITIONS_BASE = 'OU=Positions,DC=example,DC=com'
     settings.LDAP_UPN_SUFFIX = '@example.com'

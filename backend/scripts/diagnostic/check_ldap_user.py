@@ -3,21 +3,26 @@
 Скрипт для проверки записи пользователя в LDAP
 """
 import sys
+import os
 from ldap3 import Server, Connection, ALL, SUBTREE, Tls
 import ssl
 
-# Данные для подключения из .env (закомментированные строки)
-LDAP_URI = "ldaps://DCII.robotail.local:636"
-LDAP_BIND_DN = "corp@robotail.local"
-LDAP_BIND_PASSWORD = "change-me-redacted-secret"
-LDAP_BASE_DN = "DC=robotail,DC=local"
-LDAP_USERS_BASE = "OU=Users,OU=company,DC=robotail,DC=local"
-LDAP_CA_CERT = "C:\\ca\\corp-ca.pem"
+# Connection settings are read from environment variables.
+LDAP_URI = os.getenv("LDAP_SERVER_URI", "ldaps://ldap.example.local:636")
+LDAP_BIND_DN = os.getenv("LDAP_BIND_DN", "user@example.local")
+LDAP_BIND_PASSWORD = os.getenv("LDAP_BIND_PASSWORD", "")
+LDAP_BASE_DN = os.getenv("LDAP_BASE_DN", "DC=example,DC=local")
+LDAP_USERS_BASE = os.getenv("LDAP_USERS_BASE", "OU=Users,DC=example,DC=local")
+LDAP_CA_CERT = os.getenv("LDAP_CA_CERT", "corp-ca.pem")
 
 # Email пользователя для поиска
 USER_EMAIL = "nadein-igor-vladimirovich@05-04-1999.ru"
 
 def main():
+    if not LDAP_BIND_PASSWORD:
+        print("LDAP_BIND_PASSWORD environment variable is required")
+        sys.exit(1)
+
     print(f"=" * 80)
     print(f"Подключение к LDAP: {LDAP_URI}")
     print(f"Bind DN: {LDAP_BIND_DN}")
