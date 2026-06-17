@@ -1,3 +1,5 @@
+**Language:** [English](README.md) | [Русский](README.ru.md) | [Deutsch](README.de.md) | [Español](README.es.md)
+
 # EUSRR
 
 EUSRR is an internal enterprise service portal built with Django, Django REST Framework, Next.js, PostgreSQL, Redis, Celery, WebSockets, LDAP integration, notifications, document workflows, procurement workflows, scheduling, and employee self-service modules.
