@@ -169,6 +169,7 @@
 
 Обязательные поля:
 
+- `id`: 15-значный числовой первичный ключ гостя;
 - `last_name`: фамилия;
 - `first_name`: имя;
 - `patronymic`: отчество, опционально;
@@ -184,7 +185,7 @@
 LDAP-поля и состояние:
 
 - `is_active`: активен ли гость в бизнес-смысле;
-- `ldap_enabled`: должна ли LDAP-учетка быть включена сейчас;
+- `ldap_enabled`: находится ли LDAP-учетка в `LDAP_GUESTS_ACTIVE_BASE`;
 - `ldap_username`: кэш `sAMAccountName`;
 - `ldap_upn`: кэш `userPrincipalName`;
 - `ldap_last_synced_at`;
@@ -286,11 +287,85 @@ LDAP-поля и состояние:
 
 Гостевые учетные записи должны создаваться в отдельном контейнере AD/LDAP, отличном от сотрудников.
 
+В Active Directory внутри гостевого контейнера должны быть две OU:
+
+- `Active`: активные гостевые учетные записи;
+- `Deactivated`: деактивированные гостевые учетные записи.
+
 Нужно добавить настройку:
 
 - `LDAP_GUESTS_BASE`, например `OU=Guests,OU=company,DC=robotail,DC=local`.
+- `LDAP_GUESTS_ACTIVE_BASE`, по умолчанию `OU=Active,<LDAP_GUESTS_BASE>`.
+- `LDAP_GUESTS_DEACTIVATED_BASE`, по умолчанию `OU=Deactivated,<LDAP_GUESTS_BASE>`.
+- `GUESTS_ID_PREFIX`, по умолчанию `9`.
+- `GUESTS_ID_LENGTH`, по умолчанию `15`.
+- `GUESTS_ID_MIN`, по умолчанию `900000000000000`.
+- `GUESTS_ID_START`, по умолчанию `900000000000001`.
+- `GUESTS_ID_MAX`, по умолчанию `999999999999999`.
 
 Нельзя создавать для гостя `employees.Employee`. Иначе гость сможет попасть в существующую логику аутентификации, прав, сотрудников и отделов.
+
+### 10.1.1. `Guest.id` и `employeeNumber`
+
+Так как внешние сервисы читают идентификатор только из LDAP-поля `employeeNumber`, первичный ключ `Guest.id` должен сразу соответствовать значению, которое будет записано в LDAP.
+
+Формат `Guest.id`:
+
+- только цифры;
+- ровно 15 знаков;
+- начинается с гостевого префикса `9`;
+- генерируется один раз и не меняется;
+- не переиспользуется после удаления или деактивации гостя.
+
+В LDAP `employeeNumber` записывается как строковое представление `Guest.id`:
+
+```text
+employeeNumber = str(guest.id)
+```
+
+Рекомендуемая формула:
+
+```text
+guest.id = next_guest_id_from_sequence()
+```
+
+Примеры:
+
+```text
+900000000000001
+900000000000025
+900000000123456
+```
+
+Рекомендуемая реализация:
+
+- использовать `BigIntegerField(primary_key=True)` или `BigAutoField` с PostgreSQL sequence;
+- старт sequence: `900000000000001`;
+- верхняя граница: `999999999999999`;
+- значение входит в JavaScript safe integer, поэтому frontend может безопасно передавать его как number, но API может сериализовать его строкой, если потребуется совместимость.
+
+Перед записью в LDAP система должна проверить уникальность `str(Guest.id)` в `employeeNumber` по всему AD, включая сотрудников, активных гостей и деактивированных гостей.
+
+### 10.1.2. Разделение диапазонов `Employee.id` и `Guest.id`
+
+Так как сотрудники и гости используют одно LDAP-поле `employeeNumber`, диапазоны их первичных ключей не должны пересекаться.
+
+Диапазоны:
+
+- сотрудники: `Employee.id < GUESTS_ID_MIN`;
+- гости: `GUESTS_ID_START <= Guest.id <= GUESTS_ID_MAX`;
+- значение `GUESTS_ID_MIN` резервируется как граница диапазона и не используется для новых гостей.
+
+Требования к реализации:
+
+- добавить DB-level `CheckConstraint` для `Employee`, запрещающий `id >= GUESTS_ID_MIN`;
+- настроить PostgreSQL sequence для `employees.Employee.id` так, чтобы она не могла выдать значение из гостевого диапазона;
+- добавить DB-level `CheckConstraint` для `Guest`, разрешающий только гостевой диапазон;
+- настроить PostgreSQL sequence для `Guest.id` со стартом `GUESTS_ID_START` и верхней границей `GUESTS_ID_MAX`;
+- при ручном импорте/создании сотрудника с заданным `id` backend должен возвращать ошибку валидации, если `id >= GUESTS_ID_MIN`;
+- перед записью в LDAP проверять уникальность `employeeNumber` по всему AD, даже при наличии DB constraints.
+
+Такой запрет возможен, потому что в проекте используется `BigAutoField`, а диапазон 15-значных гостевых ID помещается в PostgreSQL `bigint`.
 
 ### 10.2. Модель синхронизации
 
@@ -298,6 +373,7 @@ LDAP-поля и состояние:
 
 - `LdapSyncState(model="guest", object_pk=str(guest.pk))`;
 - `LdapSyncQueue` для retry LDAP-операций;
+- `guests.ldap.orm_models.LdapGuestUser` для ORM-обновления и перемещения существующих гостевых AD-учеток;
 - отдельные операции очереди: `guest_save`, `guest_disable`, `guest_delete` или `guest_sync_access`;
 - отдельный сервис `guests.ldap.services.GuestLdapService`.
 
@@ -310,13 +386,14 @@ LDAP-поля и состояние:
 1. Проверить, что визит в статусе `approved`.
 2. Проверить, что текущая дата попадает в период доступа или доступ должен быть подготовлен заранее.
 3. Найти существующий LDAP DN гостя через `LdapSyncState`.
-4. Если DN нет, создать LDAP `user` в `LDAP_GUESTS_BASE`.
-5. Записать атрибут связи, например `employeeNumber` или отдельный настраиваемый атрибут со значением `guest:<id>`.
+4. Если DN нет, создать LDAP `user` в `LDAP_GUESTS_ACTIVE_BASE` или `LDAP_GUESTS_DEACTIVATED_BASE` в зависимости от текущего состояния доступа.
+5. Записать в LDAP `employeeNumber` значение `str(Guest.id)`.
 6. Установить `sAMAccountName`, `userPrincipalName`, `displayName`, `givenName`, `sn`, `mail`, `telephoneNumber`, `description`.
-7. Установить состояние учетной записи:
-   - enabled, если доступ уже активен;
-   - disabled, если визит одобрен заранее, но дата начала еще не наступила.
-8. Обновить `LdapSyncState` и поля кэша в `Guest`.
+7. Всегда устанавливать AD-учетку disabled через `userAccountControl`, чтобы гость не мог входить в систему под этой учеткой.
+8. Состояние гостевого доступа отражать только расположением учетной записи:
+   - `LDAP_GUESTS_ACTIVE_BASE`, если доступ уже активен;
+   - `LDAP_GUESTS_DEACTIVATED_BASE`, если доступ еще не начался или уже неактуален.
+9. Обновить `LdapSyncState` и поля кэша в `Guest`.
 
 ### 10.4. Запрет входа гостя в EUSRR
 
@@ -342,12 +419,14 @@ LDAP-учетка гостя должна быть disabled, если:
 
 Если у гостя несколько одобренных визитов, деактивировать LDAP-учетку можно только когда нет ни одного актуального визита, требующего активного доступа.
 
+`userAccountControl` для гостевой учетки всегда должен оставаться disabled. При деактивации учетку нужно переместить в `LDAP_GUESTS_DEACTIVATED_BASE`. При повторной активации учетку нужно переместить обратно в `LDAP_GUESTS_ACTIVE_BASE`, не включая саму AD-учетку.
+
 ### 10.6. Планировщик
 
 Нужны Celery-задачи:
 
-- `guests.tasks.activate_due_guest_visits`: включает учетки, у которых наступило начало доступа;
-- `guests.tasks.expire_guest_visits`: переводит истекшие визиты в `expired` и выключает учетки;
+- `guests.tasks.activate_due_guest_visits`: переносит учетки, у которых наступило начало доступа, в `LDAP_GUESTS_ACTIVE_BASE`;
+- `guests.tasks.expire_guest_visits`: переводит истекшие визиты в `expired` и переносит учетки в `LDAP_GUESTS_DEACTIVATED_BASE`;
 - `guests.tasks.process_guest_ldap_queue` или расширение существующей `employees.tasks.process_ldap_queue`;
 - периодичность: минимум раз в минуту, аналогично существующей LDAP retry-задаче.
 
@@ -493,7 +572,7 @@ LDAP-учетка гостя должна быть disabled, если:
 - `created_from`, `created_to`;
 - `access_from`, `access_to`;
 - `unlimited=true|false`;
-- `ldap_enabled=true|false`;
+- `ldap_enabled=true|false`: фильтр по нахождению гостевой LDAP-учетки в Active OU;
 - `q`: поиск по ФИО гостя, организации, цели, email/phone;
 - `ordering=-created_at|created_at|access_starts_at|-access_starts_at|access_expires_at|-access_expires_at`.
 
@@ -658,10 +737,16 @@ Write serializer должен принимать:
 - модели `Guest`, `GuestVisit`, `GuestVisitEvent`;
 - настройки:
   - `LDAP_GUESTS_BASE`;
+  - `LDAP_GUESTS_ACTIVE_BASE`;
+  - `LDAP_GUESTS_DEACTIVATED_BASE`;
+  - `GUESTS_ID_PREFIX`;
+  - `GUESTS_ID_LENGTH`;
+  - `GUESTS_ID_MIN`;
+  - `GUESTS_ID_START`;
+  - `GUESTS_ID_MAX`;
   - `GUESTS_REQUIRE_ID_DOCUMENT`;
   - `GUESTS_NOTIFY_ON_EXPIRATION`;
   - `GUESTS_AUTO_DISABLE_ON_INVITER_INACTIVE`;
-  - `GUESTS_LDAP_LINK_ATTR`;
 - регистрацию app в `INSTALLED_APPS`;
 - регистрацию URL в `api/v1/urls.py`;
 - периодические Celery-задачи в `CELERY_BEAT_SCHEDULE`;

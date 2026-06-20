@@ -16,6 +16,8 @@ from .constants import (
     DeptPerm,
 )
 
+GUEST_ID_MIN = 900_000_000_000_000
+
 
 def _sync_department_calendar_after_commit(department_id: int) -> None:
     from scheduling.services import (
@@ -274,6 +276,12 @@ class Employee(AbstractUser):
             (
                 "view_ldap_info",
                 "Может просматривать LDAP информацию сотрудников",
+            ),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                name="employee_id_below_guest_range",
+                condition=models.Q(id__lt=GUEST_ID_MIN),
             ),
         ]
 

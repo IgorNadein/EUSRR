@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     "search.apps.SearchConfig",
     "finance.apps.FinanceConfig",
     "procurement.apps.ProcurementConfig",
+    "guests.apps.GuestsConfig",
     "push_notifications",  # django-push-notifications для Web Push
 ]
 
@@ -606,6 +607,31 @@ LDAP_GROUPS_BASE = os.getenv("LDAP_GROUPS_BASE", "OU=Groups,DC=eusrr,DC=local")
 LDAP_POSITIONS_BASE = os.getenv(
     "LDAP_POSITIONS_BASE", "OU=Positions,DC=eusrr,DC=local"
 )
+LDAP_GUESTS_BASE = os.getenv(
+    "LDAP_GUESTS_BASE", "OU=Guests,DC=eusrr,DC=local"
+)
+LDAP_GUESTS_ACTIVE_BASE = os.getenv(
+    "LDAP_GUESTS_ACTIVE_BASE", f"OU=Active,{LDAP_GUESTS_BASE}"
+)
+LDAP_GUESTS_DEACTIVATED_BASE = os.getenv(
+    "LDAP_GUESTS_DEACTIVATED_BASE", f"OU=Deactivated,{LDAP_GUESTS_BASE}"
+)
+
+GUESTS_ID_MIN = int(os.getenv("GUESTS_ID_MIN", "900000000000000"))
+GUESTS_ID_START = int(os.getenv("GUESTS_ID_START", "900000000000001"))
+GUESTS_ID_MAX = int(os.getenv("GUESTS_ID_MAX", "999999999999999"))
+GUESTS_ID_PREFIX = os.getenv("GUESTS_ID_PREFIX", "9")
+GUESTS_ID_LENGTH = int(os.getenv("GUESTS_ID_LENGTH", "15"))
+GUESTS_REQUIRE_ID_DOCUMENT = (
+    os.getenv("GUESTS_REQUIRE_ID_DOCUMENT", "false").lower() == "true"
+)
+GUESTS_NOTIFY_ON_EXPIRATION = (
+    os.getenv("GUESTS_NOTIFY_ON_EXPIRATION", "true").lower() == "true"
+)
+GUESTS_AUTO_DISABLE_ON_INVITER_INACTIVE = (
+    os.getenv("GUESTS_AUTO_DISABLE_ON_INVITER_INACTIVE", "false").lower()
+    == "true"
+)
 
 BRAND_NAME = os.getenv("BRAND_NAME", "CORP - HiRo")
 BRAND_LOGO = "img/logo.png"
@@ -688,6 +714,18 @@ CELERY_BEAT_SCHEDULE = {
     "attendance-auto-sync-dispatcher": {
         "task": "attendance.tasks.dispatch_attendance_auto_sync",
         "schedule": 60.0,
+    },
+    "activate-due-guest-visits": {
+        "task": "guests.tasks.activate_due_guest_visits",
+        "schedule": 60.0,
+    },
+    "expire-guest-visits": {
+        "task": "guests.tasks.expire_guest_visits",
+        "schedule": 60.0,
+    },
+    "detect-inactive-guest-inviters": {
+        "task": "guests.tasks.detect_inactive_inviters",
+        "schedule": 300.0,
     },
 }
 
