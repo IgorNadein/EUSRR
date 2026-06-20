@@ -122,6 +122,9 @@ def create_notification_handler(sender, **kwargs):
             new_notification.timestamp = timestamp
 
         new_notification.save()
+        from .cache import invalidate_unread_summary
+
+        invalidate_unread_summary(recip.id)
         notifications.append(new_notification)
 
     # Возвращаем одно уведомление или список

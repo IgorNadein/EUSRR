@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useNotifications } from "@/contexts/NotificationsContext";
 import { apiClient } from "@/lib/api";
 import { canManageRequests, canManageSupplier } from "@/lib/permissions";
 import { cleanLinkRows, toLinkRows, validateLinkRows } from "@/lib/procurementLinks";
@@ -134,6 +135,10 @@ const getReadableError = (error: unknown, fallback: string): string => {
 };
 
 export function useProcurementPage(user: User | null) {
+  const {
+    refreshUnreadSummary,
+    unreadProcurementRequestCounts,
+  } = useNotifications();
   const canManage = canManageRequests(user);
   const canSupplierManage = canManageSupplier(user);
 
@@ -555,6 +560,15 @@ export function useProcurementPage(user: User | null) {
     return detail;
   }, []);
 
+  const markRequestNotificationsRead = useCallback(async (id: number) => {
+    try {
+      await apiClient.markProcurementRequestNotificationsRead(id);
+      void refreshUnreadSummary();
+    } catch (readError) {
+      console.error("Mark procurement notifications read error:", readError);
+    }
+  }, [refreshUnreadSummary]);
+
   const saveRequest = useCallback(async () => {
     try {
       setBusyKey("save");
@@ -628,12 +642,15 @@ export function useProcurementPage(user: User | null) {
 
       resetForm();
       await refreshCurrentView();
+      if (editingId) {
+        await markRequestNotificationsRead(editingId);
+      }
     } catch (saveError) {
       setActionError(getReadableError(saveError, "Ошибка сохранения"));
     } finally {
       setBusyKey(null);
     }
-  }, [editingId, form, modalMode, refreshCurrentView, resetForm]);
+  }, [editingId, form, markRequestNotificationsRead, modalMode, refreshCurrentView, resetForm]);
 
   const handleSave = useCallback(() => saveRequest(), [saveRequest]);
 
@@ -642,6 +659,7 @@ export function useProcurementPage(user: User | null) {
       setBusyKey(key);
       setActionError(null);
       await action();
+      await markRequestNotificationsRead(id);
       toast.success(successMessage);
       await refreshAfterMutation(id);
       return true;
@@ -651,7 +669,7 @@ export function useProcurementPage(user: User | null) {
     } finally {
       setBusyKey(null);
     }
-  }, [refreshAfterMutation]);
+  }, [markRequestNotificationsRead, refreshAfterMutation]);
 
   const handleLoadMore = useCallback(async () => {
     if (!nextPage || loadingMore) return;
@@ -676,6 +694,8 @@ export function useProcurementPage(user: User | null) {
   }, [buildParams, loadingMore, nextPage, scope]);
 
   const toggleExpand = useCallback(async (id: number) => {
+    const willOpen = !expandedIds.has(id);
+
     setExpandedIds((previous) => {
       const next = new Set(previous);
       if (next.has(id)) {
@@ -686,14 +706,17 @@ export function useProcurementPage(user: User | null) {
       return next;
     });
 
-    if (!detailsCacheRef.current[id]) {
+    if (willOpen && !detailsCacheRef.current[id]) {
       try {
         await ensureRequestDetail(id);
       } catch {
         // ignore detail loading failures for collapsed rows
       }
     }
-  }, [ensureRequestDetail]);
+    if (willOpen) {
+      await markRequestNotificationsRead(id);
+    }
+  }, [ensureRequestDetail, expandedIds, markRequestNotificationsRead]);
 
   const ensureCommentsLoaded = useCallback(async (id: number) => {
     if (commentsMap[id]) {
@@ -800,12 +823,13 @@ export function useProcurementPage(user: User | null) {
           [id]: { ...detail, comments_count: (detail.comments_count || 0) + 1 },
         };
       });
+      await markRequestNotificationsRead(id);
     } catch {
       setActionError("Не удалось добавить комментарий");
     } finally {
       setBusyKey(null);
     }
-  }, [commentDrafts]);
+  }, [commentDrafts, markRequestNotificationsRead]);
 
   const handleAddItemComment = useCallback(async (requestId: number, itemId: number) => {
     const text = (itemCommentDrafts[itemId] || "").trim();
@@ -823,12 +847,13 @@ export function useProcurementPage(user: User | null) {
         ...item,
         comments_count: (item.comments_count || 0) + 1,
       }));
+      await markRequestNotificationsRead(requestId);
     } catch {
       setActionError("Не удалось добавить комментарий к позиции");
     } finally {
       setBusyKey(null);
     }
-  }, [itemCommentDrafts, updateCachedItem]);
+  }, [itemCommentDrafts, markRequestNotificationsRead, updateCachedItem]);
 
   const handleDeleteComment = useCallback(async (requestId: number, commentId: number) => {
     try {
@@ -851,12 +876,13 @@ export function useProcurementPage(user: User | null) {
           [requestId]: { ...detail, comments_count: Math.max(0, (detail.comments_count || 0) - 1) },
         };
       });
+      await markRequestNotificationsRead(requestId);
     } catch {
       setActionError("Не удалось удалить комментарий");
     } finally {
       setBusyKey(null);
     }
-  }, []);
+  }, [markRequestNotificationsRead]);
 
   const handleDeleteItemComment = useCallback(async (requestId: number, itemId: number, commentId: number) => {
     try {
@@ -870,12 +896,13 @@ export function useProcurementPage(user: User | null) {
         ...item,
         comments_count: Math.max(0, (item.comments_count || 0) - 1),
       }));
+      await markRequestNotificationsRead(requestId);
     } catch {
       setActionError("Не удалось удалить комментарий позиции");
     } finally {
       setBusyKey(null);
     }
-  }, [updateCachedItem]);
+  }, [markRequestNotificationsRead, updateCachedItem]);
 
   const handleSubmit = useCallback((id: number) => doAction(
     `submit-${id}`,
@@ -927,6 +954,9 @@ export function useProcurementPage(user: User | null) {
       const updated = await apiClient.setProcurementRequestViewed(id, isViewed) as ProcurementRequest;
       applyRequestStateUpdate(updated);
       if (isViewed) {
+        await markRequestNotificationsRead(id);
+      }
+      if (isViewed) {
         setExpandedIds((previous) => {
           if (!previous.has(id)) {
             return previous;
@@ -949,7 +979,7 @@ export function useProcurementPage(user: User | null) {
     } finally {
       setBusyKey(null);
     }
-  }, [applyRequestStateUpdate]);
+  }, [applyRequestStateUpdate, markRequestNotificationsRead]);
 
   const handleUpdateItem = useCallback(async (requestId: number, itemId: number, patch: Record<string, unknown>) => {
     try {
@@ -963,6 +993,7 @@ export function useProcurementPage(user: User | null) {
         }
       }
       await apiClient.updateProcurementItem(itemId, patch);
+      await markRequestNotificationsRead(requestId);
       toast.success("Позиция обновлена.");
       await refreshAfterMutation(requestId);
       return true;
@@ -972,13 +1003,14 @@ export function useProcurementPage(user: User | null) {
     } finally {
       setBusyKey(null);
     }
-  }, [refreshAfterMutation]);
+  }, [markRequestNotificationsRead, refreshAfterMutation]);
 
   const handleReportItemIssue = useCallback(async (requestId: number, itemId: number, text = "") => {
     try {
       setBusyKey(`item-issue-${itemId}`);
       setActionError(null);
       await apiClient.reportProcurementItemIssue(itemId, text);
+      await markRequestNotificationsRead(requestId);
       toast.success("Позиция отмечена как проблемная.");
       await refreshAfterMutation(requestId);
       return true;
@@ -988,13 +1020,14 @@ export function useProcurementPage(user: User | null) {
     } finally {
       setBusyKey(null);
     }
-  }, [refreshAfterMutation]);
+  }, [markRequestNotificationsRead, refreshAfterMutation]);
 
   const handleCancelItemIssue = useCallback(async (requestId: number, itemId: number) => {
     try {
       setBusyKey(`item-cancel-issue-${itemId}`);
       setActionError(null);
       await apiClient.cancelProcurementItemIssue(itemId);
+      await markRequestNotificationsRead(requestId);
       toast.success("Отметка брака снята.");
       await refreshAfterMutation(requestId);
       return true;
@@ -1004,13 +1037,14 @@ export function useProcurementPage(user: User | null) {
     } finally {
       setBusyKey(null);
     }
-  }, [refreshAfterMutation]);
+  }, [markRequestNotificationsRead, refreshAfterMutation]);
 
   const handleConfirmItemReceived = useCallback(async (requestId: number, itemId: number, receivedQuantity?: number) => {
     try {
       setBusyKey(`item-confirm-received-${itemId}`);
       setActionError(null);
       await apiClient.confirmProcurementItemReceived(itemId, receivedQuantity);
+      await markRequestNotificationsRead(requestId);
       toast.success("Получение позиции подтверждено.");
       await refreshAfterMutation(requestId);
       return true;
@@ -1020,13 +1054,14 @@ export function useProcurementPage(user: User | null) {
     } finally {
       setBusyKey(null);
     }
-  }, [refreshAfterMutation]);
+  }, [markRequestNotificationsRead, refreshAfterMutation]);
 
   const handleCancelItemReceived = useCallback(async (requestId: number, itemId: number, cancelQuantity?: number) => {
     try {
       setBusyKey(`item-cancel-received-${itemId}`);
       setActionError(null);
       await apiClient.cancelProcurementItemReceived(itemId, cancelQuantity);
+      await markRequestNotificationsRead(requestId);
       toast.success("Получение позиции отменено.");
       await refreshAfterMutation(requestId);
       return true;
@@ -1036,7 +1071,7 @@ export function useProcurementPage(user: User | null) {
     } finally {
       setBusyKey(null);
     }
-  }, [refreshAfterMutation]);
+  }, [markRequestNotificationsRead, refreshAfterMutation]);
 
   const handleCancel = useCallback((id: number, reason = "") => {
     return doAction(`cancel-${id}`, () => apiClient.cancelProcurementRequest(id, reason), id, "Заявка отменена.");
@@ -1101,6 +1136,7 @@ export function useProcurementPage(user: User | null) {
     busyKey,
     nextPage,
     scopeCounts,
+    unreadProcurementRequestCounts,
     scope,
     setScope,
     searchQuery,
@@ -1146,6 +1182,7 @@ export function useProcurementPage(user: User | null) {
     toggleItemComments,
     ensureCommentsLoaded,
     ensureItemCommentsLoaded,
+    markRequestNotificationsRead,
     handleSubmit,
     handleApprove,
     handleReject,

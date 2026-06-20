@@ -36,6 +36,9 @@ from procurement.notifications.handlers import (
     notify_request_comment,
 )
 from procurement.notifications.config import NotificationVerbs
+from procurement.notifications.read_service import (
+    ProcurementNotificationReadService,
+)
 from communications import comments_helpers
 from communications.models import Message
 from procurement.services import ProcurementApprovalResolver
@@ -55,6 +58,7 @@ from .serializers import (
     ProcurementDepartmentStatsSerializer,
     ProcurementOverviewStatsSerializer,
     ProcurementItemSerializer,
+    ProcurementNotificationReadResponseSerializer,
     ProcurementRequestCreateSerializer,
     ProcurementRequestDetailSerializer,
     ProcurementRequestListSerializer,
@@ -203,8 +207,8 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             # Только мои заявки (где я автор)
             queryset = queryset.filter(requestor=user)
         elif scope == "department":
-            # Заявки моего отдела
-            queryset = queryset.filter(department__in=user.departments.all())
+            # Заявки отделов, где пользователь участник или role-only участник.
+            queryset = queryset.filter(department_id__in=participant_department_ids)
         elif scope == "processing_department":
             # Заявки, направленные в отделы, где пользователь участвует.
             queryset = queryset.filter(
@@ -276,7 +280,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 # Показываем: свои заявки + заявки отдела + где я approver
                 queryset = queryset.filter(
                     Q(requestor=user)
-                    | Q(department__in=user.departments.all())
+                    | Q(department_id__in=participant_department_ids)
                     | Q(
                         processing_department_id__in=participant_department_ids
                     )
@@ -481,9 +485,11 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 return Response(
                     {
                         "error": (
-                            "У выбранного отдела не назначен руководитель. "
+                            "У выбранного отдела не назначен руководитель "
+                            "и нет активной роли с правом согласования. "
                             "Заявку нельзя отправить на согласование, "
-                            "пока не будет назначен начальник отдела."
+                            "пока не будет назначен начальник отдела "
+                            "или согласующая роль."
                         ),
                         "code": "department_head_missing",
                         "missing_priorities": missing_priorities,
@@ -542,6 +548,8 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 {"error": "У вас нет прав на согласование этой заявки"},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        if approval.approver_id != request.user.id:
+            approval.approver = request.user
 
         # Вышестоящий согласующий закрывает все предыдущие pending-этапы.
         procurement_request.approvals.filter(
@@ -599,6 +607,8 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 {"error": "У вас нет прав на согласование этой заявки"},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        if approval.approver_id != request.user.id:
+            approval.approver = request.user
 
         # Вышестоящий согласующий закрывает предыдущие pending-этапы.
         procurement_request.approvals.filter(
@@ -1004,6 +1014,26 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)
+
+    @extend_schema(
+        responses=ProcurementNotificationReadResponseSerializer,
+        summary="Отметить уведомления по заявке как прочитанные",
+    )
+    @action(detail=True, methods=["post"], url_path="notifications/read")
+    def mark_notifications_read(self, request, pk=None):
+        """Отметить уведомления текущего пользователя по заявке как прочитанные."""
+        procurement_request = self.get_object()
+        result = ProcurementNotificationReadService().mark_request_notifications_as_read(
+            user=request.user,
+            procurement_request=procurement_request,
+        )
+        return Response(
+            {
+                "status": "success",
+                "count": result.count,
+                "notification_ids": result.notification_ids,
+            }
+        )
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):

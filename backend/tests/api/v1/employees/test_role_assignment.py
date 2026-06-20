@@ -8,6 +8,7 @@ from rest_framework.test import APIClient
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from employees.constants import DeptPerm
 from employees.models import (
     Department, DepartmentPermission, DepartmentRole,
     EmployeeDepartment, RoleAssignment,
@@ -61,7 +62,7 @@ class TestRoleAssignmentEndpoints:
         # Создаём admin, отдел и роль
         admin = make_user("admin@test.com", is_staff=True)
         dept = make_dept("IT")
-        role = make_role(dept, "Developer", ["view_request"])
+        role = make_role(dept, "Developer", [DeptPerm.APPROVE_PROCUREMENT])
         
         # Создаём сотрудника НЕ в отделе
         other_user = make_user("other@test.com")
@@ -231,7 +232,11 @@ class TestRoleAssignmentPermissions:
         from api.v1.permissions import has_dept_perm
         
         dept = make_dept("IT")
-        role = make_role(dept, "Manager", ["manage_department", "view_request"])
+        role = make_role(
+            dept,
+            "Manager",
+            ["manage_department", DeptPerm.APPROVE_PROCUREMENT],
+        )
         
         user = make_user("manager@test.com")
         
@@ -245,7 +250,7 @@ class TestRoleAssignmentPermissions:
         
         # Проверяем права
         assert has_dept_perm(user, dept.id, "manage_department")
-        assert has_dept_perm(user, dept.id, "view_request")
+        assert has_dept_perm(user, dept.id, DeptPerm.APPROVE_PROCUREMENT)
         assert not has_dept_perm(user, dept.id, "change_department_head")
     
     def test_inactive_assignment_does_not_grant_permission(self, api_client: APIClient):

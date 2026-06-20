@@ -239,22 +239,38 @@ def notify_approver(approval):
         approval.request.title, approval.request.total_cost
     )
 
-    _send_procurement_notification(
-        recipient=approval.approver,
-        verb=NotificationVerbs.PENDING_APPROVAL,
-        procurement_request=approval.request,
-        title=notification_title,
-        description=description,
-        extra_data={
-            "approval_id": approval.id,
-            "total_cost": float(approval.request.total_cost),
-        },
-    )
+    for recipient in _approval_recipients(approval):
+        _send_procurement_notification(
+            recipient=recipient,
+            verb=NotificationVerbs.PENDING_APPROVAL,
+            procurement_request=approval.request,
+            title=notification_title,
+            description=description,
+            extra_data={
+                "approval_id": approval.id,
+                "total_cost": float(approval.request.total_cost),
+            },
+        )
 
     logger.info(
         f"[Procurement] Отправлено уведомление о согласовании "
         f"заявки #{approval.request.id} для {approval.approver.username}"
     )
+
+
+def _approval_recipients(approval):
+    from ..models import ApprovalRoute
+    from ..services import ProcurementApprovalResolver
+
+    route = ApprovalRoute.objects.filter(
+        priority=approval.priority,
+        resolver_type=ApprovalRoute.ResolverType.DEPARTMENT_HEAD,
+    ).first()
+    if route:
+        return ProcurementApprovalResolver.get_department_approval_users(
+            approval.request,
+        )
+    return [approval.approver]
 
 
 def notify_requestor(
@@ -472,7 +488,9 @@ def notify_request_cancelled(request):
     )
 
     actor = _request_actor(request)
-    recipients = [approval.approver for approval in request.approvals.all()]
+    recipients = []
+    for approval in request.approvals.all():
+        recipients.extend(_approval_recipients(approval))
     _notify_many(
         recipients,
         verb=NotificationVerbs.CANCELLED,

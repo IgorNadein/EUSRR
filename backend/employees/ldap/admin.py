@@ -588,6 +588,7 @@ class LdapUserAdmin(admin.ModelAdmin):
                     "last_name": emp.last_name,
                     "email": emp.email,
                     "phone_number": emp.phone_number,
+                    "is_active": emp.is_active and emp.is_actually_active,
                 }
 
                 service.update_user(emp, changes)
@@ -1783,6 +1784,10 @@ class LdapOrganizationalUnitGroupAdmin(admin.ModelAdmin):
 
             member_dns = []
             for link in active_links:
+                if not (
+                    link.employee.is_active and link.employee.is_actually_active
+                ):
+                    continue
                 emp_sync = LdapSyncState.objects.filter(
                     model="employee",
                     object_pk=str(link.employee_id),

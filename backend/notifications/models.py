@@ -239,6 +239,9 @@ class Notification(models.Model):
             self.unread = False
             self.timestamp_read = timezone.now()
             self.save(update_fields=["unread", "timestamp_read"])
+            from .cache import invalidate_unread_summary
+
+            invalidate_unread_summary(self.recipient_id)
 
     def mark_as_unread(self):
         """Отметить уведомление как непрочитанное"""
@@ -246,6 +249,9 @@ class Notification(models.Model):
             self.unread = True
             self.timestamp_read = None
             self.save(update_fields=["unread", "timestamp_read"])
+            from .cache import invalidate_unread_summary
+
+            invalidate_unread_summary(self.recipient_id)
 
     @property
     def timesince(self, now=None):

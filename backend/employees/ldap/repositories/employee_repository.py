@@ -98,6 +98,12 @@ def bind_user_department(user: Employee, dn: str) -> None:
         user: Пользователь.
         dn: Distinguished Name пользователя в LDAP.
     """
+    if not (user.is_active and user.is_actually_active):
+        EmployeeDepartment.objects.filter(employee=user, is_active=True).update(
+            is_active=False
+        )
+        return
+
     dept_name = extract_department_from_dn(dn)
     if dept_name:
         dept_obj, _ = Department.objects.get_or_create(name=dept_name)

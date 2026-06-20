@@ -359,7 +359,7 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
           type="button"
           onClick={() => { setFlyOut("left"); setTimeout(() => performAction("rejected"), 250); }}
           disabled={busy}
-          className="app-feedback-danger flex h-14 w-14 items-center justify-center rounded-full transition hover:shadow-md active:scale-95 disabled:opacity-50"
+          className="app-action-reject flex h-14 w-14 items-center justify-center rounded-full transition hover:shadow-md active:scale-95 disabled:opacity-50"
           title="Отклонить (←)"
         >
           <ThumbsDown size={22} />

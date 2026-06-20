@@ -43,10 +43,15 @@ import { Modal } from "@/components/ui/Modal";
 import { useDepartmentPage } from "@/hooks/useDepartmentPage";
 import { apiClient } from "@/lib/api";
 import { displayUserName, userProfileLink } from "@/lib/shared";
-import type { DepartmentMemberLink, User } from "@/types/api";
+import type { DepartmentMemberLink, DepartmentPermissionChoice, DepartmentRole, User } from "@/types/api";
 import { toast } from "sonner";
 
 type DepartmentMemberModalMode = "add" | "assignRole";
+type DepartmentRoleDraft = {
+  id: number | null;
+  name: string;
+  permissionIds: number[];
+};
 
 function MetaChip({
   children,
@@ -681,6 +686,8 @@ function AddMemberModal({
 function RoleEditorModal({
   isOpen,
   loading,
+  permissionChoices,
+  permissionsLoading,
   onClose,
   onDraftChange,
   onSave,
@@ -688,23 +695,38 @@ function RoleEditorModal({
 }: {
   isOpen: boolean;
   loading: boolean;
+  permissionChoices: DepartmentPermissionChoice[];
+  permissionsLoading: boolean;
   onClose: () => void;
   onDraftChange: (
     next:
-      | { id: number | null; name: string }
-      | ((current: { id: number | null; name: string }) => {
-          id: number | null;
-          name: string;
-        }),
+      | DepartmentRoleDraft
+      | ((current: DepartmentRoleDraft) => DepartmentRoleDraft),
   ) => void;
   onSave: () => Promise<void>;
-  roleDraft: { id: number | null; name: string };
+  roleDraft: DepartmentRoleDraft;
 }) {
+  const selectedIds = new Set(roleDraft.permissionIds);
+  const togglePermission = (permissionId: number) => {
+    onDraftChange((current) => {
+      const nextIds = new Set(current.permissionIds);
+      if (nextIds.has(permissionId)) {
+        nextIds.delete(permissionId);
+      } else {
+        nextIds.add(permissionId);
+      }
+      return {
+        ...current,
+        permissionIds: Array.from(nextIds),
+      };
+    });
+  };
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={roleDraft.id ? "Переименование роли" : "Новая роль отдела"}
+      title={roleDraft.id ? "Редактирование роли" : "Новая роль отдела"}
       size="md"
       footer={
         <div className="flex flex-wrap justify-end gap-2">
@@ -726,25 +748,206 @@ function RoleEditorModal({
         </div>
       }
     >
-      <section className="app-surface-muted rounded-xl p-4">
-        <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">
-          Название роли *
-        </label>
-        <input
-          value={roleDraft.name}
-          onChange={(event) =>
-            onDraftChange((current) => ({
-              ...current,
-              name: event.target.value,
-            }))
-          }
-          className="app-input w-full rounded-lg px-3 py-2 text-sm"
-          placeholder="Например, Координатор отдела"
-        />
-        <p className="app-text-muted mt-3 text-sm">
-          Роль нужна для аккуратного описания состава отдела и назначения участникам.
-        </p>
-      </section>
+      <div className="space-y-4">
+        <section className="app-surface-muted rounded-xl p-4">
+          <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">
+            Название роли *
+          </label>
+          <input
+            value={roleDraft.name}
+            onChange={(event) =>
+              onDraftChange((current) => ({
+                ...current,
+                name: event.target.value,
+              }))
+            }
+            className="app-input w-full rounded-lg px-3 py-2 text-sm"
+            placeholder="Например, Координатор отдела"
+          />
+        </section>
+
+        <section className="app-surface-muted rounded-xl p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-sm font-medium text-[var(--foreground)]">
+              Права роли
+            </h4>
+            <span className="app-text-muted text-xs">
+              Выбрано: {roleDraft.permissionIds.length}
+            </span>
+          </div>
+
+          {permissionsLoading ? (
+            <p className="app-text-muted text-sm">Загружаем права...</p>
+          ) : permissionChoices.length ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {permissionChoices.map((permission) => {
+                const checked = selectedIds.has(permission.id);
+                return (
+                  <label
+                    key={permission.id}
+                    className={`flex min-h-14 cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition ${
+                      checked
+                        ? "border-[color:var(--accent-primary)] bg-[color:var(--accent-soft)]"
+                        : "border-[color:var(--border-subtle)] bg-[var(--surface-primary)] hover:border-[color:var(--border-strong)]"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => togglePermission(permission.id)}
+                      className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent-primary)]"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-[var(--foreground)]">
+                        {permission.name}
+                      </span>
+                      <span className="app-text-muted block break-all text-xs">
+                        {permission.code}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="app-text-muted text-sm">Права ролей не найдены</p>
+          )}
+        </section>
+      </div>
+    </Modal>
+  );
+}
+
+function RoleManagementModal({
+  isOpen,
+  onClose,
+  onCreateRole,
+  onDeleteRole,
+  onEditRole,
+  pendingKey,
+  roles,
+  roleUsage,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onCreateRole: () => void;
+  onDeleteRole: (role: DepartmentRole) => Promise<void>;
+  onEditRole: (role: DepartmentRole) => void;
+  pendingKey: string | null;
+  roles: DepartmentRole[];
+  roleUsage: Record<number, number>;
+}) {
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Управление ролями"
+      size="lg"
+      footer={
+        <div className="flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="app-action-secondary rounded-lg px-4 py-2 text-sm"
+          >
+            Закрыть
+          </button>
+          <button
+            type="button"
+            onClick={onCreateRole}
+            className="app-action-primary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm"
+          >
+            <BadgePlus size={15} />
+            Создать роль
+          </button>
+        </div>
+      }
+    >
+      {roles.length ? (
+        <div className="space-y-3">
+          {roles.map((role) => {
+            const activeAssignmentsCount =
+              role.active_assignments_count ?? roleUsage[role.id] ?? 0;
+            const isDeleting = pendingKey === `role-delete-${role.id}`;
+            const permissions = role.permissions_verbose || [];
+
+            return (
+              <article
+                key={role.id}
+                className="app-surface-muted rounded-xl border border-[color:var(--border-subtle)] p-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <h4 className="min-w-0 truncate text-sm font-semibold text-[var(--foreground)]">
+                        {role.name}
+                      </h4>
+                      {role.ldap_linked ? (
+                        <MetaChip title="Связана с LDAP">
+                          <Link2 size={12} />
+                          LDAP
+                        </MetaChip>
+                      ) : null}
+                      <MetaChip>
+                        {activeAssignmentsCount} назначений
+                      </MetaChip>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {permissions.length ? (
+                        permissions.map((permission) => (
+                          <span
+                            key={permission.id}
+                            className="app-badge inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs"
+                            title={permission.code}
+                          >
+                            <span className="truncate">{permission.name}</span>
+                          </span>
+                        ))
+                      ) : (
+                        <span className="app-text-muted text-sm">
+                          Права не назначены
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onEditRole(role)}
+                      className="app-action-secondary inline-flex h-9 w-9 items-center justify-center rounded-lg"
+                      aria-label="Редактировать роль"
+                      title="Редактировать роль"
+                    >
+                      <PencilLine size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void onDeleteRole(role)}
+                      disabled={isDeleting}
+                      className="app-action-danger inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-50"
+                      aria-label="Удалить роль"
+                      title="Удалить роль"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="app-surface-muted rounded-xl px-4 py-8 text-center">
+          <p className="text-sm font-medium text-[var(--foreground)]">
+            Ролей пока нет
+          </p>
+          <p className="app-text-muted mt-2 text-sm">
+            Создайте первую роль и назначьте ей права отдела.
+          </p>
+        </div>
+      )}
     </Modal>
   );
 }
@@ -760,6 +963,7 @@ export default function DepartmentDetailPage() {
   const roleMenuRef = useRef<HTMLDivElement | null>(null);
   const [departmentMenuOpen, setDepartmentMenuOpen] = useState(false);
   const departmentMenuRef = useRef<HTMLDivElement | null>(null);
+  const [roleManagementOpen, setRoleManagementOpen] = useState(false);
   const [openingDepartmentChat, setOpeningDepartmentChat] = useState(false);
   const [openingDepartmentCalendar, setOpeningDepartmentCalendar] = useState(false);
 
@@ -971,6 +1175,20 @@ export default function DepartmentDetailPage() {
                             </button>
                           ) : null}
 
+                          {h.userPerms.can_assign_roles ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDepartmentMenuOpen(false);
+                                setRoleManagementOpen(true);
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                            >
+                              <UserRoundCog size={14} className="app-text-muted" />
+                              Управление ролями
+                            </button>
+                          ) : null}
+
                           {h.userPerms.can_manage ? (
                             <button
                               type="button"
@@ -1168,9 +1386,28 @@ export default function DepartmentDetailPage() {
         selectedRoleId={h.selectedRoleId}
       />
 
+      <RoleManagementModal
+        isOpen={roleManagementOpen}
+        onClose={() => setRoleManagementOpen(false)}
+        onCreateRole={() => {
+          setRoleManagementOpen(false);
+          h.openCreateRole();
+        }}
+        onDeleteRole={h.submitRoleDelete}
+        onEditRole={(role) => {
+          setRoleManagementOpen(false);
+          h.openEditRole(role);
+        }}
+        pendingKey={h.pendingKey}
+        roles={h.roles}
+        roleUsage={h.roleUsage}
+      />
+
       <RoleEditorModal
         isOpen={h.roleEditorOpen}
         loading={h.pendingKey === "role"}
+        permissionChoices={h.rolePermissionChoices}
+        permissionsLoading={h.rolePermissionChoicesLoading}
         onClose={h.closeRoleEditor}
         onDraftChange={h.setRoleDraft}
         onSave={h.saveRole}

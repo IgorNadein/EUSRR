@@ -212,6 +212,8 @@ export interface DepartmentRole {
   name: string;
   permissions: number[];
   permissions_verbose: DepartmentPermissionChoice[];
+  active_assignments_count?: number;
+  ldap_linked?: boolean;
 }
 
 export interface DepartmentRoleAssignment {

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from django.db import transaction
 from django.utils import timezone
 
+from notifications.cache import invalidate_unread_summary
 from notifications.models import Notification
 from notifications.realtime import send_notifications_read_all_event
 
@@ -41,10 +42,13 @@ class ChatNotificationReadService:
 
         read_at = timezone.now()
         count = queryset.update(unread=False, timestamp_read=read_at)
+        invalidate_unread_summary(user.id)
 
-        transaction.on_commit(
-            lambda: send_notifications_read_all_event(user.id, notification_ids)
-        )
+        def notify_after_commit():
+            invalidate_unread_summary(user.id)
+            send_notifications_read_all_event(user.id, notification_ids)
+
+        transaction.on_commit(notify_after_commit)
 
         return ChatNotificationReadResult(
             notification_ids=notification_ids,

@@ -13,6 +13,7 @@ urlpatterns = [
     # Список и счетчики
     path("", views.get_notifications, name="list"),
     path("count/", views.get_unread_count, name="count"),
+    path("summary/", views.get_unread_summary_view, name="summary"),
     path("verb-types/", views.get_verb_types, name="verb_types"),
     # Операции с уведомлениями
     path("<int:notification_id>/read/", views.mark_as_read, name="mark_read"),

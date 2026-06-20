@@ -211,6 +211,10 @@ class CanManageProcurementRequest(permissions.BasePermission):
         if action == "comments":
             return True
 
+        # Умное прочтение только гасит уведомления текущего пользователя.
+        if action == "mark_notifications_read":
+            return True
+
         # Удаление комментария дополнительно валидируется во view по автору/админу
         if action == "delete_comment":
             return True

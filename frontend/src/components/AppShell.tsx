@@ -1,13 +1,12 @@
 "use client";
 
-import { Building2, CalendarCheck, CalendarDays, Download, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Monitor, Search, ShoppingCart, Users } from "lucide-react";
+import { Building2, CalendarCheck, CalendarDays, Download, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Search, ShoppingCart, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, startTransition, useEffect, useRef, useState, useMemo } from "react";
 import { useMobileNavPlacement } from "@/contexts/MobileNavPlacementContext";
 import { useUser } from "@/contexts/UserContext";
 import { useNotifications } from "@/hooks/useApi";
-import { getVerbCategory } from "@/lib/verbTranslations";
 import { NotificationCenter, NotificationPanel } from "@/components/NotificationCenter";
 import { CalendarSidebar } from "@/components/calendar/CalendarSidebar";
 import { PushOnboardingPrompt } from "@/components/PushOnboardingPrompt";
@@ -318,31 +317,16 @@ function Header({ mobileNavPlacement, suppressMobileChrome = false, onOpenLeftNa
 function LeftNavContent({ onNavigate }: LeftNavContentProps) {
   const pathname = usePathname();
   const { user } = useUser();
-  const { notifications: notificationsData, markCategoryAsRead } = useNotifications();
-  const notifications = useMemo(() => Array.isArray(notificationsData) ? notificationsData : [], [notificationsData]);
+  const { unreadCategoryCounts, markCategoryAsRead } = useNotifications();
   const canManageAttendance = Boolean(user?.auth?.is_staff || user?.auth?.is_superuser);
   const visibleNavItems = useMemo(
     () => navItems.filter((item) => item.href !== "/attendance" || canManageAttendance),
     [canManageAttendance],
   );
 
-  // Подсчет уведомлений по категориям
-  const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    
-    notifications.forEach((n: { verb?: string; is_read?: boolean }) => {
-      // Пропускаем прочитанные
-      if (!n.verb || n.is_read) return;
-      const category = getVerbCategory(n.verb);
-      counts[category] = (counts[category] || 0) + 1;
-    });
-    
-    return counts;
-  }, [notifications]);
-
   const handleNavClick = async (category?: string, autoReadOnNavigate = true) => {
     // Помечаем уведомления категории как прочитанные
-    if (autoReadOnNavigate && category && category !== "Сообщения" && categoryCounts[category] > 0) {
+    if (autoReadOnNavigate && category && category !== "Сообщения" && (unreadCategoryCounts[category] || 0) > 0) {
       await markCategoryAsRead(category);
     }
     
@@ -362,7 +346,7 @@ function LeftNavContent({ onNavigate }: LeftNavContentProps) {
     <div className="app-surface rounded-2xl p-5">
       <div className="space-y-2 text-sm">
         {visibleNavItems.map(({ href, label, icon: Icon, category, autoReadOnNavigate }) => {
-          const count = category ? categoryCounts[category] || 0 : 0;
+          const count = category ? unreadCategoryCounts[category] || 0 : 0;
           
           return (
             <Link 

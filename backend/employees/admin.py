@@ -737,6 +737,25 @@ class EmployeeAdmin(DjangoUserAdmin):
                         ):
                             changes["phone_number"] = employee.phone_number
 
+                        desired_is_active = (
+                            employee.is_active and employee.is_actually_active
+                        )
+                        if employee.is_active != desired_is_active:
+                            changes["is_active"] = desired_is_active
+                        else:
+                            try:
+                                from employees.ldap.utils.ldap_utils import (
+                                    _uac_is_active,
+                                )
+
+                                ldap_is_active = _uac_is_active(
+                                    ldap_user.user_account_control
+                                )
+                            except Exception:
+                                ldap_is_active = None
+                            if ldap_is_active != desired_is_active:
+                                changes["is_active"] = desired_is_active
+
                         if changes:
                             service.update_user(employee, changes)
                             updated_count += 1
@@ -745,7 +764,7 @@ class EmployeeAdmin(DjangoUserAdmin):
                         from django.conf import settings as _settings
 
                         expected_base = None
-                        if not employee.is_actually_active:
+                        if not desired_is_active:
                             expected_base = getattr(
                                 _settings, "LDAP_DISMISSED_BASE", None
                             )
@@ -795,23 +814,26 @@ class EmployeeAdmin(DjangoUserAdmin):
                                         level=messages.INFO,
                                     )
 
-                                    # Добавляем в группу DEP_* нового отдела
-                                    try:
-                                        from employees.ldap.orm_models import (
-                                            LdapOrganizationalUnit,
-                                        )
-
-                                        ou = (
-                                            LdapOrganizationalUnit.objects.get(
-                                                dn=expected_base
+                                    # Добавляем в группу DEP_* только активного
+                                    # сотрудника. Уволенные остаются в
+                                    # LDAP_DISMISSED_BASE без DEP membership.
+                                    if desired_is_active:
+                                        try:
+                                            from employees.ldap.orm_models import (
+                                                LdapOrganizationalUnit,
                                             )
-                                        )
-                                        dept_group = (
-                                            ou.ensure_department_group()
-                                        )
-                                        dept_group.add_member(ldap_user.dn)
-                                    except Exception:
-                                        pass  # best effort
+
+                                            ou = (
+                                                LdapOrganizationalUnit.objects.get(
+                                                    dn=expected_base
+                                                )
+                                            )
+                                            dept_group = (
+                                                ou.ensure_department_group()
+                                            )
+                                            dept_group.add_member(ldap_user.dn)
+                                        except Exception:
+                                            pass  # best effort
 
                                 except Exception as move_err:
                                     logger.warning(
@@ -889,7 +911,10 @@ class EmployeeAdmin(DjangoUserAdmin):
                         # Определяем department_dn на основе отдела и статуса
                         department_dn = None
 
-                        if not employee.is_actually_active:
+                        desired_is_active = (
+                            employee.is_active and employee.is_actually_active
+                        )
+                        if not desired_is_active:
                             # Уволенный → OU=Dismissed
                             department_dn = getattr(
                                 _settings, "LDAP_DISMISSED_BASE", None
@@ -936,9 +961,9 @@ class EmployeeAdmin(DjangoUserAdmin):
                             department_dn=department_dn,
                             group_cns=[],
                             initial_password=temp_password,
+                            is_active=desired_is_active,
                         )
 
-                        # Создаем через сервис
                         logger.info(
                             f"[sync_from_django_to_ldap] Employee {
                                 employee.pk
@@ -981,11 +1006,12 @@ class EmployeeAdmin(DjangoUserAdmin):
                             f"Ошибка создания {employee.email} в LDAP: {e}",
                             level=messages.ERROR,
                         )
+
             except Exception as e:
                 logger.exception(
                     f"[sync_from_django_to_ldap] Employee {
                         employee.pk
-                    }: необработанное исключение на верхнем уровне"
+                    }: общая ошибка"
                 )
                 error_count += 1
                 self.message_user(
@@ -1705,6 +1731,11 @@ class DepartmentAdmin(admin.ModelAdmin):
 
                     member_dns = []
                     for link in active_links:
+                        if not (
+                            link.employee.is_active
+                            and link.employee.is_actually_active
+                        ):
+                            continue
                         emp_sync = LdapSyncState.objects.filter(
                             model="employee",
                             object_pk=str(link.employee_id),

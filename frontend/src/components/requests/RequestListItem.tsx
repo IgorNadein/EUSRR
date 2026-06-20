@@ -278,7 +278,7 @@ export function RequestListItem({
                     title="Отклонить"
                     onClick={() => void onReject(request.id)}
                     disabled={busyKey === `reject-${request.id}`}
-                    className="app-action-danger inline-flex items-center justify-center rounded-lg p-2 disabled:opacity-60"
+                    className="app-action-reject inline-flex items-center justify-center rounded-lg p-2 disabled:opacity-60"
                   >
                     <ThumbsDown size={18} />
                   </button>

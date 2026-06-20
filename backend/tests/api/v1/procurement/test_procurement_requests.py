@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth.models import Permission
+from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
@@ -15,8 +16,10 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from communications.comments_helpers import get_comments
+from employees.constants import DeptPerm
 from employees.models import (
     Department,
+    DepartmentPermission,
     DepartmentRole,
     Employee,
     EmployeeDepartment,
@@ -3325,6 +3328,39 @@ class TestProcurementRequestWorkflow:
             employee=director,
         )
 
+    def _create_department_approval_role_user(
+        self,
+        department,
+        *,
+        email="department-approval-role@example.com",
+        phone_number="+79995555556",
+    ):
+        permission, _ = DepartmentPermission.objects.get_or_create(
+            code=DeptPerm.APPROVE_PROCUREMENT,
+            defaults={"name": "Согласование закупок отдела"},
+        )
+        role = DepartmentRole.objects.create(
+            department=department,
+            name=f"Согласующие закупки {email}",
+        )
+        role.scoped_permissions.add(permission)
+        employee = Employee.objects.create_user(
+            email=email,
+            password='testpass123',
+            phone_number=phone_number,
+            first_name='Ролевой',
+            last_name='Согласующий',
+            is_active=True,
+            email_verified=True,
+            send_activation_email=False,
+        )
+        RoleAssignment.objects.create(
+            employee=employee,
+            role=role,
+            is_active=True,
+        )
+        return employee
+
     def test_submit_notifies_only_current_stage_approver(
         self, api_client, user, procurement_request, procurement_item, budget, monkeypatch
     ):
@@ -3354,6 +3390,124 @@ class TestProcurementRequestWorkflow:
             if item["verb"] == "procurement_pending_approval"
         ]
         assert pending_recipients == ["head@example.com"]
+
+    def test_submit_notifies_department_head_and_role_approvers(
+        self, api_client, user, department, procurement_request,
+        procurement_item, monkeypatch
+    ):
+        role_approver = self._create_department_approval_role_user(
+            department,
+        )
+        sent = []
+
+        def fake_notify_send(**kwargs):
+            sent.append(kwargs)
+
+        monkeypatch.setattr(
+            "procurement.notifications.handlers.notify.send",
+            fake_notify_send,
+        )
+
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': procurement_request.id}
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        pending_recipients = sorted(
+            item["recipient"].email
+            for item in sent
+            if item["verb"] == "procurement_pending_approval"
+        )
+        assert pending_recipients == sorted([
+            "head@example.com",
+            role_approver.email,
+        ])
+
+    def test_department_role_user_can_approve_head_stage(
+        self, api_client, user, department, department_head,
+        procurement_request, procurement_item
+    ):
+        role_approver = self._create_department_approval_role_user(
+            department,
+            email="department-stage-approver@example.com",
+            phone_number="+79995555557",
+        )
+        procurement_request.status = ProcurementStatus.PENDING
+        procurement_request.save()
+        approval = Approval.objects.create(
+            request=procurement_request,
+            approver=department_head,
+            priority=HEAD_PRIORITY,
+            status=ApprovalStatus.PENDING,
+            step_name="Руководитель отдела",
+        )
+
+        api_client.force_authenticate(user=role_approver)
+        pending_url = reverse(
+            'api:v1:procurement:procurementrequest-pending-approvals'
+        )
+        pending_response = api_client.get(pending_url)
+        assert pending_response.status_code == status.HTTP_200_OK
+        assert [
+            item['id'] for item in pending_response.data['results']
+        ] == [procurement_request.id]
+        assert pending_response.data['results'][0]['can_current_user_approve'] is True
+
+        url = reverse(
+            'api:v1:procurement:procurementrequest-approve',
+            kwargs={'pk': procurement_request.id}
+        )
+
+        response = api_client.post(url, {'comment': 'Согласовано ролью'})
+
+        assert response.status_code == status.HTTP_200_OK
+        approval.refresh_from_db()
+        procurement_request.refresh_from_db()
+        assert approval.approver_id == role_approver.id
+        assert approval.status == ApprovalStatus.APPROVED
+        assert procurement_request.status == ProcurementStatus.APPROVED
+
+    def test_department_role_approver_allows_submit_without_head(
+        self, api_client, user, department
+    ):
+        department.head = None
+        department.save(update_fields=["head"])
+        role_approver = self._create_department_approval_role_user(
+            department,
+            email="department-no-head-approver@example.com",
+            phone_number="+79995555558",
+        )
+        procurement_request = ProcurementRequest.objects.create(
+            title="Заявка без начальника, но с ролью",
+            description="Проверка согласующей роли",
+            department=department,
+            requestor=user,
+            status=ProcurementStatus.DRAFT,
+            urgency=UrgencyLevel.MEDIUM,
+        )
+        ProcurementItem.objects.create(
+            request=procurement_request,
+            name="Тестовая позиция",
+            quantity=1,
+            unit="шт",
+            estimated_unit_price=Decimal("12.00"),
+        )
+
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': procurement_request.id}
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        approval = procurement_request.approvals.get(priority=HEAD_PRIORITY)
+        assert approval.approver_id == role_approver.id
 
     def test_approve_notifies_only_next_stage_approver(
         self, api_client, department_head, procurement_request, procurement_item, monkeypatch
@@ -4425,6 +4579,87 @@ class TestProcurementRequestWorkflow:
         
         procurement_request.refresh_from_db()
         assert procurement_request.status == ProcurementStatus.CANCELLED
+
+
+# ==============================================================================
+# ТЕСТЫ УМНОГО ПРОЧТЕНИЯ УВЕДОМЛЕНИЙ
+# ==============================================================================
+
+
+class TestProcurementRequestNotificationRead:
+    """Тесты прочтения уведомлений, связанных с конкретной закупкой."""
+
+    def test_marks_only_current_request_procurement_notifications_read(
+        self, api_client, user, department, procurement_request
+    ):
+        request_content_type = ContentType.objects.get_for_model(
+            ProcurementRequest,
+        )
+        other_request = ProcurementRequest.objects.create(
+            title="Другая закупка",
+            description="Другая заявка",
+            department=department,
+            requestor=user,
+            status=ProcurementStatus.DRAFT,
+        )
+
+        matching_by_data = Notification.objects.create(
+            recipient=user,
+            verb="procurement_department_request",
+            data={"request_id": procurement_request.id},
+        )
+        matching_by_target = Notification.objects.create(
+            recipient=user,
+            verb="procurement_request_commented",
+            target_content_type=request_content_type,
+            target_object_id=str(procurement_request.id),
+            data={},
+        )
+        other_request_notification = Notification.objects.create(
+            recipient=user,
+            verb="procurement_department_request",
+            data={"request_id": other_request.id},
+        )
+        non_procurement_notification = Notification.objects.create(
+            recipient=user,
+            verb="new_message",
+            data={"request_id": procurement_request.id},
+        )
+        already_read_notification = Notification.objects.create(
+            recipient=user,
+            verb="procurement_approved",
+            unread=False,
+            timestamp_read=timezone.now(),
+            data={"request_id": procurement_request.id},
+        )
+
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-mark-notifications-read',
+            kwargs={'pk': procurement_request.id},
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["status"] == "success"
+        assert response.data["count"] == 2
+        assert sorted(response.data["notification_ids"]) == sorted([
+            matching_by_data.id,
+            matching_by_target.id,
+        ])
+
+        matching_by_data.refresh_from_db()
+        matching_by_target.refresh_from_db()
+        other_request_notification.refresh_from_db()
+        non_procurement_notification.refresh_from_db()
+        already_read_notification.refresh_from_db()
+
+        assert matching_by_data.unread is False
+        assert matching_by_target.unread is False
+        assert other_request_notification.unread is True
+        assert non_procurement_notification.unread is True
+        assert already_read_notification.unread is False
 
 
 # ==============================================================================

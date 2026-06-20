@@ -108,18 +108,18 @@ export function createEmployeesApi(request: RequestFn) {
             const qs = qp.toString();
             return request(`/api/v1/department-roles/${qs ? '?' + qs : ''}`);
         },
-        createDepartmentRole: (data: { department: number; name: string }) =>
+        createDepartmentRole: (data: { department: number; name: string; scoped_permissions?: number[]; scoped_permission_codes?: string[] }) =>
             request('/api/v1/department-roles/', {
                 method: 'POST',
                 body: JSON.stringify(data),
             }),
-        updateDepartmentRole: (id: number | string, data: { name?: string }) =>
+        updateDepartmentRole: (id: number | string, data: { name?: string; scoped_permissions?: number[]; scoped_permission_codes?: string[] }) =>
             request(`/api/v1/department-roles/${id}/`, {
                 method: 'PATCH',
                 body: JSON.stringify(data),
             }),
-        deleteDepartmentRole: (id: number | string) =>
-            request(`/api/v1/department-roles/${id}/`, { method: 'DELETE' }),
+        deleteDepartmentRole: (id: number | string, params?: { force?: boolean }) =>
+            request(`/api/v1/department-roles/${id}/${params?.force ? '?force=true' : ''}`, { method: 'DELETE' }),
         getDepartmentRolePermChoices: () =>
             request('/api/v1/department-roles/perm_choices/'),
         getDepartmentRoleAssignments: (id: number | string, params?: { active?: boolean }) => {
