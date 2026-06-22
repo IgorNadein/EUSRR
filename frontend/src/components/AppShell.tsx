@@ -1,9 +1,9 @@
 "use client";
 
-import { Building2, CalendarCheck, CalendarDays, Download, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Search, ShoppingCart, Users } from "lucide-react";
+import { AlertTriangle, Building2, CalendarCheck, CalendarDays, Download, FileSignature, FileText, Home as HomeIcon, Loader2, Menu, MessageSquare, Search, Send, ShoppingCart, UserRoundPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, startTransition, useEffect, useRef, useState, useMemo } from "react";
+import { ReactNode, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMobileNavPlacement } from "@/contexts/MobileNavPlacementContext";
 import { useUser } from "@/contexts/UserContext";
 import { useNotifications } from "@/hooks/useApi";
@@ -14,6 +14,9 @@ import { useCalendarModals } from "@/hooks/useCalendarModals";
 import { CalendarModals } from "@/components/layout/CalendarModals";
 import { MobileLeftDrawer, MobileCalendarDrawer } from "@/components/layout/MobileDrawers";
 import { usePwa } from "@/contexts/PwaContext";
+import { Modal } from "@/components/ui";
+import { apiClient } from "@/lib/api";
+import type { GuestVisit, GuestVisitComment } from "@/types/api";
 
 type AppShellProps = {
   children: ReactNode;
@@ -37,6 +40,12 @@ type LeftNavContentProps = {
   onNavigate?: () => void;
 };
 
+type PaginatedResponse<T> = {
+  count?: number;
+  next?: string | null;
+  results?: T[];
+};
+
 const navItems = [
   { href: "/", label: "Лента", icon: HomeIcon, category: "Новости" },
   { href: "/messages", label: "Сообщения", icon: MessageSquare, category: "Сообщения" },
@@ -44,6 +53,7 @@ const navItems = [
   { href: "/departments", label: "Отделы", icon: Building2 },
   { href: "/attendance", label: "Посещаемость", icon: CalendarCheck },
   { href: "/requests", label: "Заявления", icon: FileSignature, category: "Заявки" },
+  { href: "/guests", label: "Гости", icon: UserRoundPlus, category: "Гости" },
   // { href: "/equipment", label: "Оборудование", icon: Monitor },
   { href: "/procurement", label: "Закупки", icon: ShoppingCart, category: "Закупки", autoReadOnNavigate: false },
   { href: "/documents", label: "Документы", icon: FileText, category: "Документы" },
@@ -403,6 +413,151 @@ export function PageHeader({ title, subtitle, badge, eyebrow  }: PageHeaderProps
   );
 }
 
+const toResults = <T,>(payload: PaginatedResponse<T> | T[]): T[] => {
+  if (Array.isArray(payload)) return payload;
+  return payload.results || [];
+};
+
+const guestDisplayName = (visit: GuestVisit): string => (
+  visit.guest.full_name
+  || [visit.guest.last_name, visit.guest.first_name, visit.guest.patronymic].filter(Boolean).join(" ")
+  || `Гость #${visit.guest.id}`
+);
+
+const latestInfoRequestText = (visit: GuestVisit, comments: GuestVisitComment[]): string => {
+  const requestComment = [...comments]
+    .reverse()
+    .find((comment) => comment.metadata?.guest_visit_comment_type === "info_request");
+  if (requestComment?.text) return requestComment.text;
+
+  const requestEvent = [...(visit.events || [])]
+    .reverse()
+    .find((event) => event.event_type === "needs_info_requested" && event.comment);
+  return requestEvent?.comment || "Администратор запросил дополнительную информацию по гостевой заявке.";
+};
+
+function GuestInfoRequestPrompt({ userId }: { userId?: number | null }) {
+  const [visit, setVisit] = useState<GuestVisit | null>(null);
+  const [comments, setComments] = useState<GuestVisitComment[]>([]);
+  const [answer, setAnswer] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadPendingRequest = useCallback(async () => {
+    if (!userId) return;
+    try {
+      setLoading(true);
+      const response = await apiClient.getGuestVisits({
+        scope: "mine",
+        status: "needs_info",
+        ordering: "-updated_at",
+        page: 1,
+        limit: 1,
+      }) as PaginatedResponse<GuestVisit> | GuestVisit[];
+      const pendingVisit = toResults(response)[0] || null;
+      setVisit(pendingVisit);
+      if (!pendingVisit) {
+        setComments([]);
+        setAnswer("");
+        return;
+      }
+      const commentResponse = await apiClient.getGuestVisitComments(pendingVisit.id) as GuestVisitComment[];
+      setComments(commentResponse);
+    } catch {
+      setVisit(null);
+      setComments([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    void loadPendingRequest();
+    const interval = window.setInterval(() => void loadPendingRequest(), 30000);
+
+    const handleFocus = () => void loadPendingRequest();
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") void loadPendingRequest();
+    };
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [loadPendingRequest, userId]);
+
+  const question = useMemo(
+    () => visit ? latestInfoRequestText(visit, comments) : "",
+    [comments, visit],
+  );
+
+  const submitAnswer = async () => {
+    if (!visit || !answer.trim()) return;
+    try {
+      setSubmitting(true);
+      setError(null);
+      await apiClient.provideGuestVisitInfo(visit.id, { comment: answer.trim() });
+      setAnswer("");
+      await loadPendingRequest();
+    } catch (err) {
+      setError(String((err as Error)?.message || "Не удалось отправить ответ"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      isOpen={Boolean(visit)}
+      onClose={() => undefined}
+      title="Требуется информация"
+      size="md"
+      showCloseButton={false}
+      closeOnEsc={false}
+      closeOnClickOutside={false}
+      footer={
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => void submitAnswer()}
+            disabled={submitting || !answer.trim()}
+            className="app-action-primary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-60"
+          >
+            {submitting ? <Loader2 className="animate-spin" size={15} /> : <Send size={15} />}
+            Отправить ответ
+          </button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <div className="app-feedback-warning flex items-start gap-3 rounded-xl p-4 text-sm">
+          <AlertTriangle className="mt-0.5 shrink-0" size={18} />
+          <div className="min-w-0">
+            <p className="font-semibold text-[var(--foreground)]">{visit ? guestDisplayName(visit) : "Гостевая заявка"}</p>
+            <p className="mt-1 whitespace-pre-wrap">{loading ? "Загружаем запрос..." : question}</p>
+          </div>
+        </div>
+        <label className="block">
+          <span className="app-text-muted mb-1 block text-xs font-medium">Ответ *</span>
+          <textarea
+            value={answer}
+            onChange={(event) => setAnswer(event.target.value)}
+            rows={5}
+            className="app-input w-full resize-none rounded-lg p-3 text-sm"
+            placeholder="Напишите уточнение для администратора"
+          />
+        </label>
+        {error ? <p className="app-feedback-danger rounded-lg px-3 py-2 text-sm">{error}</p> : null}
+      </div>
+    </Modal>
+  );
+}
+
 export function AppShell({ children }: AppShellProps) {
   const { user, loading } = useUser();
   const { mobileNavPlacement } = useMobileNavPlacement();
@@ -529,6 +684,7 @@ export function AppShell({ children }: AppShellProps) {
         />
 
         <CalendarModals {...cal} />
+        <GuestInfoRequestPrompt userId={user.id} />
       </div>
   );
 }

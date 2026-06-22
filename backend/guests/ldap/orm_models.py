@@ -14,14 +14,13 @@ from dataclasses import dataclass
 
 from django.conf import settings
 from django.utils import timezone as _dj_tz
-from ldap3 import SUBTREE
-from ldapdb.models import Model as LdapModel
-from ldapdb.models.fields import CharField, DateTimeField, IntegerField, ListField
+from ldap3 import BASE, SUBTREE
+from ldap3.utils.dn import parse_dn
 
 from employees.ldap.infrastructure.connections import _ldap
 from employees.ldap.mixins import LdapSyncStateMixin, ModifyDnMixin
-from employees.ldap.repositories.ldap_repository import ensure_container_exists
 from employees.ldap.services.constants import UserAccountControl
+from employees.ldap.services.user_mapper_service import UserMapperService
 from employees.ldap.services.user_password_service import UserPasswordService
 from employees.ldap.utils.ldap_utils import cn_candidates
 from employees.ldap.utils.text_utils import esc_filter, esc_rdn
@@ -53,6 +52,17 @@ if not hasattr(_dj_tz, "utc") or not all(
     _dj_tz.utc = _UtcCompat()
 
 
+# django-ldapdb imports timezone.utc at import time; Django 5 no longer exposes it.
+from ldapdb.models import Model as LdapModel  # noqa: E402
+from ldapdb.models.fields import (  # noqa: E402
+    CharField,
+    DateTimeField,
+    ImageField,
+    IntegerField,
+    ListField,
+)
+
+
 def get_guests_base():
     return getattr(settings, "LDAP_GUESTS_BASE", "OU=Guests,DC=eusrr,DC=local")
 
@@ -63,6 +73,15 @@ class LdapGuestSyncResult:
     sam_account_name: str
     user_principal_name: str
     user_account_control: int
+
+
+class GuestEmployeeNumberConflict(RuntimeError):
+    def __init__(self, employee_number: str, dn: str):
+        self.employee_number = employee_number
+        self.dn = dn
+        super().__init__(
+            f"employeeNumber {employee_number} already exists in LDAP: {dn}"
+        )
 
 
 class LdapGuestUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
@@ -89,6 +108,7 @@ class LdapGuestUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
     display_name = CharField(db_column="displayName")
     mail = CharField(db_column="mail", blank=True)
     telephone_number = CharField(db_column="telephoneNumber", blank=True)
+    thumbnail_photo = ImageField(db_column="thumbnailPhoto", blank=True)
 
     employee_number = CharField(db_column="employeeNumber", blank=True)
     description = CharField(db_column="description", blank=True)
@@ -122,6 +142,58 @@ class LdapGuestUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
         if not target_base:
             raise RuntimeError("Целевой LDAP контейнер гостей не задан.")
         return target_base
+
+    @staticmethod
+    def _rdn_to_string(rdn: tuple[str, str, str]) -> str:
+        attr, value, _separator = rdn
+        return f"{attr}={value}"
+
+    @staticmethod
+    def _ou_value(value: str) -> str:
+        return value.replace("\\,", ",").replace("\\\\", "\\")
+
+    @classmethod
+    def ensure_guest_ou_chain(cls, conn, target_base_dn: str) -> None:
+        """Ensure LDAP guest OU chain exists.
+
+        Example:
+            OU=Active,OU=Guests,DC=eusr,DC=local
+
+        Creates missing OUs from parent to child:
+            OU=Guests,DC=eusr,DC=local
+            OU=Active,OU=Guests,DC=eusr,DC=local
+        """
+        parts = parse_dn(target_base_dn)
+        if not parts:
+            raise RuntimeError("Целевой LDAP контейнер гостей не задан.")
+
+        leading_ous: list[tuple[str, str, str]] = []
+        for part in parts:
+            if part[0].upper() != "OU":
+                break
+            leading_ous.append(part)
+
+        if not leading_ous:
+            return
+
+        for index in range(len(leading_ous) - 1, -1, -1):
+            dn = ",".join(cls._rdn_to_string(part) for part in parts[index:])
+            ok = conn.search(
+                search_base=dn,
+                search_filter="(objectClass=organizationalUnit)",
+                search_scope=BASE,
+                attributes=["distinguishedName"],
+            )
+            if ok and getattr(conn, "entries", []):
+                continue
+
+            ou_name = cls._ou_value(parts[index][1])
+            if not conn.add(
+                dn,
+                ["top", "organizationalUnit"],
+                {"ou": ou_name},
+            ):
+                raise RuntimeError(f"Не удалось создать OU {dn}: {conn.result}")
 
     @staticmethod
     def sam_for_guest(guest) -> str:
@@ -161,7 +233,32 @@ class LdapGuestUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
             "employeeNumber": str(guest.id),
             "description": cls.description_for_guest(guest),
         }
+        avatar = cls.processed_avatar_for_guest(guest)
+        if avatar:
+            attrs["thumbnailPhoto"] = avatar
         return {k: v for k, v in attrs.items() if v not in (None, "", [])}
+
+    @staticmethod
+    def avatar_bytes_for_guest(guest) -> bytes | None:
+        avatar = getattr(guest, "avatar", None)
+        if not avatar:
+            return None
+        try:
+            if hasattr(avatar, "open"):
+                avatar.open("rb")
+            data = avatar.read()
+            if hasattr(avatar, "seek"):
+                avatar.seek(0)
+            return data
+        except Exception:
+            return None
+
+    @classmethod
+    def processed_avatar_for_guest(cls, guest) -> bytes | None:
+        avatar_bytes = cls.avatar_bytes_for_guest(guest)
+        if not avatar_bytes:
+            return None
+        return UserMapperService().process_avatar(avatar_bytes)
 
     @classmethod
     def _sync_result(cls, dn: str, guest) -> LdapGuestSyncResult:
@@ -172,15 +269,43 @@ class LdapGuestUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
             user_account_control=int(UserAccountControl.DISABLED),
         )
 
+    @staticmethod
+    def _normalize_dn(dn: str) -> str:
+        return (dn or "").strip().lower()
+
     @classmethod
-    def _ensure_unique_employee_number(cls, conn, guest, current_dn: str = "") -> None:
-        base = getattr(settings, "LDAP_BASE_DN", "") or getattr(
+    def _parent_dn(cls, dn: str) -> str:
+        parts = parse_dn(dn)
+        if len(parts) < 2:
+            return ""
+        return ",".join(cls._rdn_to_string(part) for part in parts[1:])
+
+    @classmethod
+    def is_guest_dn(cls, dn: str) -> bool:
+        guest_base = getattr(settings, "LDAP_GUESTS_BASE", "") or ""
+        guest_base_lower = cls._normalize_dn(guest_base)
+        dn_lower = cls._normalize_dn(dn)
+        return bool(
+            guest_base_lower
+            and (
+                dn_lower == guest_base_lower
+                or dn_lower.endswith(f",{guest_base_lower}")
+            )
+        )
+
+    @classmethod
+    def _employee_number_search_base(cls) -> str:
+        return getattr(settings, "LDAP_BASE_DN", "") or getattr(
             settings,
             "LDAP_GUESTS_BASE",
             "",
         )
+
+    @classmethod
+    def _employee_number_dns(cls, conn, guest) -> list[str]:
+        base = cls._employee_number_search_base()
         if not base:
-            return
+            return []
         conn.search(
             search_base=base,
             search_filter=f"(employeeNumber={esc_filter(str(guest.id))})",
@@ -188,18 +313,33 @@ class LdapGuestUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
             attributes=["distinguishedName"],
             size_limit=2,
         )
-        for entry in conn.entries:
-            dn = str(getattr(entry, "entry_dn", ""))
-            if dn and dn.lower() != (current_dn or "").lower():
-                raise RuntimeError(
-                    f"employeeNumber {guest.id} already exists in LDAP: {dn}"
-                )
+        return [
+            str(getattr(entry, "entry_dn", ""))
+            for entry in conn.entries
+            if str(getattr(entry, "entry_dn", ""))
+        ]
+
+    @classmethod
+    def find_existing_dn_for_guest(cls, guest) -> str:
+        with _ldap() as conn:
+            dns = cls._employee_number_dns(conn, guest)
+        for dn in dns:
+            if cls.is_guest_dn(dn):
+                return dn
+        return ""
+
+    @classmethod
+    def _ensure_unique_employee_number(cls, conn, guest, current_dn: str = "") -> None:
+        dns = cls._employee_number_dns(conn, guest)
+        for dn in dns:
+            if dn and cls._normalize_dn(dn) != cls._normalize_dn(current_dn):
+                raise GuestEmployeeNumberConflict(str(guest.id), dn)
 
     @classmethod
     def create_for_guest(cls, guest, in_active_ou: bool) -> LdapGuestSyncResult:
         base_dn = cls.target_base(in_active_ou)
         with _ldap() as conn:
-            ensure_container_exists(conn, base_dn)
+            cls.ensure_guest_ou_chain(conn, base_dn)
             cls._ensure_unique_employee_number(conn, guest)
             attrs = cls._guest_attrs(guest)
             display_name = cls.display_name_for_guest(guest)
@@ -228,16 +368,19 @@ class LdapGuestUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
     ) -> LdapGuestSyncResult:
         target_base = cls.target_base(in_active_ou)
         with _ldap() as conn:
-            ensure_container_exists(conn, target_base)
+            cls.ensure_guest_ou_chain(conn, target_base)
             cls._ensure_unique_employee_number(conn, guest, dn)
 
         ldap_guest = cls.objects.get(dn=dn)
-        ldap_guest.move_to(target_base)
-        ldap_guest.apply_guest(guest)
-        ldap_guest.save()
+        if cls._normalize_dn(cls._parent_dn(str(ldap_guest.dn))) != cls._normalize_dn(
+            target_base
+        ):
+            ldap_guest.move_to(target_base)
+        update_fields = ldap_guest.apply_guest(guest)
+        ldap_guest.save(update_fields=update_fields)
         return cls._sync_result(str(ldap_guest.dn), guest)
 
-    def apply_guest(self, guest) -> None:
+    def apply_guest(self, guest) -> list[str]:
         self.sam_account_name = self.sam_for_guest(guest)
         self.user_principal_name = self.upn_for_guest(guest)
         self.given_name = guest.first_name or ""
@@ -248,3 +391,18 @@ class LdapGuestUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
         self.employee_number = str(guest.id)
         self.description = self.description_for_guest(guest)
         self.user_account_control = UserAccountControl.DISABLED
+        avatar = self.processed_avatar_for_guest(guest)
+        self.thumbnail_photo = avatar
+        return [
+            "sam_account_name",
+            "user_principal_name",
+            "given_name",
+            "sn",
+            "display_name",
+            "mail",
+            "telephone_number",
+            "employee_number",
+            "description",
+            "user_account_control",
+            "thumbnail_photo",
+        ]

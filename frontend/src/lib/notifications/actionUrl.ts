@@ -48,6 +48,7 @@ export function resolveNotificationActionUrl(
     : null;
 
   const requestId = parseNumericId(data?.request_id);
+  const visitId = parseNumericId(data?.visit_id);
   const documentId = parseNumericId(data?.document_id);
   const eventId = parseNumericId(data?.event_id);
   const postId = parseNumericId(data?.post_id);
@@ -62,6 +63,15 @@ export function resolveNotificationActionUrl(
     notification.category || "",
     objectType,
   ].join(" ").toLowerCase();
+
+  if (
+    visitId !== null && (
+      categoryHint.includes("guest")
+      || objectType === "guestvisit"
+    )
+  ) {
+    return buildUrl("/guests", { visit: visitId });
+  }
 
   if (requestId !== null && categoryHint.includes("procurement")) {
     return buildUrl("/procurement", { request: requestId });
@@ -141,6 +151,13 @@ export function resolveNotificationActionUrl(
       return buildUrl("/requests", { request: rawLinkedRequestId });
     }
 
+    if (url.pathname === "/guests") {
+      const rawLinkedVisitId = parseNumericId(
+        url.searchParams.get("visit") ?? url.searchParams.get("id"),
+      );
+      return buildUrl("/guests", { visit: rawLinkedVisitId });
+    }
+
     if (url.pathname === "/documents") {
       const rawLinkedDocumentId = parseNumericId(
         url.searchParams.get("document") ?? url.searchParams.get("id"),
@@ -173,6 +190,11 @@ export function resolveNotificationActionUrl(
   const requestMatch = rawActionUrl.match(/^\/requests\/(\d+)\/?(?:[#?].*)?$/);
   if (requestMatch) {
     return buildUrl("/requests", { request: Number(requestMatch[1]) });
+  }
+
+  const guestVisitMatch = rawActionUrl.match(/^\/guests\/visits\/(\d+)\/?(?:[#?].*)?$/);
+  if (guestVisitMatch) {
+    return buildUrl("/guests", { visit: Number(guestVisitMatch[1]) });
   }
 
   const documentMatch = rawActionUrl.match(/^\/documents\/(\d+)\/?(?:[#?].*)?$/);

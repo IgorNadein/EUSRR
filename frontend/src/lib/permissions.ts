@@ -107,6 +107,43 @@ export function canViewRequestStatistics(user?: User | null): boolean {
     );
 }
 
+export function canViewAllGuestVisits(user?: User | null): boolean {
+    if (!user?.auth) return false;
+    if (user.auth.is_staff || user.auth.is_superuser) return true;
+    const perms = user.auth.permissions || [];
+    const guestPerms = user.auth.permissions_by_app?.["guests"] || [];
+    return (
+        perms.includes("guests.view_all_guestvisit") ||
+        perms.includes("guests.decide_guestvisit") ||
+        perms.includes("guests.manage_guestaccount") ||
+        guestPerms.includes("view_all_guestvisit") ||
+        guestPerms.includes("decide_guestvisit") ||
+        guestPerms.includes("manage_guestaccount")
+    );
+}
+
+export function canDecideGuestVisits(user?: User | null): boolean {
+    if (!user?.auth) return false;
+    if (user.auth.is_staff || user.auth.is_superuser) return true;
+    const perms = user.auth.permissions || [];
+    const guestPerms = user.auth.permissions_by_app?.["guests"] || [];
+    return (
+        perms.includes("guests.decide_guestvisit") ||
+        guestPerms.includes("decide_guestvisit")
+    );
+}
+
+export function canManageGuestAccounts(user?: User | null): boolean {
+    if (!user?.auth) return false;
+    if (user.auth.is_staff || user.auth.is_superuser) return true;
+    const perms = user.auth.permissions || [];
+    const guestPerms = user.auth.permissions_by_app?.["guests"] || [];
+    return (
+        perms.includes("guests.manage_guestaccount") ||
+        guestPerms.includes("manage_guestaccount")
+    );
+}
+
 /**
  * Проверяет, может ли пользователь управлять оборудованием.
  *

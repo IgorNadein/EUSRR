@@ -22,15 +22,29 @@ def _setting_int(name: str, default: int) -> int:
 
 class Guest(models.Model):
     id = models.BigIntegerField(primary_key=True, editable=False)
-    last_name = models.CharField("Фамилия", max_length=150)
+    last_name = models.CharField("Фамилия", max_length=150, blank=True)
     first_name = models.CharField("Имя", max_length=150)
     patronymic = models.CharField("Отчество", max_length=150, blank=True)
     birth_date = models.DateField("Дата рождения", null=True, blank=True)
     phone = models.CharField("Телефон", max_length=64, blank=True)
     email = models.EmailField("Email", blank=True)
+    avatar = models.ImageField("Фото", upload_to="guests/avatars", blank=True, null=True)
     organization = models.CharField("Организация", max_length=255, blank=True)
     position = models.CharField("Должность", max_length=255, blank=True)
-    comment = models.TextField("Комментарий", blank=True)
+    document_folder = models.ForeignKey(
+        "filer.Folder",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="guest_document_folders",
+        verbose_name="Папка документов",
+    )
+    documents = models.ManyToManyField(
+        "documents.Document",
+        blank=True,
+        related_name="guests",
+        verbose_name="Документы гостя",
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -39,8 +53,8 @@ class Guest(models.Model):
         related_name="created_guests",
         verbose_name="Создал",
     )
-    is_active = models.BooleanField("Активен", default=True)
-    ldap_enabled = models.BooleanField("LDAP в Active OU", default=False)
+    is_active = models.BooleanField("Активен по доступу", default=False)
+    is_blacklisted = models.BooleanField("Черный список", default=False, db_index=True)
     ldap_username = models.CharField("LDAP username", max_length=150, blank=True)
     ldap_upn = models.CharField("LDAP UPN", max_length=255, blank=True)
     ldap_last_synced_at = models.DateTimeField(
@@ -60,7 +74,7 @@ class Guest(models.Model):
             models.Index(fields=["last_name", "first_name"], name="guest_name_idx"),
             models.Index(fields=["email"], name="guest_email_idx"),
             models.Index(fields=["phone"], name="guest_phone_idx"),
-            models.Index(fields=["ldap_enabled"], name="guest_ldap_enabled_idx"),
+            models.Index(fields=["is_active"], name="guest_active_idx"),
         ]
         constraints = [
             models.CheckConstraint(
@@ -79,6 +93,67 @@ class Guest(models.Model):
             for part in [self.last_name, self.first_name, self.patronymic]
             if part
         ).strip()
+
+    def _safe_document_folder_name(self) -> str:
+        raw = self.full_name or f"Гость {self.pk or ''}"
+        cleaned = "".join(
+            "_" if char in {"/", "\\"} or ord(char) < 32 else char
+            for char in raw
+        ).strip(" .")
+        return cleaned or f"Гость {self.pk}"
+
+    @staticmethod
+    def _unique_document_folder_name(parent, base_name: str, exclude_id=None) -> str:
+        from filer.models import Folder
+
+        candidate = base_name
+        counter = 2
+        while Folder.objects.filter(parent=parent, name=candidate).exclude(
+            id=exclude_id
+        ).exists():
+            candidate = f"{base_name} ({counter})"
+            counter += 1
+        return candidate
+
+    def ensure_document_folder(self, owner=None):
+        from filer.models import Folder
+
+        root, _ = Folder.objects.get_or_create(
+            parent=None,
+            name="guests",
+            defaults={"owner": owner},
+        )
+        base_name = self._safe_document_folder_name()
+
+        if self.document_folder_id:
+            folder = self.document_folder
+            expected_name = self._unique_document_folder_name(
+                root,
+                base_name,
+                exclude_id=folder.id,
+            )
+            update_fields = []
+            if folder.parent_id != root.id:
+                folder.parent = root
+                update_fields.append("parent")
+            if folder.name != expected_name:
+                folder.name = expected_name
+                update_fields.append("name")
+            if owner and not folder.owner_id:
+                folder.owner = owner
+                update_fields.append("owner")
+            if update_fields:
+                folder.save(update_fields=update_fields)
+            return folder
+
+        folder = Folder.objects.create(
+            parent=root,
+            name=self._unique_document_folder_name(root, base_name),
+            owner=owner,
+        )
+        Guest.objects.filter(pk=self.pk).update(document_folder=folder)
+        self.document_folder = folder
+        return folder
 
     @classmethod
     def next_guest_id(cls) -> int:
@@ -109,6 +184,8 @@ class Guest(models.Model):
             self.pk = self.next_guest_id()
         self.clean()
         super().save(*args, **kwargs)
+        if self.document_folder_id:
+            self.ensure_document_folder(owner=self.created_by)
 
 
 class GuestVisit(models.Model):
@@ -143,7 +220,6 @@ class GuestVisit(models.Model):
     )
     purpose = models.TextField("Цель приглашения")
     visit_comment = models.TextField("Комментарий заявителя", blank=True)
-    admin_comment = models.TextField("Комментарий администратора", blank=True)
     status = models.CharField(
         "Статус",
         max_length=24,
@@ -247,6 +323,8 @@ class GuestVisit(models.Model):
     @property
     def is_active_now(self) -> bool:
         if self.status != GuestVisitStatus.APPROVED:
+            return False
+        if self.inviter_inactive:
             return False
         if self.unlimited:
             return True

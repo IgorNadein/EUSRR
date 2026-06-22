@@ -226,7 +226,7 @@ LDAP-поля и состояние:
 Дополнительные поля:
 
 - `visit_comment`: комментарий заявителя;
-- `admin_comment`: внутренний комментарий администратора;
+- запросы уточнений и ответы хранятся в комментариях `communications`, а не в отдельном поле визита;
 - `host_department`: отдел приглашающего на момент создания, nullable;
 - `cancelled_at`, `cancelled_by`, `cancel_reason`;
 - `revoked_at`, `revoked_by`, `revoke_reason`;

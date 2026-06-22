@@ -16,6 +16,17 @@ export const VERB_CATEGORIES: Record<string, string> = {
   request_comment: 'Заявления',
   request_commented: 'Заявления',
   request_status_changed: 'Заявления',
+
+  // Гости
+  guest_visit_submitted: 'Гости',
+  guest_visit_info_provided: 'Гости',
+  guest_visit_needs_info: 'Гости',
+  guest_visit_approved: 'Гости',
+  guest_visit_rejected: 'Гости',
+  guest_visit_revoked: 'Гости',
+  guest_visit_expired: 'Гости',
+  guest_inviter_inactive: 'Гости',
+  guest_ldap_failed: 'Гости',
   
   // Сообщения и чат
   chat_new_message: 'Сообщения',
@@ -111,6 +122,17 @@ export const VERB_NAMES: Record<string, string> = {
   request_comment: 'Комментарий к заявлению',
   request_commented: 'Комментарий к заявлению',
   request_status_changed: 'Статус заявления изменён',
+
+  // Гости
+  guest_visit_submitted: 'Гостевой визит на рассмотрении',
+  guest_visit_info_provided: 'Информация по гостевому визиту предоставлена',
+  guest_visit_needs_info: 'Нужна информация по гостевому визиту',
+  guest_visit_approved: 'Гостевой визит одобрен',
+  guest_visit_rejected: 'Гостевой визит отклонён',
+  guest_visit_revoked: 'Гостевой доступ отозван',
+  guest_visit_expired: 'Гостевой доступ истёк',
+  guest_inviter_inactive: 'Приглашающий гостя неактивен',
+  guest_ldap_failed: 'Ошибка синхронизации гостя',
   
   // Сообщения и чат
   chat_new_message: 'Новое сообщение',
@@ -211,6 +233,8 @@ const VERB_TOKEN_NAMES: Record<string, string> = {
   employee: 'сотрудник',
   event: 'событие',
   feed: 'лента',
+  guest: 'гость',
+  guests: 'гости',
   hour: 'за час',
   item: 'позиция',
   maintenance: 'обслуживание',
@@ -238,6 +262,7 @@ const VERB_TOKEN_NAMES: Record<string, string> = {
  */
 export function getVerbCategory(verb: string): string {
   if (VERB_CATEGORIES[verb]) return VERB_CATEGORIES[verb];
+  if (verb.startsWith('guest_')) return 'Гости';
   if (verb.startsWith('procurement_') || verb.startsWith('equipment_')) return 'Закупки';
   return 'Общее';
 }

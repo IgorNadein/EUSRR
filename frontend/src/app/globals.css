@@ -356,6 +356,15 @@ html[data-bs-theme="dark"] .app-input::-webkit-calendar-picker-indicator {
   white-space: normal;
 }
 
+.guest-status-pill {
+  min-height: 2rem;
+  flex-shrink: 0;
+  padding: 0.375rem 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
 .app-avatar-frame {
   border: 1px solid var(--border-subtle);
   background: var(--surface-secondary);

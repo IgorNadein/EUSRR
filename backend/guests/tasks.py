@@ -58,20 +58,51 @@ def detect_inactive_inviters():
         inviter = visit.inviter
         if inviter.is_active and getattr(inviter, "is_actually_active", True):
             continue
+        reason = "Приглашающий неактивен, гостевой доступ отозван автоматически."
+        old_status = visit.status
         visit.inviter_inactive = True
-        visit.save(update_fields=["inviter_inactive", "updated_at"])
+        visit.status = GuestVisitStatus.REVOKED
+        visit.revoked_at = timezone.now()
+        visit.revoke_reason = reason
+        visit.save(
+            update_fields=[
+                "inviter_inactive",
+                "status",
+                "revoked_at",
+                "revoke_reason",
+                "updated_at",
+            ]
+        )
         record_guest_event(
             visit,
             GuestVisitEventType.INVITER_INACTIVE_DETECTED,
+            from_status=old_status,
+            to_status=GuestVisitStatus.REVOKED,
+            comment=reason,
             metadata={"inviter_id": inviter.id},
+        )
+        record_guest_event(
+            visit,
+            GuestVisitEventType.REVOKED,
+            from_status=old_status,
+            to_status=GuestVisitStatus.REVOKED,
+            comment=reason,
+            metadata={"reason": "inviter_inactive", "inviter_id": inviter.id},
         )
         notify_guest_visit(
             visit,
             "guest_inviter_inactive",
             admins,
             title="Приглашающий гостя неактивен",
-            message=f"Приглашающий для гостя {visit.guest.full_name} неактивен.",
+            message=reason,
         )
+        try:
+            GuestLdapService().sync_guest_for_visit(visit)
+        except Exception:
+            logger.exception(
+                "Failed to sync guest %s after inactive inviter revoke",
+                visit.guest_id,
+            )
 
 
 def execute_guest_queue_operation(operation: str, payload: dict) -> None:

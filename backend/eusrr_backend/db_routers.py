@@ -29,6 +29,7 @@ class LdapRouter:
         "ldapgroup",
         "ldaporganizationalunit",
         "ldaporganizationalunitgroup",
+        "ldapguestuser",
     }
 
     @property

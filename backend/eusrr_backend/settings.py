@@ -608,7 +608,7 @@ LDAP_POSITIONS_BASE = os.getenv(
     "LDAP_POSITIONS_BASE", "OU=Positions,DC=eusrr,DC=local"
 )
 LDAP_GUESTS_BASE = os.getenv(
-    "LDAP_GUESTS_BASE", "OU=Guests,DC=eusrr,DC=local"
+    "LDAP_GUESTS_BASE", f"OU=Guests,{LDAP_BASE_DN}"
 )
 LDAP_GUESTS_ACTIVE_BASE = os.getenv(
     "LDAP_GUESTS_ACTIVE_BASE", f"OU=Active,{LDAP_GUESTS_BASE}"

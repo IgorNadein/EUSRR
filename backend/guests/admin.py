@@ -11,10 +11,10 @@ class GuestAdmin(admin.ModelAdmin):
         "organization",
         "email",
         "phone",
-        "ldap_enabled",
         "is_active",
+        "is_blacklisted",
     )
-    list_filter = ("ldap_enabled", "is_active", "organization")
+    list_filter = ("is_active", "is_blacklisted", "organization")
     search_fields = (
         "id",
         "last_name",
@@ -98,4 +98,3 @@ class GuestVisitEventAdmin(admin.ModelAdmin):
         "metadata",
         "created_at",
     )
-

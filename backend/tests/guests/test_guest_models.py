@@ -129,10 +129,14 @@ def test_expire_guest_visit_records_event_and_disables_guest(settings, user_fact
 
 
 @pytest.mark.django_db
-def test_detect_inactive_inviters_flags_risk_without_auto_disable(user_factory):
+def test_detect_inactive_inviters_revokes_visit_and_disables_access(
+    settings,
+    user_factory,
+):
+    settings.LDAP_ENABLED = False
     admin = user_factory(staff=True)
     inviter = user_factory(active=False)
-    guest = Guest.objects.create(first_name="Risk", last_name="Guest")
+    guest = Guest.objects.create(first_name="Risk", last_name="Guest", is_active=True)
     visit = GuestVisit.objects.create(
         guest=guest,
         inviter=inviter,
@@ -148,8 +152,52 @@ def test_detect_inactive_inviters_flags_risk_without_auto_disable(user_factory):
     guest.refresh_from_db()
     assert admin.is_staff
     assert visit.inviter_inactive is True
-    assert guest.ldap_enabled is False
+    assert visit.status == GuestVisitStatus.REVOKED
+    assert visit.revoked_at is not None
+    assert "Приглашающий неактивен" in visit.revoke_reason
+    assert guest.is_active is False
+    assert guest.is_blacklisted is False
     assert visit.events.filter(event_type="inviter_inactive_detected").exists()
+    assert visit.events.filter(event_type="revoked").exists()
+    assert visit.events.filter(event_type="ldap_skipped").exists()
+
+
+@pytest.mark.django_db
+def test_inactive_inviter_revoke_keeps_access_when_other_active_visit_exists(
+    settings,
+    user_factory,
+):
+    settings.LDAP_ENABLED = False
+    inactive_inviter = user_factory(active=False)
+    active_inviter = user_factory(active=True)
+    guest = Guest.objects.create(first_name="Shared", last_name="Guest")
+    inactive_visit = GuestVisit.objects.create(
+        guest=guest,
+        inviter=inactive_inviter,
+        purpose="Inactive inviter access",
+        status=GuestVisitStatus.APPROVED,
+        access_starts_at=timezone.now() - timedelta(days=1),
+        access_expires_at=timezone.now() + timedelta(days=1),
+    )
+    active_visit = GuestVisit.objects.create(
+        guest=guest,
+        inviter=active_inviter,
+        purpose="Active inviter access",
+        status=GuestVisitStatus.APPROVED,
+        access_starts_at=timezone.now() - timedelta(days=1),
+        access_expires_at=timezone.now() + timedelta(days=1),
+    )
+
+    detect_inactive_inviters.run()
+
+    inactive_visit.refresh_from_db()
+    active_visit.refresh_from_db()
+    guest.refresh_from_db()
+    assert inactive_visit.status == GuestVisitStatus.REVOKED
+    assert inactive_visit.inviter_inactive is True
+    assert active_visit.status == GuestVisitStatus.APPROVED
+    assert active_visit.inviter_inactive is False
+    assert guest.is_active is True
 
 
 @pytest.mark.django_db
