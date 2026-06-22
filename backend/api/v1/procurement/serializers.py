@@ -1398,6 +1398,14 @@ class SupplierSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
+class ProcurementNotificationReadResponseSerializer(serializers.Serializer):
+    status = serializers.CharField()
+    count = serializers.IntegerField()
+    notification_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+    )
+
+
 class ProcurementOverviewStatsSerializer(serializers.Serializer):
     total_requests = serializers.IntegerField()
     pending_requests = serializers.IntegerField()

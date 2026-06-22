@@ -1,15 +1,11 @@
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
-from .models import Notification
+from .cache import get_unread_count
 
 
 def get_unread_notifications_count(user_id):
-    return Notification.objects.filter(
-        recipient_id=user_id,
-        unread=True,
-        deleted=False,
-    ).count()
+    return get_unread_count(user_id)
 
 
 def _send_user_event(user_id, event):

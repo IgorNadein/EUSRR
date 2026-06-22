@@ -1075,6 +1075,9 @@ class DepartmentService(BaseService):
 
         user_dn = self._user_service._get_employee_dn(employee)
         if add:
+            if not (employee.is_active and employee.is_actually_active):
+                self._remove_ou_group_member(role.ldap_group_dn, user_dn)
+                return
             self._add_ou_group_member(role.ldap_group_dn, user_dn)
         else:
             self._remove_ou_group_member(role.ldap_group_dn, user_dn)
@@ -1086,6 +1089,9 @@ class DepartmentService(BaseService):
         role_hint: Any = None,
     ) -> List[DepartmentRole]:
         """Собирает целевой набор ролей для LDAP sync в рамках одного отдела."""
+        if not (employee.is_active and employee.is_actually_active):
+            return []
+
         roles_by_id: Dict[int, DepartmentRole] = {}
 
         def add_role(role_obj: Optional[DepartmentRole]) -> None:
@@ -1555,11 +1561,15 @@ class DepartmentService(BaseService):
         group_dn = self._ensure_department_group(dept, dept_dn)
         group = LdapOrganizationalUnitGroup.objects.get(dn=group_dn)
 
-        active_emp_ids = list(
-            EmployeeDepartment.objects.filter(
-                department_id=dept.id, is_active=True
-            ).values_list("employee_id", flat=True)
-        )
+        active_links = EmployeeDepartment.objects.filter(
+            department_id=dept.id,
+            is_active=True,
+        ).select_related("employee")
+        active_emp_ids = [
+            link.employee_id
+            for link in active_links
+            if link.employee.is_active and link.employee.is_actually_active
+        ]
         role_group_dns = [
             item
             for item in DepartmentRole.objects.filter(

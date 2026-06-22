@@ -102,7 +102,7 @@ export function RequestDetailModal({
                     type="button"
                     onClick={() => void onReject(request.id)}
                     disabled={busyKey === `reject-${request.id}`}
-                    className="app-action-danger inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-60"
+                    className="app-action-reject inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-60"
                   >
                     <ThumbsDown size={16} />
                     Отклонить

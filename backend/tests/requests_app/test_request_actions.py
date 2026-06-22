@@ -1,17 +1,29 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from unittest.mock import patch
 
 import pytest
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 
-from employees.models import EmployeeAction
+from employees.constants import ACTION_DISMISSED, ACTION_HIRED
+from employees.models import (
+    Department,
+    DepartmentRole,
+    EmployeeAction,
+    EmployeeDepartment,
+    RoleAssignment,
+)
 from employees.services.request_actions import create_request_action
 from requests_app.enums import RequestStatus
 from requests_app.models import Request
-from requests_app.tasks import create_scheduled_action, schedule_auto_return
+from requests_app.tasks import (
+    create_scheduled_action,
+    process_due_personnel_actions,
+    schedule_auto_return,
+)
 
 
 pytestmark = pytest.mark.django_db
@@ -130,6 +142,193 @@ def test_immediate_approval_is_idempotent(user_factory):
     )
     assert actions.count() == 1
     assert actions.get().extra["request_id"] == request.id
+
+
+@patch("api.v1.employees.views.actions.EmployeeActionViewSet._ensure_ldap_dn_location")
+@patch("employees.signals.ldap.employee._is_ldap_enabled", return_value=True)
+@patch("employees.signals.ldap.employee.UserService.update_user")
+def test_same_day_dismissal_request_deactivates_profile_and_ldap(
+    mock_update,
+    mock_is_enabled,
+    mock_ensure_dn,
+    user_factory,
+):
+    from employees.models import LdapSyncState
+
+    employee = user_factory(is_ldap_managed=True)
+    approver = user_factory()
+    today = timezone.localdate()
+    department = Department.objects.create(name="Today Dismissal Dept")
+    link = EmployeeDepartment.objects.create(
+        employee=employee,
+        department=department,
+        is_active=True,
+        date_from=today - timedelta(days=30),
+    )
+    LdapSyncState.objects.create(
+        model="employee",
+        object_pk=str(employee.pk),
+        ldap_dn=f"CN={employee.email},OU=Users,DC=example,DC=com",
+        last_sync_dir="ldap",
+    )
+    request = Request.objects.create(
+        employee=employee,
+        type="dismissal",
+        status=RequestStatus.PENDING,
+        date_from=today,
+    )
+
+    request.status = RequestStatus.APPROVED
+    request.approver = approver
+    request.save()
+
+    action = EmployeeAction.objects.get(
+        source_request=request,
+        action=ACTION_DISMISSED,
+    )
+    employee.refresh_from_db()
+    link.refresh_from_db()
+    assert action.date.date() == today
+    assert employee.is_active is False
+    assert link.is_active is False
+    assert link.date_to == today
+    mock_update.assert_called_once()
+    assert mock_update.call_args.kwargs["emp"].id == employee.id
+    assert mock_update.call_args.kwargs["changes"] == {"is_active": False}
+    mock_ensure_dn.assert_called_once()
+    assert mock_ensure_dn.call_args.args[0].id == employee.id
+
+
+@patch("api.v1.employees.views.actions.EmployeeActionViewSet._ensure_ldap_dn_location")
+@patch("employees.signals.ldap.employee._is_ldap_enabled", return_value=True)
+@patch("employees.signals.ldap.employee.UserService.update_user")
+def test_past_dismissal_request_deactivates_immediately_with_request_date(
+    mock_update,
+    mock_is_enabled,
+    mock_ensure_dn,
+    user_factory,
+):
+    from employees.models import LdapSyncState
+
+    employee = user_factory(is_ldap_managed=True)
+    approver = user_factory()
+    dismissal_date = timezone.localdate() - timedelta(days=3)
+    EmployeeAction.objects.filter(
+        employee=employee,
+        action=ACTION_HIRED,
+    ).update(date=timezone.now() - timedelta(days=30))
+    department = Department.objects.create(name="Past Dismissal Dept")
+    link = EmployeeDepartment.objects.create(
+        employee=employee,
+        department=department,
+        is_active=True,
+        date_from=dismissal_date - timedelta(days=30),
+    )
+    LdapSyncState.objects.create(
+        model="employee",
+        object_pk=str(employee.pk),
+        ldap_dn=f"CN={employee.email},OU=Users,DC=example,DC=com",
+        last_sync_dir="ldap",
+    )
+    request = Request.objects.create(
+        employee=employee,
+        type="dismissal",
+        status=RequestStatus.PENDING,
+        date_from=dismissal_date,
+    )
+
+    request.status = RequestStatus.APPROVED
+    request.approver = approver
+    request.save()
+
+    action = EmployeeAction.objects.get(
+        source_request=request,
+        action=ACTION_DISMISSED,
+    )
+    employee.refresh_from_db()
+    link.refresh_from_db()
+    assert action.date.date() == dismissal_date
+    assert employee.is_active is False
+    assert link.is_active is False
+    assert link.date_to == dismissal_date
+    mock_update.assert_called_once()
+    assert mock_update.call_args.kwargs["emp"].id == employee.id
+    assert mock_update.call_args.kwargs["changes"] == {"is_active": False}
+    mock_ensure_dn.assert_called_once()
+    assert mock_ensure_dn.call_args.args[0].id == employee.id
+
+
+def test_future_dismissal_request_deactivates_on_effective_date(
+    user_factory,
+    monkeypatch,
+):
+    employee = user_factory()
+    approver = user_factory()
+    today = timezone.localdate()
+    dismissal_date = today + timedelta(days=1)
+    department = Department.objects.create(name="Dismissal Dept", head=employee)
+    link = EmployeeDepartment.objects.create(
+        employee=employee,
+        department=department,
+        is_active=True,
+        date_from=today - timedelta(days=30),
+    )
+    role = DepartmentRole.objects.create(
+        department=department,
+        name="Dismissal Role",
+    )
+    assignment = RoleAssignment.objects.create(
+        employee=employee,
+        role=role,
+        is_active=True,
+    )
+    request = Request.objects.create(
+        employee=employee,
+        type="dismissal",
+        status=RequestStatus.PENDING,
+        date_from=dismissal_date,
+    )
+
+    request.status = RequestStatus.APPROVED
+    request.approver = approver
+    request.save()
+
+    action = EmployeeAction.objects.get(
+        source_request=request,
+        action=ACTION_DISMISSED,
+    )
+    assert action.date.date() == dismissal_date
+    employee.refresh_from_db()
+    link.refresh_from_db()
+    assignment.refresh_from_db()
+    department.refresh_from_db()
+    assert employee.is_active is True
+    assert link.is_active is True
+    assert assignment.is_active is True
+    assert department.head_id == employee.id
+
+    monkeypatch.setattr(
+        "requests_app.tasks.timezone.localdate",
+        lambda: dismissal_date,
+    )
+    monkeypatch.setattr(
+        "api.v1.employees.views.actions.timezone.localdate",
+        lambda: dismissal_date,
+    )
+
+    result = process_due_personnel_actions.apply()
+
+    assert result.result == 1
+    employee.refresh_from_db()
+    link.refresh_from_db()
+    assignment.refresh_from_db()
+    department.refresh_from_db()
+    assert employee.is_active is False
+    assert link.is_active is False
+    assert link.date_to == dismissal_date
+    assert assignment.is_active is False
+    assert department.head_id is None
+    assert process_due_personnel_actions.apply().result == 0
 
 
 def test_helper_returns_existing_legacy_action(user_factory):

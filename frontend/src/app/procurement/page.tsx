@@ -262,7 +262,7 @@ function ProcurementRequestActionButtons({
             onClick={() => onReject(request.id)}
             disabled={busyKey === `reject-${request.id}`}
             title="Отклонить"
-            className={buttonClass("app-action-danger")}
+            className={buttonClass("app-action-reject")}
           >
             <ThumbsDown size={approvalIconSize} />
             {label("Отклонить")}
@@ -407,10 +407,12 @@ export default function ProcurementPage() {
     userLink,
     scope,
     scopeCounts,
+    unreadProcurementRequestCounts,
     handleAddComment,
     handleDeleteComment,
     handleAddItemComment,
     handleDeleteItemComment,
+    markRequestNotificationsRead,
     toggleItemComments,
   } = useProcurementPage(user);
 
@@ -523,6 +525,7 @@ export default function ProcurementPage() {
 
     try {
       await ensureRequestDetail(requestId);
+      await markRequestNotificationsRead(requestId);
       setDetailModalId(requestId);
       syncRequestUrl(requestId);
     } catch (detailError) {
@@ -530,7 +533,7 @@ export default function ProcurementPage() {
     } finally {
       setDetailModalLoading(false);
     }
-  }, [ensureRequestDetail, syncRequestUrl]);
+  }, [ensureRequestDetail, markRequestNotificationsRead, syncRequestUrl]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -835,6 +838,7 @@ export default function ProcurementPage() {
               const commentsOpen = Boolean(expandedComments[req.id]);
               const commentsTotal = resolvedDetail.comments_count ?? req.comments_count ?? comments.length;
               const isViewed = Boolean(resolvedDetail.is_viewed ?? req.is_viewed);
+              const hasUnreadNotifications = (unreadProcurementRequestCounts[req.id] || 0) > 0;
               const rowExpanded = !isViewed && expanded;
               const rowCommentsOpen = !isViewed && commentsOpen;
               const showInlineRequestActions = !isViewed && hasInlineRequestActions;
@@ -911,7 +915,13 @@ export default function ProcurementPage() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                              <span className={`h-2 w-2 shrink-0 rounded-full ${st === "completed" ? "bg-teal-500" : st === "approved" ? "bg-emerald-500" : st === "pending" || st === "waiting" ? "bg-amber-500" : st === "in_progress" ? "bg-sky-500" : st === "rejected" ? "bg-rose-500" : "bg-slate-400"}`} />
+                              {hasUnreadNotifications ? (
+                                <span
+                                  className="app-dot-accent h-2 w-2 shrink-0 rounded-full"
+                                  title="Есть новые уведомления"
+                                  aria-label="Есть новые уведомления"
+                                />
+                              ) : null}
                               <button
                                 type="button"
                                 onClick={() => void openDetailModal(req.id)}

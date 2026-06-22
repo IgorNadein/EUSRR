@@ -19,6 +19,8 @@ export function createProcurementApi(request: RequestFn) {
         notifyProcurementRequestArrival: (id: number) => request(`/api/v1/procurement/requests/${id}/notify_arrival/`, { method: 'POST' }),
         setProcurementRequestViewed: (id: number, isViewed: boolean) =>
             request(`/api/v1/procurement/requests/${id}/set_viewed/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_viewed: isViewed }) }),
+        markProcurementRequestNotificationsRead: (id: number): Promise<{ status: string; count: number; notification_ids: number[] }> =>
+            request(`/api/v1/procurement/requests/${id}/notifications/read/`, { method: 'POST' }),
         cancelProcurementRequest: (id: number, reason?: string) =>
             request(`/api/v1/procurement/requests/${id}/cancel/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: reason || '' }) }),
         getProcurementComments: (requestId: number) => request(`/api/v1/procurement/requests/${requestId}/comments/`),

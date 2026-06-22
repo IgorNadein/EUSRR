@@ -1,6 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { RequestFn } from './utils';
 
+export type UnreadNotificationsSummary = {
+    total: number;
+    verbs: Array<{
+        verb: string;
+        unread: number;
+    }>;
+    procurement_requests?: Array<{
+        request_id: number;
+        unread: number;
+    }>;
+};
+
 export function createNotificationsApi(request: RequestFn) {
     return {
         getNotifications: (params?: { page?: number; page_size?: number; unread_only?: boolean }) => {
@@ -12,6 +24,7 @@ export function createNotificationsApi(request: RequestFn) {
             return request(qs ? `/api/v1/notifications/?${qs}` : '/api/v1/notifications/');
         },
         getUnreadNotificationsCount: (): Promise<{ count: number }> => request('/api/v1/notifications/count/'),
+        getUnreadNotificationsSummary: (): Promise<UnreadNotificationsSummary> => request('/api/v1/notifications/summary/'),
         markNotificationAsRead: (id: number): Promise<void> => request(`/api/v1/notifications/${id}/read/`, { method: 'POST' }),
         markAllNotificationsAsRead: (): Promise<void> => request('/api/v1/notifications/read-all/', { method: 'POST' }),
         markCategoryAsRead: async (category: string): Promise<{ status: string; count: number }> => {

@@ -161,7 +161,7 @@ class Chat(models.Model):
             "(e.g., Project, Team, Event, Document)"
         ),
     )
-    context_object_id = models.PositiveIntegerField(
+    context_object_id = models.PositiveBigIntegerField(
         null=True, blank=True, verbose_name="Context object ID"
     )
     context_object = GenericForeignKey(

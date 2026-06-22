@@ -11,7 +11,13 @@ from employees.constants import (
     ACTIVATING_MARKER_ACTIONS,
     PERMANENT_ACTIONS,
 )
-from employees.models import Department, Employee, EmployeeAction, EmployeeDepartment
+from employees.models import (
+    Department,
+    Employee,
+    EmployeeAction,
+    EmployeeDepartment,
+    RoleAssignment,
+)
 from employees.services.personnel_state import resolve_employee_personnel_state
 from rest_framework import filters, viewsets
 from rest_framework.permissions import IsAuthenticated
@@ -102,6 +108,15 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
         if not self._action_affects_account(action_obj.action):
             return
 
+        if action_obj.date and action_obj.date.date() > timezone.localdate():
+            logger.info(
+                "Skipping future EmployeeAction effects for action_id=%s "
+                "effective_at=%s",
+                action_obj.id,
+                action_obj.date.date(),
+            )
+            return
+
         self._sync_employee_account_state(action_obj.employee)
 
     @staticmethod
@@ -116,6 +131,8 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
         emp.refresh_from_db(fields=["is_active"])
 
         if not should_be_active:
+            dismissal_date = current_state.date_from or today
+
             # Снимаем с должности руководителя (до деактивации!)
             headed_depts = list(Department.objects.filter(head=emp))
             if headed_depts:
@@ -143,8 +160,14 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
                 employee=emp, is_active=True
             ):
                 emp_dept.is_active = False
-                emp_dept.date_to = today
+                emp_dept.date_to = dismissal_date
                 emp_dept.save(update_fields=["is_active", "date_to"])
+
+            for assignment in RoleAssignment.objects.filter(
+                employee=emp, is_active=True
+            ):
+                assignment.is_active = False
+                assignment.save(update_fields=["is_active"])
         else:
             # Активность учетной записи определяется текущим постоянным
             # кадровым состоянием; временные события сами по себе не меняют

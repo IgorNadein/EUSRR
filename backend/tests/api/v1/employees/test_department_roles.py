@@ -12,6 +12,7 @@ from employees.models import (
     DepartmentRole,
     DepartmentPermission,
     EmployeeDepartment,  # <-- если у тебя EmployeeDepartmentLink, замени импорт и упоминания ниже
+    RoleAssignment,
 )
 from tests.conftest import _unique_phone
 
@@ -175,6 +176,15 @@ def test_perm_choices_and_perms_and_set_perms(api_client: APIClient):
     assert {"manage_department", "change_department_head", "assign_department_role"}.issubset(codes)
     assert "manage_department_events" not in codes
     assert "publish_department_post" not in codes
+    assert "view_request" not in codes
+    assert "view_requestcomment" not in codes
+    assert "add_requestcomment" not in codes
+    process_choice = next(
+        item
+        for item in resp.json().get("results", [])
+        if item["code"] == "can_process_requests"
+    )
+    assert process_choice["name"] == "Согласование закупок отдела"
 
     # set_perms (codes)
     url_set = reverse("api:v1:department-roles-set-perms", args=[role.id])
@@ -239,6 +249,109 @@ def test_back_compat_permissions_field_contains_ids(api_client: APIClient):
     assert resp.status_code == 200
     data = resp.json()
     assert set(data["permissions"]) == {dp_manage.id, dp_assign.id}
+    assert data["active_assignments_count"] == 0
+    assert data["ldap_linked"] is False
+
+
+@pytest.mark.django_db
+def test_update_role_name_and_permissions_and_reject_department_move(api_client: APIClient):
+    d1 = Department.objects.create(name="Dept1")
+    d2 = Department.objects.create(name="Dept2")
+    user = make_user("role-editor@example.com")
+    api_client.force_authenticate(user=user)
+    grant_assign_in_dept(user, d1)
+
+    ensure_dept_perm("manage_department")
+    ensure_dept_perm("assign_department_role")
+    role = make_role(d1, "Reviewer", ["manage_department"])
+    url_detail = reverse("api:v1:department-roles-detail", args=[role.id])
+
+    resp = api_client.patch(
+        url_detail,
+        {
+            "name": "Lead Reviewer",
+            "scoped_permission_codes": ["assign_department_role"],
+        },
+        format="json",
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["name"] == "Lead Reviewer"
+    assert {p["code"] for p in data["permissions_verbose"]} == {
+        "assign_department_role"
+    }
+
+    role.refresh_from_db()
+    assert role.department_id == d1.id
+    assert set(role.scoped_permissions.values_list("code", flat=True)) == {
+        "assign_department_role"
+    }
+
+    resp = api_client.patch(
+        url_detail,
+        {"department": d2.id},
+        format="json",
+    )
+    assert resp.status_code == 400
+    role.refresh_from_db()
+    assert role.department_id == d1.id
+
+
+@pytest.mark.django_db
+def test_delete_assigned_role_requires_force(api_client: APIClient):
+    dept = Department.objects.create(name="Dept")
+    manager = make_user("role-manager@example.com")
+    employee = make_user("role-holder@example.com")
+    legacy_employee = make_user("legacy-role-holder@example.com")
+    api_client.force_authenticate(user=manager)
+    grant_assign_in_dept(manager, dept)
+
+    role = make_role(dept, "Operator", [])
+    RoleAssignment.objects.create(employee=employee, role=role, assigned_by=manager)
+    EmployeeDepartment.objects.create(
+        employee=legacy_employee,
+        department=dept,
+        is_active=True,
+        role=role,
+    )
+
+    url_detail = reverse("api:v1:department-roles-detail", args=[role.id])
+    resp = api_client.delete(url_detail)
+    assert resp.status_code == status.HTTP_409_CONFLICT
+    assert resp.json()["active_assignments_count"] == 2
+    assert DepartmentRole.objects.filter(id=role.id).exists()
+
+    resp = api_client.delete(f"{url_detail}?force=true")
+    assert resp.status_code == status.HTTP_204_NO_CONTENT
+    assert not DepartmentRole.objects.filter(id=role.id).exists()
+    assert not RoleAssignment.objects.filter(role_id=role.id).exists()
+    assert EmployeeDepartment.objects.get(
+        employee=legacy_employee, department=dept
+    ).role_id is None
+
+
+@pytest.mark.django_db
+@override_settings(LDAP_ENABLED=True)
+def test_delete_role_triggers_ldap_signal_not_view_service(api_client: APIClient):
+    with override_settings(LDAP_ENABLED=False):
+        dept = Department.objects.create(name="Dept LDAP Delete")
+        staff = make_user("staff-delete-ldap@example.com", staff=True)
+        role = DepartmentRole.objects.create(
+            department=dept,
+            name="LDAP Linked",
+            ldap_group_dn="CN=ROLE_LDAP_Linked,OU=Dept,DC=example,DC=local",
+        )
+
+    api_client.force_authenticate(user=staff)
+    url_detail = reverse("api:v1:department-roles-detail", args=[role.id])
+
+    with patch(
+        "employees.signals.ldap.role.DepartmentService.sync_role_delete"
+    ) as mock_sync:
+        resp = api_client.delete(url_detail)
+
+    assert resp.status_code == status.HTTP_204_NO_CONTENT
+    mock_sync.assert_called_once()
 
 @pytest.mark.django_db
 def test_create_with_scoped_permission_codes_and_update_name(api_client: APIClient):

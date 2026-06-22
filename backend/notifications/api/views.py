@@ -17,6 +17,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from ..models import Notification, UserChannelPreferences
+from ..cache import (
+    get_unread_count as get_cached_unread_count,
+    get_unread_summary,
+    invalidate_unread_summary,
+)
 from ..realtime import (
     send_notification_read_event,
     send_notifications_read_all_event,
@@ -31,6 +36,7 @@ from .serializers import (
     SubscribePushRequestSerializer,
     UnsubscribePushRequestSerializer,
     UpdateChannelPreferencesSerializer,
+    UnreadSummaryResponseSerializer,
     VapidPublicKeyResponseSerializer,
     VerbTypesResponseSerializer,
 )
@@ -164,13 +170,21 @@ def get_notifications(request):
 @permission_classes([IsAuthenticated])
 def get_unread_count(request):
     """Получить количество непрочитанных уведомлений"""
-    count = Notification.objects.filter(
-        recipient=request.user,
-        unread=True,
-        deleted=False,
-    ).count()
+    count = get_cached_unread_count(request.user.id)
 
     return Response({'count': count})
+
+
+@extend_schema(
+    tags=["Notifications"],
+    summary="Получить сводку непрочитанных уведомлений по типам",
+    responses=UnreadSummaryResponseSerializer,
+)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_unread_summary_view(request):
+    """Получить cached-сводку непрочитанных уведомлений по verb."""
+    return Response(get_unread_summary(request.user.id))
 
 
 @extend_schema(
@@ -192,6 +206,7 @@ def mark_as_read(request, notification_id):
         notification.mark_as_read()
 
         if was_unread:
+            invalidate_unread_summary(request.user.id)
             send_notification_read_event(request.user.id, notification_id)
 
         return Response({
@@ -221,7 +236,10 @@ def mark_as_unread(request, notification_id):
             id=notification_id,
             recipient=request.user
         )
+        was_read = not notification.unread
         notification.mark_as_unread()
+        if was_read:
+            invalidate_unread_summary(request.user.id)
 
         return Response({
             'status': 'success',
@@ -258,6 +276,8 @@ def mark_all_as_read(request):
 
     notification_ids = list(queryset.values_list('id', flat=True))
     count = queryset.mark_all_as_read()
+    if count:
+        invalidate_unread_summary(request.user.id)
 
     if notification_ids:
         send_notifications_read_all_event(
@@ -313,6 +333,8 @@ def mark_category_as_read(request):
 
     notification_ids = list(queryset.values_list('id', flat=True))
     count = queryset.mark_all_as_read()
+    if count:
+        invalidate_unread_summary(request.user.id)
 
     if notification_ids:
         send_notifications_read_all_event(
@@ -342,8 +364,11 @@ def delete_notification(request, notification_id):
             id=notification_id,
             recipient=request.user
         )
+        was_unread = notification.unread
         notification.deleted = True
         notification.save(update_fields=['deleted'])
+        if was_unread:
+            invalidate_unread_summary(request.user.id)
 
         return Response({'status': 'success'})
 

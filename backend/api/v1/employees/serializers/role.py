@@ -30,6 +30,8 @@ class DepartmentRoleSerializer(serializers.ModelSerializer):
 
     permissions = serializers.SerializerMethodField(read_only=True)
     permissions_verbose = serializers.SerializerMethodField(read_only=True)
+    active_assignments_count = serializers.SerializerMethodField(read_only=True)
+    ldap_linked = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = DepartmentRole
@@ -41,8 +43,10 @@ class DepartmentRoleSerializer(serializers.ModelSerializer):
             "scoped_permission_codes",
             "permissions",
             "permissions_verbose",
+            "active_assignments_count",
+            "ldap_linked",
         )
-        read_only_fields = ("id",)
+        read_only_fields = ("id", "active_assignments_count", "ldap_linked")
 
     def _apply_codes_if_present(
         self, instance: DepartmentRole, validated_data: dict
@@ -76,6 +80,7 @@ class DepartmentRoleSerializer(serializers.ModelSerializer):
         return role
 
     def update(self, instance, validated_data):
+        validated_data.pop("department", None)
         codes = validated_data.pop("scoped_permission_codes", None)
         perms = validated_data.pop("scoped_permissions", None)
 
@@ -106,6 +111,24 @@ class DepartmentRoleSerializer(serializers.ModelSerializer):
             {"id": p.id, "code": p.code, "name": p.name}
             for p in obj.scoped_permissions.order_by("code").all()
         ]
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_active_assignments_count(self, obj: DepartmentRole):
+        employee_ids = set(
+            obj.assignments.filter(is_active=True).values_list(
+                "employee_id", flat=True
+            )
+        )
+        employee_ids.update(
+            obj.members.filter(is_active=True).values_list(
+                "employee_id", flat=True
+            )
+        )
+        return len(employee_ids)
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_ldap_linked(self, obj: DepartmentRole):
+        return bool((obj.ldap_group_dn or "").strip())
 
 
 class GroupSerializer(serializers.ModelSerializer):

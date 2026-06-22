@@ -41,6 +41,22 @@ class CountResponseSerializer(serializers.Serializer):
     count = serializers.IntegerField()
 
 
+class UnreadSummaryVerbSerializer(serializers.Serializer):
+    verb = serializers.CharField()
+    unread = serializers.IntegerField()
+
+
+class UnreadSummaryProcurementRequestSerializer(serializers.Serializer):
+    request_id = serializers.IntegerField()
+    unread = serializers.IntegerField()
+
+
+class UnreadSummaryResponseSerializer(serializers.Serializer):
+    total = serializers.IntegerField()
+    verbs = UnreadSummaryVerbSerializer(many=True)
+    procurement_requests = UnreadSummaryProcurementRequestSerializer(many=True)
+
+
 class StatusResponseSerializer(serializers.Serializer):
     status = serializers.CharField()
     message = serializers.CharField(required=False)

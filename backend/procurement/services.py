@@ -167,6 +167,63 @@ class ProcurementApprovalResolver:
         )
 
     @classmethod
+    def get_department_approval_users(cls, procurement_request):
+        """Return users who can approve the department-head approval step."""
+        if not procurement_request.department_id:
+            return []
+
+        from employees.constants import DeptPerm
+        from employees.models import Employee, EmployeeDepartment, RoleAssignment
+
+        department = procurement_request.department
+        approver_ids = []
+        seen = set()
+
+        def add_user_id(user_id):
+            if user_id and user_id not in seen:
+                seen.add(user_id)
+                approver_ids.append(user_id)
+
+        if department.head_id and department.head.is_active:
+            add_user_id(department.head_id)
+
+        role_assignment_user_ids = RoleAssignment.objects.filter(
+            role__department_id=department.id,
+            role__scoped_permissions__code=DeptPerm.APPROVE_PROCUREMENT,
+            employee__is_active=True,
+            is_active=True,
+        ).values_list("employee_id", flat=True)
+        for user_id in role_assignment_user_ids:
+            add_user_id(user_id)
+
+        legacy_role_user_ids = EmployeeDepartment.objects.filter(
+            department_id=department.id,
+            role__scoped_permissions__code=DeptPerm.APPROVE_PROCUREMENT,
+            employee__is_active=True,
+            is_active=True,
+        ).values_list("employee_id", flat=True)
+        for user_id in legacy_role_user_ids:
+            add_user_id(user_id)
+
+        users_by_id = Employee.objects.in_bulk(approver_ids)
+        return [
+            users_by_id[user_id]
+            for user_id in approver_ids
+            if user_id in users_by_id
+        ]
+
+    @classmethod
+    def user_can_approve_department_step(cls, user, procurement_request) -> bool:
+        if not user or not user.is_authenticated:
+            return False
+        return any(
+            approver.id == user.id
+            for approver in cls.get_department_approval_users(
+                procurement_request,
+            )
+        )
+
+    @classmethod
     def user_can_submit_for_approval(cls, user, procurement_request) -> bool:
         if not user or not user.is_authenticated:
             return False
@@ -308,9 +365,9 @@ class ProcurementApprovalResolver:
         )
 
         if route.resolver_type == ApprovalRoute.ResolverType.DEPARTMENT_HEAD:
-            head = procurement_request.department.head
-            if head and head.is_active:
-                return route.priority, head, step_name
+            approvers = cls.get_department_approval_users(procurement_request)
+            if approvers:
+                return route.priority, approvers[0], step_name
             return None
 
         if route.employee and route.employee.is_active:
@@ -387,10 +444,29 @@ class ProcurementApprovalResolver:
         if first_pending is None:
             return None
 
-        return pending.filter(
+        direct_approval = pending.filter(
             approver=user,
             priority__gte=first_pending.priority,
         ).first()
+        if direct_approval is not None:
+            return direct_approval
+
+        for approval in pending.filter(priority__gte=first_pending.priority):
+            if cls.approval_can_be_taken_by_user(approval, user):
+                return approval
+        return None
+
+    @classmethod
+    def approval_can_be_taken_by_user(cls, approval, user) -> bool:
+        from .models import ApprovalRoute
+
+        route = ApprovalRoute.objects.filter(
+            priority=approval.priority,
+            resolver_type=ApprovalRoute.ResolverType.DEPARTMENT_HEAD,
+        ).first()
+        if not route:
+            return False
+        return cls.user_can_approve_department_step(user, approval.request)
 
     @classmethod
     def get_available_higher_route(cls, user, procurement_request):
@@ -426,6 +502,22 @@ class ProcurementApprovalResolver:
             step = cls.resolve_approval_step(procurement_request, route)
             if step and step[1].id == user.id:
                 return step
+            if (
+                route.resolver_type == ApprovalRoute.ResolverType.DEPARTMENT_HEAD
+                and cls.user_can_approve_department_step(
+                    user,
+                    procurement_request,
+                )
+            ):
+                step_name = (
+                    step[2]
+                    if step
+                    else route.name or get_default_approval_step_name(
+                        route.priority,
+                        resolver_type=route.resolver_type,
+                    )
+                )
+                return route.priority, user, step_name
         return None
 
     @classmethod

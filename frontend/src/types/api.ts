@@ -212,6 +212,8 @@ export interface DepartmentRole {
   name: string;
   permissions: number[];
   permissions_verbose: DepartmentPermissionChoice[];
+  active_assignments_count?: number;
+  ldap_linked?: boolean;
 }
 
 export interface DepartmentRoleAssignment {
@@ -308,6 +310,127 @@ export interface Document {
   acknowledgements?: DocumentAcknowledgement[];
   acknowledgement_required?: boolean;
   is_acknowledged?: boolean;
+}
+
+// Guests
+export type GuestVisitStatus =
+  | "draft"
+  | "pending"
+  | "needs_info"
+  | "approved"
+  | "rejected"
+  | "cancelled"
+  | "expired"
+  | "revoked";
+
+export interface Guest {
+  id: number;
+  full_name?: string;
+  last_name: string;
+  first_name: string;
+  patronymic?: string;
+  birth_date?: string | null;
+  phone?: string;
+  email?: string;
+  avatar?: string;
+  organization?: string;
+  position?: string;
+  comments_count?: number;
+  visits_count?: number;
+  document_folder?: {
+    id: number;
+    name: string;
+  } | null;
+  documents?: Document[];
+  created_by?: User | null;
+  is_active: boolean;
+  is_blacklisted: boolean;
+  ldap_username?: string;
+  ldap_upn?: string;
+  ldap_last_synced_at?: string | null;
+  ldap_last_error?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface GuestVisitEvent {
+  id: number;
+  event_type: string;
+  actor?: User | null;
+  from_status?: string;
+  to_status?: string;
+  comment?: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface GuestVisit {
+  id: number;
+  guest: Guest;
+  inviter: User;
+  inviter_snapshot_name?: string;
+  inviter_snapshot_email?: string;
+  host_department?: Department | null;
+  purpose: string;
+  visit_comment?: string;
+  status: GuestVisitStatus;
+  status_display?: string;
+  access_starts_at?: string | null;
+  access_expires_at?: string | null;
+  all_day: boolean;
+  unlimited: boolean;
+  documents: Document[];
+  submitted_at?: string | null;
+  decided_by?: User | null;
+  decided_at?: string | null;
+  decision_comment?: string;
+  cancelled_at?: string | null;
+  cancel_reason?: string;
+  revoked_at?: string | null;
+  revoke_reason?: string;
+  expired_at?: string | null;
+  inviter_inactive: boolean;
+  created_at: string;
+  updated_at: string;
+  is_active_now: boolean;
+  is_expired: boolean;
+  can_edit: boolean;
+  can_submit: boolean;
+  can_decide: boolean;
+  can_approve: boolean;
+  can_reject: boolean;
+  can_request_info: boolean;
+  can_cancel: boolean;
+  can_revoke: boolean;
+  can_return_to_work: boolean;
+  can_sync_ldap: boolean;
+  can_delete: boolean;
+  comments_count: number;
+  has_unread_info_response: boolean;
+  events: GuestVisitEvent[];
+}
+
+export interface GuestVisitComment {
+  id: number;
+  author: User;
+  text: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface GuestVisitFormPayload {
+  guest_id?: number;
+  guest?: Partial<Guest>;
+  guest_comment?: string;
+  purpose?: string;
+  visit_comment?: string;
+  all_day?: boolean;
+  unlimited?: boolean;
+  access_starts_at?: string | null;
+  access_expires_at?: string | null;
+  date_from?: string;
+  date_to?: string;
+  document_ids?: number[];
 }
 
 // Document Comments

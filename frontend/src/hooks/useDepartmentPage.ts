@@ -11,6 +11,7 @@ import { loadAllPages } from "@/lib/shared";
 import type {
   Department,
   DepartmentMemberLink,
+  DepartmentPermissionChoice,
   DepartmentRole,
   DepartmentUserPermissions,
   PaginatedResponse,
@@ -20,6 +21,7 @@ import type {
 type DepartmentRoleDraft = {
   id: number | null;
   name: string;
+  permissionIds: number[];
 };
 
 type DepartmentMemberModalMode = "add" | "assignRole";
@@ -55,6 +57,8 @@ export type DepartmentPageController = {
   pendingKey: SavingKey | null;
   roleDraft: DepartmentRoleDraft;
   roleEditorOpen: boolean;
+  rolePermissionChoices: DepartmentPermissionChoice[];
+  rolePermissionChoicesLoading: boolean;
   roleUsage: Record<number, number>;
   roles: DepartmentRole[];
   selectableEmployees: User[];
@@ -139,7 +143,10 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   const [roleDraft, setRoleDraft] = useState<DepartmentRoleDraft>({
     id: null,
     name: "",
+    permissionIds: [],
   });
+  const [rolePermissionChoices, setRolePermissionChoices] = useState<DepartmentPermissionChoice[]>([]);
+  const [rolePermissionChoicesLoading, setRolePermissionChoicesLoading] = useState(false);
 
   const hydrateDepartmentDraft = useCallback((nextDepartment: Department | null) => {
     setDepartmentDraft({
@@ -284,6 +291,21 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   const reloadEmployeesDirectory = useCallback(async () => {
     await loadEmployeesDirectory();
   }, [loadEmployeesDirectory]);
+
+  const loadRolePermissionChoices = useCallback(async () => {
+    if (rolePermissionChoices.length > 0 || rolePermissionChoicesLoading) return;
+
+    try {
+      setRolePermissionChoicesLoading(true);
+      const response = await apiClient.getDepartmentRolePermChoices() as PaginatedResponse<DepartmentPermissionChoice> | { results?: DepartmentPermissionChoice[] } | DepartmentPermissionChoice[];
+      const results = Array.isArray(response) ? response : (response.results || []);
+      setRolePermissionChoices([...results].sort((a, b) => a.name.localeCompare(b.name, "ru")));
+    } catch (loadError) {
+      toast.error(getErrorMessage(loadError, "Не удалось загрузить права ролей"));
+    } finally {
+      setRolePermissionChoicesLoading(false);
+    }
+  }, [rolePermissionChoices.length, rolePermissionChoicesLoading]);
 
   const updateDepartmentDraft = useCallback((patch: Partial<{ name: string; description: string }>) => {
     setDepartmentDraft((current) => ({ ...current, ...patch }));
@@ -547,21 +569,24 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
   }, [department, loadCore]);
 
   const openCreateRole = useCallback(() => {
-    setRoleDraft({ id: null, name: "" });
+    setRoleDraft({ id: null, name: "", permissionIds: [] });
     setRoleEditorOpen(true);
-  }, []);
+    void loadRolePermissionChoices();
+  }, [loadRolePermissionChoices]);
 
   const openEditRole = useCallback((role: DepartmentRole) => {
     setRoleDraft({
       id: role.id,
       name: role.name,
+      permissionIds: [...(role.permissions || [])],
     });
     setRoleEditorOpen(true);
-  }, []);
+    void loadRolePermissionChoices();
+  }, [loadRolePermissionChoices]);
 
   const closeRoleEditor = useCallback(() => {
     setRoleEditorOpen(false);
-    setRoleDraft({ id: null, name: "" });
+    setRoleDraft({ id: null, name: "", permissionIds: [] });
   }, []);
 
   const saveRole = useCallback(async () => {
@@ -578,12 +603,14 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
       if (roleDraft.id) {
         await apiClient.updateDepartmentRole(roleDraft.id, {
           name,
+          scoped_permissions: roleDraft.permissionIds,
         });
         toast.success("Роль обновлена");
       } else {
         await apiClient.createDepartmentRole({
           department: department.id,
           name,
+          scoped_permissions: roleDraft.permissionIds,
         });
         toast.success("Роль создана");
       }
@@ -594,14 +621,18 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     } finally {
       setPendingKey(null);
     }
-  }, [closeRoleEditor, department, loadCore, roleDraft.id, roleDraft.name]);
+  }, [closeRoleEditor, department, loadCore, roleDraft.id, roleDraft.name, roleDraft.permissionIds]);
 
   const submitRoleDelete = useCallback(async (role: DepartmentRole) => {
-    if (!window.confirm(`Удалить роль «${role.name}»?`)) return;
+    const activeAssignmentsCount = role.active_assignments_count ?? roleUsage[role.id] ?? 0;
+    const message = activeAssignmentsCount > 0
+      ? `Удалить роль «${role.name}»? Она выдана сотрудникам: ${activeAssignmentsCount}. Назначения будут сняты.`
+      : `Удалить роль «${role.name}»?`;
+    if (!window.confirm(message)) return;
 
     try {
       setPendingKey(`role-delete-${role.id}`);
-      await apiClient.deleteDepartmentRole(role.id);
+      await apiClient.deleteDepartmentRole(role.id, { force: activeAssignmentsCount > 0 });
       await loadCore();
       toast.success("Роль удалена");
     } catch (submitError) {
@@ -609,7 +640,7 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     } finally {
       setPendingKey(null);
     }
-  }, [loadCore]);
+  }, [loadCore, roleUsage]);
 
   return {
     addMemberOpen,
@@ -632,6 +663,8 @@ export function useDepartmentPage(departmentId: number): DepartmentPageControlle
     pendingKey,
     roleDraft,
     roleEditorOpen,
+    rolePermissionChoices,
+    rolePermissionChoicesLoading,
     roleUsage,
     roles,
     selectableEmployees,

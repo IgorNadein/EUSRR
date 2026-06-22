@@ -325,6 +325,14 @@ def _execute_role_assignment(payload: dict) -> None:
     )
 
 
+def _execute_guest_operation(payload: dict) -> None:
+    """Повторяет синхронизацию гостевой LDAP-учетки."""
+    from guests.tasks import execute_guest_queue_operation
+
+    operation = payload.get("_operation") or payload.get("operation") or "guest_sync"
+    execute_guest_queue_operation(operation, payload)
+
+
 # Реестр: operation → callable
 _EXECUTORS = {
     "employee_save": _execute_employee_save,
@@ -340,6 +348,9 @@ _EXECUTORS = {
     "department_role_save": _execute_department_role_save,
     "department_role_delete": _execute_department_role_delete,
     "role_assignment": _execute_role_assignment,
+    "guest_sync": _execute_guest_operation,
+    "guest_disable": _execute_guest_operation,
+    "guest_delete": _execute_guest_operation,
 }
 
 

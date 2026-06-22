@@ -3,6 +3,33 @@
 import { ChevronDown } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+
+type DropdownPosition = {
+  left: number;
+  maxHeight: number;
+  top: number;
+  width: number;
+};
+
+function getDropdownPosition(anchor: HTMLElement): DropdownPosition {
+  const rect = anchor.getBoundingClientRect();
+  const gap = 4;
+  const viewportPadding = 8;
+  const preferredHeight = 224;
+  const belowSpace = window.innerHeight - rect.bottom - viewportPadding;
+  const aboveSpace = rect.top - viewportPadding;
+  const openUp = belowSpace < 180 && aboveSpace > belowSpace;
+  const availableHeight = Math.max(120, openUp ? aboveSpace : belowSpace);
+  const maxHeight = Math.min(preferredHeight, availableHeight);
+
+  return {
+    left: rect.left,
+    maxHeight,
+    top: openUp ? rect.top - maxHeight - gap : rect.bottom + gap,
+    width: rect.width,
+  };
+}
 
 /* ── Single-select dropdown with search ── */
 export function SearchableSelectSingle<T extends string | number>({
@@ -22,18 +49,45 @@ export function SearchableSelectSingle<T extends string | number>({
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
+  const [dropdownPosition, setDropdownPosition] = useState<DropdownPosition | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (ref.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+
+    const updatePosition = () => {
+      if (ref.current) {
+        setDropdownPosition(getDropdownPosition(ref.current));
+      }
+    };
+
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open]);
+
   const filtered = items.filter((i) => i.name.toLowerCase().includes(q.toLowerCase()));
   const selectedName = items.find((i) => i.id === selectedId)?.name;
+  const toggleOpen = () => {
+    if (!open && ref.current) {
+      setDropdownPosition(getDropdownPosition(ref.current));
+    }
+    setOpen((value) => !value);
+  };
 
   return (
     <div ref={ref} className="relative">
@@ -41,7 +95,7 @@ export function SearchableSelectSingle<T extends string | number>({
       <button
         type="button"
         disabled={disabled}
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggleOpen}
         className="app-select flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span className="truncate">
@@ -49,8 +103,17 @@ export function SearchableSelectSingle<T extends string | number>({
         </span>
         <ChevronDown size={14} className={`app-text-muted ml-2 shrink-0 transition ${open ? "rotate-180" : ""}`} />
       </button>
-      {open && (
-        <div className="app-menu absolute z-50 mt-1 max-h-56 w-full overflow-hidden rounded-lg">
+      {open && dropdownPosition && createPortal(
+        <div
+          ref={menuRef}
+          className="app-menu fixed z-[130] overflow-hidden rounded-lg"
+          style={{
+            left: dropdownPosition.left,
+            maxHeight: dropdownPosition.maxHeight,
+            top: dropdownPosition.top,
+            width: dropdownPosition.width,
+          }}
+        >
           <div className="app-divider border-b p-2">
             <input
               value={q}
@@ -60,7 +123,10 @@ export function SearchableSelectSingle<T extends string | number>({
               autoFocus
             />
           </div>
-          <div className="max-h-40 overflow-y-auto p-1">
+          <div
+            className="overflow-y-auto p-1"
+            style={{ maxHeight: Math.max(72, dropdownPosition.maxHeight - 54) }}
+          >
             {selectedId !== null && (
               <button
                 type="button"
@@ -85,7 +151,8 @@ export function SearchableSelectSingle<T extends string | number>({
               ))
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -113,27 +180,54 @@ export function SearchableSelectMulti<T extends { id: number; name: string }>({
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
+  const [dropdownPosition, setDropdownPosition] = useState<DropdownPosition | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (ref.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+
+    const updatePosition = () => {
+      if (ref.current) {
+        setDropdownPosition(getDropdownPosition(ref.current));
+      }
+    };
+
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open]);
+
   const filtered = items.filter((i) => i.name.toLowerCase().includes(q.toLowerCase()));
   const selectedItems = items.filter((i) => selectedIds.includes(i.id));
   const selectedNames = selectedItems.map((i) => i.name);
   const isInline = layout === "inline";
+  const toggleOpen = () => {
+    if (!open && ref.current) {
+      setDropdownPosition(getDropdownPosition(ref.current));
+    }
+    setOpen((value) => !value);
+  };
 
   return (
     <div ref={ref} className={`relative ${className}`}>
       {!isInline && <label className="app-text-muted mb-1 block text-xs font-medium">{label}</label>}
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggleOpen}
         className={isInline
           ? "app-input flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left text-sm"
           : "app-select flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm"}
@@ -162,8 +256,17 @@ export function SearchableSelectMulti<T extends { id: number; name: string }>({
         )}
         <ChevronDown size={14} className={`app-text-muted ${isInline ? "mt-1" : "ml-2"} shrink-0 transition ${open ? "rotate-180" : ""}`} />
       </button>
-      {open && (
-        <div className={`app-menu absolute z-50 mt-1 max-h-56 overflow-hidden rounded-lg ${isInline ? "inset-x-0" : "w-full"}`}>
+      {open && dropdownPosition && createPortal(
+        <div
+          ref={menuRef}
+          className="app-menu fixed z-[130] overflow-hidden rounded-lg"
+          style={{
+            left: dropdownPosition.left,
+            maxHeight: dropdownPosition.maxHeight,
+            top: dropdownPosition.top,
+            width: dropdownPosition.width,
+          }}
+        >
           <div className="app-divider border-b p-2">
             <input
               value={q}
@@ -173,7 +276,10 @@ export function SearchableSelectMulti<T extends { id: number; name: string }>({
               autoFocus
             />
           </div>
-          <div className="max-h-40 overflow-y-auto p-1">
+          <div
+            className="overflow-y-auto p-1"
+            style={{ maxHeight: Math.max(72, dropdownPosition.maxHeight - 54) }}
+          >
             {filtered.length === 0 ? (
               <p className="app-text-muted px-2 py-1.5 text-xs">Ничего не найдено</p>
             ) : (
@@ -190,7 +296,8 @@ export function SearchableSelectMulti<T extends { id: number; name: string }>({
               ))
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

@@ -1,13 +1,99 @@
 from unittest.mock import patch
 
 import pytest
+from django.core.cache import cache
 
 from push_notifications.models import WebPushDevice
+from notifications.cache import unread_summary_cache_key
 from notifications.models import Notification
 from notifications.models import UserChannelPreferences
 
 
 pytestmark = pytest.mark.django_db
+
+
+class TestNotificationUnreadSummary:
+    def test_unread_summary_groups_unread_notifications_by_verb(
+        self, api_client, user_factory
+    ):
+        user = user_factory()
+        other_user = user_factory()
+        Notification.objects.create(
+            recipient=user,
+            verb="procurement_department_request",
+            description="Закупка",
+            data={"request_id": 10},
+        )
+        Notification.objects.create(
+            recipient=user,
+            verb="procurement_department_request",
+            description="Еще закупка",
+            data={"request_id": "12"},
+        )
+        Notification.objects.create(
+            recipient=user,
+            verb="chat_new_message",
+            description="Сообщение",
+        )
+        Notification.objects.create(
+            recipient=user,
+            verb="document_uploaded",
+            description="Прочитанный документ",
+            unread=False,
+        )
+        Notification.objects.create(
+            recipient=other_user,
+            verb="chat_new_message",
+            description="Чужое сообщение",
+        )
+
+        api_client.force_authenticate(user=user)
+        cache.delete(unread_summary_cache_key(user.id))
+
+        response = api_client.get("/api/v1/notifications/summary/")
+
+        assert response.status_code == 200
+        assert response.data["total"] == 3
+        assert {
+            item["verb"]: item["unread"]
+            for item in response.data["verbs"]
+        } == {
+            "procurement_department_request": 2,
+            "chat_new_message": 1,
+        }
+        assert response.data["procurement_requests"] == [
+            {"request_id": 10, "unread": 1},
+            {"request_id": 12, "unread": 1},
+        ]
+
+    def test_unread_summary_cache_does_not_stay_stale_after_mark_as_read(
+        self, api_client, user_factory
+    ):
+        user = user_factory()
+        notification = Notification.objects.create(
+            recipient=user,
+            verb="request_updated",
+            description="Заявка обновлена",
+        )
+
+        api_client.force_authenticate(user=user)
+        cache.delete(unread_summary_cache_key(user.id))
+
+        response = api_client.get("/api/v1/notifications/summary/")
+        assert response.status_code == 200
+        assert response.data["total"] == 1
+        assert cache.get(unread_summary_cache_key(user.id)) is not None
+
+        response = api_client.post(
+            f"/api/v1/notifications/{notification.id}/read/"
+        )
+        assert response.status_code == 200
+        cached = cache.get(unread_summary_cache_key(user.id))
+        assert cached is None or cached["total"] == 0
+
+        response = api_client.get("/api/v1/notifications/summary/")
+        assert response.status_code == 200
+        assert response.data["total"] == 0
 
 
 class TestNotificationRealtimeEvents:

@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from django.shortcuts import get_object_or_404
 from employees.models import (
-    Department,
     DepartmentPermission,
     DepartmentRole,
     DeptPerm,
@@ -43,8 +41,34 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
 
         required_code = DeptPerm.ASSIGN_ROLE
 
+        def has_permission(self, request, view) -> bool:
+            if getattr(view, "action", None) in {
+                "update",
+                "partial_update",
+                "destroy",
+                "set_perms",
+                "assign",
+                "revoke",
+            }:
+                user = getattr(request, "user", None)
+                return bool(user and user.is_authenticated)
+            return super().has_permission(request, view)
+
     ordering_fields = ("name", "id")
     ordering = ("name", "id")
+
+    def _active_assignments_count(self, role: DepartmentRole) -> int:
+        employee_ids = set(
+            role.assignments.filter(is_active=True).values_list(
+                "employee_id", flat=True
+            )
+        )
+        employee_ids.update(
+            role.members.filter(is_active=True).values_list(
+                "employee_id", flat=True
+            )
+        )
+        return len(employee_ids)
 
     def get_permissions(self):
         if self.action in {
@@ -78,27 +102,8 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         """Создание роли."""
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
-
-        dept_id = ser.validated_data.get("department")
-        if isinstance(dept_id, Department):
-            dept = dept_id
-        else:
-            dept = get_object_or_404(Department, id=dept_id)
-
-        name = ser.validated_data["name"]
-        codes = ser.validated_data.pop("scoped_permission_codes", None)
-        perms = ser.validated_data.pop("scoped_permissions", None)
-
-        role = DepartmentRole.objects.create(
-            department=dept,
-            name=name,
-        )
-        if codes is not None:
-            qs = DepartmentPermission.objects.filter(code__in=codes)
-            role.scoped_permissions.set(list(qs))
-        elif perms is not None:
-            role.scoped_permissions.set(perms)
-
+        self.perform_create(ser)
+        role = ser.instance
         return Response(
             self.get_serializer(role).data, status=status.HTTP_201_CREATED
         )
@@ -107,6 +112,12 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         """Обновление роли."""
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
+        raw_department = request.data.get("department")
+        if raw_department is not None and str(raw_department) != str(instance.department_id):
+            return Response(
+                {"department": ["Роль нельзя перенести в другой отдел."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         ser = self.get_serializer(instance, data=request.data, partial=partial)
         ser.is_valid(raise_exception=True)
         self.perform_update(ser)
@@ -120,6 +131,21 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         """Удаление роли."""
         instance = self.get_object()
+        active_assignments_count = self._active_assignments_count(instance)
+        force = str(request.query_params.get("force", "")).lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        if active_assignments_count and not force:
+            return Response(
+                {
+                    "detail": "У роли есть активные назначения.",
+                    "active_assignments_count": active_assignments_count,
+                    "force_required": True,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
         instance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

@@ -22,8 +22,6 @@ def notify_new_request(request_obj):
     - Всем в копии (cc_users) - с пометкой "в копии"
     - Согласующему (approver)
     - Руководителям отделов
-    - Пользователям с правом can_process_requests
-
     При sent_to_all_department=True отправляет всем сотрудникам отделов
 
     Args:
@@ -104,26 +102,6 @@ def notify_new_request(request_obj):
     if request_obj.department and request_obj.department.head:
         if request_obj.department.head.id != request_obj.employee.id:
             recipients_set.add(request_obj.department.head)
-
-    # 6. Пользователи с правом обрабатывать заявки в этих отделах
-    dept_ids = list(request_obj.departments.values_list("id", flat=True))
-    if request_obj.department_id and request_obj.department_id not in dept_ids:
-        dept_ids.append(request_obj.department_id)
-
-    if dept_ids:
-        dept_processors = (
-            Employee.objects.filter(
-                departments_links__department_id__in=dept_ids,
-                departments_links__is_active=True,
-                departments_links__role__scoped_permissions__code=(
-                    "can_process_requests"
-                ),
-                is_active=True,
-            )
-            .exclude(id=request_obj.employee.id)
-            .distinct()
-        )
-        recipients_set.update(dept_processors)
 
     # Итоговое логирование
     logger.info(

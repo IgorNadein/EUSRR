@@ -20,6 +20,7 @@ import reversion
 from reversion.models import Version
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -858,6 +859,28 @@ class FolderViewSet(ModelViewSet):
 
         return document_ids
 
+    def _ensure_not_guest_managed_folders(self, folder_ids: set[int]):
+        from guests.models import Guest
+
+        if Guest.objects.filter(document_folder_id__in=folder_ids).exists():
+            raise ValidationError(
+                {
+                    "detail": (
+                        "Папка привязана к гостю. Изменяйте ее через "
+                        "карточку гостя."
+                    )
+                }
+            )
+
+    def update(self, request, *args, **kwargs):
+        folder = self.get_object()
+        self._ensure_not_guest_managed_folders({folder.id})
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs["partial"] = True
+        return self.update(request, *args, **kwargs)
+
     def _safe_archive_part(self, value: object, fallback: str) -> str:
         """Очищает часть ZIP-пути без потери кириллицы."""
         raw = str(value or fallback)
@@ -988,6 +1011,7 @@ class FolderViewSet(ModelViewSet):
         """Удаляет папку вместе с подпапками и связанными документами."""
         folder = self.get_object()
         folder_ids = self._collect_descendant_folder_ids(folder)
+        self._ensure_not_guest_managed_folders(folder_ids)
         document_ids = self._collect_document_ids_for_delete(folder_ids)
 
         if document_ids:

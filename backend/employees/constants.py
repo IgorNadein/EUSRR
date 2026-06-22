@@ -91,10 +91,8 @@ class DeptPerm:
     CHANGE_HEAD = "change_department_head"
     ASSIGN_ROLE = "assign_department_role"
     MANAGE_FEED = "manage_department_feed"
-    VIEW_REQUESTCOMMENT = "view_requestcomment"
-    ADD_REQUESTCOMMENT = "add_requestcomment"
-    VIEW_REQUEST = "view_request"
     CAN_PROCESS_REQUESTS = "can_process_requests"
+    APPROVE_PROCUREMENT = CAN_PROCESS_REQUESTS
     MANAGE_EQUIPMENT = "manage_department_equipment"
 
     CHOICES = (
@@ -102,9 +100,6 @@ class DeptPerm:
         (CHANGE_HEAD, "Назначать руководителя"),
         (ASSIGN_ROLE, "Назначать роли участникам"),
         (MANAGE_FEED, "Редактировать публикации отдела"),
-        (VIEW_REQUESTCOMMENT, "Просмотр комментариев по заявлениям"),
-        (ADD_REQUESTCOMMENT, "Добавление коментариев по заявлениям"),
-        (VIEW_REQUEST, "Просмотр заявлений отдела"),
-        (CAN_PROCESS_REQUESTS, "Рассмотрение заявлений отдела"),
+        (APPROVE_PROCUREMENT, "Согласование закупок отдела"),
         (MANAGE_EQUIPMENT, "Управлять оборудованием отдела"),
     )

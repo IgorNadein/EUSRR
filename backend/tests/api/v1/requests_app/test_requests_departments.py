@@ -12,6 +12,7 @@ from employees.models import (
     DepartmentRole,
     EmployeeDepartment,
 )
+from employees.constants import DeptPerm
 from tests.test_config import API_REQUESTS_URL
 
 
@@ -83,13 +84,13 @@ def dept_dataset(db, make_user, make_request, two_departments):
 
 
 @pytest.mark.django_db
-def test_department_view_permission_does_not_grant_list_visibility(
+def test_department_role_permission_does_not_grant_list_visibility(
     auth_client, make_user, dept_dataset
 ):
     """Права отдела не раскрывают заявки вне participant-only модели."""
     data = dept_dataset
     manager = make_user(email=f"manager-{get_random_string(6).lower()}@example.com")
-    _grant_dept_perm(manager, data["dept1"], "view_request")
+    _grant_dept_perm(manager, data["dept1"], DeptPerm.MANAGE)
 
     resp = auth_client(manager).get(API_BASE)
 
@@ -98,13 +99,13 @@ def test_department_view_permission_does_not_grant_list_visibility(
 
 
 @pytest.mark.django_db
-def test_department_view_permission_does_not_grant_detail_visibility(
+def test_department_role_permission_does_not_grant_detail_visibility(
     auth_client, make_user, dept_dataset
 ):
     """Даже детальный просмотр требует участия в заявке."""
     data = dept_dataset
     manager = make_user(email=f"manager2-{get_random_string(6).lower()}@example.com")
-    _grant_dept_perm(manager, data["dept1"], "view_request")
+    _grant_dept_perm(manager, data["dept1"], DeptPerm.MANAGE)
 
     resp = auth_client(manager).get(f"{API_BASE}{data['req1'].id}/")
 
@@ -112,16 +113,16 @@ def test_department_view_permission_does_not_grant_detail_visibility(
 
 
 @pytest.mark.django_db
-def test_department_comment_permissions_do_not_grant_comment_access(
+def test_department_role_permissions_do_not_grant_comment_access(
     auth_client, make_user, dept_dataset
 ):
-    """Права отдела на комментарии больше не открывают комментарии без участия."""
+    """Права отдела не открывают комментарии без участия."""
     data = dept_dataset
     viewer = make_user(email=f"viewer-{get_random_string(6).lower()}@example.com")
     adder = make_user(email=f"adder-{get_random_string(6).lower()}@example.com")
 
-    _grant_dept_perm(viewer, data["dept1"], "view_requestcomment")
-    _grant_dept_perm(adder, data["dept1"], "add_requestcomment")
+    _grant_dept_perm(viewer, data["dept1"], DeptPerm.MANAGE)
+    _grant_dept_perm(adder, data["dept1"], DeptPerm.MANAGE_FEED)
 
     get_resp = auth_client(viewer).get(f"{API_BASE}{data['req1'].id}/comments/")
     post_resp = auth_client(adder).post(
@@ -143,7 +144,7 @@ def test_department_processor_can_approve_only_as_direct_recipient(
     processor = make_user(
         email=f"processor-{get_random_string(6).lower()}@example.com"
     )
-    _grant_dept_perm(processor, data["dept1"], "can_process_requests")
+    _grant_dept_perm(processor, data["dept1"], DeptPerm.APPROVE_PROCUREMENT)
     data["req1"].recipients.add(processor)
 
     resp = auth_client(processor).post(f"{API_BASE}{data['req1'].id}/approve/")
@@ -160,7 +161,7 @@ def test_department_processor_without_recipient_cannot_approve(
     processor = make_user(
         email=f"processor2-{get_random_string(6).lower()}@example.com"
     )
-    _grant_dept_perm(processor, data["dept1"], "can_process_requests")
+    _grant_dept_perm(processor, data["dept1"], DeptPerm.APPROVE_PROCUREMENT)
 
     resp = auth_client(processor).post(f"{API_BASE}{data['req1'].id}/approve/")
 
