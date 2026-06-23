@@ -35,6 +35,7 @@ import {
   ThumbsDown,
   ThumbsUp,
   Trash2,
+  Upload,
   UserRoundPlus,
   XCircle,
 } from "lucide-react";
@@ -78,7 +79,6 @@ type GuestVisitFormState = {
   position: string;
   guest_comment: string;
   purpose: string;
-  visit_comment: string;
   all_day: boolean;
   unlimited: boolean;
   date_from: string;
@@ -190,7 +190,6 @@ const emptyForm = (): GuestVisitFormState => ({
   position: "",
   guest_comment: "",
   purpose: "",
-  visit_comment: "",
   all_day: true,
   unlimited: false,
   ...getDefaultAllDayPeriod(),
@@ -673,7 +672,6 @@ function GuestsPageContent() {
       guestMode: "existing",
       guest_id: String(visit.guest.id),
       purpose: visit.purpose || "",
-      visit_comment: visit.visit_comment || "",
       all_day: visit.all_day,
       unlimited: visit.unlimited,
       date_from: formatLocalDateInput(visit.access_starts_at),
@@ -736,7 +734,6 @@ function GuestsPageContent() {
   const buildVisitPayload = (): Record<string, unknown> => {
     const payload: Record<string, unknown> = {
       purpose: form.purpose.trim(),
-      visit_comment: form.visit_comment.trim(),
       all_day: form.all_day,
       unlimited: form.unlimited,
       document_ids: form.document_ids,
@@ -801,16 +798,10 @@ function GuestsPageContent() {
   const getIncompleteFormWarning = (): string | null => {
     if (editingVisit || form.guestMode !== "new") return null;
 
-    const hasMissingGuestProfileField = [
-      form.avatar,
-      form.birth_date,
-      form.phone.trim(),
-      form.email.trim(),
-      form.organization.trim(),
-      form.position.trim(),
-    ].some((value) => !value);
+    const hasGuestIdentityWarning = !form.last_name.trim() || !form.phone.trim() || !form.avatar;
+    const hasGuestDocumentWarning = form.document_ids.length === 0 && form.pending_documents.length === 0;
 
-    return hasMissingGuestProfileField
+    return hasGuestIdentityWarning || hasGuestDocumentWarning
       ? "В заявке указаны не все поля. Можно вернуться и заполнить данные или продолжить создание заявки."
       : null;
   };
@@ -2390,7 +2381,14 @@ function GuestAvatarPicker({
   onSelectImage: (value: string) => void;
   value: string;
 }) {
-  const handleChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraStarting, setCameraStarting] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [cameraError, setCameraError] = useState("");
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
@@ -2400,17 +2398,131 @@ function GuestAvatarPicker({
     }
   };
 
+  const stopCamera = useCallback(() => {
+    cameraStream?.getTracks().forEach((track) => track.stop());
+    setCameraStream(null);
+    setCameraStarting(false);
+    setCameraOpen(false);
+    setCameraError("");
+  }, [cameraStream]);
+
+  const openCamera = async () => {
+    setCameraOpen(true);
+    setCameraError("");
+    setCameraStarting(true);
+
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("Camera API is not available");
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: "user" },
+      });
+      setCameraStream(stream);
+    } catch {
+      setCameraError("Не удалось открыть камеру. Проверьте разрешение браузера на доступ к камере.");
+    } finally {
+      setCameraStarting(false);
+    }
+  };
+
+  const captureCameraImage = () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      setCameraError("Камера ещё не готова. Попробуйте ещё раз через секунду.");
+      return;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const capturedImage = canvas.toDataURL("image/jpeg", 0.92);
+    stopCamera();
+    onSelectImage(capturedImage);
+  };
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !cameraStream) return;
+
+    video.srcObject = cameraStream;
+    void video.play().catch(() => {
+      setCameraError("Не удалось запустить превью камеры.");
+    });
+
+    return () => {
+      video.srcObject = null;
+    };
+  }, [cameraStream]);
+
+  useEffect(() => (
+    () => {
+      cameraStream?.getTracks().forEach((track) => track.stop());
+    }
+  ), [cameraStream]);
+
   return (
-    <div className="flex items-center gap-3 md:col-span-2">
+    <div className="flex items-start gap-3 md:col-span-2">
       <GuestAvatar name={name || "Гость"} src={value} size="lg" />
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-[var(--foreground)]">Фото гостя</p>
         <p className="app-text-muted mt-0.5 text-xs">Используется в учетке и связанных сервисах.</p>
-        <label className="app-action-secondary mt-2 inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg px-3 text-xs font-medium">
-          <Camera size={14} />
-          Выбрать фото
-          <input type="file" accept="image/*" className="sr-only" onChange={handleChange} />
-        </label>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="app-action-secondary inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-medium"
+          >
+            <Upload size={14} />
+            Выбрать файл
+          </button>
+          <button
+            type="button"
+            onClick={() => void openCamera()}
+            disabled={cameraOpen || cameraStarting}
+            className="app-action-secondary inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-medium disabled:opacity-60"
+          >
+            <Camera size={14} />
+            Сделать фото
+          </button>
+          <input ref={fileInputRef} type="file" accept="image/*" className="sr-only" onChange={handleFileChange} />
+        </div>
+        {cameraOpen ? (
+          <div className="mt-3 overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-primary)]">
+            <div className="relative aspect-[4/3] bg-black">
+              {cameraStream ? (
+                <video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full items-center justify-center px-4 text-center text-xs text-white/80">
+                  {cameraStarting ? "Открываем камеру..." : "Камера не запущена"}
+                </div>
+              )}
+            </div>
+            {cameraError ? (
+              <p className="app-feedback-danger m-2 rounded-lg px-3 py-2 text-xs">{cameraError}</p>
+            ) : null}
+            <div className="flex flex-wrap justify-end gap-2 p-2">
+              <button type="button" onClick={stopCamera} className="app-action-secondary rounded-lg px-3 py-2 text-xs font-medium">
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={captureCameraImage}
+                disabled={!cameraStream || cameraStarting}
+                className="app-action-primary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-60"
+              >
+                <Camera size={13} />
+                Сделать снимок
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -2496,7 +2608,6 @@ function GuestVisitFormModal({
   const filledGuestExtraCount = [
     form.patronymic,
     form.birth_date,
-    form.phone,
     form.email,
     form.organization,
     form.position,
@@ -2627,6 +2738,7 @@ function GuestVisitFormModal({
             <TextField label="Фамилия" value={form.last_name} onChange={(value) => setField("last_name", value)} />
             <TextField label="Имя" value={form.first_name} onChange={(value) => setField("first_name", value)} required />
           </div>
+          <TextField label="Телефон" value={form.phone} onChange={(value) => setField("phone", value)} />
         </div>
       )}
       {documentsSection}
@@ -2650,7 +2762,6 @@ function GuestVisitFormModal({
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <TextField label="Отчество" value={form.patronymic} onChange={(value) => setField("patronymic", value)} />
               <TextField label="Дата рождения" value={form.birth_date} onChange={(value) => setField("birth_date", value)} type="date" />
-              <TextField label="Телефон" value={form.phone} onChange={(value) => setField("phone", value)} />
               <TextField label="Email" value={form.email} onChange={(value) => setField("email", value)} type="email" />
               <TextField label="Организация" value={form.organization} onChange={(value) => setField("organization", value)} />
               <TextField label="Должность" value={form.position} onChange={(value) => setField("position", value)} />
@@ -2709,10 +2820,6 @@ function GuestVisitFormModal({
       <label className="md:col-span-2">
         <span className="app-text-muted mb-1 block text-xs font-medium">Цель приглашения</span>
         <textarea value={form.purpose} onChange={(event) => setField("purpose", event.target.value)} rows={5} className="app-input w-full resize-none rounded-lg p-3 text-sm" />
-      </label>
-      <label className="md:col-span-2">
-        <span className="app-text-muted mb-1 block text-xs font-medium">Комментарий заявителя</span>
-        <textarea value={form.visit_comment} onChange={(event) => setField("visit_comment", event.target.value)} rows={4} className="app-input w-full resize-none rounded-lg p-3 text-sm" />
       </label>
     </section>
   );

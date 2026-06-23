@@ -97,6 +97,14 @@ const effectiveReceivedQuantity = (item: ProcurementItem, requestedQuantity: num
   return 0;
 };
 
+const quantityProgressMarkerClass = (quantity: number, requestedQuantity: number): string | null => {
+  const total = Math.max(0, Math.trunc(requestedQuantity));
+  const current = Math.max(0, Math.trunc(quantity));
+
+  if (total <= 0 || current >= total) return null;
+  return current <= 0 ? "bg-rose-500" : "bg-amber-500";
+};
+
 const toOptionalInteger = (value: string): number | null => {
   if (value.trim() === "") return null;
   const parsed = Number(value);
@@ -210,6 +218,8 @@ function ProcurementItemCard({
   const receivedQuantity = effectiveReceivedQuantity(item, requestedQuantity);
   const remainingQuantity = Math.max(0, requestedQuantity - receivedQuantity);
   const itemUnitLabel = getProcurementUnitLabel(item.unit);
+  const orderedQuantityMarkerClass = quantityProgressMarkerClass(orderedQuantity, requestedQuantity);
+  const receivedQuantityMarkerClass = quantityProgressMarkerClass(receivedQuantity, requestedQuantity);
   const status = item.execution_status || "pending";
   const statusLabel = item.execution_status_display || executionStatusOptions.find((option) => option.value === status)?.label || "Не выполнено";
   const canCancelReceived = Boolean(
@@ -377,14 +387,20 @@ function ProcurementItemCard({
             </div>
             <div className="min-w-0">
               <p className="app-text-muted text-[11px]">Заказано</p>
-              <p className="app-text-wrap mt-0.5 font-medium text-[var(--foreground)]">
-                {orderedQuantity}/{requestedQuantity} {itemUnitLabel}
+              <p className="app-text-wrap mt-0.5 inline-flex items-center gap-1.5 font-medium text-[var(--foreground)]">
+                {orderedQuantityMarkerClass ? (
+                  <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${orderedQuantityMarkerClass}`} />
+                ) : null}
+                <span>{orderedQuantity}/{requestedQuantity} {itemUnitLabel}</span>
               </p>
             </div>
             <div className="min-w-0">
               <p className="app-text-muted text-[11px]">Получено</p>
-              <p className="app-text-wrap mt-0.5 font-medium text-[var(--foreground)]">
-                {receivedQuantity}/{requestedQuantity} {itemUnitLabel}
+              <p className="app-text-wrap mt-0.5 inline-flex items-center gap-1.5 font-medium text-[var(--foreground)]">
+                {receivedQuantityMarkerClass ? (
+                  <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${receivedQuantityMarkerClass}`} />
+                ) : null}
+                <span>{receivedQuantity}/{requestedQuantity} {itemUnitLabel}</span>
               </p>
             </div>
           </div>
