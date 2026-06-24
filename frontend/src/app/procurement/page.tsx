@@ -40,6 +40,7 @@ import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/shared";
 import { useProcurementPage } from "@/hooks/useProcurementPage";
 import { Modal } from "@/components/ui";
+import { getExpectedDeliveryDateBadgeClass } from "@/lib/procurementDates";
 import { getProcurementQuantityUnitLabel, getProcurementUnitOptions } from "@/lib/procurementUnits";
 
 /* ══════════════════════════════════════════════════════
@@ -859,6 +860,7 @@ export default function ProcurementPage() {
               const totalRequestedQuantity = resolvedDetail.total_requested_quantity ?? req.total_requested_quantity ?? detailItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
               const totalOrderedQuantity = resolvedDetail.total_ordered_quantity ?? req.total_ordered_quantity ?? detailItems.reduce((sum, item) => sum + Number(item.ordered_quantity || 0), 0);
               const totalReceivedQuantity = resolvedDetail.total_received_quantity ?? req.total_received_quantity ?? detailItems.reduce((sum, item) => sum + Number(item.received_quantity || 0), 0);
+              const isRequestFullyReceived = totalRequestedQuantity > 0 && totalReceivedQuantity >= totalRequestedQuantity;
               const quantityUnitLabel = getProcurementQuantityUnitLabel(
                 detailItems,
                 resolvedDetail.quantity_unit_label ?? req.quantity_unit_label,
@@ -1040,7 +1042,7 @@ export default function ProcurementPage() {
                                   </span>
                                 ) : null}
                                 {nextExpectedDeliveryDate ? (
-                                  <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium">
+                                  <span className={`${getExpectedDeliveryDateBadgeClass(nextExpectedDeliveryDate, isRequestFullyReceived)} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium`}>
                                     <CalendarDays size={11} /> {fmt(nextExpectedDeliveryDate)}
                                   </span>
                                 ) : null}
