@@ -8,6 +8,7 @@ import { CommentComposer, CommentDeleteButton } from "@/components/shared/Commen
 import { Modal } from "@/components/ui";
 
 import { cleanLinkRows, linkHref, toLinkRows } from "@/lib/procurementLinks";
+import { getExpectedDeliveryDateBadgeClass } from "@/lib/procurementDates";
 import { getProcurementUnitLabel } from "@/lib/procurementUnits";
 import { formatDate, formatMoney, userProfileLink } from "@/lib/shared";
 import type { ProcurementItem, ProcurementItemComment, ProcurementItemExecutionStatus, ProcurementRequest, User } from "@/types/api";
@@ -220,6 +221,7 @@ function ProcurementItemCard({
   const itemUnitLabel = getProcurementUnitLabel(item.unit);
   const orderedQuantityMarkerClass = quantityProgressMarkerClass(orderedQuantity, requestedQuantity);
   const receivedQuantityMarkerClass = quantityProgressMarkerClass(receivedQuantity, requestedQuantity);
+  const isItemFullyReceived = requestedQuantity > 0 && receivedQuantity >= requestedQuantity;
   const status = item.execution_status || "pending";
   const statusLabel = item.execution_status_display || executionStatusOptions.find((option) => option.value === status)?.label || "Не выполнено";
   const canCancelReceived = Boolean(
@@ -376,7 +378,7 @@ function ProcurementItemCard({
               {expectedDeliveryDates.length > 0 ? (
                 <div className="mt-1 flex flex-wrap gap-1">
                   {expectedDeliveryDates.map((date, dateIndex) => (
-                    <span key={`${item.id}-date-${dateIndex}`} className="app-badge px-2 py-0.5 text-[11px] font-medium">
+                    <span key={`${item.id}-date-${dateIndex}`} className={`${getExpectedDeliveryDateBadgeClass(date, isItemFullyReceived)} rounded-full px-2 py-0.5 text-[11px] font-medium`}>
                       {formatDate(date)}
                     </span>
                   ))}

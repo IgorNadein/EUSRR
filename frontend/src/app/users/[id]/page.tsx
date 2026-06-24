@@ -108,6 +108,15 @@ export default function UserDetailPage() {
     () => getProfileDepartmentSummary(person?.departments),
     [person?.departments],
   );
+  const canViewAttendance = Boolean(
+    currentUser
+      && person
+      && (
+        currentUser.id === person.id
+        || currentUser.auth?.is_staff
+        || currentUser.auth?.is_superuser
+      ),
+  );
   const [availableSkills, setAvailableSkills] = useState<
     Array<{ id: number; name: string; description?: string }>
   >([]);
@@ -527,17 +536,21 @@ export default function UserDetailPage() {
               expandedCommentLength={240}
             />
 
-            <ProfileWorkScheduleCard
-              canEdit={Boolean(currentUser?.auth?.is_staff || currentUser?.auth?.is_superuser)}
-              employeeId={person.id}
-              personnelState={person.personnel_state}
-            />
+            {canViewAttendance ? (
+              <>
+                <ProfileWorkScheduleCard
+                  canEdit={Boolean(currentUser?.auth?.is_staff || currentUser?.auth?.is_superuser)}
+                  employeeId={person.id}
+                  personnelState={person.personnel_state}
+                />
 
-            <EmployeeAttendanceCard
-              attendanceAliases={person.attendance_aliases}
-              employeeActions={person.actions}
-              employeeId={person.id}
-            />
+                <EmployeeAttendanceCard
+                  attendanceAliases={person.attendance_aliases}
+                  employeeActions={person.actions}
+                  employeeId={person.id}
+                />
+              </>
+            ) : null}
           </>
         ) : null}
       </div>
