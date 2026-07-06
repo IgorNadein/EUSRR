@@ -180,6 +180,7 @@ export interface TaskCard {
   due_date?: string | null;
   position: number;
   completed_at?: string | null;
+  linked_posts_count?: number;
   linked_messages_count?: number;
   linked_events_count?: number;
   linked_documents_count?: number;
@@ -209,8 +210,20 @@ export interface TaskBoard {
   labels: TaskLabel[];
   tasks: TaskCard[];
   tasks_count?: number;
+  is_default_for_current_user?: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface TaskLinkedPost {
+  id: number;
+  kind: "post";
+  post_id: number;
+  post: Post | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
 }
 
 export interface TaskLinkedMessage {
@@ -412,7 +425,7 @@ export interface TaskActivity {
   action: "created" | "updated" | "moved" | "linked" | "unlinked";
   action_display?: string;
   actor?: User | null;
-  object_kind?: "message" | "calendar_event" | "document" | "request" | "procurement_request" | "employee" | "guest" | "guest_visit" | "attendance_record" | "";
+  object_kind?: "post" | "message" | "calendar_event" | "document" | "request" | "procurement_request" | "employee" | "guest" | "guest_visit" | "attendance_record" | "";
   object_id?: number | null;
   metadata?: Record<string, unknown>;
   created_at: string;
@@ -561,6 +574,7 @@ export interface Post {
   likes_count: number;
   comments_count: number;
   is_liked?: boolean;
+  linked_tasks?: MessageLinkedTask[];
 }
 
 export interface Comment {

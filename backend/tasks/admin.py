@@ -7,6 +7,7 @@ from .models import (
     TaskColumn,
     TaskLabel,
     TaskLinkedObject,
+    TaskUserSettings,
 )
 
 
@@ -73,3 +74,10 @@ class TaskActivityAdmin(admin.ModelAdmin):
     list_display = ["task", "action", "actor", "object_kind", "object_id", "created_at"]
     list_filter = ["action", "object_kind", "created_at"]
     search_fields = ["task__title", "actor__email", "object_id"]
+
+
+@admin.register(TaskUserSettings)
+class TaskUserSettingsAdmin(admin.ModelAdmin):
+    list_display = ["user", "default_board", "updated_at"]
+    search_fields = ["user__email", "user__first_name", "user__last_name", "default_board__name"]
+    autocomplete_fields = ["user", "default_board"]

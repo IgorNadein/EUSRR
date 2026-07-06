@@ -47,6 +47,32 @@ class TaskBoard(models.Model):
         return self.name
 
 
+class TaskUserSettings(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="task_settings",
+        verbose_name="Пользователь",
+    )
+    default_board = models.ForeignKey(
+        TaskBoard,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="default_for_user_settings",
+        verbose_name="Доска по умолчанию",
+    )
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+
+    class Meta:
+        verbose_name = "Настройки задач пользователя"
+        verbose_name_plural = "Настройки задач пользователей"
+
+    def __str__(self):
+        return f"{self.user} - задачи"
+
+
 class TaskColumn(models.Model):
     board = models.ForeignKey(
         TaskBoard,
@@ -174,6 +200,7 @@ class Task(models.Model):
 
 
 class TaskLinkedObjectKind(models.TextChoices):
+    POST = "post", "Новость"
     MESSAGE = "message", "Сообщение"
     CALENDAR_EVENT = "calendar_event", "Календарное событие"
     DOCUMENT = "document", "Документ"

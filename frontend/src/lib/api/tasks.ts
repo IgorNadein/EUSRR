@@ -13,6 +13,7 @@ import type {
     TaskLinkedGuest,
     TaskLinkedGuestVisit,
     TaskLinkedMessage,
+    TaskLinkedPost,
     TaskLinkedProcurementRequest,
     TaskLinkedRequest,
 } from "@/types/api";
@@ -38,6 +39,8 @@ export function createTasksApi(request: RequestFn) {
             }),
         deleteTaskBoard: (id: number): Promise<void> =>
             request(`/api/v1/tasks/boards/${id}/`, { method: "DELETE" }),
+        setDefaultTaskBoard: (id: number): Promise<TaskBoard> =>
+            request(`/api/v1/tasks/boards/${id}/set-default/`, { method: "POST" }),
         createTaskColumn: (data: Record<string, any>): Promise<TaskColumn> =>
             request("/api/v1/tasks/columns/", {
                 method: "POST",
@@ -79,6 +82,8 @@ export function createTasksApi(request: RequestFn) {
             request(`/api/v1/tasks/${id}/comments/${commentId}/`, {
                 method: "DELETE",
             }),
+        getPostLinkedTasks: (postId: number): Promise<TaskCard[]> =>
+            request(`/api/v1/tasks/linked-post-tasks/?post_id=${postId}`),
         getCalendarEventLinkedTasks: (eventId: number): Promise<TaskCard[]> =>
             request(`/api/v1/tasks/linked-event-tasks/?event_id=${eventId}`),
         getDocumentLinkedTasks: (documentId: number): Promise<TaskCard[]> =>
@@ -95,6 +100,17 @@ export function createTasksApi(request: RequestFn) {
             request(`/api/v1/tasks/linked-guest-visit-tasks/?guest_visit_id=${guestVisitId}`),
         getAttendanceRecordLinkedTasks: (attendanceRecordId: number): Promise<TaskCard[]> =>
             request(`/api/v1/tasks/linked-attendance-record-tasks/?attendance_record_id=${attendanceRecordId}`),
+        getTaskLinkedPosts: (id: number): Promise<TaskLinkedPost[]> =>
+            request(`/api/v1/tasks/${id}/linked-posts/`),
+        linkTaskPost: (id: number, postId: number): Promise<TaskLinkedPost> =>
+            request(`/api/v1/tasks/${id}/linked-posts/`, {
+                method: "POST",
+                body: JSON.stringify({ post_id: postId }),
+            }),
+        unlinkTaskPost: (id: number, linkId: number): Promise<void> =>
+            request(`/api/v1/tasks/${id}/linked-posts/${linkId}/`, {
+                method: "DELETE",
+            }),
         getTaskLinkedMessages: (id: number): Promise<TaskLinkedMessage[]> =>
             request(`/api/v1/tasks/${id}/linked-messages/`),
         linkTaskMessage: (id: number, messageId: number): Promise<TaskLinkedMessage> =>

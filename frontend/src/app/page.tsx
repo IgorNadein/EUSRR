@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight, Pencil, Pin, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Link2, Pencil, Pin, Plus, Trash2 } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { FeedPostCard } from "@/components/feed/FeedPostCard";
 import { Modal } from "@/components/ui";
 import { PostCommentsModal } from "@/components/feed/PostCommentsModal";
 import { RequestAvatar } from "@/components/requests/RequestAvatar";
+import { RelatedTaskLinks } from "@/components/tasks/RelatedTaskLinks";
+import TaskLinkPill from "@/components/tasks/TaskLinkPill";
 import { useNotifications } from "@/contexts/NotificationsContext";
 import { apiClient } from "@/lib/api";
 import { userProfileLink } from "@/lib/shared";
@@ -76,6 +78,7 @@ function HomePageContent() {
   const [likesUsersEndpointUnavailable, setLikesUsersEndpointUnavailable] = useState(false);
   const [imageCacheBuster, setImageCacheBuster] = useState<Record<number, number>>({});
   const [postMenuOpenId, setPostMenuOpenId] = useState<number | null>(null);
+  const [taskLinkPost, setTaskLinkPost] = useState<Post | null>(null);
   const postMenuRef = useRef<HTMLDivElement | null>(null);
 
   const formatUserName = (u: LikeUser) => {
@@ -207,6 +210,18 @@ function HomePageContent() {
       </span>
     );
   }, []);
+
+  const getPostTaskSubtitle = (post: Post) => {
+    if (post.type === "department") {
+      return post.department_name ? `Отдел: ${post.department_name}` : "Отдел";
+    }
+    return "Компания";
+  };
+
+  const getPostDefaultTaskTitle = (post: Post) => {
+    const title = (post.title || "").trim();
+    return title ? `Задача по новости: ${title}` : `Задача по новости #${post.id}`;
+  };
 
   const refreshPosts = useCallback(async () => {
     const response = await apiClient.getPosts();
@@ -476,6 +491,11 @@ function HomePageContent() {
     setCommentsOpen(true);
   };
 
+  const openTaskLinkModal = (post: Post) => {
+    setPostMenuOpenId(null);
+    setTaskLinkPost(post);
+  };
+
   const applyCommentCountDelta = (postId: number, delta: number) => {
     setPosts((prev) =>
       prev.map((item) =>
@@ -686,6 +706,7 @@ function HomePageContent() {
               : diffHours < 24
                 ? `${diffHours} ч. назад`
                 : `${Math.floor(diffHours / 24)} дн. назад`;
+            const linkedTasks = post.linked_tasks || [];
 
             return (
               <FeedPostCard
@@ -699,71 +720,93 @@ function HomePageContent() {
                   </>
                 }
                 headerActions={(
-                  (canEditPost(post) || canDeletePost(post)) ? (
-                    <div
-                      ref={postMenuOpenId === post.id ? postMenuRef : null}
-                      className="relative shrink-0"
+                  <div
+                    ref={postMenuOpenId === post.id ? postMenuRef : null}
+                    className="relative shrink-0"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setPostMenuOpenId((prev) => (prev === post.id ? null : post.id))}
+                      className="app-action-ghost flex h-8 w-8 items-center justify-center rounded-md"
+                      title="Действия с публикацией"
+                      aria-label="Действия с публикацией"
+                      aria-expanded={postMenuOpenId === post.id}
+                      aria-haspopup="menu"
                     >
-                      <button
-                        type="button"
-                        onClick={() => setPostMenuOpenId((prev) => (prev === post.id ? null : post.id))}
-                        className="app-action-ghost flex h-8 w-8 items-center justify-center rounded-md"
-                        title="Действия с публикацией"
-                        aria-label="Действия с публикацией"
-                        aria-expanded={postMenuOpenId === post.id}
-                        aria-haspopup="menu"
-                      >
-                        <ChevronRight
-                          size={15}
-                          className={`transition-transform duration-200 ${postMenuOpenId === post.id ? "rotate-90" : ""}`}
-                        />
-                      </button>
+                      <ChevronRight
+                        size={15}
+                        className={`transition-transform duration-200 ${postMenuOpenId === post.id ? "rotate-90" : ""}`}
+                      />
+                    </button>
 
-                      {postMenuOpenId === post.id ? (
-                        <div className="app-menu absolute right-0 top-full z-20 mt-2 w-48 rounded-xl py-1.5">
-                          {canPinPost ? (
-                            <button
-                              type="button"
-                              disabled={postActionId === post.id}
-                              onClick={() => void handlePinToggle(post)}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)] disabled:opacity-50"
-                            >
-                              <Pin size={14} className={post.pinned ? "fill-current app-accent-text" : ""} />
-                              {post.pinned ? "Открепить в общей ленте" : "Закрепить в общей ленте"}
-                            </button>
-                          ) : null}
-                          {canEditPost(post) ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPostMenuOpenId(null);
-                                openEditPostModal(post);
-                              }}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
-                            >
-                              <Pencil size={14} />
-                              Редактировать
-                            </button>
-                          ) : null}
-                          {canDeletePost(post) ? (
-                            <button
-                              type="button"
-                              disabled={postActionId === post.id}
-                              onClick={() => {
-                                setPostMenuOpenId(null);
-                                void removePost(post);
-                              }}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--danger-foreground)] transition hover:bg-[var(--danger-soft)] disabled:opacity-50"
-                            >
-                              <Trash2 size={14} />
-                              Удалить
-                            </button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null
+                    {postMenuOpenId === post.id ? (
+                      <div className="app-menu absolute right-0 top-full z-20 mt-2 w-56 rounded-xl py-1.5">
+                        <button
+                          type="button"
+                          onClick={() => openTaskLinkModal(post)}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                        >
+                          <Link2 size={14} />
+                          Связать с задачей
+                        </button>
+                        {canPinPost ? (
+                          <button
+                            type="button"
+                            disabled={postActionId === post.id}
+                            onClick={() => void handlePinToggle(post)}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)] disabled:opacity-50"
+                          >
+                            <Pin size={14} className={post.pinned ? "fill-current app-accent-text" : ""} />
+                            {post.pinned ? "Открепить в общей ленте" : "Закрепить в общей ленте"}
+                          </button>
+                        ) : null}
+                        {canEditPost(post) ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPostMenuOpenId(null);
+                              openEditPostModal(post);
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                          >
+                            <Pencil size={14} />
+                            Редактировать
+                          </button>
+                        ) : null}
+                        {canDeletePost(post) ? (
+                          <button
+                            type="button"
+                            disabled={postActionId === post.id}
+                            onClick={() => {
+                              setPostMenuOpenId(null);
+                              void removePost(post);
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--danger-foreground)] transition hover:bg-[var(--danger-soft)] disabled:opacity-50"
+                          >
+                            <Trash2 size={14} />
+                            Удалить
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
                 )}
+                footerAction={linkedTasks.length > 0 ? (
+                  <div className="flex max-w-full flex-wrap justify-end gap-1.5">
+                    {linkedTasks.slice(0, 3).map((task) => (
+                      <TaskLinkPill
+                        key={task.link_id || task.id}
+                        task={task}
+                        maxTitleClassName="max-w-40"
+                      />
+                    ))}
+                    {linkedTasks.length > 3 ? (
+                      <span className="app-badge rounded-full px-2 py-0.5 text-[11px] font-medium">
+                        +{linkedTasks.length - 3}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
                 imageSrc={withImageCacheBuster(resolveMediaUrl(post.image), post.id)}
                 isLikeActive={Boolean(post.is_liked)}
                 likeDisabled={likeBusyId === post.id}
@@ -935,6 +978,24 @@ function HomePageContent() {
         onCommentCountChange={applyCommentCountDelta}
         post={activePost}
       />
+
+      {taskLinkPost ? (
+        <RelatedTaskLinks
+          key={`post-task-link-${taskLinkPost.id}`}
+          entityLabel="Новость"
+          entityTitle={taskLinkPost.title || `Новость #${taskLinkPost.id}`}
+          entitySubtitle={getPostTaskSubtitle(taskLinkPost)}
+          defaultTaskTitle={getPostDefaultTaskTitle(taskLinkPost)}
+          defaultTaskDescription={(taskLinkPost.body || taskLinkPost.content || "").trim()}
+          successMessage="Новость связана с задачей"
+          variant="dialog"
+          open
+          loadLinkedTasks={() => apiClient.getPostLinkedTasks(taskLinkPost.id)}
+          linkTask={(taskId) => apiClient.linkTaskPost(taskId, taskLinkPost.id)}
+          onClose={() => setTaskLinkPost(null)}
+          onLinked={() => void refreshPosts()}
+        />
+      ) : null}
     </AppShell>
   );
 }

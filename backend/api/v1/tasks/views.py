@@ -15,6 +15,7 @@ from communications import comments_helpers
 from communications.models import Message
 from communications.utils import user_can_access_chat
 from documents.models import Document
+from feed.models import Post
 from guests.models import Guest, GuestVisit
 from procurement.models import ProcurementRequest
 from requests_app.models import Request as EmployeeRequest
@@ -30,6 +31,7 @@ from tasks.access import (
     user_can_access_document,
     user_can_access_employee,
     user_can_access_employee_request,
+    user_can_access_feed_post,
     user_can_access_guest,
     user_can_access_guest_visit,
     user_can_access_attendance_record,
@@ -44,6 +46,7 @@ from tasks.models import (
     TaskLabel,
     TaskLinkedObject,
     TaskLinkedObjectKind,
+    TaskUserSettings,
 )
 from tasks.realtime import (
     get_task_board_recipient_ids,
@@ -63,6 +66,7 @@ from .serializers import (
     TaskLinkedGuestSerializer,
     TaskLinkedGuestVisitSerializer,
     TaskLinkedMessageSerializer,
+    TaskLinkedPostSerializer,
     TaskLinkedProcurementRequestSerializer,
     TaskLinkedRequestSerializer,
     TaskSerializer,
@@ -74,6 +78,7 @@ from .serializers import (
     get_guest_content_type,
     get_guest_visit_content_type,
     get_message_content_type,
+    get_post_content_type,
     get_procurement_request_content_type,
     get_request_content_type,
 )
@@ -168,7 +173,21 @@ class TaskBoardViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="default")
     def default(self, request):
-        board = self.get_queryset().order_by("id").first()
+        queryset = self.get_queryset()
+        settings_obj = (
+            TaskUserSettings.objects.select_related("default_board")
+            .filter(user=request.user)
+            .first()
+        )
+        board = None
+        if settings_obj and settings_obj.default_board_id:
+            board = queryset.filter(id=settings_obj.default_board_id).first()
+            if board is None:
+                settings_obj.default_board = None
+                settings_obj.save(update_fields=["default_board", "updated_at"])
+
+        if board is None:
+            board = queryset.order_by("id").first()
         if not board:
             board = TaskBoard.objects.create(
                 name="Рабочая доска",
@@ -176,6 +195,16 @@ class TaskBoardViewSet(viewsets.ModelViewSet):
                 created_by=request.user,
             )
             create_default_columns(board)
+        serializer = self.get_serializer(self.get_queryset().get(id=board.id))
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"], url_path="set-default")
+    def set_default(self, request, pk=None):
+        board = self.get_object()
+        TaskUserSettings.objects.update_or_create(
+            user=request.user,
+            defaults={"default_board": board},
+        )
         serializer = self.get_serializer(self.get_queryset().get(id=board.id))
         return Response(serializer.data)
 
@@ -281,6 +310,11 @@ class TaskViewSet(viewsets.ModelViewSet):
             .select_related("board", "column", "created_by", "assignee")
             .prefetch_related("labels")
             .annotate(
+                linked_posts_count=Count(
+                    "linked_objects",
+                    filter=Q(linked_objects__kind=TaskLinkedObjectKind.POST),
+                    distinct=True,
+                ),
                 linked_messages_count=Count(
                     "linked_objects",
                     filter=Q(linked_objects__kind=TaskLinkedObjectKind.MESSAGE),
@@ -799,6 +833,45 @@ class TaskViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=["get"], url_path="linked-post-tasks")
+    def linked_post_tasks(self, request):
+        post_id = request.query_params.get("post_id")
+        try:
+            post_id = int(post_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"post_id": ["Укажите ID новости."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            post = Post.objects.select_related("author", "department").get(
+                id=post_id,
+            )
+        except Post.DoesNotExist:
+            return Response(
+                {"post_id": ["Новость не найдена."]},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not user_can_access_feed_post(request.user, post):
+            return Response(
+                {"detail": "Нет доступа к этой новости."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        queryset = (
+            self.get_queryset()
+            .filter(
+                linked_objects__kind=TaskLinkedObjectKind.POST,
+                linked_objects__content_type=get_post_content_type(),
+                linked_objects__object_id=post.id,
+            )
+            .distinct()
+        )
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     @action(detail=False, methods=["get"], url_path="linked-guest-tasks")
     def linked_guest_tasks(self, request):
         guest_id = request.query_params.get("guest_id")
@@ -1003,6 +1076,121 @@ class TaskViewSet(viewsets.ModelViewSet):
             .select_related("created_by", "content_type")
             .order_by("-created_at", "-id")
         )
+
+    def _post_links_queryset(self, task):
+        return (
+            TaskLinkedObject.objects.filter(
+                task=task,
+                kind=TaskLinkedObjectKind.POST,
+            )
+            .select_related("created_by", "content_type")
+            .order_by("-created_at", "-id")
+        )
+
+    @action(detail=True, methods=["get", "post"], url_path="linked-posts")
+    def linked_posts(self, request, pk=None):
+        task = self.get_object()
+        if request.method == "GET":
+            serializer = TaskLinkedPostSerializer(
+                self._post_links_queryset(task),
+                many=True,
+                context={"request": request},
+            )
+            return Response(serializer.data)
+
+        post_id = request.data.get("post_id")
+        try:
+            post_id = int(post_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"post_id": ["Укажите ID новости."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            post = Post.objects.select_related("author", "department").get(
+                id=post_id,
+            )
+        except Post.DoesNotExist:
+            return Response(
+                {"post_id": ["Новость не найдена."]},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not user_can_access_feed_post(request.user, post):
+            return Response(
+                {"detail": "Нет доступа к этой новости."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        link, created = TaskLinkedObject.objects.get_or_create(
+            task=task,
+            kind=TaskLinkedObjectKind.POST,
+            content_type=get_post_content_type(),
+            object_id=post.id,
+            defaults={"created_by": request.user},
+        )
+        serializer = TaskLinkedPostSerializer(
+            link,
+            context={"request": request},
+        )
+        if created:
+            create_task_activity(
+                task,
+                request.user,
+                TaskActivityAction.LINKED,
+                object_kind=TaskLinkedObjectKind.POST,
+                object_id=post.id,
+                metadata={
+                    "object_label": post.title,
+                    "object_type": "Новость",
+                },
+            )
+        send_task_board_update(
+            task.board,
+            "linked",
+            "post",
+            post.id,
+            extra={"task_id": task.id, "link_id": link.id},
+        )
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"linked-posts/(?P<link_id>\d+)",
+    )
+    def unlink_post(self, request, pk=None, link_id=None):
+        task = self.get_object()
+        try:
+            link = self._post_links_queryset(task).get(id=link_id)
+        except TaskLinkedObject.DoesNotExist:
+            return Response(
+                {"detail": "Связь не найдена."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        post_id = link.object_id
+        link.delete()
+        create_task_activity(
+            task,
+            request.user,
+            TaskActivityAction.UNLINKED,
+            object_kind=TaskLinkedObjectKind.POST,
+            object_id=post_id,
+            metadata={"object_type": "Новость"},
+        )
+        send_task_board_update(
+            task.board,
+            "unlinked",
+            "post",
+            post_id,
+            extra={"task_id": task.id, "link_id": int(link_id)},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["get", "post"], url_path="linked-messages")
     def linked_messages(self, request, pk=None):

@@ -4,6 +4,7 @@ from __future__ import annotations
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 
 from feed.constants import TYPE_DEPARTMENT, TYPE_EMPLOYEE
@@ -11,6 +12,53 @@ from feed.models import Post, PostLike
 from ..utils import build_media_url
 
 Employee = get_user_model()
+
+
+def _linked_task_payloads(post: Post, user) -> list[dict]:
+    if not user or not getattr(user, "is_authenticated", False):
+        return []
+
+    try:
+        from tasks.access import task_board_access_q
+        from tasks.models import (
+            TaskBoard,
+            TaskLinkedObject,
+            TaskLinkedObjectKind,
+        )
+    except Exception:
+        return []
+
+    content_type = ContentType.objects.get_for_model(Post)
+    accessible_boards = TaskBoard.objects.filter(
+        is_archived=False,
+    ).filter(task_board_access_q(user))
+
+    links = (
+        TaskLinkedObject.objects.filter(
+            kind=TaskLinkedObjectKind.POST,
+            content_type=content_type,
+            object_id=post.id,
+            task__board__in=accessible_boards,
+        )
+        .select_related("task", "task__board", "task__column")
+        .order_by("task__title", "task_id")
+    )
+
+    return [
+        {
+            "link_id": link.id,
+            "id": link.task_id,
+            "title": link.task.title,
+            "board_id": link.task.board_id,
+            "board_name": link.task.board.name,
+            "column_id": link.task.column_id,
+            "column_name": link.task.column.name,
+            "column_color": link.task.column.color,
+            "priority": link.task.priority,
+            "priority_display": link.task.get_priority_display(),
+        }
+        for link in links
+    ]
 
 
 class AuthorMiniSerializer(serializers.ModelSerializer):
@@ -68,6 +116,7 @@ class PostListSerializer(serializers.ModelSerializer):
     # Переопределяем поля для полных URL
     image = serializers.SerializerMethodField()
     attachment = serializers.SerializerMethodField()
+    linked_tasks = serializers.SerializerMethodField()
 
     class Meta:
         model = Post
@@ -91,6 +140,7 @@ class PostListSerializer(serializers.ModelSerializer):
             "author_id",
             "author",
             "is_liked",
+            "linked_tasks",
         ]
         read_only_fields = (
             "created_at",
@@ -105,6 +155,7 @@ class PostListSerializer(serializers.ModelSerializer):
             "department_id",
             "department_name",
             "is_liked",
+            "linked_tasks",
         )
 
     @extend_schema_field(OpenApiTypes.URI)
@@ -125,6 +176,11 @@ class PostListSerializer(serializers.ModelSerializer):
         if scope == "department":
             return bool(getattr(obj, "pinned_department", False))
         return bool(getattr(obj, "pinned_global", False))
+
+    def get_linked_tasks(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return _linked_task_payloads(obj, user)
 
 
 class PostSerializer(PostListSerializer):

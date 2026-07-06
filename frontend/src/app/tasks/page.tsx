@@ -27,12 +27,14 @@ import {
   Link2,
   Loader2,
   MessageSquare,
+  Newspaper,
   Paperclip,
   Pencil,
   Plus,
   RefreshCw,
   Search,
   ShoppingCart,
+  Star,
   Tag,
   Trash2,
   UserRound,
@@ -63,6 +65,7 @@ import type {
   TaskLinkedGuest,
   TaskLinkedGuestVisit,
   TaskLinkedMessage,
+  TaskLinkedPost,
   TaskLinkedProcurementRequest,
   TaskLinkedRequest,
   TaskPriority,
@@ -272,11 +275,11 @@ function TaskCardView({
           onClick={() => onOpen(task)}
           className="min-w-0 flex-1 text-left"
         >
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <div className="flex min-w-0 items-center gap-2">
             <span className="app-badge shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
               #{task.id}
             </span>
-            <h3 className="app-text-wrap min-w-0 text-sm font-semibold text-[var(--foreground)]">
+            <h3 className="min-w-0 max-w-[9rem] truncate text-sm font-semibold text-[var(--foreground)]">
               {task.title}
             </h3>
           </div>
@@ -384,11 +387,11 @@ function TaskDragOverlayCard({ task }: { task: TaskCard }) {
           <GripVertical size={14} />
         </div>
         <div className="min-w-0 flex-1 text-left">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <div className="flex min-w-0 items-center gap-2">
             <span className="app-badge shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
               #{task.id}
             </span>
-            <h3 className="app-text-wrap min-w-0 text-sm font-semibold text-[var(--foreground)]">
+            <h3 className="min-w-0 max-w-[9rem] truncate text-sm font-semibold text-[var(--foreground)]">
               {task.title}
             </h3>
           </div>
@@ -487,13 +490,13 @@ function BoardColumn({
       }`}
     >
       <div className="flex items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-3 py-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1 overflow-hidden">
           <div className="flex items-center gap-2">
             <span
               className="h-2.5 w-2.5 shrink-0 rounded-full"
               style={{ backgroundColor: column.color || "#38bdf8" }}
             />
-            <h2 className="truncate text-sm font-semibold text-[var(--foreground)]">
+            <h2 className="min-w-0 truncate text-sm font-semibold text-[var(--foreground)]">
               {column.name}
             </h2>
           </div>
@@ -547,6 +550,117 @@ function AddColumnCard({ onClick }: { onClick: () => void }) {
         Добавить колонку
       </span>
     </button>
+  );
+}
+
+function getLinkedPostOriginLabel(post: TaskLinkedPost["post"]) {
+  if (!post) return "";
+  if (post.type === "department") {
+    return post.department_name ? `Отдел: ${post.department_name}` : "Отдел";
+  }
+  return "Компания";
+}
+
+function LinkedPostCard({
+  link,
+  onUnlink,
+  disabled,
+}: {
+  link: TaskLinkedPost;
+  onUnlink: (linkId: number) => void;
+  disabled?: boolean;
+}) {
+  const post = link.post;
+  const canOpen = Boolean(link.can_open && link.object_url);
+  const postText = (post?.body || post?.content || "").trim();
+  const originLabel = getLinkedPostOriginLabel(post);
+  const mainContent = (
+    <>
+      <div className="mb-2 min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="app-pill inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium">
+            <Newspaper size={12} />
+            Новость
+          </span>
+          {originLabel ? (
+            <span className="app-badge rounded-full px-2 py-1 text-[11px]">
+              {originLabel}
+            </span>
+          ) : null}
+          {canOpen ? (
+            <span className="app-badge rounded-full px-2 py-1 text-[11px]">
+              Открыть
+            </span>
+          ) : null}
+        </div>
+        <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">
+          {post?.title || "Новость не найдена"}
+        </p>
+        {post?.created_at ? (
+          <p className="app-text-muted mt-0.5 text-xs">
+            {formatDateTime(post.created_at)}
+          </p>
+        ) : null}
+      </div>
+
+      {postText ? (
+        <p className="app-text-wrap line-clamp-4 whitespace-pre-wrap text-sm leading-5 text-[var(--foreground)]">
+          {postText}
+        </p>
+      ) : null}
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {post?.author ? (
+          <span className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+            <span className="truncate">{displayUserName(post.author)}</span>
+          </span>
+        ) : null}
+        {typeof post?.likes_count === "number" ? (
+          <span className="app-badge rounded-full px-2 py-1 text-[11px]">
+            {post.likes_count} лайк.
+          </span>
+        ) : null}
+        {typeof post?.comments_count === "number" ? (
+          <span className="app-badge rounded-full px-2 py-1 text-[11px]">
+            {post.comments_count} комм.
+          </span>
+        ) : null}
+        <span className="app-text-muted text-[11px]">
+          Связал: {link.created_by ? displayUserName(link.created_by) : "не указано"}
+        </span>
+      </div>
+    </>
+  );
+
+  return (
+    <article className="app-surface-muted rounded-xl border border-[var(--border-subtle)] p-3">
+      <div className="relative">
+        {canOpen && link.object_url ? (
+          <Link
+            href={link.object_url}
+            className="block rounded-lg pr-10 transition hover:bg-[var(--surface-elevated)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
+            title="Открыть связанную новость"
+          >
+            {mainContent}
+          </Link>
+        ) : (
+          <div className="pr-10">
+            {mainContent}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => onUnlink(link.id)}
+          disabled={disabled}
+          className="app-icon-button absolute right-0 top-0 z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
+          title="Убрать связь"
+          aria-label="Убрать связь с новостью"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -1569,6 +1683,7 @@ export default function TasksPage() {
   const [labelName, setLabelName] = useState("");
   const [labelColor, setLabelColor] = useState("#38bdf8");
   const [linkedObjectsOpen, setLinkedObjectsOpen] = useState(false);
+  const [linkedPosts, setLinkedPosts] = useState<TaskLinkedPost[]>([]);
   const [linkedMessages, setLinkedMessages] = useState<TaskLinkedMessage[]>([]);
   const [linkedEvents, setLinkedEvents] = useState<TaskLinkedCalendarEvent[]>([]);
   const [linkedDocuments, setLinkedDocuments] = useState<TaskLinkedDocument[]>([]);
@@ -1623,6 +1738,7 @@ export default function TasksPage() {
     setLinkedObjectsLoading(true);
     try {
       const [
+        posts,
         messages,
         events,
         documents,
@@ -1633,6 +1749,7 @@ export default function TasksPage() {
         guestVisits,
         attendanceRecords,
       ] = await Promise.all([
+        apiClient.getTaskLinkedPosts(taskId),
         apiClient.getTaskLinkedMessages(taskId),
         apiClient.getTaskLinkedEvents(taskId),
         apiClient.getTaskLinkedDocuments(taskId),
@@ -1643,6 +1760,7 @@ export default function TasksPage() {
         apiClient.getTaskLinkedGuestVisits(taskId),
         apiClient.getTaskLinkedAttendanceRecords(taskId),
       ]);
+      setLinkedPosts(posts);
       setLinkedMessages(messages);
       setLinkedEvents(events);
       setLinkedDocuments(documents);
@@ -1984,7 +2102,7 @@ export default function TasksPage() {
     () => activeColumns.find((column) => column.id === viewTask?.column) || null,
     [activeColumns, viewTask?.column],
   );
-  const linkedObjectsCount = linkedMessages.length + linkedEvents.length + linkedDocuments.length + linkedRequests.length + linkedProcurementRequests.length + linkedEmployees.length + linkedGuests.length + linkedGuestVisits.length + linkedAttendanceRecords.length;
+  const linkedObjectsCount = linkedPosts.length + linkedMessages.length + linkedEvents.length + linkedDocuments.length + linkedRequests.length + linkedProcurementRequests.length + linkedEmployees.length + linkedGuests.length + linkedGuestVisits.length + linkedAttendanceRecords.length;
   const linkedObjectsBadgeCount = viewTask?.linked_objects_count ?? linkedObjectsCount;
   const commentsBadgeCount = viewTask?.comments_count ?? taskComments.length;
 
@@ -1999,6 +2117,7 @@ export default function TasksPage() {
 
   useEffect(() => {
     if (!viewTaskId) {
+      setLinkedPosts([]);
       setLinkedMessages([]);
       setLinkedEvents([]);
       setLinkedDocuments([]);
@@ -2206,6 +2325,33 @@ export default function TasksPage() {
     }
   }, [board, loadBoard, loadBoards]);
 
+  const setDefaultSelectedBoard = useCallback(async () => {
+    if (!board || saving || board.is_default_for_current_user) return;
+
+    setBoardActionsMenuOpen(false);
+    setSaving(true);
+    setError(null);
+    try {
+      const updatedBoard = await apiClient.setDefaultTaskBoard(board.id);
+      setBoard((current) => (
+        current
+          ? {
+              ...current,
+              is_default_for_current_user: current.id === updatedBoard.id,
+            }
+          : current
+      ));
+      setBoards((current) => current.map((item) => ({
+        ...item,
+        is_default_for_current_user: item.id === updatedBoard.id,
+      })));
+    } catch (defaultError) {
+      setError(getTaskError(defaultError, "Не удалось выбрать доску по умолчанию"));
+    } finally {
+      setSaving(false);
+    }
+  }, [board, saving]);
+
   const deleteSelectedBoard = useCallback(async () => {
     if (!board || saving) return;
     if (!window.confirm(`Удалить доску "${board.name}"? Все задачи этой доски будут удалены.`)) return;
@@ -2412,6 +2558,23 @@ export default function TasksPage() {
       setSaving(false);
     }
   }, [board, loadBoard, saving, viewTask]);
+
+  const unlinkPostFromViewedTask = useCallback(async (linkId: number) => {
+    if (!board || !viewTask || saving) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      await apiClient.unlinkTaskPost(viewTask.id, linkId);
+      await loadTaskLinkedObjects(viewTask.id);
+      await loadBoard(board.id);
+      if (activityOpen) await loadTaskActivity(viewTask.id);
+    } catch (unlinkError) {
+      setError(getTaskError(unlinkError, "Не удалось убрать связь с новостью"));
+    } finally {
+      setSaving(false);
+    }
+  }, [activityOpen, board, loadBoard, loadTaskActivity, loadTaskLinkedObjects, saving, viewTask]);
 
   const unlinkMessageFromViewedTask = useCallback(async (linkId: number) => {
     if (!board || !viewTask || saving) return;
@@ -2682,6 +2845,26 @@ export default function TasksPage() {
                     </button>
                     <button
                       type="button"
+                      onClick={() => void setDefaultSelectedBoard()}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)] disabled:cursor-default disabled:opacity-70 disabled:hover:bg-transparent"
+                      disabled={saving || Boolean(board?.is_default_for_current_user)}
+                    >
+                      <Star
+                        size={14}
+                        className={`shrink-0 ${
+                          board?.is_default_for_current_user
+                            ? "fill-current app-accent-text"
+                            : "app-text-muted"
+                        }`}
+                      />
+                      <span>
+                        {board?.is_default_for_current_user
+                          ? "Доска по умолчанию"
+                          : "Сделать доской по умолчанию"}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => void deleteSelectedBoard()}
                       className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--danger-foreground)] transition hover:bg-[var(--danger-soft)]"
                       disabled={saving}
@@ -2753,6 +2936,13 @@ export default function TasksPage() {
                         >
                           <Kanban size={15} className="shrink-0" />
                           <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                          {item.is_default_for_current_user ? (
+                            <Star
+                              size={12}
+                              className="app-accent-text shrink-0 fill-current"
+                              aria-label="Доска по умолчанию"
+                            />
+                          ) : null}
                         </button>
                       );
                     })}
@@ -3352,6 +3542,14 @@ export default function TasksPage() {
                     </div>
                   ) : linkedObjectsCount > 0 ? (
                     <>
+                      {linkedPosts.map((link) => (
+                        <LinkedPostCard
+                          key={link.id}
+                          link={link}
+                          onUnlink={unlinkPostFromViewedTask}
+                          disabled={saving}
+                        />
+                      ))}
                       {linkedMessages.map((link) => (
                         <LinkedMessageCard
                           key={link.id}

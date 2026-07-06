@@ -13,12 +13,13 @@ from attendance.models import AttendanceAnalysisRun, AttendanceRecord
 from communications.models import Chat, ChatMembership, Message
 from documents.models import Document
 from employees.models import Department, EmployeeDepartment, RoleAssignment
+from feed.models import Post
 from guests.models import Guest, GuestVisit
 from procurement.constants import ProcurementStatus, UrgencyLevel
 from procurement.models import ProcurementRequest
 from requests_app.models import Request as EmployeeRequest
 from schedule.models import Calendar, CalendarRelation, Event
-from tasks.models import Task, TaskBoard, TaskColumn
+from tasks.models import Task, TaskBoard, TaskColumn, TaskUserSettings
 from tasks.realtime import get_task_board_recipient_ids
 
 pytestmark = pytest.mark.django_db
@@ -75,6 +76,61 @@ def test_default_board_creates_work_columns(api_client, user):
     ]
     assert TaskBoard.objects.count() == 1
     assert TaskColumn.objects.count() == 4
+
+
+def test_user_can_set_personal_default_board(api_client, user):
+    api_client.force_authenticate(user=user)
+    first_board = api_client.get(
+        reverse("api:v1:tasks:task-board-default")
+    ).data
+    second_board = TaskBoard.objects.create(
+        name="Персональная доска по умолчанию",
+        created_by=user,
+    )
+    TaskColumn.objects.create(
+        board=second_board,
+        name="Новые",
+        position=1000,
+    )
+
+    set_response = api_client.post(
+        reverse("api:v1:tasks:task-board-set-default", kwargs={"pk": second_board.id})
+    )
+
+    assert set_response.status_code == status.HTTP_200_OK
+    assert set_response.data["id"] == second_board.id
+    assert set_response.data["is_default_for_current_user"] is True
+    assert TaskUserSettings.objects.get(user=user).default_board_id == second_board.id
+
+    default_response = api_client.get(reverse("api:v1:tasks:task-board-default"))
+    assert default_response.status_code == status.HTTP_200_OK
+    assert default_response.data["id"] == second_board.id
+    assert default_response.data["is_default_for_current_user"] is True
+
+    other_user = make_user("task-default-other@example.com", "+79994440090")
+    api_client.force_authenticate(user=other_user)
+    other_default_response = api_client.get(reverse("api:v1:tasks:task-board-default"))
+    assert other_default_response.status_code == status.HTTP_200_OK
+    assert other_default_response.data["id"] == first_board["id"]
+    assert other_default_response.data["is_default_for_current_user"] is False
+
+
+def test_user_cannot_set_inaccessible_board_as_default(api_client):
+    owner = make_user("task-default-owner@example.com", "+79994440091")
+    outsider = make_user("task-default-outsider@example.com", "+79994440092")
+    board = TaskBoard.objects.create(
+        name="Закрытая доска",
+        created_by=owner,
+    )
+    board.members.add(owner)
+
+    api_client.force_authenticate(user=outsider)
+    response = api_client.post(
+        reverse("api:v1:tasks:task-board-set-default", kwargs={"pk": board.id})
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert not TaskUserSettings.objects.filter(user=outsider).exists()
 
 
 def test_create_task_and_move_to_done_column(api_client, user):
@@ -815,6 +871,75 @@ def test_task_linked_guest_respects_task_board_access(api_client):
     reverse_linked_response = api_client.get(
         reverse("api:v1:tasks:task-linked-guest-tasks"),
         {"guest_id": guest.id},
+    )
+    assert reverse_linked_response.status_code == status.HTTP_200_OK
+    assert reverse_linked_response.data == []
+
+
+def test_task_linked_post_respects_task_board_access(api_client):
+    owner = make_user("task-post-owner@example.com", "+79994440045")
+    board_member = make_user("task-post-member@example.com", "+79994440046")
+    outsider = make_user("task-post-outsider@example.com", "+79994440047")
+    post = Post.objects.create(
+        author=owner,
+        type="company",
+        title="Новости задач",
+        body="Связать публикацию с задачей",
+    )
+    board = TaskBoard.objects.create(
+        name="Доска с новостями",
+        created_by=owner,
+    )
+    board.members.add(board_member)
+    column = TaskColumn.objects.create(
+        board=board,
+        name="Новые",
+        position=1000,
+        color="#38bdf8",
+    )
+    task = Task.objects.create(
+        board=board,
+        column=column,
+        title="Обработать новость",
+        created_by=owner,
+    )
+
+    api_client.force_authenticate(user=board_member)
+    link_response = api_client.post(
+        reverse("api:v1:tasks:task-linked-posts", kwargs={"pk": task.id}),
+        {"post_id": post.id},
+        format="json",
+    )
+    assert link_response.status_code == status.HTTP_201_CREATED
+    assert link_response.data["post_id"] == post.id
+    assert link_response.data["post"]["title"] == "Новости задач"
+    assert link_response.data["post"]["body"] == "Связать публикацию с задачей"
+    assert link_response.data["can_open"] is True
+    assert link_response.data["object_url"] == f"/?post={post.id}"
+
+    linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-posts", kwargs={"pk": task.id})
+    )
+    assert linked_response.status_code == status.HTTP_200_OK
+    assert linked_response.data[0]["post"]["author"]["id"] == owner.id
+
+    reverse_linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-post-tasks"),
+        {"post_id": post.id},
+    )
+    assert reverse_linked_response.status_code == status.HTTP_200_OK
+    assert reverse_linked_response.data[0]["id"] == task.id
+    assert reverse_linked_response.data[0]["linked_posts_count"] == 1
+
+    api_client.force_authenticate(user=outsider)
+    task_detail_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-posts", kwargs={"pk": task.id})
+    )
+    assert task_detail_response.status_code == status.HTTP_404_NOT_FOUND
+
+    reverse_linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-post-tasks"),
+        {"post_id": post.id},
     )
     assert reverse_linked_response.status_code == status.HTTP_200_OK
     assert reverse_linked_response.data == []

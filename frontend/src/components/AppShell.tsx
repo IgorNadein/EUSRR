@@ -253,7 +253,7 @@ function Header({ mobileNavPlacement, suppressMobileChrome = false, onOpenLeftNa
                   ) : null}
                   <div className="app-divider my-1 border-t" />
                   <button
-                    className="app-action-danger w-full px-4 py-2 text-left text-sm transition"
+                    className="app-menu-danger-item w-full px-4 py-2 text-left text-sm transition"
                     onClick={() => { setUserMenuOpen(false); logout(); }}
                   >Выйти</button>
                 </div>

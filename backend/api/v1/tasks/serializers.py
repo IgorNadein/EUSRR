@@ -16,6 +16,7 @@ from communications.utils import user_can_access_chat
 from documents.models import Document
 from employees.models import Department, EmployeeDepartment
 from employees.services.personnel_state import resolve_employee_personnel_state
+from feed.models import Post
 from guests.models import Guest, GuestVisit
 from procurement.models import ProcurementRequest
 from requests_app.models import Request as EmployeeRequest
@@ -26,6 +27,7 @@ from tasks.access import (
     user_can_access_document,
     user_can_access_employee,
     user_can_access_employee_request,
+    user_can_access_feed_post,
     user_can_access_guest,
     user_can_access_guest_visit,
     user_can_access_attendance_record,
@@ -148,6 +150,7 @@ class TaskSerializer(serializers.ModelSerializer):
     board_name = serializers.CharField(source="board.name", read_only=True)
     column_name = serializers.CharField(source="column.name", read_only=True)
     column_color = serializers.CharField(source="column.color", read_only=True)
+    linked_posts_count = serializers.SerializerMethodField()
     linked_messages_count = serializers.SerializerMethodField()
     linked_events_count = serializers.SerializerMethodField()
     linked_documents_count = serializers.SerializerMethodField()
@@ -181,6 +184,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "due_date",
             "position",
             "completed_at",
+            "linked_posts_count",
             "linked_messages_count",
             "linked_events_count",
             "linked_documents_count",
@@ -203,6 +207,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "column_color",
             "priority_display",
             "completed_at",
+            "linked_posts_count",
             "linked_messages_count",
             "linked_events_count",
             "linked_documents_count",
@@ -217,6 +222,14 @@ class TaskSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_linked_posts_count(self, obj):
+        if hasattr(obj, "linked_posts_count"):
+            return obj.linked_posts_count
+        return obj.linked_objects.filter(
+            kind=TaskLinkedObjectKind.POST,
+        ).count()
 
     @extend_schema_field(serializers.IntegerField())
     def get_linked_messages_count(self, obj):
@@ -380,6 +393,7 @@ class TaskBoardSerializer(serializers.ModelSerializer):
     labels = TaskLabelSerializer(many=True, read_only=True)
     tasks = TaskSerializer(many=True, read_only=True)
     tasks_count = serializers.IntegerField(read_only=True, default=0)
+    is_default_for_current_user = serializers.SerializerMethodField()
 
     class Meta:
         model = TaskBoard
@@ -397,9 +411,93 @@ class TaskBoardSerializer(serializers.ModelSerializer):
             "labels",
             "tasks",
             "tasks_count",
+            "is_default_for_current_user",
             "created_at",
             "updated_at",
         ]
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_is_default_for_current_user(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not getattr(user, "is_authenticated", False):
+            return False
+        settings_obj = getattr(user, "task_settings", None)
+        return bool(settings_obj and settings_obj.default_board_id == obj.id)
+
+
+class TaskLinkedPostSerializer(serializers.ModelSerializer):
+    created_by = EmployeeBriefSerializer(read_only=True)
+    post = serializers.SerializerMethodField()
+    post_id = serializers.IntegerField(source="object_id", read_only=True)
+    can_open = serializers.SerializerMethodField()
+    object_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskLinkedObject
+        fields = [
+            "id",
+            "kind",
+            "post_id",
+            "post",
+            "can_open",
+            "object_url",
+            "created_by",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.JSONField(allow_null=True))
+    def get_post(self, obj):
+        if obj.kind != TaskLinkedObjectKind.POST:
+            return None
+
+        post = getattr(obj, "content_object", None)
+        if post is None:
+            return None
+
+        request = self.context.get("request")
+        from api.v1.utils import build_media_url
+
+        return {
+            "id": post.id,
+            "type": post.type,
+            "department": post.department_id,
+            "department_id": post.department_id,
+            "department_name": getattr(post.department, "name", None),
+            "title": post.title,
+            "body": post.body,
+            "image": build_media_url(post.image, request),
+            "attachment": build_media_url(post.attachment, request),
+            "created_at": post.created_at,
+            "pinned": post.pinned_global or post.pinned_department,
+            "pinned_global": post.pinned_global,
+            "pinned_department": post.pinned_department,
+            "likes_count": post.likes_count,
+            "comments_count": get_comment_count(post),
+            "author_id": post.author_id,
+            "author": EmployeeBriefSerializer(post.author).data,
+        }
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_open(self, obj):
+        post = getattr(obj, "content_object", None)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if obj.kind != TaskLinkedObjectKind.POST or post is None or not user:
+            return False
+        return user_can_access_feed_post(user, post)
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_object_url(self, obj):
+        post = getattr(obj, "content_object", None)
+        if post is None or not self.get_can_open(obj):
+            return None
+        return f"/?post={post.id}"
+
+
+def get_post_content_type():
+    return ContentType.objects.get_for_model(Post)
 
 
 class TaskLinkedMessageSerializer(serializers.ModelSerializer):

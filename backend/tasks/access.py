@@ -2,6 +2,7 @@ from django.db.models import Q
 from attendance.models import AttendanceRecord
 from documents.models import Document
 from employees.models import Department, EmployeeDepartment, RoleAssignment
+from feed.models import Post
 from requests_app.enums import RequestStatus
 from requests_app.models import Request as EmployeeRequest
 from schedule.models import Event
@@ -175,3 +176,7 @@ def user_can_access_attendance_record(
         or user.is_superuser
         or record.employee_id == user.id
     )
+
+
+def user_can_access_feed_post(user, post: Post | None) -> bool:
+    return bool(user and user.is_authenticated and post is not None)
