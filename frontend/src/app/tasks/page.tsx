@@ -57,6 +57,7 @@ import type {
   TaskColumn,
   TaskComment,
   TaskLinkedDocument,
+  TaskLinkedEmployee,
   TaskLinkedCalendarEvent,
   TaskLinkedMessage,
   TaskLinkedProcurementRequest,
@@ -268,9 +269,14 @@ function TaskCardView({
           onClick={() => onOpen(task)}
           className="min-w-0 flex-1 text-left"
         >
-          <h3 className="app-text-wrap text-sm font-semibold text-[var(--foreground)]">
-            {task.title}
-          </h3>
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="app-badge shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
+              #{task.id}
+            </span>
+            <h3 className="app-text-wrap min-w-0 text-sm font-semibold text-[var(--foreground)]">
+              {task.title}
+            </h3>
+          </div>
           {task.description ? (
             <p className="app-text-muted mt-1 line-clamp-2 text-xs">
               {task.description}
@@ -375,9 +381,14 @@ function TaskDragOverlayCard({ task }: { task: TaskCard }) {
           <GripVertical size={14} />
         </div>
         <div className="min-w-0 flex-1 text-left">
-          <h3 className="app-text-wrap text-sm font-semibold text-[var(--foreground)]">
-            {task.title}
-          </h3>
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="app-badge shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
+              #{task.id}
+            </span>
+            <h3 className="app-text-wrap min-w-0 text-sm font-semibold text-[var(--foreground)]">
+              {task.title}
+            </h3>
+          </div>
           {task.description ? (
             <p className="app-text-muted mt-1 line-clamp-2 text-xs">
               {task.description}
@@ -1048,6 +1059,111 @@ function LinkedProcurementRequestCard({
   );
 }
 
+function LinkedEmployeeCard({
+  link,
+  onUnlink,
+  disabled,
+}: {
+  link: TaskLinkedEmployee;
+  onUnlink: (linkId: number) => void;
+  disabled?: boolean;
+}) {
+  const employee = link.employee;
+  const canOpen = Boolean(link.can_open && link.object_url);
+  const fullName = employee
+    ? (
+        employee.display_name ||
+        employee.full_name ||
+        `${employee.last_name || ""} ${employee.first_name || ""} ${employee.patronymic || ""}`.trim() ||
+        employee.email ||
+        `Сотрудник #${employee.id}`
+      )
+    : "Сотрудник не найден";
+  const departmentNames = (employee?.departments || [])
+    .map((department) => department.name)
+    .filter(Boolean);
+  const mainContent = (
+    <>
+      <div className="mb-2 min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="app-pill inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium">
+            <UserRound size={12} />
+            Сотрудник
+          </span>
+          {employee?.personnel_state ? (
+            <span className="app-badge rounded-full px-2 py-1 text-[11px]">
+              {employee.personnel_state.label || employee.personnel_state.status}
+            </span>
+          ) : null}
+          {canOpen ? (
+            <span className="app-badge rounded-full px-2 py-1 text-[11px]">
+              Открыть
+            </span>
+          ) : null}
+        </div>
+        <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">
+          {fullName}
+        </p>
+        {employee?.position?.name ? (
+          <p className="app-text-muted mt-0.5 text-xs">
+            {employee.position.name}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {departmentNames.slice(0, 2).map((department) => (
+          <span
+            key={department}
+            className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px]"
+          >
+            <span className="truncate">{department}</span>
+          </span>
+        ))}
+        {employee?.email ? (
+          <span className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+            <span className="truncate">{employee.email}</span>
+          </span>
+        ) : null}
+        <span className="app-text-muted text-[11px]">
+          Связал: {link.created_by ? displayUserName(link.created_by) : "не указано"}
+        </span>
+      </div>
+    </>
+  );
+
+  return (
+    <article className="app-surface-muted rounded-xl border border-[var(--border-subtle)] p-3">
+      <div className="relative">
+        {canOpen && link.object_url ? (
+          <Link
+            href={link.object_url}
+            className="block rounded-lg pr-10 transition hover:bg-[var(--surface-elevated)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
+            title="Открыть профиль сотрудника"
+          >
+            {mainContent}
+          </Link>
+        ) : (
+          <div className="pr-10">
+            {mainContent}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => onUnlink(link.id)}
+          disabled={disabled}
+          className="app-icon-button absolute right-0 top-0 z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
+          title="Убрать связь"
+          aria-label="Убрать связь с сотрудником"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </article>
+  );
+}
+
 const activityFieldLabels: Record<string, string> = {
   title: "название",
   description: "описание",
@@ -1151,6 +1267,7 @@ export default function TasksPage() {
   const [linkedDocuments, setLinkedDocuments] = useState<TaskLinkedDocument[]>([]);
   const [linkedRequests, setLinkedRequests] = useState<TaskLinkedRequest[]>([]);
   const [linkedProcurementRequests, setLinkedProcurementRequests] = useState<TaskLinkedProcurementRequest[]>([]);
+  const [linkedEmployees, setLinkedEmployees] = useState<TaskLinkedEmployee[]>([]);
   const [linkedObjectsLoading, setLinkedObjectsLoading] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [taskComments, setTaskComments] = useState<TaskComment[]>([]);
@@ -1195,18 +1312,20 @@ export default function TasksPage() {
   const loadTaskLinkedObjects = useCallback(async (taskId: number) => {
     setLinkedObjectsLoading(true);
     try {
-      const [messages, events, documents, requests, procurementRequests] = await Promise.all([
+      const [messages, events, documents, requests, procurementRequests, employees] = await Promise.all([
         apiClient.getTaskLinkedMessages(taskId),
         apiClient.getTaskLinkedEvents(taskId),
         apiClient.getTaskLinkedDocuments(taskId),
         apiClient.getTaskLinkedRequests(taskId),
         apiClient.getTaskLinkedProcurementRequests(taskId),
+        apiClient.getTaskLinkedEmployees(taskId),
       ]);
       setLinkedMessages(messages);
       setLinkedEvents(events);
       setLinkedDocuments(documents);
       setLinkedRequests(requests);
       setLinkedProcurementRequests(procurementRequests);
+      setLinkedEmployees(employees);
     } catch (linksError) {
       setError(getTaskError(linksError, "Не удалось загрузить связанные объекты"));
     } finally {
@@ -1539,7 +1658,7 @@ export default function TasksPage() {
     () => activeColumns.find((column) => column.id === viewTask?.column) || null,
     [activeColumns, viewTask?.column],
   );
-  const linkedObjectsCount = linkedMessages.length + linkedEvents.length + linkedDocuments.length + linkedRequests.length + linkedProcurementRequests.length;
+  const linkedObjectsCount = linkedMessages.length + linkedEvents.length + linkedDocuments.length + linkedRequests.length + linkedProcurementRequests.length + linkedEmployees.length;
   const linkedObjectsBadgeCount = viewTask?.linked_objects_count ?? linkedObjectsCount;
   const commentsBadgeCount = viewTask?.comments_count ?? taskComments.length;
 
@@ -1559,6 +1678,7 @@ export default function TasksPage() {
       setLinkedDocuments([]);
       setLinkedRequests([]);
       setLinkedProcurementRequests([]);
+      setLinkedEmployees([]);
       setTaskActivities([]);
       setTaskComments([]);
       setCommentDraft("");
@@ -1606,6 +1726,7 @@ export default function TasksPage() {
     setLinkedDocuments([]);
     setLinkedRequests([]);
     setLinkedProcurementRequests([]);
+    setLinkedEmployees([]);
     setTaskComments([]);
     setTaskActivities([]);
     setCommentDraft("");
@@ -1626,6 +1747,7 @@ export default function TasksPage() {
     setLinkedDocuments([]);
     setLinkedRequests([]);
     setLinkedProcurementRequests([]);
+    setLinkedEmployees([]);
     setTaskComments([]);
     setTaskActivities([]);
     setLinkedObjectsOpen(false);
@@ -2036,6 +2158,23 @@ export default function TasksPage() {
       if (activityOpen) await loadTaskActivity(viewTask.id);
     } catch (unlinkError) {
       setError(getTaskError(unlinkError, "Не удалось убрать связь с закупкой"));
+    } finally {
+      setSaving(false);
+    }
+  }, [activityOpen, board, loadBoard, loadTaskActivity, loadTaskLinkedObjects, saving, viewTask]);
+
+  const unlinkEmployeeFromViewedTask = useCallback(async (linkId: number) => {
+    if (!board || !viewTask || saving) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      await apiClient.unlinkTaskEmployee(viewTask.id, linkId);
+      await loadTaskLinkedObjects(viewTask.id);
+      await loadBoard(board.id);
+      if (activityOpen) await loadTaskActivity(viewTask.id);
+    } catch (unlinkError) {
+      setError(getTaskError(unlinkError, "Не удалось убрать связь с сотрудником"));
     } finally {
       setSaving(false);
     }
@@ -2566,9 +2705,14 @@ export default function TasksPage() {
           <div className="space-y-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <h2 className="app-text-wrap text-lg font-semibold text-[var(--foreground)]">
-                  {viewTask.title}
-                </h2>
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="app-badge shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
+                    #{viewTask.id}
+                  </span>
+                  <h2 className="app-text-wrap min-w-0 text-lg font-semibold text-[var(--foreground)]">
+                    {viewTask.title}
+                  </h2>
+                </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {viewTaskColumn ? (
                     <div ref={viewColumnMenuRef} className="relative">
@@ -2859,6 +3003,14 @@ export default function TasksPage() {
                           key={link.id}
                           link={link}
                           onUnlink={unlinkProcurementRequestFromViewedTask}
+                          disabled={saving}
+                        />
+                      ))}
+                      {linkedEmployees.map((link) => (
+                        <LinkedEmployeeCard
+                          key={link.id}
+                          link={link}
+                          onUnlink={unlinkEmployeeFromViewedTask}
                           disabled={saving}
                         />
                       ))}

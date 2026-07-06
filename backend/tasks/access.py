@@ -144,3 +144,7 @@ def user_can_access_procurement_request(user, procurement_request) -> bool:
         procurement_request.status == ProcurementStatus.APPROVED
         and procurement_request.processing_department_id is None
     )
+
+
+def user_can_access_employee(user, employee) -> bool:
+    return bool(user and user.is_authenticated and employee is not None)

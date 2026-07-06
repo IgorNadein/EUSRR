@@ -8,6 +8,7 @@ import type {
     TaskLabel,
     TaskLinkedCalendarEvent,
     TaskLinkedDocument,
+    TaskLinkedEmployee,
     TaskLinkedMessage,
     TaskLinkedProcurementRequest,
     TaskLinkedRequest,
@@ -83,6 +84,8 @@ export function createTasksApi(request: RequestFn) {
             request(`/api/v1/tasks/linked-request-tasks/?request_id=${requestId}`),
         getProcurementRequestLinkedTasks: (requestId: number): Promise<TaskCard[]> =>
             request(`/api/v1/tasks/linked-procurement-request-tasks/?procurement_request_id=${requestId}`),
+        getEmployeeLinkedTasks: (employeeId: number): Promise<TaskCard[]> =>
+            request(`/api/v1/tasks/linked-employee-tasks/?employee_id=${employeeId}`),
         getTaskLinkedMessages: (id: number): Promise<TaskLinkedMessage[]> =>
             request(`/api/v1/tasks/${id}/linked-messages/`),
         linkTaskMessage: (id: number, messageId: number): Promise<TaskLinkedMessage> =>
@@ -125,6 +128,17 @@ export function createTasksApi(request: RequestFn) {
             }),
         unlinkTaskProcurementRequest: (id: number, linkId: number): Promise<void> =>
             request(`/api/v1/tasks/${id}/linked-procurement-requests/${linkId}/`, {
+                method: "DELETE",
+            }),
+        getTaskLinkedEmployees: (id: number): Promise<TaskLinkedEmployee[]> =>
+            request(`/api/v1/tasks/${id}/linked-employees/`),
+        linkTaskEmployee: (id: number, employeeId: number): Promise<TaskLinkedEmployee> =>
+            request(`/api/v1/tasks/${id}/linked-employees/`, {
+                method: "POST",
+                body: JSON.stringify({ employee_id: employeeId }),
+            }),
+        unlinkTaskEmployee: (id: number, linkId: number): Promise<void> =>
+            request(`/api/v1/tasks/${id}/linked-employees/${linkId}/`, {
                 method: "DELETE",
             }),
         getTaskLinkedEvents: (id: number): Promise<TaskLinkedCalendarEvent[]> =>

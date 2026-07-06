@@ -179,6 +179,7 @@ class TaskLinkedObjectKind(models.TextChoices):
     DOCUMENT = "document", "Документ"
     REQUEST = "request", "Заявление"
     PROCUREMENT_REQUEST = "procurement_request", "Заявка на закупку"
+    EMPLOYEE = "employee", "Сотрудник"
 
 
 class TaskActivityAction(models.TextChoices):

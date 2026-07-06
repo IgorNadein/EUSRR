@@ -1,4 +1,5 @@
 from django.contrib.contenttypes.models import ContentType
+from django.contrib.auth import get_user_model
 from django.db.models import (
     Count,
     IntegerField,
@@ -25,6 +26,7 @@ from tasks.access import (
     task_board_access_q,
     user_can_access_calendar_event,
     user_can_access_document,
+    user_can_access_employee,
     user_can_access_employee_request,
     user_can_access_procurement_request,
 )
@@ -51,6 +53,7 @@ from .serializers import (
     TaskLabelSerializer,
     TaskLinkedCalendarEventSerializer,
     TaskLinkedDocumentSerializer,
+    TaskLinkedEmployeeSerializer,
     TaskLinkedMessageSerializer,
     TaskLinkedProcurementRequestSerializer,
     TaskLinkedRequestSerializer,
@@ -58,10 +61,13 @@ from .serializers import (
     create_default_columns,
     get_calendar_event_content_type,
     get_document_content_type,
+    get_employee_content_type,
     get_message_content_type,
     get_procurement_request_content_type,
     get_request_content_type,
 )
+
+Employee = get_user_model()
 
 
 def create_task_activity(
@@ -296,6 +302,13 @@ class TaskViewSet(viewsets.ModelViewSet):
                         linked_objects__kind=(
                             TaskLinkedObjectKind.PROCUREMENT_REQUEST
                         ),
+                    ),
+                    distinct=True,
+                ),
+                linked_employees_count=Count(
+                    "linked_objects",
+                    filter=Q(
+                        linked_objects__kind=TaskLinkedObjectKind.EMPLOYEE,
                     ),
                     distinct=True,
                 ),
@@ -715,6 +728,43 @@ class TaskViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=["get"], url_path="linked-employee-tasks")
+    def linked_employee_tasks(self, request):
+        employee_id = request.query_params.get("employee_id")
+        try:
+            employee_id = int(employee_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"employee_id": ["Укажите ID сотрудника."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            employee = Employee.objects.select_related("position").get(id=employee_id)
+        except Employee.DoesNotExist:
+            return Response(
+                {"employee_id": ["Сотрудник не найден."]},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not user_can_access_employee(request.user, employee):
+            return Response(
+                {"detail": "Нет доступа к этому сотруднику."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        queryset = (
+            self.get_queryset()
+            .filter(
+                linked_objects__kind=TaskLinkedObjectKind.EMPLOYEE,
+                linked_objects__content_type=get_employee_content_type(),
+                linked_objects__object_id=employee.id,
+            )
+            .distinct()
+        )
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     def _message_links_queryset(self, task):
         return (
             TaskLinkedObject.objects.filter(
@@ -760,6 +810,16 @@ class TaskViewSet(viewsets.ModelViewSet):
             TaskLinkedObject.objects.filter(
                 task=task,
                 kind=TaskLinkedObjectKind.PROCUREMENT_REQUEST,
+            )
+            .select_related("created_by", "content_type")
+            .order_by("-created_at", "-id")
+        )
+
+    def _employee_links_queryset(self, task):
+        return (
+            TaskLinkedObject.objects.filter(
+                task=task,
+                kind=TaskLinkedObjectKind.EMPLOYEE,
             )
             .select_related("created_by", "content_type")
             .order_by("-created_at", "-id")
@@ -1215,6 +1275,109 @@ class TaskViewSet(viewsets.ModelViewSet):
             "unlinked",
             "procurement_request",
             procurement_request_id,
+            extra={"task_id": task.id, "link_id": int(link_id)},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get", "post"], url_path="linked-employees")
+    def linked_employees(self, request, pk=None):
+        task = self.get_object()
+        if request.method == "GET":
+            serializer = TaskLinkedEmployeeSerializer(
+                self._employee_links_queryset(task),
+                many=True,
+                context={"request": request},
+            )
+            return Response(serializer.data)
+
+        employee_id = request.data.get("employee_id")
+        try:
+            employee_id = int(employee_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"employee_id": ["Укажите ID сотрудника."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            employee = Employee.objects.select_related("position").get(id=employee_id)
+        except Employee.DoesNotExist:
+            return Response(
+                {"employee_id": ["Сотрудник не найден."]},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not user_can_access_employee(request.user, employee):
+            return Response(
+                {"detail": "Нет доступа к этому сотруднику."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        link, created = TaskLinkedObject.objects.get_or_create(
+            task=task,
+            kind=TaskLinkedObjectKind.EMPLOYEE,
+            content_type=get_employee_content_type(),
+            object_id=employee.id,
+            defaults={"created_by": request.user},
+        )
+        serializer = TaskLinkedEmployeeSerializer(
+            link,
+            context={"request": request},
+        )
+        if created:
+            create_task_activity(
+                task,
+                request.user,
+                TaskActivityAction.LINKED,
+                object_kind=TaskLinkedObjectKind.EMPLOYEE,
+                object_id=employee.id,
+                metadata={
+                    "object_label": employee.get_full_name() or employee.email,
+                    "object_type": "Сотрудник",
+                },
+            )
+        send_task_board_update(
+            task.board,
+            "linked",
+            "employee",
+            employee.id,
+            extra={"task_id": task.id, "link_id": link.id},
+        )
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"linked-employees/(?P<link_id>\d+)",
+    )
+    def unlink_employee(self, request, pk=None, link_id=None):
+        task = self.get_object()
+        try:
+            link = self._employee_links_queryset(task).get(id=link_id)
+        except TaskLinkedObject.DoesNotExist:
+            return Response(
+                {"detail": "Связь не найдена."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        employee_id = link.object_id
+        link.delete()
+        create_task_activity(
+            task,
+            request.user,
+            TaskActivityAction.UNLINKED,
+            object_kind=TaskLinkedObjectKind.EMPLOYEE,
+            object_id=employee_id,
+            metadata={"object_type": "Сотрудник"},
+        )
+        send_task_board_update(
+            task.board,
+            "unlinked",
+            "employee",
+            employee_id,
             extra={"task_id": task.id, "link_id": int(link_id)},
         )
         return Response(status=status.HTTP_204_NO_CONTENT)

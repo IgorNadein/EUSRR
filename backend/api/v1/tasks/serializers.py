@@ -1,6 +1,7 @@
 from django.db.models import Max
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -12,7 +13,8 @@ from communications.comments_helpers import get_comment_count
 from communications.serialization import serialize_message
 from communications.utils import user_can_access_chat
 from documents.models import Document
-from employees.models import Department
+from employees.models import Department, EmployeeDepartment
+from employees.services.personnel_state import resolve_employee_personnel_state
 from procurement.models import ProcurementRequest
 from requests_app.models import Request as EmployeeRequest
 from schedule.models import Event
@@ -20,6 +22,7 @@ from api.v1.schedule.serializers import EventSerializer
 from tasks.access import (
     user_can_access_calendar_event,
     user_can_access_document,
+    user_can_access_employee,
     user_can_access_employee_request,
     user_can_access_procurement_request,
     user_can_access_task_board,
@@ -145,6 +148,7 @@ class TaskSerializer(serializers.ModelSerializer):
     linked_documents_count = serializers.SerializerMethodField()
     linked_requests_count = serializers.SerializerMethodField()
     linked_procurement_requests_count = serializers.SerializerMethodField()
+    linked_employees_count = serializers.SerializerMethodField()
     linked_objects_count = serializers.SerializerMethodField()
     comments_count = serializers.SerializerMethodField()
 
@@ -174,6 +178,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "linked_documents_count",
             "linked_requests_count",
             "linked_procurement_requests_count",
+            "linked_employees_count",
             "linked_objects_count",
             "comments_count",
             "created_at",
@@ -192,6 +197,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "linked_documents_count",
             "linked_requests_count",
             "linked_procurement_requests_count",
+            "linked_employees_count",
             "linked_objects_count",
             "comments_count",
             "created_at",
@@ -236,6 +242,14 @@ class TaskSerializer(serializers.ModelSerializer):
             return obj.linked_procurement_requests_count
         return obj.linked_objects.filter(
             kind=TaskLinkedObjectKind.PROCUREMENT_REQUEST,
+        ).count()
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_linked_employees_count(self, obj):
+        if hasattr(obj, "linked_employees_count"):
+            return obj.linked_employees_count
+        return obj.linked_objects.filter(
+            kind=TaskLinkedObjectKind.EMPLOYEE,
         ).count()
 
     @extend_schema_field(serializers.IntegerField())
@@ -708,3 +722,102 @@ class TaskLinkedProcurementRequestSerializer(serializers.ModelSerializer):
 
 def get_procurement_request_content_type():
     return ContentType.objects.get_for_model(ProcurementRequest)
+
+
+class TaskLinkedEmployeeSerializer(serializers.ModelSerializer):
+    created_by = EmployeeBriefSerializer(read_only=True)
+    employee = serializers.SerializerMethodField()
+    employee_id = serializers.IntegerField(source="object_id", read_only=True)
+    can_open = serializers.SerializerMethodField()
+    object_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskLinkedObject
+        fields = [
+            "id",
+            "kind",
+            "employee_id",
+            "employee",
+            "can_open",
+            "object_url",
+            "created_by",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.JSONField(allow_null=True))
+    def get_employee(self, obj):
+        if obj.kind != TaskLinkedObjectKind.EMPLOYEE:
+            return None
+
+        employee = getattr(obj, "content_object", None)
+        if employee is None:
+            return None
+
+        departments = []
+        links = getattr(employee, "dept_links", None)
+        if links is None:
+            links = EmployeeDepartment.objects.select_related(
+                "department",
+                "role",
+            ).filter(employee=employee, is_active=True)
+        departments = [
+            {
+                "id": link.department_id,
+                "name": link.department.name if link.department_id else None,
+                "role_id": link.role_id,
+                "role_name": link.role.name if link.role_id else None,
+                "is_head": (
+                    link.department.head_id == employee.id
+                    if link.department_id
+                    else False
+                ),
+            }
+            for link in links
+        ]
+        personnel_state = resolve_employee_personnel_state(
+            employee,
+            timezone.localdate(),
+        )
+
+        return {
+            **EmployeeBriefSerializer(employee).data,
+            "position": (
+                {
+                    "id": employee.position_id,
+                    "name": employee.position.name,
+                }
+                if employee.position_id
+                else None
+            ),
+            "departments": departments,
+            "is_active": employee.is_active,
+            "personnel_state": {
+                "status": personnel_state.status,
+                "label": personnel_state.label or "Работает",
+                "action_id": personnel_state.action_id,
+                "date_from": personnel_state.date_from,
+                "date_to": personnel_state.date_to,
+                "expects_attendance": personnel_state.expects_attendance,
+            },
+        }
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_open(self, obj):
+        employee = getattr(obj, "content_object", None)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if obj.kind != TaskLinkedObjectKind.EMPLOYEE or employee is None or not user:
+            return False
+        return user_can_access_employee(user, employee)
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_object_url(self, obj):
+        employee = getattr(obj, "content_object", None)
+        if employee is None or not self.get_can_open(obj):
+            return None
+        return f"/users/{employee.id}"
+
+
+def get_employee_content_type():
+    return ContentType.objects.get_for_model(User)

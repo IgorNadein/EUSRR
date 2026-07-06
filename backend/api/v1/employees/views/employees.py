@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 
 from common.emails import send_templated_mail
+from django.contrib.contenttypes.models import ContentType
 from django.db.models import Exists, Max, OuterRef, Prefetch, Q, Subquery
 from django.utils.crypto import get_random_string
 from employees.constants import (
@@ -210,6 +211,72 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             qs = qs.filter(created_at__gte=created_at_gte)
 
         return qs
+
+    def _attach_linked_task_payloads(self, employees: list[Employee]) -> None:
+        """Предзагрузить компактные бейджи задач для списка сотрудников."""
+        if not employees:
+            return
+
+        user = getattr(self.request, "user", None)
+        employee_ids = [employee.id for employee in employees]
+        mapping = {employee_id: [] for employee_id in employee_ids}
+
+        if user and user.is_authenticated:
+            from tasks.access import task_board_access_q
+            from tasks.models import (
+                TaskBoard,
+                TaskLinkedObject,
+                TaskLinkedObjectKind,
+            )
+
+            employee_ct = ContentType.objects.get_for_model(Employee)
+            accessible_boards = TaskBoard.objects.filter(
+                is_archived=False,
+            ).filter(task_board_access_q(user))
+
+            links = (
+                TaskLinkedObject.objects.filter(
+                    kind=TaskLinkedObjectKind.EMPLOYEE,
+                    content_type=employee_ct,
+                    object_id__in=employee_ids,
+                    task__board__in=accessible_boards,
+                )
+                .select_related("task", "task__board", "task__column")
+                .order_by("object_id", "task__title", "task_id")
+            )
+
+            for link in links:
+                mapping.setdefault(link.object_id, []).append(
+                    {
+                        "link_id": link.id,
+                        "id": link.task_id,
+                        "title": link.task.title,
+                        "board_id": link.task.board_id,
+                        "board_name": link.task.board.name,
+                        "column_id": link.task.column_id,
+                        "column_name": link.task.column.name,
+                        "column_color": link.task.column.color,
+                        "priority": link.task.priority,
+                        "priority_display": link.task.get_priority_display(),
+                    }
+                )
+
+        for employee in employees:
+            employee._linked_task_payloads = mapping.get(employee.id, [])
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            self._attach_linked_task_payloads(list(page))
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        employees = list(queryset)
+        self._attach_linked_task_payloads(employees)
+        serializer = self.get_serializer(employees, many=True)
+        return Response(serializer.data)
 
     def get_serializer_class(self):
         if self.action == "list":

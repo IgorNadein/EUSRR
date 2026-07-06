@@ -4,6 +4,7 @@ import datetime as dt
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -17,6 +18,13 @@ from employees.models import (
     Skill,
 )
 from employees.constants import ACTION_DISMISSED  # для фильтра actually_active
+from tasks.models import (
+    Task,
+    TaskBoard,
+    TaskColumn,
+    TaskLinkedObject,
+    TaskLinkedObjectKind,
+)
 from tests.conftest import _unique_phone
 
 pytestmark = pytest.mark.django_db
@@ -84,6 +92,84 @@ def test_list_ok_for_authenticated(api_client: APIClient):
     items = extract_results(resp.json())
     ids = {it["id"] for it in items}
     assert e1.id in ids and e2.id in ids
+
+
+def test_list_includes_visible_linked_tasks_only(api_client: APIClient):
+    user = make_user("employee-link-user@example.com")
+    target = make_user("employee-link-target@example.com")
+    hidden_member = make_user("employee-link-hidden@example.com")
+    visible_board = TaskBoard.objects.create(
+        name="Видимая доска сотрудника",
+        created_by=user,
+    )
+    visible_column = TaskColumn.objects.create(
+        board=visible_board,
+        name="Новые",
+        position=1000,
+        color="#38bdf8",
+    )
+    visible_task = Task.objects.create(
+        board=visible_board,
+        column=visible_column,
+        title="Видимая задача сотрудника",
+        created_by=user,
+        priority="high",
+    )
+    hidden_board = TaskBoard.objects.create(
+        name="Скрытая доска сотрудника",
+        created_by=hidden_member,
+    )
+    hidden_board.members.add(hidden_member)
+    hidden_column = TaskColumn.objects.create(
+        board=hidden_board,
+        name="Новые",
+        position=1000,
+        color="#ef4444",
+    )
+    hidden_task = Task.objects.create(
+        board=hidden_board,
+        column=hidden_column,
+        title="Скрытая задача сотрудника",
+        created_by=hidden_member,
+        priority="critical",
+    )
+    employee_ct = ContentType.objects.get_for_model(User)
+    visible_link = TaskLinkedObject.objects.create(
+        task=visible_task,
+        kind=TaskLinkedObjectKind.EMPLOYEE,
+        content_type=employee_ct,
+        object_id=target.id,
+        created_by=user,
+    )
+    TaskLinkedObject.objects.create(
+        task=hidden_task,
+        kind=TaskLinkedObjectKind.EMPLOYEE,
+        content_type=employee_ct,
+        object_id=target.id,
+        created_by=hidden_member,
+    )
+
+    api_client.force_authenticate(user=user)
+    response = api_client.get(reverse("api:v1:employees-list"))
+
+    assert response.status_code == status.HTTP_200_OK
+    items = extract_results(response.json())
+    target_payload = next(item for item in items if item["id"] == target.id)
+    assert target_payload["linked_tasks"] == [
+        {
+            "link_id": visible_link.id,
+            "id": visible_task.id,
+            "title": "Видимая задача сотрудника",
+            "board_id": visible_board.id,
+            "board_name": "Видимая доска сотрудника",
+            "column_id": visible_column.id,
+            "column_name": "Новые",
+            "column_color": "#38bdf8",
+            "priority": "high",
+            "priority_display": "Высокий",
+        }
+    ]
+
 
 def test_retrieve_requires_auth(api_client: APIClient):
     e = make_user("x@example.com")

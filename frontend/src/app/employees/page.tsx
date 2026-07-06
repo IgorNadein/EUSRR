@@ -246,7 +246,8 @@ export default function EmployeesPage() {
                   </div>
                 </Link>
 
-                {!isCurrentUser ? (
+                <div className="flex shrink-0 items-center gap-2">
+                  {!isCurrentUser ? (
                   <button
                     type="button"
                     onClick={(event) => void handleStartChat(employee, event)}
@@ -260,7 +261,8 @@ export default function EmployeesPage() {
                       <MessageCircle size={18} />
                     )}
                   </button>
-                ) : null}
+                  ) : null}
+                </div>
               </div>
             );
           })}

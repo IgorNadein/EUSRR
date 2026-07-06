@@ -65,6 +65,7 @@ export interface User {
   last_login?: string;
   last_activity_at?: string;
   date_joined?: string;
+  linked_tasks?: MessageLinkedTask[];
   auth?: {
     id?: number;
     email?: string;
@@ -184,6 +185,7 @@ export interface TaskCard {
   linked_documents_count?: number;
   linked_requests_count?: number;
   linked_procurement_requests_count?: number;
+  linked_employees_count?: number;
   linked_objects_count?: number;
   comments_count?: number;
   created_at: string;
@@ -297,12 +299,37 @@ export interface TaskLinkedProcurementRequest {
   created_at: string;
 }
 
+export interface TaskLinkedEmployee {
+  id: number;
+  kind: "employee";
+  employee_id: number;
+  employee: {
+    id: number;
+    first_name?: string;
+    last_name?: string;
+    patronymic?: string;
+    email?: string;
+    phone_number?: string;
+    display_name?: string;
+    full_name?: string;
+    avatar?: string;
+    position?: Position | null;
+    departments?: EmployeeDepartment[];
+    is_active?: boolean;
+    personnel_state?: EmployeePersonnelState | null;
+  } | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
 export interface TaskActivity {
   id: number;
   action: "created" | "updated" | "moved" | "linked" | "unlinked";
   action_display?: string;
   actor?: User | null;
-  object_kind?: "message" | "calendar_event" | "document" | "request" | "procurement_request" | "";
+  object_kind?: "message" | "calendar_event" | "document" | "request" | "procurement_request" | "employee" | "";
   object_id?: number | null;
   metadata?: Record<string, unknown>;
   created_at: string;

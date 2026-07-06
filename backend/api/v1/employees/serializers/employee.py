@@ -6,6 +6,7 @@ from typing import Any, Dict
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 from employees.models import EmployeeDepartment, Position, Skill
 from employees.services.personnel_state import resolve_employee_personnel_state
@@ -21,6 +22,53 @@ from .shared import (
 )
 
 Employee = get_user_model()
+
+
+def _linked_task_payloads_for_employee(obj, user) -> list[dict]:
+    if not user or not getattr(user, "is_authenticated", False):
+        return []
+
+    try:
+        from tasks.access import task_board_access_q
+        from tasks.models import (
+            TaskBoard,
+            TaskLinkedObject,
+            TaskLinkedObjectKind,
+        )
+    except Exception:
+        return []
+
+    content_type = ContentType.objects.get_for_model(Employee)
+    accessible_boards = TaskBoard.objects.filter(
+        is_archived=False,
+    ).filter(task_board_access_q(user))
+
+    links = (
+        TaskLinkedObject.objects.filter(
+            kind=TaskLinkedObjectKind.EMPLOYEE,
+            content_type=content_type,
+            object_id=obj.id,
+            task__board__in=accessible_boards,
+        )
+        .select_related("task", "task__board", "task__column")
+        .order_by("task__title", "task_id")
+    )
+
+    return [
+        {
+            "link_id": link.id,
+            "id": link.task_id,
+            "title": link.task.title,
+            "board_id": link.task.board_id,
+            "board_name": link.task.board.name,
+            "column_id": link.task.column_id,
+            "column_name": link.task.column.name,
+            "column_color": link.task.column.color,
+            "priority": link.task.priority,
+            "priority_display": link.task.get_priority_display(),
+        }
+        for link in links
+    ]
 
 
 def _employee_personnel_state_payload(obj):
@@ -96,6 +144,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
     departments = serializers.SerializerMethodField()
     auth = serializers.SerializerMethodField(read_only=True)
     personnel_state = serializers.SerializerMethodField(read_only=True)
+    linked_tasks = serializers.SerializerMethodField()
 
     class Meta:
         model = Employee
@@ -130,6 +179,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "date_joined",
             "auth",
             "personnel_state",
+            "linked_tasks",
         )
         read_only_fields = (
             "is_ldap_managed",
@@ -142,6 +192,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "date_joined",
             "auth",
             "personnel_state",
+            "linked_tasks",
         )
         extra_kwargs = {
             "password": {"write_only": True, "required": False},
@@ -295,6 +346,16 @@ class EmployeeSerializer(serializers.ModelSerializer):
     def get_personnel_state(self, obj):
         return _employee_personnel_state_payload(obj)
 
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_linked_tasks(self, obj):
+        prefetched = getattr(obj, "_linked_task_payloads", None)
+        if prefetched is not None:
+            return prefetched
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return _linked_task_payloads_for_employee(obj, user)
+
 
 class EmployeeBriefSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
@@ -354,6 +415,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     skills = SkillSerializer(many=True, read_only=True)
     department_relation = serializers.SerializerMethodField()
     personnel_state = serializers.SerializerMethodField(read_only=True)
+    linked_tasks = serializers.SerializerMethodField()
 
     class Meta:
         model = Employee
@@ -373,11 +435,22 @@ class EmployeeListSerializer(serializers.ModelSerializer):
             "display_name",
             "department_relation",
             "personnel_state",
+            "linked_tasks",
         )
 
     @extend_schema_field(EmployeePersonnelStateSerializer())
     def get_personnel_state(self, obj):
         return _employee_personnel_state_payload(obj)
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_linked_tasks(self, obj):
+        prefetched = getattr(obj, "_linked_task_payloads", None)
+        if prefetched is not None:
+            return prefetched
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return _linked_task_payloads_for_employee(obj, user)
 
     @extend_schema_field(EmployeeDepartmentRelationSerializer(allow_null=True))
     def get_department_relation(self, obj):

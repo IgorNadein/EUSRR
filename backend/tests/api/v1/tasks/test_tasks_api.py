@@ -681,6 +681,74 @@ def test_task_linked_procurement_request_respects_procurement_access(api_client)
     assert reverse_linked_response.data[0]["linked_procurement_requests_count"] == 1
 
 
+def test_task_linked_employee_respects_task_board_access(api_client):
+    owner = make_user("task-employee-owner@example.com", "+79994440032")
+    board_member = make_user("task-employee-member@example.com", "+79994440033")
+    outsider = make_user("task-employee-outsider@example.com", "+79994440034")
+    linked_employee = make_user(
+        "task-employee-linked@example.com",
+        "+79994440035",
+        first_name="Гарик",
+        last_name="Мусик",
+    )
+    board = TaskBoard.objects.create(
+        name="Доска с сотрудниками",
+        created_by=owner,
+    )
+    board.members.add(board_member)
+    column = TaskColumn.objects.create(
+        board=board,
+        name="Новые",
+        position=1000,
+        color="#38bdf8",
+    )
+    task = Task.objects.create(
+        board=board,
+        column=column,
+        title="Подготовить сотрудника",
+        created_by=owner,
+    )
+
+    api_client.force_authenticate(user=board_member)
+    link_response = api_client.post(
+        reverse("api:v1:tasks:task-linked-employees", kwargs={"pk": task.id}),
+        {"employee_id": linked_employee.id},
+        format="json",
+    )
+    assert link_response.status_code == status.HTTP_201_CREATED
+    assert link_response.data["employee_id"] == linked_employee.id
+    assert link_response.data["employee"]["full_name"] == "Мусик Гарик"
+    assert link_response.data["can_open"] is True
+    assert link_response.data["object_url"] == f"/users/{linked_employee.id}"
+
+    linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-employees", kwargs={"pk": task.id})
+    )
+    assert linked_response.status_code == status.HTTP_200_OK
+    assert linked_response.data[0]["employee"]["email"] == linked_employee.email
+
+    reverse_linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-employee-tasks"),
+        {"employee_id": linked_employee.id},
+    )
+    assert reverse_linked_response.status_code == status.HTTP_200_OK
+    assert reverse_linked_response.data[0]["id"] == task.id
+    assert reverse_linked_response.data[0]["linked_employees_count"] == 1
+
+    api_client.force_authenticate(user=outsider)
+    task_detail_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-employees", kwargs={"pk": task.id})
+    )
+    assert task_detail_response.status_code == status.HTTP_404_NOT_FOUND
+
+    reverse_linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-employee-tasks"),
+        {"employee_id": linked_employee.id},
+    )
+    assert reverse_linked_response.status_code == status.HTTP_200_OK
+    assert reverse_linked_response.data == []
+
+
 def test_task_activity_records_core_actions(api_client, user):
     api_client.force_authenticate(user=user)
     board_response = api_client.get(
