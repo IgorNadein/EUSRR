@@ -10,7 +10,9 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from communications.models import Chat, ChatMembership, Message
+from documents.models import Document
 from employees.models import Department, EmployeeDepartment, RoleAssignment
+from requests_app.models import Request as EmployeeRequest
 from schedule.models import Calendar, CalendarRelation, Event
 from tasks.models import Task, TaskBoard, TaskColumn
 from tasks.realtime import get_task_board_recipient_ids
@@ -431,6 +433,161 @@ def test_task_linked_calendar_event_respects_event_access(api_client):
     assert reverse_linked_response.data[0]["board_name"] == "Доска с событиями"
 
 
+def test_task_linked_document_respects_document_access(api_client):
+    owner = make_user("task-doc-owner@example.com", "+79994440026")
+    board_member = make_user("task-doc-member@example.com", "+79994440027")
+    board = TaskBoard.objects.create(
+        name="Доска с документами",
+        created_by=owner,
+    )
+    board.members.add(board_member)
+    column = TaskColumn.objects.create(
+        board=board,
+        name="Новые",
+        position=1000,
+    )
+    task = Task.objects.create(
+        board=board,
+        column=column,
+        title="Проверить регламент",
+        created_by=owner,
+    )
+    document = Document.objects.create(
+        title="Регламент доступа",
+        description="Закрытый документ",
+        uploaded_by=owner,
+        sent_to_all=False,
+        is_regulation=True,
+    )
+
+    api_client.force_authenticate(user=board_member)
+    denied_response = api_client.post(
+        reverse("api:v1:tasks:task-linked-documents", kwargs={"pk": task.id}),
+        {"document_id": document.id},
+        format="json",
+    )
+    assert denied_response.status_code == status.HTTP_403_FORBIDDEN
+
+    api_client.force_authenticate(user=owner)
+    link_response = api_client.post(
+        reverse("api:v1:tasks:task-linked-documents", kwargs={"pk": task.id}),
+        {"document_id": document.id},
+        format="json",
+    )
+    assert link_response.status_code == status.HTTP_201_CREATED
+    assert link_response.data["document"]["title"] == "Регламент доступа"
+    assert link_response.data["document"]["is_regulation"] is True
+    assert link_response.data["can_open"] is True
+    assert link_response.data["object_url"] == (
+        f"/documents?document={document.id}"
+    )
+
+    api_client.force_authenticate(user=board_member)
+    linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-documents", kwargs={"pk": task.id})
+    )
+    assert linked_response.status_code == status.HTTP_200_OK
+    assert linked_response.data[0]["document_id"] == document.id
+    assert linked_response.data[0]["document"]["title"] == "Регламент доступа"
+    assert linked_response.data[0]["can_open"] is False
+    assert linked_response.data[0]["object_url"] is None
+
+    reverse_linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-document-tasks"),
+        {"document_id": document.id},
+    )
+    assert reverse_linked_response.status_code == status.HTTP_403_FORBIDDEN
+
+    api_client.force_authenticate(user=owner)
+    reverse_linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-document-tasks"),
+        {"document_id": document.id},
+    )
+    assert reverse_linked_response.status_code == status.HTTP_200_OK
+    assert reverse_linked_response.data[0]["id"] == task.id
+    assert reverse_linked_response.data[0]["title"] == "Проверить регламент"
+    assert (
+        reverse_linked_response.data[0]["linked_documents_count"] == 1
+    )
+
+
+def test_task_linked_request_respects_request_access(api_client):
+    owner = make_user("task-request-owner@example.com", "+79994440028")
+    board_member = make_user("task-request-member@example.com", "+79994440029")
+    board = TaskBoard.objects.create(
+        name="Доска с заявлениями",
+        created_by=owner,
+    )
+    board.members.add(board_member)
+    column = TaskColumn.objects.create(
+        board=board,
+        name="Новые",
+        position=1000,
+    )
+    task = Task.objects.create(
+        board=board,
+        column=column,
+        title="Проверить заявление",
+        created_by=owner,
+    )
+    employee_request = EmployeeRequest.objects.create(
+        employee=owner,
+        type="vacation",
+        title="Отпуск",
+        comment="Заявление к задаче",
+    )
+
+    api_client.force_authenticate(user=board_member)
+    denied_response = api_client.post(
+        reverse("api:v1:tasks:task-linked-requests", kwargs={"pk": task.id}),
+        {"request_id": employee_request.id},
+        format="json",
+    )
+    assert denied_response.status_code == status.HTTP_403_FORBIDDEN
+
+    api_client.force_authenticate(user=owner)
+    link_response = api_client.post(
+        reverse("api:v1:tasks:task-linked-requests", kwargs={"pk": task.id}),
+        {"request_id": employee_request.id},
+        format="json",
+    )
+    assert link_response.status_code == status.HTTP_201_CREATED
+    assert link_response.data["request"]["title"] == "Отпуск"
+    assert link_response.data["request"]["comment"] == "Заявление к задаче"
+    assert link_response.data["can_open"] is True
+    assert link_response.data["object_url"] == (
+        f"/requests?request={employee_request.id}"
+    )
+
+    api_client.force_authenticate(user=board_member)
+    linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-requests", kwargs={"pk": task.id})
+    )
+    assert linked_response.status_code == status.HTTP_200_OK
+    assert linked_response.data[0]["request_id"] == employee_request.id
+    assert linked_response.data[0]["request"]["title"] == "Отпуск"
+    assert linked_response.data[0]["can_open"] is False
+    assert linked_response.data[0]["object_url"] is None
+
+    reverse_linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-request-tasks"),
+        {"request_id": employee_request.id},
+    )
+    assert reverse_linked_response.status_code == status.HTTP_403_FORBIDDEN
+
+    api_client.force_authenticate(user=owner)
+    reverse_linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-request-tasks"),
+        {"request_id": employee_request.id},
+    )
+    assert reverse_linked_response.status_code == status.HTTP_200_OK
+    assert reverse_linked_response.data[0]["id"] == task.id
+    assert reverse_linked_response.data[0]["title"] == "Проверить заявление"
+    assert (
+        reverse_linked_response.data[0]["linked_requests_count"] == 1
+    )
+
+
 def test_task_activity_records_core_actions(api_client, user):
     api_client.force_authenticate(user=user)
     board_response = api_client.get(
@@ -535,3 +692,125 @@ def test_chat_message_serialization_shows_only_accessible_linked_tasks(api_clien
     )
     assert hidden_response.status_code == status.HTTP_200_OK
     assert hidden_response.data["messages"][0]["linked_tasks"] == []
+
+
+def test_task_comments_use_communications_and_update_count(api_client, user):
+    api_client.force_authenticate(user=user)
+    board = TaskBoard.objects.create(
+        name="Доска с комментариями",
+        created_by=user,
+    )
+    column = TaskColumn.objects.create(board=board, name="Новые", position=1000)
+    task = Task.objects.create(
+        board=board,
+        column=column,
+        title="Задача с обсуждением",
+        created_by=user,
+    )
+
+    detail_response = api_client.get(
+        reverse("api:v1:tasks:task-detail", kwargs={"pk": task.id})
+    )
+    assert detail_response.status_code == status.HTTP_200_OK
+    assert detail_response.data["comments_count"] == 0
+
+    empty_response = api_client.post(
+        reverse("api:v1:tasks:task-comments", kwargs={"pk": task.id}),
+        {"text": ""},
+        format="json",
+    )
+    assert empty_response.status_code == status.HTTP_400_BAD_REQUEST
+
+    create_response = api_client.post(
+        reverse("api:v1:tasks:task-comments", kwargs={"pk": task.id}),
+        {"text": "Нужно уточнить детали"},
+        format="json",
+    )
+    assert create_response.status_code == status.HTTP_201_CREATED
+    assert create_response.data["task"] == task.id
+    assert create_response.data["text"] == "Нужно уточнить детали"
+    assert create_response.data["author"]["id"] == user.id
+
+    task_ct = ContentType.objects.get_for_model(Task)
+    chat = Chat.objects.get(
+        type="comments",
+        context_content_type=task_ct,
+        context_object_id=task.id,
+    )
+    message = Message.objects.get(chat=chat)
+    assert message.content == "Нужно уточнить детали"
+    assert message.author == user
+
+    list_response = api_client.get(
+        reverse("api:v1:tasks:task-comments", kwargs={"pk": task.id})
+    )
+    assert list_response.status_code == status.HTTP_200_OK
+    assert [comment["text"] for comment in list_response.data] == [
+        "Нужно уточнить детали"
+    ]
+
+    detail_response = api_client.get(
+        reverse("api:v1:tasks:task-detail", kwargs={"pk": task.id})
+    )
+    assert detail_response.data["comments_count"] == 1
+
+    delete_response = api_client.delete(
+        reverse(
+            "api:v1:tasks:task-delete-comment",
+            kwargs={"pk": task.id, "comment_id": message.id},
+        )
+    )
+    assert delete_response.status_code == status.HTTP_204_NO_CONTENT
+    message.refresh_from_db()
+    assert message.is_deleted is True
+
+    assert api_client.get(
+        reverse("api:v1:tasks:task-comments", kwargs={"pk": task.id})
+    ).data == []
+    assert api_client.get(
+        reverse("api:v1:tasks:task-detail", kwargs={"pk": task.id})
+    ).data["comments_count"] == 0
+
+
+def test_task_comments_chat_access_follows_board_access(api_client):
+    owner = make_user("task-comments-owner@example.com", "+79994440024")
+    member = make_user("task-comments-member@example.com", "+79994440025")
+    outsider = make_user("task-comments-outsider@example.com", "+79994440026")
+    board = TaskBoard.objects.create(name="Закрытая доска", created_by=owner)
+    board.members.add(member)
+    column = TaskColumn.objects.create(board=board, name="Новые", position=1000)
+    task = Task.objects.create(
+        board=board,
+        column=column,
+        title="Закрытая задача",
+        created_by=owner,
+    )
+
+    api_client.force_authenticate(user=owner)
+    create_response = api_client.post(
+        reverse("api:v1:tasks:task-comments", kwargs={"pk": task.id}),
+        {"text": "Комментарий закрытой доски"},
+        format="json",
+    )
+    assert create_response.status_code == status.HTTP_201_CREATED
+
+    chat = Chat.objects.get(
+        type="comments",
+        context_content_type=ContentType.objects.get_for_model(Task),
+        context_object_id=task.id,
+    )
+
+    api_client.force_authenticate(user=member)
+    member_response = api_client.get(
+        reverse("api:v1:chats-messages", kwargs={"pk": chat.id})
+    )
+    assert member_response.status_code == status.HTTP_200_OK
+    assert member_response.data["messages"][0]["content"] == (
+        "Комментарий закрытой доски"
+    )
+
+    api_client.force_authenticate(user=outsider)
+    outsider_response = api_client.get(
+        reverse("api:v1:chats-messages", kwargs={"pk": chat.id})
+    )
+    assert outsider_response.status_code == status.HTTP_403_FORBIDDEN

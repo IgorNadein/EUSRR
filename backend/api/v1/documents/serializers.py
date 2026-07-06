@@ -293,6 +293,7 @@ class DocumentReadSerializer(serializers.ModelSerializer):
         source="file.size", read_only=True, allow_null=True
     )
     is_acknowledged = serializers.SerializerMethodField()
+    linked_tasks = serializers.SerializerMethodField()
 
     class Meta:
         model = Document
@@ -319,6 +320,7 @@ class DocumentReadSerializer(serializers.ModelSerializer):
             "file_name",
             "file_size",
             "is_acknowledged",
+            "linked_tasks",
         )
 
     def get_is_acknowledged(self, obj: Document) -> bool:
@@ -340,6 +342,60 @@ class DocumentReadSerializer(serializers.ModelSerializer):
         return DocumentAcknowledgement.objects.filter(
             document=obj, user=request.user
         ).exists()
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_linked_tasks(self, obj: Document) -> list[dict]:
+        prefetched = getattr(obj, "_linked_task_payloads", None)
+        if prefetched is not None:
+            return prefetched
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not getattr(user, "is_authenticated", False):
+            return []
+
+        try:
+            from django.contrib.contenttypes.models import ContentType
+            from tasks.access import task_board_access_q
+            from tasks.models import (
+                TaskBoard,
+                TaskLinkedObject,
+                TaskLinkedObjectKind,
+            )
+        except Exception:
+            return []
+
+        content_type = ContentType.objects.get_for_model(Document)
+        accessible_boards = TaskBoard.objects.filter(
+            is_archived=False,
+        ).filter(task_board_access_q(user))
+
+        links = (
+            TaskLinkedObject.objects.filter(
+                kind=TaskLinkedObjectKind.DOCUMENT,
+                content_type=content_type,
+                object_id=obj.id,
+                task__board__in=accessible_boards,
+            )
+            .select_related("task", "task__board", "task__column")
+            .order_by("task__title", "task_id")
+        )
+
+        return [
+            {
+                "link_id": link.id,
+                "id": link.task_id,
+                "title": link.task.title,
+                "board_id": link.task.board_id,
+                "board_name": link.task.board.name,
+                "column_id": link.task.column_id,
+                "column_name": link.task.column.name,
+                "column_color": link.task.column.color,
+                "priority": link.task.priority,
+                "priority_display": link.task.get_priority_display(),
+            }
+            for link in links
+        ]
 
 
 class DocumentWriteSerializer(serializers.ModelSerializer):

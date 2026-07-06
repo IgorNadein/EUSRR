@@ -19,6 +19,8 @@ import {
   CalendarDays,
   ChevronDown,
   ChevronRight,
+  FileSignature,
+  FileText,
   GripVertical,
   History,
   Kanban,
@@ -38,6 +40,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
 import { Modal } from "@/components/ui";
 import { useUser } from "@/contexts/UserContext";
 import { apiClient } from "@/lib/api";
@@ -51,8 +54,11 @@ import type {
   TaskBoard,
   TaskCard,
   TaskColumn,
+  TaskComment,
+  TaskLinkedDocument,
   TaskLinkedCalendarEvent,
   TaskLinkedMessage,
+  TaskLinkedRequest,
   TaskPriority,
   User,
 } from "@/types/api";
@@ -119,11 +125,41 @@ const emptyColumnForm: ColumnFormState = {
   is_done: false,
 };
 
-const priorityOptions: { value: TaskPriority; label: string; className: string }[] = [
-  { value: "low", label: "Низкий", className: "app-badge" },
-  { value: "medium", label: "Средний", className: "app-selected" },
-  { value: "high", label: "Высокий", className: "app-feedback-warning" },
-  { value: "critical", label: "Критический", className: "app-feedback-danger" },
+const priorityOptions: {
+  value: TaskPriority;
+  label: string;
+  urgencyLabel: string;
+  className: string;
+  textClassName: string;
+}[] = [
+  {
+    value: "low",
+    label: "Низкий",
+    urgencyLabel: "Низкая",
+    className: "app-badge",
+    textClassName: "app-text-muted",
+  },
+  {
+    value: "medium",
+    label: "Средний",
+    urgencyLabel: "Средняя",
+    className: "app-selected",
+    textClassName: "text-[var(--accent-primary-strong)]",
+  },
+  {
+    value: "high",
+    label: "Высокий",
+    urgencyLabel: "Высокая",
+    className: "app-feedback-warning",
+    textClassName: "text-[var(--warning-foreground)]",
+  },
+  {
+    value: "critical",
+    label: "Критический",
+    urgencyLabel: "Критическая",
+    className: "app-feedback-danger",
+    textClassName: "text-[var(--danger-foreground)]",
+  },
 ];
 
 const priorityMeta = Object.fromEntries(priorityOptions.map((item) => [item.value, item])) as Record<TaskPriority, typeof priorityOptions[number]>;
@@ -144,10 +180,36 @@ function getTaskError(error: unknown, fallback: string) {
   return raw;
 }
 
-function isOverdue(task: TaskCard) {
-  if (!task.due_date || task.completed_at) return false;
-  const today = new Date().toISOString().slice(0, 10);
-  return task.due_date < today;
+function toDateOnlyTime(value?: string | null) {
+  if (!value) return null;
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null;
+  }
+
+  const date = new Date(year, month - 1, day);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+function getTaskDueDateBadgeClass(task: TaskCard, defaultClass = "app-badge") {
+  if (!task.due_date || task.completed_at) return defaultClass;
+
+  const dueTime = toDateOnlyTime(task.due_date);
+  if (dueTime === null) return defaultClass;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayTime = today.getTime();
+
+  if (dueTime < todayTime) return "app-feedback-danger";
+  if (dueTime === todayTime) return "app-feedback-warning";
+  return defaultClass;
 }
 
 function getMessageCreatedLabel(message?: Message | null) {
@@ -178,7 +240,7 @@ function TaskCardView({
   });
   const style = transform && !isDragging ? { transform: CSS.Translate.toString(transform) } : undefined;
   const priority = priorityMeta[task.priority] ?? priorityMeta.medium;
-  const overdue = isOverdue(task);
+  const dueDateClass = getTaskDueDateBadgeClass(task);
 
   return (
     <article
@@ -213,41 +275,46 @@ function TaskCardView({
             </p>
           ) : null}
         </button>
-        <div ref={menuOpen ? menuRef : null} className="relative shrink-0">
-          <button
-            type="button"
-            onClick={onToggleMenu}
-            className="app-icon-button flex h-7 w-7 items-center justify-center rounded-md"
-            title="Действия"
-            aria-label="Действия с задачей"
-            aria-expanded={menuOpen}
-            aria-haspopup="menu"
-          >
-            <ChevronDown
-              size={14}
-              className={`transition-transform ${menuOpen ? "" : "-rotate-90"}`}
-            />
-          </button>
-          {menuOpen ? (
-            <div className="app-menu absolute right-0 top-full z-30 mt-2 w-44 rounded-lg p-1.5">
-              <button
-                type="button"
-                onClick={() => onEdit(task)}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition hover:bg-[var(--surface-secondary)]"
-              >
-                <Pencil size={14} className="app-text-muted" />
-                Редактировать
-              </button>
-              <button
-                type="button"
-                onClick={() => onDelete(task)}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-[var(--danger-foreground)] transition hover:bg-[var(--danger-soft)]"
-              >
-                <Trash2 size={14} />
-                Удалить
-              </button>
-            </div>
-          ) : null}
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <div ref={menuOpen ? menuRef : null} className="relative">
+            <button
+              type="button"
+              onClick={onToggleMenu}
+              className="app-icon-button flex h-7 w-7 items-center justify-center rounded-md"
+              title="Действия"
+              aria-label="Действия с задачей"
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+            >
+              <ChevronDown
+                size={14}
+                className={`transition-transform ${menuOpen ? "" : "-rotate-90"}`}
+              />
+            </button>
+            {menuOpen ? (
+              <div className="app-menu absolute right-0 top-full z-30 mt-2 w-44 rounded-lg p-1.5">
+                <button
+                  type="button"
+                  onClick={() => onEdit(task)}
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition hover:bg-[var(--surface-secondary)]"
+                >
+                  <Pencil size={14} className="app-text-muted" />
+                  Редактировать
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDelete(task)}
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-[var(--danger-foreground)] transition hover:bg-[var(--danger-soft)]"
+                >
+                  <Trash2 size={14} />
+                  Удалить
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <span className={`whitespace-nowrap text-right text-[11px] font-medium ${priority.textClassName}`}>
+            {priority.urgencyLabel} срочность
+          </span>
         </div>
       </div>
 
@@ -266,9 +333,6 @@ function TaskCardView({
       ) : null}
 
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className={`app-status-pill min-h-0 px-2 py-1 text-[11px] ${priority.className}`}>
-          {task.priority_display || priority.label}
-        </span>
         {task.assignee ? (
           <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]">
             <UserRound size={11} />
@@ -276,7 +340,7 @@ function TaskCardView({
           </span>
         ) : null}
         {task.due_date ? (
-          <span className={`${overdue ? "app-feedback-danger" : "app-badge"} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]`}>
+          <span className={`${dueDateClass} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]`}>
             <CalendarDays size={11} />
             {formatDate(task.due_date)}
           </span>
@@ -287,6 +351,12 @@ function TaskCardView({
             {task.linked_objects_count || task.linked_messages_count}
           </span>
         ) : null}
+        {(task.comments_count || 0) > 0 ? (
+          <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+            <MessageSquare size={11} />
+            {task.comments_count}
+          </span>
+        ) : null}
       </div>
     </article>
   );
@@ -294,7 +364,7 @@ function TaskCardView({
 
 function TaskDragOverlayCard({ task }: { task: TaskCard }) {
   const priority = priorityMeta[task.priority] ?? priorityMeta.medium;
-  const overdue = isOverdue(task);
+  const dueDateClass = getTaskDueDateBadgeClass(task);
 
   return (
     <article className="app-surface-elevated w-[17rem] cursor-grabbing rounded-xl border border-[var(--accent-primary)] p-3 shadow-2xl ring-1 ring-[color:var(--accent-primary)]/20">
@@ -312,6 +382,9 @@ function TaskDragOverlayCard({ task }: { task: TaskCard }) {
             </p>
           ) : null}
         </div>
+        <span className={`shrink-0 whitespace-nowrap text-right text-[11px] font-medium ${priority.textClassName}`}>
+          {priority.urgencyLabel} срочность
+        </span>
       </div>
 
       {task.labels && task.labels.length > 0 ? (
@@ -329,9 +402,6 @@ function TaskDragOverlayCard({ task }: { task: TaskCard }) {
       ) : null}
 
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className={`app-status-pill min-h-0 px-2 py-1 text-[11px] ${priority.className}`}>
-          {task.priority_display || priority.label}
-        </span>
         {task.assignee ? (
           <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]">
             <UserRound size={11} />
@@ -339,7 +409,7 @@ function TaskDragOverlayCard({ task }: { task: TaskCard }) {
           </span>
         ) : null}
         {task.due_date ? (
-          <span className={`${overdue ? "app-feedback-danger" : "app-badge"} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]`}>
+          <span className={`${dueDateClass} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]`}>
             <CalendarDays size={11} />
             {formatDate(task.due_date)}
           </span>
@@ -348,6 +418,12 @@ function TaskDragOverlayCard({ task }: { task: TaskCard }) {
           <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]">
             <Link2 size={11} />
             {task.linked_objects_count || task.linked_messages_count}
+          </span>
+        ) : null}
+        {(task.comments_count || 0) > 0 ? (
+          <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+            <MessageSquare size={11} />
+            {task.comments_count}
           </span>
         ) : null}
       </div>
@@ -655,6 +731,203 @@ function LinkedCalendarEventCard({
   );
 }
 
+function LinkedDocumentCard({
+  link,
+  onUnlink,
+  disabled,
+}: {
+  link: TaskLinkedDocument;
+  onUnlink: (linkId: number) => void;
+  disabled?: boolean;
+}) {
+  const document = link.document;
+  const canOpen = Boolean(link.can_open && link.object_url);
+  const mainContent = (
+    <>
+      <div className="mb-2 min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="app-pill inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium">
+            <FileText size={12} />
+            Документ
+          </span>
+          {document?.is_regulation ? (
+            <span className="app-selected app-accent-text inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-medium">
+              Регламент
+            </span>
+          ) : null}
+          {canOpen ? (
+            <span className="app-badge rounded-full px-2 py-1 text-[11px]">
+              Открыть
+            </span>
+          ) : null}
+        </div>
+        <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">
+          {document?.title || "Документ не найден"}
+        </p>
+        {document?.uploaded_at || document?.created_at ? (
+          <p className="app-text-muted mt-0.5 text-xs">
+            {formatDate(document.uploaded_at || document.created_at)}
+          </p>
+        ) : null}
+      </div>
+
+      {document?.description ? (
+        <p className="app-text-wrap whitespace-pre-wrap text-sm leading-5 text-[var(--foreground)]">
+          {document.description}
+        </p>
+      ) : null}
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {document?.folder_path ? (
+          <span className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+            <span className="truncate">{document.folder_path}</span>
+          </span>
+        ) : null}
+        {document?.file_name ? (
+          <span className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+            <Paperclip size={11} />
+            <span className="truncate">{document.file_name}</span>
+          </span>
+        ) : null}
+        <span className="app-text-muted text-[11px]">
+          Связал: {link.created_by ? displayUserName(link.created_by) : "не указано"}
+        </span>
+      </div>
+    </>
+  );
+
+  return (
+    <article className="app-surface-muted rounded-xl border border-[var(--border-subtle)] p-3">
+      <div className="relative">
+        {canOpen && link.object_url ? (
+          <Link
+            href={link.object_url}
+            className="block rounded-lg pr-10 transition hover:bg-[var(--surface-elevated)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
+            title="Открыть связанный документ"
+          >
+            {mainContent}
+          </Link>
+        ) : (
+          <div className="pr-10">
+            {mainContent}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => onUnlink(link.id)}
+          disabled={disabled}
+          className="app-icon-button absolute right-0 top-0 z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
+          title="Убрать связь"
+          aria-label="Убрать связь с документом"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function LinkedRequestCard({
+  link,
+  onUnlink,
+  disabled,
+}: {
+  link: TaskLinkedRequest;
+  onUnlink: (linkId: number) => void;
+  disabled?: boolean;
+}) {
+  const request = link.request;
+  const canOpen = Boolean(link.can_open && link.object_url);
+  const periodLabel = request?.date_from
+    ? `${formatDate(request.date_from)}${request.date_to ? ` - ${formatDate(request.date_to)}` : ""}`
+    : "";
+  const mainContent = (
+    <>
+      <div className="mb-2 min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="app-pill inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium">
+            <FileSignature size={12} />
+            Заявление
+          </span>
+          {request?.status_display ? (
+            <span className="app-badge rounded-full px-2 py-1 text-[11px]">
+              {request.status_display}
+            </span>
+          ) : null}
+          {canOpen ? (
+            <span className="app-badge rounded-full px-2 py-1 text-[11px]">
+              Открыть
+            </span>
+          ) : null}
+        </div>
+        <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">
+          {request?.display_title || request?.title || "Заявление не найдено"}
+        </p>
+        {periodLabel ? (
+          <p className="app-text-muted mt-0.5 text-xs">
+            {periodLabel}
+          </p>
+        ) : null}
+      </div>
+
+      {request?.comment ? (
+        <p className="app-text-wrap whitespace-pre-wrap text-sm leading-5 text-[var(--foreground)]">
+          {request.comment}
+        </p>
+      ) : null}
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {request?.type_display ? (
+          <span className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+            <span className="truncate">{request.type_display}</span>
+          </span>
+        ) : null}
+        {request?.employee ? (
+          <span className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+            <UserRound size={11} />
+            <span className="truncate">{displayUserName(request.employee)}</span>
+          </span>
+        ) : null}
+        <span className="app-text-muted text-[11px]">
+          Связал: {link.created_by ? displayUserName(link.created_by) : "не указано"}
+        </span>
+      </div>
+    </>
+  );
+
+  return (
+    <article className="app-surface-muted rounded-xl border border-[var(--border-subtle)] p-3">
+      <div className="relative">
+        {canOpen && link.object_url ? (
+          <Link
+            href={link.object_url}
+            className="block rounded-lg pr-10 transition hover:bg-[var(--surface-elevated)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
+            title="Открыть связанное заявление"
+          >
+            {mainContent}
+          </Link>
+        ) : (
+          <div className="pr-10">
+            {mainContent}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => onUnlink(link.id)}
+          disabled={disabled}
+          className="app-icon-button absolute right-0 top-0 z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
+          title="Убрать связь"
+          aria-label="Убрать связь с заявлением"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </article>
+  );
+}
+
 const activityFieldLabels: Record<string, string> = {
   title: "название",
   description: "описание",
@@ -755,7 +1028,13 @@ export default function TasksPage() {
   const [linkedObjectsOpen, setLinkedObjectsOpen] = useState(false);
   const [linkedMessages, setLinkedMessages] = useState<TaskLinkedMessage[]>([]);
   const [linkedEvents, setLinkedEvents] = useState<TaskLinkedCalendarEvent[]>([]);
+  const [linkedDocuments, setLinkedDocuments] = useState<TaskLinkedDocument[]>([]);
+  const [linkedRequests, setLinkedRequests] = useState<TaskLinkedRequest[]>([]);
   const [linkedObjectsLoading, setLinkedObjectsLoading] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [taskComments, setTaskComments] = useState<TaskComment[]>([]);
+  const [taskCommentsLoading, setTaskCommentsLoading] = useState(false);
+  const [commentDraft, setCommentDraft] = useState("");
   const [activityOpen, setActivityOpen] = useState(false);
   const [taskActivities, setTaskActivities] = useState<TaskActivity[]>([]);
   const [taskActivityLoading, setTaskActivityLoading] = useState(false);
@@ -795,12 +1074,16 @@ export default function TasksPage() {
   const loadTaskLinkedObjects = useCallback(async (taskId: number) => {
     setLinkedObjectsLoading(true);
     try {
-      const [messages, events] = await Promise.all([
+      const [messages, events, documents, requests] = await Promise.all([
         apiClient.getTaskLinkedMessages(taskId),
         apiClient.getTaskLinkedEvents(taskId),
+        apiClient.getTaskLinkedDocuments(taskId),
+        apiClient.getTaskLinkedRequests(taskId),
       ]);
       setLinkedMessages(messages);
       setLinkedEvents(events);
+      setLinkedDocuments(documents);
+      setLinkedRequests(requests);
     } catch (linksError) {
       setError(getTaskError(linksError, "Не удалось загрузить связанные объекты"));
     } finally {
@@ -817,6 +1100,18 @@ export default function TasksPage() {
       setError(getTaskError(activityError, "Не удалось загрузить историю задачи"));
     } finally {
       setTaskActivityLoading(false);
+    }
+  }, []);
+
+  const loadTaskComments = useCallback(async (taskId: number) => {
+    setTaskCommentsLoading(true);
+    try {
+      const data = await apiClient.getTaskComments(taskId);
+      setTaskComments(data);
+    } catch (commentsError) {
+      setError(getTaskError(commentsError, "Не удалось загрузить комментарии"));
+    } finally {
+      setTaskCommentsLoading(false);
     }
   }, []);
 
@@ -1121,8 +1416,9 @@ export default function TasksPage() {
     () => activeColumns.find((column) => column.id === viewTask?.column) || null,
     [activeColumns, viewTask?.column],
   );
-  const linkedObjectsCount = linkedMessages.length + linkedEvents.length;
+  const linkedObjectsCount = linkedMessages.length + linkedEvents.length + linkedDocuments.length + linkedRequests.length;
   const linkedObjectsBadgeCount = viewTask?.linked_objects_count ?? linkedObjectsCount;
+  const commentsBadgeCount = viewTask?.comments_count ?? taskComments.length;
 
   useEffect(() => {
     if (
@@ -1137,8 +1433,13 @@ export default function TasksPage() {
     if (!viewTaskId) {
       setLinkedMessages([]);
       setLinkedEvents([]);
+      setLinkedDocuments([]);
+      setLinkedRequests([]);
       setTaskActivities([]);
+      setTaskComments([]);
+      setCommentDraft("");
       setLinkedObjectsOpen(false);
+      setCommentsOpen(false);
       setActivityOpen(false);
       return;
     }
@@ -1147,6 +1448,11 @@ export default function TasksPage() {
       void loadTaskLinkedObjects(viewTaskId);
     }
   }, [linkedObjectsOpen, loadTaskLinkedObjects, viewTask?.linked_objects_count, viewTaskId]);
+
+  useEffect(() => {
+    if (!viewTaskId || !commentsOpen) return;
+    void loadTaskComments(viewTaskId);
+  }, [commentsOpen, loadTaskComments, viewTask?.comments_count, viewTaskId]);
 
   useEffect(() => {
     if (!viewTaskId || !activityOpen) return;
@@ -1169,10 +1475,15 @@ export default function TasksPage() {
     setTaskMenuOpen(false);
     setViewColumnMenuOpen(false);
     setLinkedObjectsOpen(false);
+    setCommentsOpen(false);
     setActivityOpen(false);
     setLinkedMessages([]);
     setLinkedEvents([]);
+    setLinkedDocuments([]);
+    setLinkedRequests([]);
+    setTaskComments([]);
     setTaskActivities([]);
+    setCommentDraft("");
     setCardMenuTaskId(null);
   }, []);
 
@@ -1187,9 +1498,14 @@ export default function TasksPage() {
     setViewColumnMenuOpen(false);
     setLinkedMessages([]);
     setLinkedEvents([]);
+    setLinkedDocuments([]);
+    setLinkedRequests([]);
+    setTaskComments([]);
     setTaskActivities([]);
     setLinkedObjectsOpen(false);
+    setCommentsOpen(false);
     setActivityOpen(false);
+    setCommentDraft("");
   }, [saving]);
 
   const openEditTask = useCallback((task: TaskCard) => {
@@ -1481,6 +1797,39 @@ export default function TasksPage() {
     await deleteTask(viewTask);
   }, [deleteTask, viewTask]);
 
+  const addViewedTaskComment = useCallback(async () => {
+    if (!board || !viewTask || saving || !commentDraft.trim()) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      const created = await apiClient.addTaskComment(viewTask.id, commentDraft.trim());
+      setTaskComments((current) => [...current, created]);
+      setCommentDraft("");
+      await loadBoard(board.id);
+    } catch (commentError) {
+      setError(getTaskError(commentError, "Не удалось добавить комментарий"));
+    } finally {
+      setSaving(false);
+    }
+  }, [board, commentDraft, loadBoard, saving, viewTask]);
+
+  const deleteViewedTaskComment = useCallback(async (commentId: number) => {
+    if (!board || !viewTask || saving) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      await apiClient.deleteTaskComment(viewTask.id, commentId);
+      setTaskComments((current) => current.filter((comment) => comment.id !== commentId));
+      await loadBoard(board.id);
+    } catch (commentError) {
+      setError(getTaskError(commentError, "Не удалось удалить комментарий"));
+    } finally {
+      setSaving(false);
+    }
+  }, [board, loadBoard, saving, viewTask]);
+
   const unlinkMessageFromViewedTask = useCallback(async (linkId: number) => {
     if (!board || !viewTask || saving) return;
 
@@ -1510,6 +1859,40 @@ export default function TasksPage() {
       if (activityOpen) await loadTaskActivity(viewTask.id);
     } catch (unlinkError) {
       setError(getTaskError(unlinkError, "Не удалось убрать связь с событием"));
+    } finally {
+      setSaving(false);
+    }
+  }, [activityOpen, board, loadBoard, loadTaskActivity, loadTaskLinkedObjects, saving, viewTask]);
+
+  const unlinkDocumentFromViewedTask = useCallback(async (linkId: number) => {
+    if (!board || !viewTask || saving) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      await apiClient.unlinkTaskDocument(viewTask.id, linkId);
+      await loadTaskLinkedObjects(viewTask.id);
+      await loadBoard(board.id);
+      if (activityOpen) await loadTaskActivity(viewTask.id);
+    } catch (unlinkError) {
+      setError(getTaskError(unlinkError, "Не удалось убрать связь с документом"));
+    } finally {
+      setSaving(false);
+    }
+  }, [activityOpen, board, loadBoard, loadTaskActivity, loadTaskLinkedObjects, saving, viewTask]);
+
+  const unlinkRequestFromViewedTask = useCallback(async (linkId: number) => {
+    if (!board || !viewTask || saving) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      await apiClient.unlinkTaskRequest(viewTask.id, linkId);
+      await loadTaskLinkedObjects(viewTask.id);
+      await loadBoard(board.id);
+      if (activityOpen) await loadTaskActivity(viewTask.id);
+    } catch (unlinkError) {
+      setError(getTaskError(unlinkError, "Не удалось убрать связь с заявлением"));
     } finally {
       setSaving(false);
     }
@@ -2108,7 +2491,7 @@ export default function TasksPage() {
                     </span>
                   ) : null}
                   {viewTask.due_date ? (
-                    <span className={`${isOverdue(viewTask) ? "app-feedback-danger" : "app-pill"} inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium`}>
+                    <span className={`${getTaskDueDateBadgeClass(viewTask, "app-pill")} inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium`}>
                       <CalendarDays size={12} />
                       {formatDate(viewTask.due_date)}
                     </span>
@@ -2186,6 +2569,89 @@ export default function TasksPage() {
             <div className="rounded-xl border border-[var(--border-subtle)]">
               <button
                 type="button"
+                onClick={() => setCommentsOpen((current) => !current)}
+                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
+                aria-expanded={commentsOpen}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <MessageSquare size={15} className="app-text-muted shrink-0" />
+                  <span className="text-sm font-medium text-[var(--foreground)]">
+                    Комментарии
+                  </span>
+                  <span className="app-badge rounded-full px-2 py-0.5 text-[11px]">
+                    {commentsBadgeCount}
+                  </span>
+                </span>
+                <ChevronRight
+                  size={16}
+                  className={`app-text-muted shrink-0 transition-transform ${commentsOpen ? "rotate-90" : ""}`}
+                />
+              </button>
+
+              {commentsOpen ? (
+                <div className="space-y-3 border-t border-[var(--border-subtle)] p-3">
+                  {taskCommentsLoading ? (
+                    <div className="app-surface-muted rounded-xl border border-[var(--border-subtle)] p-4 text-center">
+                      <Loader2 size={18} className="mx-auto animate-spin text-sky-500" />
+                    </div>
+                  ) : taskComments.length > 0 ? (
+                    <div className="space-y-2">
+                      {taskComments.map((comment) => {
+                        const canDeleteComment = Boolean(
+                          user?.auth?.is_staff ||
+                          user?.auth?.is_superuser ||
+                          comment.author?.id === user?.id,
+                        );
+                        return (
+                          <div
+                            key={comment.id}
+                            className="app-surface-muted rounded-xl border border-[var(--border-subtle)] px-3 py-2 text-sm"
+                          >
+                            <div className="mb-1 flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="truncate text-xs font-semibold text-[var(--foreground)]">
+                                  {comment.author ? displayUserName(comment.author) : "Сотрудник"}
+                                </p>
+                                <p className="app-text-muted mt-0.5 text-[11px]">
+                                  {formatDateTime(comment.created_at)}
+                                </p>
+                              </div>
+                              {canDeleteComment ? (
+                                <CommentDeleteButton
+                                  disabled={saving}
+                                  onClick={() => deleteViewedTaskComment(comment.id)}
+                                />
+                              ) : null}
+                            </div>
+                            <p className="app-text-wrap whitespace-pre-wrap text-sm leading-5 text-[var(--foreground)]">
+                              {comment.text}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="app-surface-muted rounded-xl border border-dashed border-[var(--border-subtle)] px-3 py-4 text-center">
+                      <p className="app-text-muted text-xs">Комментариев пока нет</p>
+                    </div>
+                  )}
+
+                  <CommentComposer
+                    value={commentDraft}
+                    onChange={setCommentDraft}
+                    onSubmit={addViewedTaskComment}
+                    disabled={saving}
+                    multiline
+                    rows={2}
+                    placeholder="Комментарий к задаче"
+                  />
+                </div>
+              ) : null}
+            </div>
+
+            <div className="rounded-xl border border-[var(--border-subtle)]">
+              <button
+                type="button"
                 onClick={() => setLinkedObjectsOpen((current) => !current)}
                 className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
                 aria-expanded={linkedObjectsOpen}
@@ -2226,6 +2692,22 @@ export default function TasksPage() {
                           key={link.id}
                           link={link}
                           onUnlink={unlinkEventFromViewedTask}
+                          disabled={saving}
+                        />
+                      ))}
+                      {linkedDocuments.map((link) => (
+                        <LinkedDocumentCard
+                          key={link.id}
+                          link={link}
+                          onUnlink={unlinkDocumentFromViewedTask}
+                          disabled={saving}
+                        />
+                      ))}
+                      {linkedRequests.map((link) => (
+                        <LinkedRequestCard
+                          key={link.id}
+                          link={link}
+                          onUnlink={unlinkRequestFromViewedTask}
                           disabled={saving}
                         />
                       ))}

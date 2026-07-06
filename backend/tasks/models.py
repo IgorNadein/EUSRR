@@ -176,6 +176,8 @@ class Task(models.Model):
 class TaskLinkedObjectKind(models.TextChoices):
     MESSAGE = "message", "Сообщение"
     CALENDAR_EVENT = "calendar_event", "Календарное событие"
+    DOCUMENT = "document", "Документ"
+    REQUEST = "request", "Заявление"
 
 
 class TaskActivityAction(models.TextChoices):

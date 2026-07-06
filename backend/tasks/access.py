@@ -1,5 +1,8 @@
 from django.db.models import Q
+from documents.models import Document
 from employees.models import Department, EmployeeDepartment, RoleAssignment
+from requests_app.enums import RequestStatus
+from requests_app.models import Request as EmployeeRequest
 from schedule.models import Event
 from scheduling.services import user_can_view_calendar
 
@@ -63,3 +66,44 @@ def user_can_access_calendar_event(user, event: Event | None) -> bool:
     if not user or not user.is_authenticated or event is None:
         return False
     return user_can_view_calendar(user, event.calendar)
+
+
+def user_can_access_document(user, document: Document | None) -> bool:
+    if not user or not user.is_authenticated or document is None:
+        return False
+    if user.is_staff or user.is_superuser:
+        return True
+    if (
+        user.has_perm("documents.view_document")
+        or user.has_perm("documents.add_document")
+        or user.has_perm("documents.change_document")
+        or user.has_perm("documents.delete_document")
+    ):
+        return True
+    if document.sent_to_all and user.is_active:
+        return True
+    if document.uploaded_by_id == user.id:
+        return True
+    if document.recipients.filter(id=user.id, is_active=True).exists():
+        return True
+    return document.departments.filter(
+        employeedepartment__employee=user,
+        employeedepartment__is_active=True,
+    ).exists()
+
+
+def user_can_access_employee_request(
+    user,
+    request_obj: EmployeeRequest | None,
+) -> bool:
+    if not user or not user.is_authenticated or request_obj is None:
+        return False
+
+    if request_obj.status == RequestStatus.DRAFT:
+        return request_obj.employee_id == user.id
+
+    if request_obj.employee_id == user.id:
+        return True
+    if request_obj.recipients.filter(id=user.id).exists():
+        return True
+    return request_obj.cc_users.filter(id=user.id).exists()

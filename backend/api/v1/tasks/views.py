@@ -1,13 +1,31 @@
-from django.db.models import Count, Max, Q
+from django.contrib.contenttypes.models import ContentType
+from django.db.models import (
+    Count,
+    IntegerField,
+    Max,
+    OuterRef,
+    Q,
+    Subquery,
+    Value,
+)
+from django.db.models.functions import Coalesce
+from communications import comments_helpers
 from communications.models import Message
 from communications.utils import user_can_access_chat
+from documents.models import Document
+from requests_app.models import Request as EmployeeRequest
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from schedule.models import Event
 
-from tasks.access import task_board_access_q, user_can_access_calendar_event
+from tasks.access import (
+    task_board_access_q,
+    user_can_access_calendar_event,
+    user_can_access_document,
+    user_can_access_employee_request,
+)
 from tasks.models import (
     Task,
     TaskActivity,
@@ -24,16 +42,21 @@ from tasks.realtime import (
 )
 
 from .serializers import (
+    EmployeeBriefSerializer,
     TaskActivitySerializer,
     TaskBoardSerializer,
     TaskColumnSerializer,
     TaskLabelSerializer,
     TaskLinkedCalendarEventSerializer,
+    TaskLinkedDocumentSerializer,
     TaskLinkedMessageSerializer,
+    TaskLinkedRequestSerializer,
     TaskSerializer,
     create_default_columns,
     get_calendar_event_content_type,
+    get_document_content_type,
     get_message_content_type,
+    get_request_content_type,
 )
 
 
@@ -215,6 +238,18 @@ class TaskViewSet(viewsets.ModelViewSet):
     ordering = ["position", "-created_at"]
 
     def get_queryset(self):
+        task_content_type = ContentType.objects.get_for_model(Task)
+        comments_subquery = (
+            Message.objects.filter(
+                chat__type="comments",
+                chat__context_content_type=task_content_type,
+                chat__context_object_id=OuterRef("pk"),
+                is_deleted=False,
+            )
+            .values("chat")
+            .annotate(count=Count("id"))
+            .values("count")
+        )
         queryset = (
             Task.objects.filter(board__is_archived=False)
             .filter(
@@ -237,7 +272,25 @@ class TaskViewSet(viewsets.ModelViewSet):
                     ),
                     distinct=True,
                 ),
+                linked_documents_count=Count(
+                    "linked_objects",
+                    filter=Q(
+                        linked_objects__kind=TaskLinkedObjectKind.DOCUMENT,
+                    ),
+                    distinct=True,
+                ),
+                linked_requests_count=Count(
+                    "linked_objects",
+                    filter=Q(
+                        linked_objects__kind=TaskLinkedObjectKind.REQUEST,
+                    ),
+                    distinct=True,
+                ),
                 linked_objects_count=Count("linked_objects", distinct=True),
+                comments_count=Coalesce(
+                    Subquery(comments_subquery, output_field=IntegerField()),
+                    Value(0),
+                ),
             )
         )
         params = self.request.query_params
@@ -374,9 +427,105 @@ class TaskViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="activity")
     def activity(self, request, pk=None):
         task = self.get_object()
-        queryset = task.activities.select_related("actor").order_by("-created_at", "-id")
+        queryset = task.activities.select_related("actor").order_by(
+            "-created_at",
+            "-id",
+        )
         serializer = TaskActivitySerializer(queryset, many=True)
         return Response(serializer.data)
+
+    def _comment_payload(self, task, message):
+        return {
+            "id": message.id,
+            "task": task.id,
+            "author": EmployeeBriefSerializer(message.author).data,
+            "text": message.content,
+            "created_at": message.created_at,
+        }
+
+    @action(detail=True, methods=["get", "post"], url_path="comments")
+    def comments(self, request, pk=None):
+        task = self.get_object()
+
+        if request.method in ("GET", "HEAD"):
+            messages = comments_helpers.get_comments(task)
+            return Response(
+                [self._comment_payload(task, message) for message in messages]
+            )
+
+        text = request.data.get("text", "").strip()
+        if not text:
+            return Response(
+                {"text": ["Это поле не может быть пустым."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        message = comments_helpers.create_comment(
+            obj=task,
+            author=request.user,
+            content=text,
+        )
+        send_task_board_update(
+            task.board,
+            "commented",
+            "task",
+            task.id,
+            extra={"comment_id": message.id},
+        )
+        return Response(
+            self._comment_payload(task, message),
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"comments/(?P<comment_id>\d+)",
+    )
+    def delete_comment(self, request, pk=None, comment_id=None):
+        task = self.get_object()
+        chat = comments_helpers.get_comments_chat_if_exists(task)
+        if chat is None:
+            return Response(
+                {"detail": "Комментарий не найден."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            message = Message.objects.get(
+                id=comment_id,
+                chat=chat,
+                is_deleted=False,
+            )
+        except Message.DoesNotExist:
+            return Response(
+                {"detail": "Комментарий не найден."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not (
+            request.user.is_staff
+            or request.user.is_superuser
+            or message.author_id == request.user.id
+        ):
+            return Response(
+                {"detail": "Нет прав на удаление комментария."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        comments_helpers.delete_comment(
+            message=message,
+            deleted_by=request.user,
+            soft_delete=True,
+        )
+        send_task_board_update(
+            task.board,
+            "comment_deleted",
+            "task",
+            task.id,
+            extra={"comment_id": int(comment_id)},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["get"], url_path="linked-event-tasks")
     def linked_event_tasks(self, request):
@@ -421,6 +570,92 @@ class TaskViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=["get"], url_path="linked-document-tasks")
+    def linked_document_tasks(self, request):
+        document_id = request.query_params.get("document_id")
+        try:
+            document_id = int(document_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"document_id": ["Укажите ID документа."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            document = (
+                Document.objects.select_related("uploaded_by", "file", "folder")
+                .prefetch_related("recipients", "departments", "tags")
+                .get(id=document_id)
+            )
+        except Document.DoesNotExist:
+            return Response(
+                {"document_id": ["Документ не найден."]},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not user_can_access_document(request.user, document):
+            return Response(
+                {"detail": "Нет доступа к этому документу."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        queryset = (
+            self.get_queryset()
+            .filter(
+                linked_objects__kind=TaskLinkedObjectKind.DOCUMENT,
+                linked_objects__content_type=get_document_content_type(),
+                linked_objects__object_id=document.id,
+            )
+            .distinct()
+        )
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="linked-request-tasks")
+    def linked_request_tasks(self, request):
+        request_id = request.query_params.get("request_id")
+        try:
+            request_id = int(request_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"request_id": ["Укажите ID заявления."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            employee_request = (
+                EmployeeRequest.objects.select_related(
+                    "employee",
+                    "approver",
+                    "department",
+                )
+                .prefetch_related("recipients", "cc_users")
+                .get(id=request_id)
+            )
+        except EmployeeRequest.DoesNotExist:
+            return Response(
+                {"request_id": ["Заявление не найдено."]},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not user_can_access_employee_request(request.user, employee_request):
+            return Response(
+                {"detail": "Нет доступа к этому заявлению."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        queryset = (
+            self.get_queryset()
+            .filter(
+                linked_objects__kind=TaskLinkedObjectKind.REQUEST,
+                linked_objects__content_type=get_request_content_type(),
+                linked_objects__object_id=employee_request.id,
+            )
+            .distinct()
+        )
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     def _message_links_queryset(self, task):
         return (
             TaskLinkedObject.objects.filter(
@@ -436,6 +671,26 @@ class TaskViewSet(viewsets.ModelViewSet):
             TaskLinkedObject.objects.filter(
                 task=task,
                 kind=TaskLinkedObjectKind.CALENDAR_EVENT,
+            )
+            .select_related("created_by", "content_type")
+            .order_by("-created_at", "-id")
+        )
+
+    def _document_links_queryset(self, task):
+        return (
+            TaskLinkedObject.objects.filter(
+                task=task,
+                kind=TaskLinkedObjectKind.DOCUMENT,
+            )
+            .select_related("created_by", "content_type")
+            .order_by("-created_at", "-id")
+        )
+
+    def _request_links_queryset(self, task):
+        return (
+            TaskLinkedObject.objects.filter(
+                task=task,
+                kind=TaskLinkedObjectKind.REQUEST,
             )
             .select_related("created_by", "content_type")
             .order_by("-created_at", "-id")
@@ -561,6 +816,224 @@ class TaskViewSet(viewsets.ModelViewSet):
             "unlinked",
             "message",
             message_id,
+            extra={"task_id": task.id, "link_id": int(link_id)},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get", "post"], url_path="linked-documents")
+    def linked_documents(self, request, pk=None):
+        task = self.get_object()
+        if request.method == "GET":
+            serializer = TaskLinkedDocumentSerializer(
+                self._document_links_queryset(task),
+                many=True,
+                context={"request": request},
+            )
+            return Response(serializer.data)
+
+        document_id = request.data.get("document_id")
+        try:
+            document_id = int(document_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"document_id": ["Укажите ID документа."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            document = (
+                Document.objects.select_related("uploaded_by", "file", "folder")
+                .prefetch_related("recipients", "departments", "tags")
+                .get(id=document_id)
+            )
+        except Document.DoesNotExist:
+            return Response(
+                {"document_id": ["Документ не найден."]},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not user_can_access_document(request.user, document):
+            return Response(
+                {"detail": "Нет доступа к этому документу."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        link, created = TaskLinkedObject.objects.get_or_create(
+            task=task,
+            kind=TaskLinkedObjectKind.DOCUMENT,
+            content_type=get_document_content_type(),
+            object_id=document.id,
+            defaults={"created_by": request.user},
+        )
+        serializer = TaskLinkedDocumentSerializer(
+            link,
+            context={"request": request},
+        )
+        if created:
+            create_task_activity(
+                task,
+                request.user,
+                TaskActivityAction.LINKED,
+                object_kind=TaskLinkedObjectKind.DOCUMENT,
+                object_id=document.id,
+                metadata={
+                    "object_label": document.title,
+                    "object_type": "Документ",
+                },
+            )
+        send_task_board_update(
+            task.board,
+            "linked",
+            "document",
+            document.id,
+            extra={"task_id": task.id, "link_id": link.id},
+        )
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"linked-documents/(?P<link_id>\d+)",
+    )
+    def unlink_document(self, request, pk=None, link_id=None):
+        task = self.get_object()
+        try:
+            link = self._document_links_queryset(task).get(id=link_id)
+        except TaskLinkedObject.DoesNotExist:
+            return Response(
+                {"detail": "Связь не найдена."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        document_id = link.object_id
+        link.delete()
+        create_task_activity(
+            task,
+            request.user,
+            TaskActivityAction.UNLINKED,
+            object_kind=TaskLinkedObjectKind.DOCUMENT,
+            object_id=document_id,
+            metadata={"object_type": "Документ"},
+        )
+        send_task_board_update(
+            task.board,
+            "unlinked",
+            "document",
+            document_id,
+            extra={"task_id": task.id, "link_id": int(link_id)},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get", "post"], url_path="linked-requests")
+    def linked_requests(self, request, pk=None):
+        task = self.get_object()
+        if request.method == "GET":
+            serializer = TaskLinkedRequestSerializer(
+                self._request_links_queryset(task),
+                many=True,
+                context={"request": request},
+            )
+            return Response(serializer.data)
+
+        request_id = request.data.get("request_id")
+        try:
+            request_id = int(request_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"request_id": ["Укажите ID заявления."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            employee_request = (
+                EmployeeRequest.objects.select_related(
+                    "employee",
+                    "approver",
+                    "department",
+                )
+                .prefetch_related("recipients", "cc_users")
+                .get(id=request_id)
+            )
+        except EmployeeRequest.DoesNotExist:
+            return Response(
+                {"request_id": ["Заявление не найдено."]},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not user_can_access_employee_request(request.user, employee_request):
+            return Response(
+                {"detail": "Нет доступа к этому заявлению."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        link, created = TaskLinkedObject.objects.get_or_create(
+            task=task,
+            kind=TaskLinkedObjectKind.REQUEST,
+            content_type=get_request_content_type(),
+            object_id=employee_request.id,
+            defaults={"created_by": request.user},
+        )
+        serializer = TaskLinkedRequestSerializer(
+            link,
+            context={"request": request},
+        )
+        if created:
+            create_task_activity(
+                task,
+                request.user,
+                TaskActivityAction.LINKED,
+                object_kind=TaskLinkedObjectKind.REQUEST,
+                object_id=employee_request.id,
+                metadata={
+                    "object_label": employee_request.display_title,
+                    "object_type": "Заявление",
+                },
+            )
+        send_task_board_update(
+            task.board,
+            "linked",
+            "request",
+            employee_request.id,
+            extra={"task_id": task.id, "link_id": link.id},
+        )
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"linked-requests/(?P<link_id>\d+)",
+    )
+    def unlink_request(self, request, pk=None, link_id=None):
+        task = self.get_object()
+        try:
+            link = self._request_links_queryset(task).get(id=link_id)
+        except TaskLinkedObject.DoesNotExist:
+            return Response(
+                {"detail": "Связь не найдена."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        request_id = link.object_id
+        link.delete()
+        create_task_activity(
+            task,
+            request.user,
+            TaskActivityAction.UNLINKED,
+            object_kind=TaskLinkedObjectKind.REQUEST,
+            object_id=request_id,
+            metadata={"object_type": "Заявление"},
+        )
+        send_task_board_update(
+            task.board,
+            "unlinked",
+            "request",
+            request_id,
             extra={"task_id": task.id, "link_id": int(link_id)},
         )
         return Response(status=status.HTTP_204_NO_CONTENT)

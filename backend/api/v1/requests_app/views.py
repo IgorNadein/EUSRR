@@ -379,6 +379,75 @@ class RequestViewSet(viewsets.ModelViewSet):
 
         return qs
 
+    def _attach_linked_task_payloads(
+        self,
+        requests: list[EmployeeRequest],
+    ) -> None:
+        """Предзагрузить компактные бейджи задач для списка заявлений."""
+        if not requests:
+            return
+
+        user = getattr(self.request, "user", None)
+        request_ids = [request_obj.id for request_obj in requests]
+        mapping = {request_id: [] for request_id in request_ids}
+
+        if user and user.is_authenticated:
+            from tasks.access import task_board_access_q
+            from tasks.models import (
+                TaskBoard,
+                TaskLinkedObject,
+                TaskLinkedObjectKind,
+            )
+
+            request_ct = ContentType.objects.get_for_model(EmployeeRequest)
+            accessible_boards = TaskBoard.objects.filter(
+                is_archived=False,
+            ).filter(task_board_access_q(user))
+
+            links = (
+                TaskLinkedObject.objects.filter(
+                    kind=TaskLinkedObjectKind.REQUEST,
+                    content_type=request_ct,
+                    object_id__in=request_ids,
+                    task__board__in=accessible_boards,
+                )
+                .select_related("task", "task__board", "task__column")
+                .order_by("object_id", "task__title", "task_id")
+            )
+
+            for link in links:
+                mapping.setdefault(link.object_id, []).append(
+                    {
+                        "link_id": link.id,
+                        "id": link.task_id,
+                        "title": link.task.title,
+                        "board_id": link.task.board_id,
+                        "board_name": link.task.board.name,
+                        "column_id": link.task.column_id,
+                        "column_name": link.task.column.name,
+                        "column_color": link.task.column.color,
+                        "priority": link.task.priority,
+                        "priority_display": link.task.get_priority_display(),
+                    }
+                )
+
+        for request_obj in requests:
+            request_obj._linked_task_payloads = mapping.get(request_obj.id, [])
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            self._attach_linked_task_payloads(list(page))
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        requests = list(queryset)
+        self._attach_linked_task_payloads(requests)
+        serializer = self.get_serializer(requests, many=True)
+        return Response(serializer.data)
+
     # --- ВАЖНО: не ловить 404 на detail-экшенах
     # из-за урезанного get_queryset() ---
 

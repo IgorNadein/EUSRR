@@ -30,6 +30,7 @@ import {
 import { DocumentAcknowledgement } from "./DocumentAcknowledgement";
 import { DocumentComments } from "./DocumentComments";
 import { DocumentRelated } from "./DocumentRelated";
+import { DocumentTaskLinks } from "./DocumentTaskLinks";
 
 const DocumentPreviewPane = dynamic(
   () => import("./DocumentPreview").then((mod) => mod.DocumentPreviewPane),
@@ -528,11 +529,16 @@ export function DocumentDetailModal({
 
                   {currentActiveTab === "related" && (
                     <div className="p-6">
-                      <div className="app-surface rounded-xl p-6">
-                        <DocumentRelated
-                          documentId={document.id}
-                          onNavigate={(docId) => onNavigateToRelated?.(docId)}
-                        />
+                      <div className="space-y-4">
+                        <div className="app-surface rounded-xl p-6">
+                          <DocumentTaskLinks document={document} />
+                        </div>
+                        <div className="app-surface rounded-xl p-6">
+                          <DocumentRelated
+                            documentId={document.id}
+                            onNavigate={(docId) => onNavigateToRelated?.(docId)}
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
@@ -791,11 +797,16 @@ export function DocumentDetailModal({
 
             {currentActiveTab === "related" && (
               <div className="p-4 sm:p-6">
-                <div className="app-surface rounded-xl p-4 sm:p-6">
-                  <DocumentRelated
-                    documentId={document.id}
-                    onNavigate={(docId) => onNavigateToRelated?.(docId)}
-                  />
+                <div className="space-y-4">
+                  <div className="app-surface rounded-xl p-4 sm:p-6">
+                    <DocumentTaskLinks document={document} />
+                  </div>
+                  <div className="app-surface rounded-xl p-4 sm:p-6">
+                    <DocumentRelated
+                      documentId={document.id}
+                      onNavigate={(docId) => onNavigateToRelated?.(docId)}
+                    />
+                  </div>
                 </div>
               </div>
             )}

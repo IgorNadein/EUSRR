@@ -99,6 +99,24 @@ function getDefaultTaskTitleFromMessage(message: Message): string {
   return `Задача по сообщению #${message.id}`;
 }
 
+function getTaskOptionLabel(task: TaskCard) {
+  return `#${task.id} - ${task.title}`;
+}
+
+function taskMatchesSearch(task: TaskCard, query: string) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return true;
+  return [
+    String(task.id),
+    task.title,
+    task.description || "",
+    task.assignee ? displayUserName(task.assignee) : "",
+  ]
+    .join(" ")
+    .toLowerCase()
+    .includes(normalized);
+}
+
 /* ─── component ─── */
 
 export default function MessageDialogPage() {
@@ -245,6 +263,7 @@ function MessageDialogPageContent() {
   const [taskLinkEmployees, setTaskLinkEmployees] = useState<User[]>([]);
   const [taskLinkBoardId, setTaskLinkBoardId] = useState<number | "">("");
   const [taskLinkTaskId, setTaskLinkTaskId] = useState<number | "">("");
+  const [taskLinkSearch, setTaskLinkSearch] = useState("");
   const [taskLinkMode, setTaskLinkMode] = useState<TaskLinkMode>("existing");
   const [taskLinkNewTitle, setTaskLinkNewTitle] = useState("");
   const [taskLinkNewDescription, setTaskLinkNewDescription] = useState("");
@@ -816,6 +835,14 @@ function MessageDialogPageContent() {
     () => (selectedTaskLinkBoard?.tasks || []).find((task) => task.id === taskLinkTaskId) || null,
     [selectedTaskLinkBoard?.tasks, taskLinkTaskId],
   );
+  const availableTaskLinkTasks = useMemo(
+    () => selectedTaskLinkBoard?.tasks || [],
+    [selectedTaskLinkBoard?.tasks],
+  );
+  const filteredTaskLinkTasks = useMemo(
+    () => availableTaskLinkTasks.filter((task) => taskMatchesSearch(task, taskLinkSearch)),
+    [availableTaskLinkTasks, taskLinkSearch],
+  );
   const selectedTaskLinkColumn = useMemo(
     () => (
       (selectedTaskLinkBoard?.columns || []).find((column) => column.id === taskLinkColumnId) ||
@@ -845,6 +872,7 @@ function MessageDialogPageContent() {
       const firstColumn = firstBoardWithTasks?.columns?.find((column) => !column.is_archived) || null;
       setTaskLinkBoardId(firstBoardWithTasks?.id || "");
       setTaskLinkTaskId(firstBoardWithTasks?.tasks?.[0]?.id || "");
+      setTaskLinkSearch("");
       setTaskLinkColumnId(firstColumn?.id || "");
       setTaskLinkMode(firstBoardWithTasks?.tasks?.length ? "existing" : "create");
       setTaskLinkDetailsOpen(false);
@@ -864,6 +892,7 @@ function MessageDialogPageContent() {
     setTaskLinkBoardId(boardId);
     const nextBoard = taskLinkBoards.find((item) => item.id === boardId) || null;
     setTaskLinkTaskId(nextBoard?.tasks?.[0]?.id || "");
+    setTaskLinkSearch("");
     setTaskLinkColumnId(nextBoard?.columns?.find((column) => !column.is_archived)?.id || "");
     setTaskLinkLabelIds([]);
     if (!nextBoard?.tasks?.length) {
@@ -871,12 +900,19 @@ function MessageDialogPageContent() {
     }
   }, [taskLinkBoards]);
 
+  const handleTaskLinkSearchChange = useCallback((value: string) => {
+    setTaskLinkSearch(value);
+    const nextTask = availableTaskLinkTasks.find((task) => taskMatchesSearch(task, value));
+    setTaskLinkTaskId(nextTask?.id || "");
+  }, [availableTaskLinkTasks]);
+
   const handleCloseTaskLinkModal = useCallback(() => {
     if (taskLinkLoading) return;
     setTaskLinkMessage(null);
     setTaskLinkError(null);
     setTaskLinkBoardId("");
     setTaskLinkTaskId("");
+    setTaskLinkSearch("");
     setTaskLinkMode("existing");
     setTaskLinkNewTitle("");
     setTaskLinkNewDescription("");
@@ -953,6 +989,7 @@ function MessageDialogPageContent() {
       setTaskLinkError(null);
       setTaskLinkBoardId("");
       setTaskLinkTaskId("");
+      setTaskLinkSearch("");
       setTaskLinkMode("existing");
       setTaskLinkNewTitle("");
       setTaskLinkNewDescription("");
@@ -1648,22 +1685,36 @@ function MessageDialogPageContent() {
           </div>
 
           {taskLinkMode === "existing" ? (
-            <label className="block">
-              <span className="app-text-muted mb-1 block text-xs font-medium">Задача</span>
-              <select
-                value={taskLinkTaskId}
-                onChange={(event) => setTaskLinkTaskId(Number(event.target.value) || "")}
-                className="app-select w-full rounded-xl px-3 py-2 text-sm"
-                disabled={taskLinkLoading || !selectedTaskLinkBoard}
-              >
-                <option value="">Выберите задачу</option>
-                {(selectedTaskLinkBoard?.tasks || []).map((task: TaskCard) => (
-                  <option key={task.id} value={task.id}>
-                    {task.title}
+            <div className="space-y-2">
+              <label className="block">
+                <span className="app-text-muted mb-1 block text-xs font-medium">Поиск задачи</span>
+                <input
+                  value={taskLinkSearch}
+                  onChange={(event) => handleTaskLinkSearchChange(event.target.value)}
+                  className="app-input w-full rounded-xl px-3 py-2 text-sm"
+                  disabled={taskLinkLoading || !selectedTaskLinkBoard}
+                  placeholder="ID, название, описание или исполнитель"
+                />
+              </label>
+              <label className="block">
+                <span className="app-text-muted mb-1 block text-xs font-medium">Задача</span>
+                <select
+                  value={taskLinkTaskId}
+                  onChange={(event) => setTaskLinkTaskId(Number(event.target.value) || "")}
+                  className="app-select w-full rounded-xl px-3 py-2 text-sm"
+                  disabled={taskLinkLoading || !selectedTaskLinkBoard || filteredTaskLinkTasks.length === 0}
+                >
+                  <option value="">
+                    {filteredTaskLinkTasks.length === 0 ? "Задачи не найдены" : "Выберите задачу"}
                   </option>
-                ))}
-              </select>
-            </label>
+                  {filteredTaskLinkTasks.map((task: TaskCard) => (
+                    <option key={task.id} value={task.id}>
+                      {getTaskOptionLabel(task)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           ) : (
             <div className="space-y-3">
               <label className="block">

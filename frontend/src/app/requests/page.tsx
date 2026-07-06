@@ -8,11 +8,13 @@ import { RequestListControls } from "@/components/requests/RequestListControls";
 import { RequestListSection } from "@/components/requests/RequestListSection";
 import { RequestStatisticsPanel } from "@/components/requests/RequestStatisticsPanel";
 import { RequestSwipeModePanel } from "@/components/requests/RequestSwipeModePanel";
+import { RequestTaskLinks } from "@/components/requests/RequestTaskLinks";
 import { useUser } from "@/contexts/UserContext";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { useRequestsPage } from "@/hooks/useRequestsPage";
 import { useRequestsPageScreen } from "@/hooks/useRequestsPageScreen";
 import { canViewRequestStatistics } from "@/lib/permissions";
+import type { Request } from "@/types/api";
 
 export default function RequestsPage() {
   return (
@@ -36,6 +38,7 @@ function RequestsPageFallback() {
 function RequestsPageContent() {
   const { user } = useUser();
   const canViewStats = canViewRequestStatistics(user);
+  const [taskLinkRequest, setTaskLinkRequest] = useState<Request | null>(null);
   const h = useRequestsPage(user?.id);
   const screen = useRequestsPageScreen({
     detailsRequestId: h.detailsRequest?.id,
@@ -129,6 +132,7 @@ function RequestsPageContent() {
               loadMoreRef={h.loadMoreRef}
               loadingMore={h.loadingMore}
               nextPage={h.nextPage}
+              onLinkTask={setTaskLinkRequest}
               openEdit={h.openEdit}
               requestMenuOpenId={screen.requestMenuOpenId}
               requestMenuRef={screen.requestMenuRef}
@@ -165,6 +169,7 @@ function RequestsPageContent() {
           screen.closeDetailsRequest();
           h.openEdit(request);
         }}
+        onLinkTask={setTaskLinkRequest}
         onPreviewAttachment={h.setAttachmentPreview}
         onReject={h.handleReject}
         onSetCommentDraft={h.setCommentDraft}
@@ -186,6 +191,16 @@ function RequestsPageContent() {
           setForm={h.setForm}
         />
       )}
+
+      {taskLinkRequest ? (
+        <RequestTaskLinks
+          request={taskLinkRequest}
+          variant="dialog"
+          open={Boolean(taskLinkRequest)}
+          onClose={() => setTaskLinkRequest(null)}
+          onLinked={() => void h.refreshRequests()}
+        />
+      ) : null}
 
       <RequestAttachmentPreviewModal
         preview={h.attachmentPreview}

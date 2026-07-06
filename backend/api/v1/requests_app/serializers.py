@@ -96,6 +96,7 @@ class RequestReadSerializer(serializers.ModelSerializer):
     can_decide = serializers.SerializerMethodField()
     # Используем аннотированное поле из queryset
     comments_count = serializers.IntegerField(read_only=True, allow_null=True)
+    linked_tasks = serializers.SerializerMethodField()
 
     class Meta:
         model = Request
@@ -127,6 +128,7 @@ class RequestReadSerializer(serializers.ModelSerializer):
             "is_recipient",
             "can_decide",
             "comments_count",
+            "linked_tasks",
         )
         read_only_fields = (
             "employee",
@@ -145,6 +147,7 @@ class RequestReadSerializer(serializers.ModelSerializer):
             "is_recipient",
             "can_decide",
             "comments_count",
+            "linked_tasks",
         )
 
     @extend_schema_field(serializers.IntegerField())
@@ -191,6 +194,60 @@ class RequestReadSerializer(serializers.ModelSerializer):
         if not user or not user.is_authenticated:
             return False
         return obj.recipients.filter(id=user.id).exists()
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_linked_tasks(self, obj: Request) -> list[dict]:
+        prefetched = getattr(obj, "_linked_task_payloads", None)
+        if prefetched is not None:
+            return prefetched
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not getattr(user, "is_authenticated", False):
+            return []
+
+        try:
+            from django.contrib.contenttypes.models import ContentType
+            from tasks.access import task_board_access_q
+            from tasks.models import (
+                TaskBoard,
+                TaskLinkedObject,
+                TaskLinkedObjectKind,
+            )
+        except Exception:
+            return []
+
+        content_type = ContentType.objects.get_for_model(Request)
+        accessible_boards = TaskBoard.objects.filter(
+            is_archived=False,
+        ).filter(task_board_access_q(user))
+
+        links = (
+            TaskLinkedObject.objects.filter(
+                kind=TaskLinkedObjectKind.REQUEST,
+                content_type=content_type,
+                object_id=obj.id,
+                task__board__in=accessible_boards,
+            )
+            .select_related("task", "task__board", "task__column")
+            .order_by("task__title", "task_id")
+        )
+
+        return [
+            {
+                "link_id": link.id,
+                "id": link.task_id,
+                "title": link.task.title,
+                "board_id": link.task.board_id,
+                "board_name": link.task.board.name,
+                "column_id": link.task.column_id,
+                "column_name": link.task.column.name,
+                "column_color": link.task.column.color,
+                "priority": link.task.priority,
+                "priority_display": link.task.get_priority_display(),
+            }
+            for link in links
+        ]
 
 
 class RequestWriteSerializer(serializers.ModelSerializer):

@@ -181,7 +181,10 @@ export interface TaskCard {
   completed_at?: string | null;
   linked_messages_count?: number;
   linked_events_count?: number;
+  linked_documents_count?: number;
+  linked_requests_count?: number;
   linked_objects_count?: number;
+  comments_count?: number;
   created_at: string;
   updated_at: string;
 }
@@ -226,14 +229,58 @@ export interface TaskLinkedCalendarEvent {
   created_at: string;
 }
 
+export interface TaskLinkedDocument {
+  id: number;
+  kind: "document";
+  document_id: number;
+  document: Document | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
+export interface TaskLinkedRequest {
+  id: number;
+  kind: "request";
+  request_id: number;
+  request: {
+    id: number;
+    title?: string;
+    display_title?: string;
+    type?: string;
+    type_display?: string;
+    status?: string;
+    status_display?: string;
+    comment?: string;
+    date_from?: string | null;
+    date_to?: string | null;
+    employee?: User;
+    created_at?: string;
+    updated_at?: string;
+  } | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
 export interface TaskActivity {
   id: number;
   action: "created" | "updated" | "moved" | "linked" | "unlinked";
   action_display?: string;
   actor?: User | null;
-  object_kind?: "message" | "calendar_event" | "";
+  object_kind?: "message" | "calendar_event" | "document" | "request" | "";
   object_id?: number | null;
   metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface TaskComment {
+  id: number;
+  task: number;
+  author: User;
+  text: string;
   created_at: string;
 }
 
@@ -427,6 +474,7 @@ export interface Document {
   acknowledgements?: DocumentAcknowledgement[];
   acknowledgement_required?: boolean;
   is_acknowledged?: boolean;
+  linked_tasks?: MessageLinkedTask[];
 }
 
 // Guests
@@ -646,6 +694,7 @@ export interface Request {
   is_recipient?: boolean;
   can_decide?: boolean;
   comments_count?: number;
+  linked_tasks?: MessageLinkedTask[];
   is_final?: boolean;
   attachment?: string | null;
   attachment_url?: string | null;

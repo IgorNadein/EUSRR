@@ -6,6 +6,7 @@ import posixpath
 import zipfile
 
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, QuerySet, Q
 from django.http import FileResponse
@@ -148,6 +149,72 @@ class DocumentViewSet(ModelViewSet):
             qs = qs.annotate(_is_acknowledged=Exists(subq))
 
         return qs.order_by("-uploaded_at")
+
+    def _attach_linked_task_payloads(self, documents: list[Document]) -> None:
+        """Предзагрузить компактные бейджи задач для списка документов."""
+        if not documents:
+            return
+
+        user = getattr(self.request, "user", None)
+        document_ids = [document.id for document in documents]
+        mapping = {document_id: [] for document_id in document_ids}
+
+        if user and user.is_authenticated:
+            from tasks.access import task_board_access_q
+            from tasks.models import (
+                TaskBoard,
+                TaskLinkedObject,
+                TaskLinkedObjectKind,
+            )
+
+            document_ct = ContentType.objects.get_for_model(Document)
+            accessible_boards = TaskBoard.objects.filter(
+                is_archived=False,
+            ).filter(task_board_access_q(user))
+
+            links = (
+                TaskLinkedObject.objects.filter(
+                    kind=TaskLinkedObjectKind.DOCUMENT,
+                    content_type=document_ct,
+                    object_id__in=document_ids,
+                    task__board__in=accessible_boards,
+                )
+                .select_related("task", "task__board", "task__column")
+                .order_by("object_id", "task__title", "task_id")
+            )
+
+            for link in links:
+                mapping.setdefault(link.object_id, []).append(
+                    {
+                        "link_id": link.id,
+                        "id": link.task_id,
+                        "title": link.task.title,
+                        "board_id": link.task.board_id,
+                        "board_name": link.task.board.name,
+                        "column_id": link.task.column_id,
+                        "column_name": link.task.column.name,
+                        "column_color": link.task.column.color,
+                        "priority": link.task.priority,
+                        "priority_display": link.task.get_priority_display(),
+                    }
+                )
+
+        for document in documents:
+            document._linked_task_payloads = mapping.get(document.id, [])
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            self._attach_linked_task_payloads(list(page))
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        documents = list(queryset)
+        self._attach_linked_task_payloads(documents)
+        serializer = self.get_serializer(documents, many=True)
+        return Response(serializer.data)
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):

@@ -29,13 +29,16 @@ import {
   Trash2,
   ScrollText,
   Loader2,
+  Link2,
 } from "lucide-react";
 import { DocumentAcknowledgementsReport } from "@/components/documents/DocumentAcknowledgementsReport";
 import { DocumentMetadataEditor } from "@/components/documents/DocumentMetadataEditor";
 import { DocumentDetailModal } from "@/components/documents/DocumentDetailModal";
+import { DocumentTaskLinks } from "@/components/documents/DocumentTaskLinks";
 import { FolderTree, type FolderNode } from "@/components/documents/folders";
 import { BulkActionsToolbar, useDocumentSelection } from "@/components/documents/batch";
 import { TagManagementModal } from "@/components/documents/tags";
+import TaskLinkPill from "@/components/tasks/TaskLinkPill";
 import { Modal } from "@/components/ui";
 
 // Динамический импорт компонентов с PDF обработкой (избегаем SSR ошибок с DOMMatrix)
@@ -252,6 +255,7 @@ function DocumentsPageContent() {
   const [showMetadataEditor, setShowMetadataEditor] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [metadataDocument, setMetadataDocument] = useState<Document | null>(null);
+  const [taskLinkDocument, setTaskLinkDocument] = useState<Document | null>(null);
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string } | null>(null);
   const [pdfViewerFile, setPdfViewerFile] = useState<{ url: string; name: string } | null>(null);
   
@@ -663,6 +667,11 @@ function DocumentsPageContent() {
     } else {
       setPreviewFile(previewFile);
     }
+    setDocumentMenuOpenId(null);
+  };
+
+  const openDocumentTaskLinkFromMenu = (documentItem: Document) => {
+    setTaskLinkDocument(documentItem);
     setDocumentMenuOpenId(null);
   };
 
@@ -1541,6 +1550,15 @@ function DocumentsPageContent() {
                                                 </button>
                                               )}
 
+                                              <button
+                                                type="button"
+                                                onClick={() => openDocumentTaskLinkFromMenu(doc)}
+                                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                                              >
+                                                <Link2 size={14} />
+                                                Связать с задачей
+                                              </button>
+
                                               <div className="my-1 border-t border-[var(--border-subtle)]" />
 
                                               {isDocumentSelected ? (
@@ -1603,6 +1621,23 @@ function DocumentsPageContent() {
                                       <p className="app-text-wrap mt-3 line-clamp-3 text-sm leading-relaxed text-[var(--foreground)]">
                                         {doc.description}
                                       </p>
+                                    )}
+
+                                    {doc.linked_tasks && doc.linked_tasks.length > 0 && (
+                                      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                                        {doc.linked_tasks.slice(0, 3).map((task) => (
+                                          <TaskLinkPill
+                                            key={task.link_id || task.id}
+                                            task={task}
+                                            maxTitleClassName="max-w-44"
+                                          />
+                                        ))}
+                                        {doc.linked_tasks.length > 3 && (
+                                          <span className="app-badge rounded-full px-2 py-0.5 text-[11px] font-medium">
+                                            +{doc.linked_tasks.length - 3}
+                                          </span>
+                                        )}
+                                      </div>
                                     )}
 
                                     <div className="mt-3 flex flex-wrap items-center justify-end gap-1.5">
@@ -1741,6 +1776,18 @@ function DocumentsPageContent() {
           apiClient.getDocument(docId).then(setSelectedDocument);
         }}
       />
+
+      {taskLinkDocument && (
+        <DocumentTaskLinks
+          document={taskLinkDocument}
+          variant="dialog"
+          open={!!taskLinkDocument}
+          onClose={() => setTaskLinkDocument(null)}
+          onLinked={() => {
+            loadDocuments();
+          }}
+        />
+      )}
 
       {/* File Preview Modal */}
       {previewFile && (

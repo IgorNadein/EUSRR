@@ -8,9 +8,10 @@ import {
   type RequestAttachmentPreview,
 } from "@/hooks/useRequestsPage";
 import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
+import TaskLinkPill from "@/components/tasks/TaskLinkPill";
 import { displayUserName, formatDate, formatDateTime } from "@/lib/shared";
 import type { Request, RequestComment } from "@/types/api";
-import { Ban, Paperclip, Pencil, ThumbsDown, ThumbsUp, Trash2 } from "lucide-react";
+import { Ban, Link2, Paperclip, Pencil, ThumbsDown, ThumbsUp, Trash2 } from "lucide-react";
 import { getRequestActionState } from "./requestActions";
 import { RequestUserBadge } from "./RequestUserBadge";
 
@@ -30,6 +31,7 @@ type RequestDetailModalProps = {
   onDelete: (requestId: number) => void | Promise<void>;
   onDeleteComment: (requestId: number, commentId: number) => void | Promise<void>;
   onEdit: (request: Request) => void;
+  onLinkTask: (request: Request) => void;
   onPreviewAttachment: (preview: RequestAttachmentPreview) => void;
   onReject: (requestId: number) => void | Promise<void>;
   onSetCommentDraft: (requestId: number, value: string) => void;
@@ -52,6 +54,7 @@ export function RequestDetailModal({
   onDelete,
   onDeleteComment,
   onEdit,
+  onLinkTask,
   onPreviewAttachment,
   onReject,
   onSetCommentDraft,
@@ -71,6 +74,7 @@ export function RequestDetailModal({
     ? decodeURIComponent(attachmentUrl.split("/").pop() || "Вложение")
     : "";
   const commentCount = request.comments_count ?? comments.length;
+  const linkedTasks = request.linked_tasks || [];
 
   return (
     <Modal
@@ -168,6 +172,40 @@ export function RequestDetailModal({
               ) : (
                 <p className="app-text-muted mt-3 text-sm">Описание отсутствует</p>
               )}
+              <div className="mt-4 rounded-xl border border-[var(--border-subtle)] p-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Link2 size={15} className="app-text-muted shrink-0" />
+                    <span className="text-sm font-medium text-[var(--foreground)]">
+                      Связанные задачи
+                    </span>
+                    <span className="app-badge rounded-full px-2 py-0.5 text-[11px]">
+                      {linkedTasks.length}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onLinkTask(request)}
+                    className="app-action-secondary inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium"
+                  >
+                    <Link2 size={13} />
+                    Связать
+                  </button>
+                </div>
+                {linkedTasks.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {linkedTasks.map((task) => (
+                      <TaskLinkPill
+                        key={task.link_id || task.id}
+                        task={task}
+                        maxTitleClassName="max-w-56"
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="app-text-muted text-xs">Связанных задач нет</p>
+                )}
+              </div>
             </div>
           </div>
 

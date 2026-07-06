@@ -57,6 +57,24 @@ const taskPriorityOptions: { value: TaskPriority; label: string }[] = [
   { value: "critical", label: "Критическая" },
 ];
 
+function getTaskOptionLabel(task: TaskCard) {
+  return `#${task.id} - ${task.title}`;
+}
+
+function taskMatchesSearch(task: TaskCard, query: string) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return true;
+  return [
+    String(task.id),
+    task.title,
+    task.description || "",
+    task.assignee ? displayUserName(task.assignee) : "",
+  ]
+    .join(" ")
+    .toLowerCase()
+    .includes(normalized);
+}
+
 interface ViewEventDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -121,6 +139,7 @@ export function ViewEventDetailsModal({
   const [taskLinkEmployees, setTaskLinkEmployees] = useState<User[]>([]);
   const [taskLinkBoardId, setTaskLinkBoardId] = useState<number | "">("");
   const [taskLinkTaskId, setTaskLinkTaskId] = useState<number | "">("");
+  const [taskLinkSearch, setTaskLinkSearch] = useState("");
   const [taskLinkMode, setTaskLinkMode] = useState<"existing" | "create">("existing");
   const [taskLinkTitle, setTaskLinkTitle] = useState("");
   const [taskLinkDescription, setTaskLinkDescription] = useState("");
@@ -214,6 +233,8 @@ export function ViewEventDetailsModal({
     (selectedTaskLinkBoard?.columns || []).find((column) => !column.is_archived) ||
     null
   );
+  const availableTaskLinkTasks = selectedTaskLinkBoard?.tasks || [];
+  const filteredTaskLinkTasks = availableTaskLinkTasks.filter((task: TaskCard) => taskMatchesSearch(task, taskLinkSearch));
 
   const openTaskLinkModal = async () => {
     if (!event?.id) return;
@@ -235,6 +256,7 @@ export function ViewEventDetailsModal({
       const firstColumn = firstBoardWithTasks?.columns?.find((column) => !column.is_archived) || null;
       setTaskLinkBoardId(firstBoardWithTasks?.id || "");
       setTaskLinkTaskId(firstBoardWithTasks?.tasks?.[0]?.id || "");
+      setTaskLinkSearch("");
       setTaskLinkColumnId(firstColumn?.id || "");
       setTaskLinkMode(firstBoardWithTasks?.tasks?.length ? "existing" : "create");
       setTaskLinkDetailsOpen(false);
@@ -255,6 +277,7 @@ export function ViewEventDetailsModal({
     setTaskLinkError(null);
     setTaskLinkBoardId("");
     setTaskLinkTaskId("");
+    setTaskLinkSearch("");
     setTaskLinkMode("existing");
     setTaskLinkTitle("");
     setTaskLinkDescription("");
@@ -270,11 +293,18 @@ export function ViewEventDetailsModal({
     setTaskLinkBoardId(boardId);
     const nextBoard = taskLinkBoards.find((board) => board.id === boardId) || null;
     setTaskLinkTaskId(nextBoard?.tasks?.[0]?.id || "");
+    setTaskLinkSearch("");
     setTaskLinkColumnId(nextBoard?.columns?.find((column) => !column.is_archived)?.id || "");
     setTaskLinkLabelIds([]);
     if (!nextBoard?.tasks?.length) {
       setTaskLinkMode("create");
     }
+  };
+
+  const handleTaskLinkSearchChange = (value: string) => {
+    setTaskLinkSearch(value);
+    const nextTask = availableTaskLinkTasks.find((task: TaskCard) => taskMatchesSearch(task, value));
+    setTaskLinkTaskId(nextTask?.id || "");
   };
 
   const toggleTaskLinkLabel = (labelId: number) => {
@@ -639,22 +669,36 @@ export function ViewEventDetailsModal({
           </div>
 
           {taskLinkMode === "existing" ? (
-            <label className="block">
-              <span className="app-text-muted mb-1 block text-xs font-medium">Задача</span>
-              <select
-                value={taskLinkTaskId}
-                onChange={(selectEvent) => setTaskLinkTaskId(Number(selectEvent.target.value) || "")}
-                className="app-select w-full rounded-xl px-3 py-2 text-sm"
-                disabled={taskLinkLoading || !selectedTaskLinkBoard}
-              >
-                <option value="">Выберите задачу</option>
-                {(selectedTaskLinkBoard?.tasks || []).map((task: TaskCard) => (
-                  <option key={task.id} value={task.id}>
-                    {task.title}
+            <div className="space-y-2">
+              <label className="block">
+                <span className="app-text-muted mb-1 block text-xs font-medium">Поиск задачи</span>
+                <input
+                  value={taskLinkSearch}
+                  onChange={(inputEvent) => handleTaskLinkSearchChange(inputEvent.target.value)}
+                  className="app-input w-full rounded-xl px-3 py-2 text-sm"
+                  disabled={taskLinkLoading || !selectedTaskLinkBoard}
+                  placeholder="ID, название, описание или исполнитель"
+                />
+              </label>
+              <label className="block">
+                <span className="app-text-muted mb-1 block text-xs font-medium">Задача</span>
+                <select
+                  value={taskLinkTaskId}
+                  onChange={(selectEvent) => setTaskLinkTaskId(Number(selectEvent.target.value) || "")}
+                  className="app-select w-full rounded-xl px-3 py-2 text-sm"
+                  disabled={taskLinkLoading || !selectedTaskLinkBoard || filteredTaskLinkTasks.length === 0}
+                >
+                  <option value="">
+                    {filteredTaskLinkTasks.length === 0 ? "Задачи не найдены" : "Выберите задачу"}
                   </option>
-                ))}
-              </select>
-            </label>
+                  {filteredTaskLinkTasks.map((task: TaskCard) => (
+                    <option key={task.id} value={task.id}>
+                      {getTaskOptionLabel(task)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           ) : (
             <div className="space-y-3">
               <label className="block">

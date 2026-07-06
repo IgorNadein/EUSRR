@@ -4,12 +4,21 @@ from datetime import datetime
 from typing import Any
 
 import pytest
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.utils import timezone
 from notifications.models import Notification
 from rest_framework.test import APIClient
 
 from requests_app.enums import RequestStatus, RequestType
+from requests_app.models import Request as EmployeeRequest
+from tasks.models import (
+    Task,
+    TaskBoard,
+    TaskColumn,
+    TaskLinkedObject,
+    TaskLinkedObjectKind,
+)
 from tests.test_config import API_REQUESTS_URL
 
 
@@ -211,6 +220,94 @@ def test_list_addressed_to_me_shows_only_recipient_and_cc_requests(
     assert own_request.id not in ids
     assert recipient_request.id in ids
     assert cc_request.id in ids
+
+
+def test_list_includes_accessible_linked_tasks(
+    auth_client, regular_user: models.Model, make_user, make_request
+) -> None:
+    """Список заявлений отдаёт task-пилюли только с доступных досок."""
+    author = make_user(email="request-task-author@example.com")
+    hidden_user = make_user(email="request-task-hidden@example.com")
+    employee_request = make_request(
+        employee=author,
+        type_=RequestType.DAY_OFF,
+        comment="Заявление со связанной задачей",
+    )
+    employee_request.recipients.add(regular_user)
+
+    visible_board = TaskBoard.objects.create(
+        name="Видимая доска заявлений",
+        created_by=author,
+    )
+    visible_board.members.add(regular_user)
+    visible_column = TaskColumn.objects.create(
+        board=visible_board,
+        name="В работе",
+        position=1000,
+        color="#f59e0b",
+    )
+    visible_task = Task.objects.create(
+        board=visible_board,
+        column=visible_column,
+        title="Доступная задача по заявлению",
+        created_by=author,
+        priority="high",
+    )
+
+    hidden_board = TaskBoard.objects.create(
+        name="Скрытая доска заявлений",
+        created_by=hidden_user,
+    )
+    hidden_board.members.add(hidden_user)
+    hidden_column = TaskColumn.objects.create(
+        board=hidden_board,
+        name="Новые",
+        position=1000,
+        color="#38bdf8",
+    )
+    hidden_task = Task.objects.create(
+        board=hidden_board,
+        column=hidden_column,
+        title="Недоступная задача по заявлению",
+        created_by=hidden_user,
+    )
+
+    request_ct = ContentType.objects.get_for_model(EmployeeRequest)
+    visible_link = TaskLinkedObject.objects.create(
+        task=visible_task,
+        kind=TaskLinkedObjectKind.REQUEST,
+        content_type=request_ct,
+        object_id=employee_request.id,
+        created_by=author,
+    )
+    TaskLinkedObject.objects.create(
+        task=hidden_task,
+        kind=TaskLinkedObjectKind.REQUEST,
+        content_type=request_ct,
+        object_id=employee_request.id,
+        created_by=hidden_user,
+    )
+
+    resp = auth_client(regular_user).get(API_BASE)
+
+    assert resp.status_code == 200
+    result = next(
+        item for item in _results(resp.json()) if item["id"] == employee_request.id
+    )
+    assert result["linked_tasks"] == [
+        {
+            "link_id": visible_link.id,
+            "id": visible_task.id,
+            "title": "Доступная задача по заявлению",
+            "board_id": visible_board.id,
+            "board_name": "Видимая доска заявлений",
+            "column_id": visible_column.id,
+            "column_name": "В работе",
+            "column_color": "#f59e0b",
+            "priority": "high",
+            "priority_display": "Высокий",
+        }
+    ]
 
 
 def test_list_admin_without_participation_sees_nothing(

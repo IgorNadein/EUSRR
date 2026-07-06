@@ -33,6 +33,13 @@ from employees.models import Department, EmployeeDepartment
 from filer.models import File as FilerFile, Folder
 from rest_framework import status
 from rest_framework.test import APIClient
+from tasks.models import (
+    Task,
+    TaskBoard,
+    TaskColumn,
+    TaskLinkedObject,
+    TaskLinkedObjectKind,
+)
 from tests.conftest import _unique_phone
 
 pytestmark = pytest.mark.django_db
@@ -590,6 +597,90 @@ class TestRead:
             "is_acknowledged",
         }
         assert expected <= set(sample.keys())
+
+    def test_list_includes_accessible_linked_tasks(
+        self, auth_client, make_user, api_urls
+    ):
+        """GET list отдаёт бейджи только задач с доступных досок."""
+        from django.contrib.contenttypes.models import ContentType
+
+        author = make_user("doc-task-author@example.com")
+        viewer = make_user("doc-task-viewer@example.com")
+        hidden_user = make_user("doc-task-hidden@example.com")
+        grant_perms(viewer, "view_document")
+        doc = make_document(uploaded_by=author, title="Документ с задачей")
+
+        visible_board = TaskBoard.objects.create(
+            name="Видимая доска",
+            created_by=author,
+        )
+        visible_board.members.add(viewer)
+        visible_column = TaskColumn.objects.create(
+            board=visible_board,
+            name="В работе",
+            position=1000,
+            color="#f59e0b",
+        )
+        visible_task = Task.objects.create(
+            board=visible_board,
+            column=visible_column,
+            title="Доступная задача",
+            created_by=author,
+            priority="critical",
+        )
+
+        hidden_board = TaskBoard.objects.create(
+            name="Закрытая доска",
+            created_by=hidden_user,
+        )
+        hidden_board.members.add(hidden_user)
+        hidden_column = TaskColumn.objects.create(
+            board=hidden_board,
+            name="Новые",
+            position=1000,
+            color="#38bdf8",
+        )
+        hidden_task = Task.objects.create(
+            board=hidden_board,
+            column=hidden_column,
+            title="Недоступная задача",
+            created_by=hidden_user,
+        )
+
+        document_ct = ContentType.objects.get_for_model(Document)
+        visible_link = TaskLinkedObject.objects.create(
+            task=visible_task,
+            kind=TaskLinkedObjectKind.DOCUMENT,
+            content_type=document_ct,
+            object_id=doc.id,
+            created_by=author,
+        )
+        TaskLinkedObject.objects.create(
+            task=hidden_task,
+            kind=TaskLinkedObjectKind.DOCUMENT,
+            content_type=document_ct,
+            object_id=doc.id,
+            created_by=hidden_user,
+        )
+
+        response = auth_client(viewer).get(api_urls["list"])
+
+        assert response.status_code == 200
+        result = response.json()["results"][0]
+        assert result["linked_tasks"] == [
+            {
+                "link_id": visible_link.id,
+                "id": visible_task.id,
+                "title": "Доступная задача",
+                "board_id": visible_board.id,
+                "board_name": "Видимая доска",
+                "column_id": visible_column.id,
+                "column_name": "В работе",
+                "column_color": "#f59e0b",
+                "priority": "critical",
+                "priority_display": "Критический",
+            }
+        ]
 
     def test_get_detail_fields_and_file_url(
         self, auth_client, make_user, api_urls, settings

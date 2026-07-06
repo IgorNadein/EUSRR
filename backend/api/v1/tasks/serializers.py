@@ -4,16 +4,22 @@ from django.contrib.contenttypes.models import ContentType
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from api.v1.documents.serializers import DocumentReadSerializer
 from api.v1.employees.serializers import EmployeeBriefSerializer
 from api.v1.employees.serializers.department import DepartmentBriefSerializer
 from communications.models import Message
+from communications.comments_helpers import get_comment_count
 from communications.serialization import serialize_message
 from communications.utils import user_can_access_chat
+from documents.models import Document
 from employees.models import Department
+from requests_app.models import Request as EmployeeRequest
 from schedule.models import Event
 from api.v1.schedule.serializers import EventSerializer
 from tasks.access import (
     user_can_access_calendar_event,
+    user_can_access_document,
+    user_can_access_employee_request,
     user_can_access_task_board,
 )
 from tasks.models import (
@@ -134,7 +140,10 @@ class TaskSerializer(serializers.ModelSerializer):
     column_color = serializers.CharField(source="column.color", read_only=True)
     linked_messages_count = serializers.SerializerMethodField()
     linked_events_count = serializers.SerializerMethodField()
+    linked_documents_count = serializers.SerializerMethodField()
+    linked_requests_count = serializers.SerializerMethodField()
     linked_objects_count = serializers.SerializerMethodField()
+    comments_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -159,7 +168,10 @@ class TaskSerializer(serializers.ModelSerializer):
             "completed_at",
             "linked_messages_count",
             "linked_events_count",
+            "linked_documents_count",
+            "linked_requests_count",
             "linked_objects_count",
+            "comments_count",
             "created_at",
             "updated_at",
         ]
@@ -173,7 +185,10 @@ class TaskSerializer(serializers.ModelSerializer):
             "completed_at",
             "linked_messages_count",
             "linked_events_count",
+            "linked_documents_count",
+            "linked_requests_count",
             "linked_objects_count",
+            "comments_count",
             "created_at",
             "updated_at",
         ]
@@ -195,10 +210,32 @@ class TaskSerializer(serializers.ModelSerializer):
         ).count()
 
     @extend_schema_field(serializers.IntegerField())
+    def get_linked_documents_count(self, obj):
+        if hasattr(obj, "linked_documents_count"):
+            return obj.linked_documents_count
+        return obj.linked_objects.filter(
+            kind=TaskLinkedObjectKind.DOCUMENT,
+        ).count()
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_linked_requests_count(self, obj):
+        if hasattr(obj, "linked_requests_count"):
+            return obj.linked_requests_count
+        return obj.linked_objects.filter(
+            kind=TaskLinkedObjectKind.REQUEST,
+        ).count()
+
+    @extend_schema_field(serializers.IntegerField())
     def get_linked_objects_count(self, obj):
         if hasattr(obj, "linked_objects_count"):
             return obj.linked_objects_count
         return obj.linked_objects.count()
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_comments_count(self, obj):
+        if hasattr(obj, "comments_count"):
+            return obj.comments_count
+        return get_comment_count(obj)
 
     def validate(self, attrs):
         request = self.context.get("request")
@@ -427,3 +464,145 @@ class TaskLinkedCalendarEventSerializer(serializers.ModelSerializer):
 
 def get_calendar_event_content_type():
     return ContentType.objects.get_for_model(Event)
+
+
+class TaskLinkedDocumentSerializer(serializers.ModelSerializer):
+    created_by = EmployeeBriefSerializer(read_only=True)
+    document = serializers.SerializerMethodField()
+    document_id = serializers.IntegerField(source="object_id", read_only=True)
+    can_open = serializers.SerializerMethodField()
+    object_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskLinkedObject
+        fields = [
+            "id",
+            "kind",
+            "document_id",
+            "document",
+            "can_open",
+            "object_url",
+            "created_by",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.JSONField(allow_null=True))
+    def get_document(self, obj):
+        if obj.kind != TaskLinkedObjectKind.DOCUMENT:
+            return None
+
+        document = getattr(obj, "content_object", None)
+        if document is None:
+            return None
+
+        if not self.get_can_open(obj):
+            return {
+                "id": document.id,
+                "title": document.title,
+                "description": document.description,
+                "is_regulation": document.is_regulation,
+                "folder_path": document.folder_path,
+                "file_name": (
+                    getattr(document.file, "name", None)
+                    if document.file
+                    else None
+                ),
+            }
+
+        return DocumentReadSerializer(document, context=self.context).data
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_open(self, obj):
+        document = getattr(obj, "content_object", None)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if (
+            obj.kind != TaskLinkedObjectKind.DOCUMENT
+            or document is None
+            or not user
+        ):
+            return False
+        return user_can_access_document(user, document)
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_object_url(self, obj):
+        document = getattr(obj, "content_object", None)
+        if document is None or not self.get_can_open(obj):
+            return None
+        return f"/documents?document={document.id}"
+
+
+def get_document_content_type():
+    return ContentType.objects.get_for_model(Document)
+
+
+class TaskLinkedRequestSerializer(serializers.ModelSerializer):
+    created_by = EmployeeBriefSerializer(read_only=True)
+    request = serializers.SerializerMethodField()
+    request_id = serializers.IntegerField(source="object_id", read_only=True)
+    can_open = serializers.SerializerMethodField()
+    object_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskLinkedObject
+        fields = [
+            "id",
+            "kind",
+            "request_id",
+            "request",
+            "can_open",
+            "object_url",
+            "created_by",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.JSONField(allow_null=True))
+    def get_request(self, obj):
+        if obj.kind != TaskLinkedObjectKind.REQUEST:
+            return None
+
+        request_obj = getattr(obj, "content_object", None)
+        if request_obj is None:
+            return None
+
+        return {
+            "id": request_obj.id,
+            "title": request_obj.title,
+            "display_title": request_obj.display_title,
+            "type": request_obj.type,
+            "type_display": request_obj.get_type_display(),
+            "status": request_obj.status,
+            "status_display": request_obj.get_status_display(),
+            "comment": request_obj.comment,
+            "date_from": request_obj.date_from,
+            "date_to": request_obj.date_to,
+            "employee": EmployeeBriefSerializer(request_obj.employee).data,
+            "created_at": request_obj.created_at,
+            "updated_at": request_obj.updated_at,
+        }
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_open(self, obj):
+        request_obj = getattr(obj, "content_object", None)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if (
+            obj.kind != TaskLinkedObjectKind.REQUEST
+            or request_obj is None
+            or not user
+        ):
+            return False
+        return user_can_access_employee_request(user, request_obj)
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_object_url(self, obj):
+        request_obj = getattr(obj, "content_object", None)
+        if request_obj is None or not self.get_can_open(obj):
+            return None
+        return f"/requests?request={request_obj.id}"
+
+
+def get_request_content_type():
+    return ContentType.objects.get_for_model(EmployeeRequest)
