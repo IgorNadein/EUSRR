@@ -23,6 +23,24 @@ from .shared import (
 Employee = get_user_model()
 
 
+def _employee_personnel_state_payload(obj):
+    prefetched = getattr(obj, "_prefetched_objects_cache", {})
+    actions = prefetched.get("actions") if prefetched else None
+    state = resolve_employee_personnel_state(
+        obj,
+        timezone.localdate(),
+        actions=actions,
+    )
+    return {
+        "status": state.status,
+        "label": state.label or "Работает",
+        "action_id": state.action_id,
+        "date_from": state.date_from,
+        "date_to": state.date_to,
+        "expects_attendance": state.expects_attendance,
+    }
+
+
 class EmployeeDepartmentSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField(allow_null=True)
@@ -275,15 +293,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(EmployeePersonnelStateSerializer())
     def get_personnel_state(self, obj):
-        state = resolve_employee_personnel_state(obj, timezone.localdate())
-        return {
-            "status": state.status,
-            "label": state.label or "Работает",
-            "action_id": state.action_id,
-            "date_from": state.date_from,
-            "date_to": state.date_to,
-            "expects_attendance": state.expects_attendance,
-        }
+        return _employee_personnel_state_payload(obj)
 
 
 class EmployeeBriefSerializer(serializers.ModelSerializer):
@@ -343,6 +353,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
     skills = SkillSerializer(many=True, read_only=True)
     department_relation = serializers.SerializerMethodField()
+    personnel_state = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Employee
@@ -361,7 +372,12 @@ class EmployeeListSerializer(serializers.ModelSerializer):
             "created_at",
             "display_name",
             "department_relation",
+            "personnel_state",
         )
+
+    @extend_schema_field(EmployeePersonnelStateSerializer())
+    def get_personnel_state(self, obj):
+        return _employee_personnel_state_payload(obj)
 
     @extend_schema_field(EmployeeDepartmentRelationSerializer(allow_null=True))
     def get_department_relation(self, obj):

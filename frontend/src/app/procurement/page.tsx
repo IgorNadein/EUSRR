@@ -180,6 +180,7 @@ function ProcurementRequestActionButtons({
   request,
   busyKey,
   canManage,
+  canSubmitForApproval,
   isAuthor,
   isExecutor,
   isFinal,
@@ -199,6 +200,7 @@ function ProcurementRequestActionButtons({
   request: ProcurementRequest;
   busyKey: string | null;
   canManage: boolean;
+  canSubmitForApproval: boolean;
   isAuthor: boolean;
   isExecutor: boolean;
   isFinal: (status?: string) => boolean;
@@ -226,7 +228,6 @@ function ProcurementRequestActionButtons({
   );
   const startWorkLabel = isInProgress ? "Забрать в работу" : "Взять в работу";
   const canApproveThis = Boolean(request.can_current_user_approve);
-  const canSubmitForApproval = Boolean(request.can_current_user_submit_for_approval);
   const buttonClass = (variantClass: string) =>
     `${variantClass} inline-flex h-9 items-center justify-center rounded-lg disabled:opacity-60 ${
       showLabels ? "gap-1.5 px-3 text-xs font-medium" : "w-9"
@@ -457,6 +458,35 @@ export default function ProcurementPage() {
   const processingDepartmentOptions = processingDepartments.length > 0
     ? processingDepartments
     : departments;
+  const userDepartmentIds = useMemo(
+    () => new Set((user?.departments || []).map((department) => Number(department.id))),
+    [user?.departments],
+  );
+  const userDepartmentsKnown = Array.isArray(user?.departments);
+  const canCurrentUserSubmitRequest = useCallback(
+    (request: ProcurementRequest) => {
+      const processingDepartmentId = Number(request.processing_department || 0);
+      const requestorId = resolveUserId(request.requestor);
+      const isProcessingDepartmentMember = (
+        !userDepartmentsKnown ||
+        userDepartmentIds.has(processingDepartmentId)
+      );
+
+      return Boolean(
+        request.can_current_user_submit_for_approval &&
+        user?.id &&
+        processingDepartmentId &&
+        requestorId !== user.id &&
+        isProcessingDepartmentMember
+      );
+    },
+    [
+      resolveUserId,
+      user?.id,
+      userDepartmentIds,
+      userDepartmentsKnown,
+    ],
+  );
 
   const toggleStatusFilter = useCallback((status: ProcurementStatus) => {
     setStatusFilter((current) => (
@@ -549,6 +579,18 @@ export default function ProcurementPage() {
   }, []);
 
   const openSubmitApprovalDialog = useCallback(async (requestId: number) => {
+    const requestForSubmit = detailsCache[requestId] || requests.find((request) => request.id === requestId);
+    if (requestForSubmit && !canCurrentUserSubmitRequest(requestForSubmit)) {
+      setSubmitApprovalRequestId(requestId);
+      setSubmitApprovalOptions(null);
+      setSubmitApprovalLoading(false);
+      setSubmitApprovalMode("auto");
+      setManualApprovalPriorities([]);
+      setManualApproverByPriority({});
+      setSubmitApprovalError("Отправить на согласование может только сотрудник отдела-получателя, не автор заявки.");
+      return;
+    }
+
     setSubmitApprovalRequestId(requestId);
     setSubmitApprovalOptions(null);
     setSubmitApprovalError(null);
@@ -573,7 +615,11 @@ export default function ProcurementPage() {
     } finally {
       setSubmitApprovalLoading(false);
     }
-  }, []);
+  }, [
+    canCurrentUserSubmitRequest,
+    detailsCache,
+    requests,
+  ]);
 
   const toggleManualApprovalPriority = useCallback((priority: number) => {
     setSubmitApprovalMode("manual");
@@ -1077,11 +1123,12 @@ export default function ProcurementPage() {
               const detail = detailsCache[req.id];
               const resolvedDetail = detail || req;
               const canApproveThis = Boolean((resolvedDetail.can_current_user_approve ?? req.can_current_user_approve));
+              const canSubmitThis = canCurrentUserSubmitRequest(resolvedDetail);
               const canEditThis = Boolean(isEditableStatus && isAuthor);
               const canDeleteThis = Boolean(isEditableStatus && (isAuthor || canManage));
               const canCancelThis = Boolean(isAuthor && !isFinal(st) && st !== "draft");
               const hasInlineRequestActions = Boolean(
-                (resolvedDetail.can_current_user_submit_for_approval ?? req.can_current_user_submit_for_approval) ||
+                canSubmitThis ||
                 canApproveThis ||
                 (resolvedDetail.can_current_user_start_work ?? req.can_current_user_start_work) ||
                 (st === "in_progress" && isExecutor)
@@ -1350,6 +1397,7 @@ export default function ProcurementPage() {
                               request={resolvedDetail}
                               busyKey={busyKey}
                               canManage={canManage}
+                              canSubmitForApproval={canSubmitThis}
                               isAuthor={isAuthor}
                               isExecutor={isExecutor}
                               isFinal={isFinal}
@@ -1437,6 +1485,7 @@ export default function ProcurementPage() {
                               request={resolvedDetail}
                               busyKey={busyKey}
                               canManage={canManage}
+                              canSubmitForApproval={canSubmitThis}
                               isAuthor={isAuthor}
                               isExecutor={isExecutor}
                               isFinal={isFinal}
@@ -1487,6 +1536,7 @@ export default function ProcurementPage() {
               request={selectedRequest}
               busyKey={busyKey}
               canManage={canManage}
+              canSubmitForApproval={canCurrentUserSubmitRequest(selectedRequest)}
               isAuthor={Boolean(resolveUserId(selectedRequest.requestor) && user?.id && resolveUserId(selectedRequest.requestor) === user.id)}
               isExecutor={Boolean(resolveUserId(selectedRequest.executor) && user?.id && resolveUserId(selectedRequest.executor) === user.id)}
               isFinal={isFinal}

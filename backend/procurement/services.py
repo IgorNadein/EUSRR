@@ -239,29 +239,21 @@ class ProcurementApprovalResolver:
         ):
             return False
 
-        if procurement_request.processing_department_id:
-            if procurement_request.status not in {
-                ProcurementStatus.WAITING,
-                ProcurementStatus.IN_PROGRESS,
-            }:
-                return False
-            if (
-                user.is_superuser
-                or user.is_staff
-                or user.has_perm("procurement.change_procurementrequest")
-                or user.has_perm("procurement.execute_procurement")
-            ):
-                return True
-            if procurement_request.executor_id == user.id:
-                return True
-            return cls.user_is_processing_department_member(
-                user,
-                procurement_request,
-            )
+        if not procurement_request.processing_department_id:
+            return False
 
-        return (
-            procurement_request.requestor_id == user.id
-            and procurement_request.is_editable
+        if procurement_request.status not in {
+            ProcurementStatus.WAITING,
+            ProcurementStatus.IN_PROGRESS,
+        }:
+            return False
+
+        if procurement_request.requestor_id == user.id:
+            return False
+
+        return cls.user_is_processing_department_member(
+            user,
+            procurement_request,
         )
 
     @classmethod
