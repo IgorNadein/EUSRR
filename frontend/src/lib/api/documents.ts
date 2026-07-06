@@ -46,7 +46,7 @@ async function fetchDownload(
 
 export function createDocumentsApi(request: RequestFn, getToken?: GetTokenFn, requestRaw?: RawRequestFn) {
     return {
-        getDocuments: (params?: { search?: string; type?: string; status?: string; page?: number; page_size?: number; limit?: number; folder_id?: number }) => {
+        getDocuments: (params?: { search?: string; type?: string; status?: string; page?: number; page_size?: number; limit?: number; folder_id?: number; is_regulation?: boolean }) => {
             const qp = new URLSearchParams();
             if (params?.search) qp.append('search', params.search);
             if (params?.type) qp.append('type', params.type);
@@ -55,30 +55,38 @@ export function createDocumentsApi(request: RequestFn, getToken?: GetTokenFn, re
             const pageSize = params?.page_size ?? params?.limit;
             if (pageSize) qp.append('page_size', pageSize.toString());
             if (params?.folder_id !== undefined) qp.append('folder_id', params.folder_id.toString());
+            if (params?.is_regulation !== undefined) qp.append('is_regulation', String(params.is_regulation));
             const qs = qp.toString();
             return request(`/api/v1/documents/${qs ? '?' + qs : ''}`);
         },
         getDocument: (id: number) => request(`/api/v1/documents/${id}/`),
-        createDocument: (data: { title?: string; description?: string; file: File | Blob; extracted_text?: string; sent_to_all?: boolean; recipient_ids?: number[]; department_ids?: number[]; folder_id?: number | null; acknowledgement_required?: boolean; tag_ids?: number[] }) => {
+        createDocument: (data: { title?: string; description?: string; file?: File | Blob; extracted_text?: string; sent_to_all?: boolean; is_regulation?: boolean; recipient_ids?: number[]; department_ids?: number[]; folder_id?: number | null; acknowledgement_required?: boolean; tag_ids?: number[] }) => {
             const fd = new FormData();
             if (data.title?.trim()) fd.append('title', data.title.trim());
             if (data.description) fd.append('description', data.description);
             if (data.extracted_text) fd.append('extracted_text', data.extracted_text);
             if (data.folder_id) fd.append('folder', String(data.folder_id));
             fd.append('sent_to_all', String(data.sent_to_all ?? true));
+            fd.append('is_regulation', String(data.is_regulation ?? false));
             if (data.acknowledgement_required !== undefined) fd.append('acknowledgement_required', String(data.acknowledgement_required));
             data.recipient_ids?.forEach(id => fd.append('recipient_ids', String(id)));
             data.department_ids?.forEach(id => fd.append('department_ids', String(id)));
             data.tag_ids?.forEach(id => fd.append('tag_ids', String(id)));
-            fd.append('file', data.file);
+            if (data.file) fd.append('file', data.file);
             return request('/api/v1/documents/', { method: 'POST', body: fd });
         },
-        updateDocument: (id: number, data: { title?: string; description?: string; file?: File; tag_ids?: number[]; folder?: number | null }) => {
+        updateDocument: (id: number, data: { title?: string; description?: string; extracted_text?: string; file?: File; tag_ids?: number[]; folder?: number | null; is_regulation?: boolean; sent_to_all?: boolean; acknowledgement_required?: boolean; recipient_ids?: number[]; department_ids?: number[] }) => {
             const fd = new FormData();
             if (data.title !== undefined) fd.append('title', data.title);
             if (data.description !== undefined) fd.append('description', data.description);
+            if (data.extracted_text !== undefined) fd.append('extracted_text', data.extracted_text);
             if (data.file) fd.append('file', data.file);
             if (data.folder !== undefined) fd.append('folder', data.folder === null ? '' : String(data.folder));
+            if (data.is_regulation !== undefined) fd.append('is_regulation', String(data.is_regulation));
+            if (data.sent_to_all !== undefined) fd.append('sent_to_all', String(data.sent_to_all));
+            if (data.acknowledgement_required !== undefined) fd.append('acknowledgement_required', String(data.acknowledgement_required));
+            data.department_ids?.forEach(departmentId => fd.append('department_ids', String(departmentId)));
+            data.recipient_ids?.forEach(recipientId => fd.append('recipient_ids', String(recipientId)));
             data.tag_ids?.forEach(tagId => fd.append('tag_ids', String(tagId)));
             return request(`/api/v1/documents/${id}/`, { method: 'PATCH', body: fd });
         },

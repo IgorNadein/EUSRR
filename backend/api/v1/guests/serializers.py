@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
+from django.utils import timezone
 from rest_framework import serializers
 
 from communications import comments_helpers
@@ -26,6 +28,53 @@ from guests.services import (
 )
 
 User = get_user_model()
+
+
+def _linked_task_payloads(obj, kind: str, user) -> list[dict]:
+    if not user or not getattr(user, "is_authenticated", False):
+        return []
+
+    try:
+        from tasks.access import task_board_access_q
+        from tasks.models import (
+            TaskBoard,
+            TaskLinkedObject,
+            TaskLinkedObjectKind,
+        )
+    except Exception:
+        return []
+
+    content_type = ContentType.objects.get_for_model(obj.__class__)
+    accessible_boards = TaskBoard.objects.filter(
+        is_archived=False,
+    ).filter(task_board_access_q(user))
+
+    links = (
+        TaskLinkedObject.objects.filter(
+            kind=kind,
+            content_type=content_type,
+            object_id=obj.id,
+            task__board__in=accessible_boards,
+        )
+        .select_related("task", "task__board", "task__column")
+        .order_by("task__title", "task_id")
+    )
+
+    return [
+        {
+            "link_id": link.id,
+            "id": link.task_id,
+            "title": link.task.title,
+            "board_id": link.task.board_id,
+            "board_name": link.task.board.name,
+            "column_id": link.task.column_id,
+            "column_name": link.task.column.name,
+            "column_color": link.task.column.color,
+            "priority": link.task.priority,
+            "priority_display": link.task.get_priority_display(),
+        }
+        for link in links
+    ]
 
 
 class GuestBriefSerializer(serializers.ModelSerializer):
@@ -65,6 +114,7 @@ class GuestSerializer(serializers.ModelSerializer):
     documents = DocumentReadSerializer(many=True, read_only=True)
     comments_count = serializers.SerializerMethodField()
     visits_count = serializers.SerializerMethodField()
+    linked_tasks = serializers.SerializerMethodField()
 
     class Meta:
         model = Guest
@@ -82,6 +132,7 @@ class GuestSerializer(serializers.ModelSerializer):
             "position",
             "comments_count",
             "visits_count",
+            "linked_tasks",
             "document_folder",
             "documents",
             "created_by",
@@ -99,6 +150,7 @@ class GuestSerializer(serializers.ModelSerializer):
             "full_name",
             "comments_count",
             "visits_count",
+            "linked_tasks",
             "document_folder",
             "documents",
             "created_by",
@@ -123,6 +175,11 @@ class GuestSerializer(serializers.ModelSerializer):
         if annotated_count is not None:
             return annotated_count
         return obj.visits.count()
+
+    def get_linked_tasks(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return _linked_task_payloads(obj, "guest", user)
 
 
 class GuestVisitEventSerializer(serializers.ModelSerializer):
@@ -164,6 +221,7 @@ class GuestVisitReadSerializer(serializers.ModelSerializer):
     can_delete = serializers.SerializerMethodField()
     comments_count = serializers.IntegerField(read_only=True, default=0)
     has_unread_info_response = serializers.SerializerMethodField()
+    linked_tasks = serializers.SerializerMethodField()
 
     class Meta:
         model = GuestVisit
@@ -210,6 +268,7 @@ class GuestVisitReadSerializer(serializers.ModelSerializer):
             "can_delete",
             "comments_count",
             "has_unread_info_response",
+            "linked_tasks",
             "events",
         )
 
@@ -224,6 +283,14 @@ class GuestVisitReadSerializer(serializers.ModelSerializer):
             and getattr(obj.inviter, "is_actually_active", True)
         )
 
+    @staticmethod
+    def _period_is_not_past(obj):
+        return bool(
+            obj.unlimited
+            or not obj.access_expires_at
+            or obj.access_expires_at > timezone.now()
+        )
+
     def get_can_edit(self, obj):
         return obj.can_edit_by(self._user())
 
@@ -233,6 +300,7 @@ class GuestVisitReadSerializer(serializers.ModelSerializer):
             user
             and obj.inviter_id == user.id
             and obj.status in {GuestVisitStatus.DRAFT, GuestVisitStatus.NEEDS_INFO}
+            and self._period_is_not_past(obj)
         )
 
     def get_can_decide(self, obj):
@@ -244,6 +312,7 @@ class GuestVisitReadSerializer(serializers.ModelSerializer):
             and obj.status in {GuestVisitStatus.PENDING, GuestVisitStatus.REJECTED}
             and not obj.inviter_inactive
             and self._inviter_is_active(obj)
+            and self._period_is_not_past(obj)
         )
 
     def get_can_reject(self, obj):
@@ -293,6 +362,7 @@ class GuestVisitReadSerializer(serializers.ModelSerializer):
             }
             and not obj.inviter_inactive
             and self._inviter_is_active(obj)
+            and self._period_is_not_past(obj)
         )
 
     def get_can_sync_ldap(self, obj):
@@ -304,6 +374,15 @@ class GuestVisitReadSerializer(serializers.ModelSerializer):
 
     def get_has_unread_info_response(self, obj):
         return has_unread_info_response_for_user(obj, self._user())
+
+    def get_linked_tasks(self, obj):
+        from tasks.models import TaskLinkedObjectKind
+
+        return _linked_task_payloads(
+            obj,
+            TaskLinkedObjectKind.GUEST_VISIT,
+            self._user(),
+        )
 
 
 class GuestVisitWriteSerializer(serializers.Serializer):

@@ -2,8 +2,16 @@
 
 import React, { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
-import { MessageCircle, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  MessageCircle,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Link2,
+  Loader2,
+} from "lucide-react";
 import { AppShell } from "../../../components/AppShell";
+import { Modal } from "@/components/ui";
 import ChatDialogHeader from "@/components/messages/ChatDialogHeader";
 import ChatMediaPreviewModal from "@/components/messages/ChatMediaPreviewModal";
 import ChatMessageItem, { MediaPreview } from "@/components/messages/ChatMessageItem";
@@ -12,7 +20,15 @@ import MessageReadersModal from "@/components/messages/MessageReadersModal";
 import MessageComposer from "@/components/messages/MessageComposer";
 import ReactionPickerModal from "@/components/messages/ReactionPickerModal";
 import { apiClient } from "@/lib/api";
-import type { ChatMessageSearchResponse, ChatMessageSearchResult, Message } from "@/types/api";
+import type {
+  ChatMessageSearchResponse,
+  ChatMessageSearchResult,
+  Message,
+  TaskBoard,
+  TaskCard,
+  TaskPriority,
+  User,
+} from "@/types/api";
 import { useUser } from "@/contexts/UserContext";
 import { useChatFallbackSync } from "@/hooks/useChatFallbackSync";
 import { useSilentChatReloadGuard } from "@/hooks/useSilentChatReloadGuard";
@@ -22,6 +38,7 @@ import { useMarkRead } from "@/hooks/useMarkRead";
 import { useChatScroll, shiftDateInputValue } from "@/hooks/useChatScroll";
 import { mergeDisplayMessages, uniqueMessagesById } from "@/lib/messages/chatUtils";
 import { formatDayDivider, getMessageDate, getMessagePreviewText, getReplyToId } from "@/lib/messages/messageUtils";
+import { displayUserName } from "@/lib/shared";
 import wsManager from "@/lib/websocketManager";
 import ScrollableMessageList, { ScrollableMessageListInner } from "@/components/ScrollableMessageList";
 
@@ -29,6 +46,14 @@ import ScrollableMessageList, { ScrollableMessageListInner } from "@/components/
 
 type ReplyTarget = { id: number; author: string; preview: string };
 type TypingUser = { id: number; name: string };
+type TaskLinkMode = "existing" | "create";
+
+const taskPriorityOptions: { value: TaskPriority; label: string }[] = [
+  { value: "low", label: "Низкая" },
+  { value: "medium", label: "Средняя" },
+  { value: "high", label: "Высокая" },
+  { value: "critical", label: "Критическая" },
+];
 /* ─── constants ─── */
 
 const RECENT_REACTIONS_KEY = "eusrr_recent_reactions";
@@ -64,6 +89,32 @@ function formatTypingIndicatorText(users: TypingUser[]): string {
   const additionalCount = users.length - 1;
   const additionalLabel = additionalCount === 1 ? "человек" : "человека";
   return `${users[0].name} и ещё ${additionalCount} ${additionalLabel} печатают...`;
+}
+
+function getDefaultTaskTitleFromMessage(message: Message): string {
+  const content = (message.content || "").trim().replace(/\s+/g, " ");
+  if (content) {
+    return content.length > 80 ? `${content.slice(0, 77)}...` : content;
+  }
+  return `Задача по сообщению #${message.id}`;
+}
+
+function getTaskOptionLabel(task: TaskCard) {
+  return `#${task.id} - ${task.title}`;
+}
+
+function taskMatchesSearch(task: TaskCard, query: string) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return true;
+  return [
+    String(task.id),
+    task.title,
+    task.description || "",
+    task.assignee ? displayUserName(task.assignee) : "",
+  ]
+    .join(" ")
+    .toLowerCase()
+    .includes(normalized);
 }
 
 /* ─── component ─── */
@@ -103,6 +154,7 @@ function MessageDialogPageContent() {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const highlightTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingRetryFilesRef = useRef<Map<string, File[]>>(new Map());
+  const displayMessageIdsRef = useRef<Set<number>>(new Set());
 
   /* ──────────────────────────────────────────────────────
    * HOOK: Chat messages (state, pagination, pending)
@@ -206,7 +258,28 @@ function MessageDialogPageContent() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [nextSearchOffset, setNextSearchOffset] = useState<number | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
+  const [taskLinkMessage, setTaskLinkMessage] = useState<Message | null>(null);
+  const [taskLinkBoards, setTaskLinkBoards] = useState<TaskBoard[]>([]);
+  const [taskLinkEmployees, setTaskLinkEmployees] = useState<User[]>([]);
+  const [taskLinkBoardId, setTaskLinkBoardId] = useState<number | "">("");
+  const [taskLinkTaskId, setTaskLinkTaskId] = useState<number | "">("");
+  const [taskLinkSearch, setTaskLinkSearch] = useState("");
+  const [taskLinkMode, setTaskLinkMode] = useState<TaskLinkMode>("existing");
+  const [taskLinkNewTitle, setTaskLinkNewTitle] = useState("");
+  const [taskLinkNewDescription, setTaskLinkNewDescription] = useState("");
+  const [taskLinkDetailsOpen, setTaskLinkDetailsOpen] = useState(false);
+  const [taskLinkColumnId, setTaskLinkColumnId] = useState<number | "">("");
+  const [taskLinkAssigneeId, setTaskLinkAssigneeId] = useState<number | "">("");
+  const [taskLinkPriority, setTaskLinkPriority] = useState<TaskPriority>("medium");
+  const [taskLinkDueDate, setTaskLinkDueDate] = useState("");
+  const [taskLinkLabelIds, setTaskLinkLabelIds] = useState<number[]>([]);
+  const [taskLinkLoading, setTaskLinkLoading] = useState(false);
+  const [taskLinkError, setTaskLinkError] = useState<string | null>(null);
   const linkedMessageId = Number(searchParams.get("message") || "");
+
+  useEffect(() => {
+    displayMessageIdsRef.current = new Set(displayMessages.map((message) => message.id));
+  }, [displayMessages]);
 
   // Sync settings from chat
   useEffect(() => {
@@ -310,6 +383,31 @@ function MessageDialogPageContent() {
     wsManager.setActiveChat(chatId);
     return () => { wsManager.clearActiveChat(chatId); };
   }, [chatId]);
+
+  useEffect(() => {
+    if (!chatId || Number.isNaN(chatId)) return undefined;
+
+    const unsubscribe = wsManager.subscribe((event) => {
+      if (event.type !== "task_board_update") return;
+      const payload = event.data as { model?: string; object_id?: number } | undefined;
+      if (payload?.model !== "message") return;
+      const messageId = Number(payload.object_id);
+      if (!Number.isFinite(messageId) || !displayMessageIdsRef.current.has(messageId)) return;
+
+      void apiClient.getChatMessagesAround(chatId, {
+        limit: 1,
+        around_id: messageId,
+      }).then((response) => {
+        const updated = response.messages?.find((message: Message) => message.id === messageId);
+        if (!updated) return;
+        cm.setMessages(prev => prev.map((message) => (
+          message.id === messageId ? { ...message, ...updated } : message
+        )));
+      }).catch(() => {});
+    });
+
+    return unsubscribe;
+  }, [chatId, cm]);
 
   useEffect(() => { if (isConnected) resetReloadGuard(); }, [isConnected, resetReloadGuard]);
 
@@ -728,6 +826,199 @@ function MessageDialogPageContent() {
       return messageId;
     });
   }, []);
+
+  const selectedTaskLinkBoard = useMemo(
+    () => taskLinkBoards.find((item) => item.id === taskLinkBoardId) || null,
+    [taskLinkBoardId, taskLinkBoards],
+  );
+  const selectedTaskLinkTask = useMemo(
+    () => (selectedTaskLinkBoard?.tasks || []).find((task) => task.id === taskLinkTaskId) || null,
+    [selectedTaskLinkBoard?.tasks, taskLinkTaskId],
+  );
+  const availableTaskLinkTasks = useMemo(
+    () => selectedTaskLinkBoard?.tasks || [],
+    [selectedTaskLinkBoard?.tasks],
+  );
+  const filteredTaskLinkTasks = useMemo(
+    () => availableTaskLinkTasks.filter((task) => taskMatchesSearch(task, taskLinkSearch)),
+    [availableTaskLinkTasks, taskLinkSearch],
+  );
+  const selectedTaskLinkColumn = useMemo(
+    () => (
+      (selectedTaskLinkBoard?.columns || []).find((column) => column.id === taskLinkColumnId) ||
+      (selectedTaskLinkBoard?.columns || []).find((column) => !column.is_archived) ||
+      null
+    ),
+    [selectedTaskLinkBoard?.columns, taskLinkColumnId],
+  );
+
+  const handleOpenTaskLinkModal = useCallback(async (message: Message) => {
+    setTaskLinkMessage(message);
+    setExpandedReplyActionForId(null);
+    setTaskLinkError(null);
+    setTaskLinkNewTitle(getDefaultTaskTitleFromMessage(message));
+    setTaskLinkNewDescription(message.content || "");
+    setTaskLinkLoading(true);
+    try {
+      const [response, employeesResponse] = await Promise.all([
+        apiClient.getTaskBoards(),
+        apiClient.getEmployees({ limit: 200, is_active: true, ordering: "last_name" }),
+      ]);
+      const boards = (response.results || response || []) as TaskBoard[];
+      const employees = (employeesResponse.results || employeesResponse || []) as User[];
+      setTaskLinkBoards(boards);
+      setTaskLinkEmployees(employees);
+      const firstBoardWithTasks = boards.find((item) => (item.tasks || []).length > 0) || boards[0] || null;
+      const firstColumn = firstBoardWithTasks?.columns?.find((column) => !column.is_archived) || null;
+      setTaskLinkBoardId(firstBoardWithTasks?.id || "");
+      setTaskLinkTaskId(firstBoardWithTasks?.tasks?.[0]?.id || "");
+      setTaskLinkSearch("");
+      setTaskLinkColumnId(firstColumn?.id || "");
+      setTaskLinkMode(firstBoardWithTasks?.tasks?.length ? "existing" : "create");
+      setTaskLinkDetailsOpen(false);
+      setTaskLinkAssigneeId("");
+      setTaskLinkPriority("medium");
+      setTaskLinkDueDate("");
+      setTaskLinkLabelIds([]);
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : "Не удалось загрузить задачи";
+      setTaskLinkError(messageText);
+    } finally {
+      setTaskLinkLoading(false);
+    }
+  }, []);
+
+  const handleTaskLinkBoardChange = useCallback((boardId: number | "") => {
+    setTaskLinkBoardId(boardId);
+    const nextBoard = taskLinkBoards.find((item) => item.id === boardId) || null;
+    setTaskLinkTaskId(nextBoard?.tasks?.[0]?.id || "");
+    setTaskLinkSearch("");
+    setTaskLinkColumnId(nextBoard?.columns?.find((column) => !column.is_archived)?.id || "");
+    setTaskLinkLabelIds([]);
+    if (!nextBoard?.tasks?.length) {
+      setTaskLinkMode("create");
+    }
+  }, [taskLinkBoards]);
+
+  const handleTaskLinkSearchChange = useCallback((value: string) => {
+    setTaskLinkSearch(value);
+    const nextTask = availableTaskLinkTasks.find((task) => taskMatchesSearch(task, value));
+    setTaskLinkTaskId(nextTask?.id || "");
+  }, [availableTaskLinkTasks]);
+
+  const handleCloseTaskLinkModal = useCallback(() => {
+    if (taskLinkLoading) return;
+    setTaskLinkMessage(null);
+    setTaskLinkError(null);
+    setTaskLinkBoardId("");
+    setTaskLinkTaskId("");
+    setTaskLinkSearch("");
+    setTaskLinkMode("existing");
+    setTaskLinkNewTitle("");
+    setTaskLinkNewDescription("");
+    setTaskLinkDetailsOpen(false);
+    setTaskLinkColumnId("");
+    setTaskLinkAssigneeId("");
+    setTaskLinkPriority("medium");
+    setTaskLinkDueDate("");
+    setTaskLinkLabelIds([]);
+  }, [taskLinkLoading]);
+
+  const toggleTaskLinkLabel = useCallback((labelId: number) => {
+    setTaskLinkLabelIds((current) => (
+      current.includes(labelId)
+        ? current.filter((id) => id !== labelId)
+        : [...current, labelId]
+    ));
+  }, []);
+
+  const handleSaveTaskLink = useCallback(async () => {
+    if (!taskLinkMessage || !selectedTaskLinkBoard) return;
+    if (taskLinkMode === "existing" && !selectedTaskLinkTask) return;
+    if (taskLinkMode === "create" && !taskLinkNewTitle.trim()) return;
+
+    setTaskLinkLoading(true);
+    setTaskLinkError(null);
+    try {
+      let taskToLink = selectedTaskLinkTask;
+      if (taskLinkMode === "create") {
+        if (!selectedTaskLinkColumn) {
+          setTaskLinkError("На выбранной доске нет колонки для новой задачи");
+          return;
+        }
+        taskToLink = await apiClient.createTask({
+          board: selectedTaskLinkBoard.id,
+          column: selectedTaskLinkColumn.id,
+          title: taskLinkNewTitle.trim(),
+          description: taskLinkNewDescription.trim(),
+          assignee_id: taskLinkAssigneeId || null,
+          priority: taskLinkPriority,
+          due_date: taskLinkDueDate || null,
+          label_ids: taskLinkLabelIds,
+        });
+      }
+
+      if (!taskToLink) return;
+
+      const link = await apiClient.linkTaskMessage(taskToLink.id, taskLinkMessage.id);
+      const taskColumn = selectedTaskLinkBoard.columns.find((column) => column.id === taskToLink.column) || null;
+      cm.setMessages(prev => prev.map((message) => {
+        if (message.id !== taskLinkMessage.id) return message;
+        const existing = message.linked_tasks || [];
+        if (existing.some((task) => task.id === taskToLink.id)) return message;
+        return {
+          ...message,
+          linked_tasks: [
+            ...existing,
+            {
+              link_id: link.id,
+              id: taskToLink.id,
+              title: taskToLink.title,
+              board_id: selectedTaskLinkBoard.id,
+              board_name: selectedTaskLinkBoard.name,
+              column_id: taskToLink.column,
+              column_name: taskColumn?.name || taskToLink.column_name || "",
+              column_color: taskColumn?.color || "",
+              priority: taskToLink.priority,
+              priority_display: taskToLink.priority_display,
+            },
+          ],
+        };
+      }));
+      setTaskLinkMessage(null);
+      setTaskLinkError(null);
+      setTaskLinkBoardId("");
+      setTaskLinkTaskId("");
+      setTaskLinkSearch("");
+      setTaskLinkMode("existing");
+      setTaskLinkNewTitle("");
+      setTaskLinkNewDescription("");
+      setTaskLinkDetailsOpen(false);
+      setTaskLinkColumnId("");
+      setTaskLinkAssigneeId("");
+      setTaskLinkPriority("medium");
+      setTaskLinkDueDate("");
+      setTaskLinkLabelIds([]);
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : "Не удалось связать сообщение с задачей";
+      setTaskLinkError(messageText);
+    } finally {
+      setTaskLinkLoading(false);
+    }
+  }, [
+    cm,
+    selectedTaskLinkColumn,
+    selectedTaskLinkBoard,
+    selectedTaskLinkTask,
+    taskLinkAssigneeId,
+    taskLinkDueDate,
+    taskLinkLabelIds,
+    taskLinkMode,
+    taskLinkMessage,
+    taskLinkNewDescription,
+    taskLinkNewTitle,
+    taskLinkPriority,
+  ]);
 
   const handleAttachmentLoad = useCallback((id: number) => {
     setBrokenMedia(prev => ({ ...prev, [id]: false }));
@@ -1208,6 +1499,7 @@ function MessageDialogPageContent() {
                               onQuickReact={handleReact}
                               onOpenReactionPicker={(msg) => setReactionPickerForMessageId(msg.id)}
                               onShowAllReaders={() => setIsReadersModalOpen(true)}
+                              onLinkToTask={handleOpenTaskLinkModal}
                               onRetry={handleRetryMessage}
                               isRetrying={Boolean(message.local_id && retryingLocalIds.has(message.local_id))}
                               retryDisabled={!canRetryMessage(message)}
@@ -1304,6 +1596,275 @@ function MessageDialogPageContent() {
       {selectedActionMessage ? (
         <MessageReadersModal isOpen={isReadersModalOpen} onClose={() => setIsReadersModalOpen(false)} readers={selectedActionReaders} />
       ) : null}
+
+      <Modal
+        isOpen={Boolean(taskLinkMessage)}
+        onClose={handleCloseTaskLinkModal}
+        title="Связать с задачей"
+        size="md"
+        closeOnClickOutside
+        footer={(
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={handleCloseTaskLinkModal}
+              className="app-action-secondary rounded-xl px-4 py-2 text-sm font-medium"
+              disabled={taskLinkLoading}
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSaveTaskLink()}
+              className="app-action-primary inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-60"
+              disabled={
+                taskLinkLoading ||
+                (taskLinkMode === "existing"
+                  ? !selectedTaskLinkTask
+                  : !taskLinkNewTitle.trim() || !selectedTaskLinkColumn)
+              }
+            >
+              {taskLinkLoading ? <Loader2 size={16} className="animate-spin" /> : <Link2 size={16} />}
+              {taskLinkMode === "create" ? "Создать и связать" : "Связать"}
+            </button>
+          </div>
+        )}
+      >
+        <div className="space-y-4">
+          {taskLinkMessage ? (
+            <div className="app-surface-muted rounded-xl border border-[var(--border-subtle)] p-3">
+              <p className="app-card-caption">Сообщение</p>
+              <p className="app-text-wrap mt-1 line-clamp-3 text-sm text-[var(--foreground)]">
+                {taskLinkMessage.content || "Сообщение без текста"}
+              </p>
+            </div>
+          ) : null}
+
+          <label className="block">
+            <span className="app-text-muted mb-1 block text-xs font-medium">Доска</span>
+            <select
+              value={taskLinkBoardId}
+              onChange={(event) => handleTaskLinkBoardChange(Number(event.target.value) || "")}
+              className="app-select w-full rounded-xl px-3 py-2 text-sm"
+              disabled={taskLinkLoading}
+            >
+              <option value="">Выберите доску</option>
+              {taskLinkBoards.map((board) => (
+                <option key={board.id} value={board.id}>
+                  {board.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setTaskLinkMode("existing")}
+              className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                taskLinkMode === "existing"
+                  ? "app-selected border-[var(--accent-primary)]"
+                  : "border-[var(--border-subtle)] text-[var(--muted-foreground)] hover:border-[var(--border-strong)]"
+              }`}
+              disabled={taskLinkLoading || !selectedTaskLinkBoard || (selectedTaskLinkBoard.tasks || []).length === 0}
+            >
+              Выбрать задачу
+            </button>
+            <button
+              type="button"
+              onClick={() => setTaskLinkMode("create")}
+              className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                taskLinkMode === "create"
+                  ? "app-selected border-[var(--accent-primary)]"
+                  : "border-[var(--border-subtle)] text-[var(--muted-foreground)] hover:border-[var(--border-strong)]"
+              }`}
+              disabled={taskLinkLoading || !selectedTaskLinkBoard}
+            >
+              Создать задачу
+            </button>
+          </div>
+
+          {taskLinkMode === "existing" ? (
+            <div className="space-y-2">
+              <label className="block">
+                <span className="app-text-muted mb-1 block text-xs font-medium">Поиск задачи</span>
+                <input
+                  value={taskLinkSearch}
+                  onChange={(event) => handleTaskLinkSearchChange(event.target.value)}
+                  className="app-input w-full rounded-xl px-3 py-2 text-sm"
+                  disabled={taskLinkLoading || !selectedTaskLinkBoard}
+                  placeholder="ID, название, описание или исполнитель"
+                />
+              </label>
+              <label className="block">
+                <span className="app-text-muted mb-1 block text-xs font-medium">Задача</span>
+                <select
+                  value={taskLinkTaskId}
+                  onChange={(event) => setTaskLinkTaskId(Number(event.target.value) || "")}
+                  className="app-select w-full rounded-xl px-3 py-2 text-sm"
+                  disabled={taskLinkLoading || !selectedTaskLinkBoard || filteredTaskLinkTasks.length === 0}
+                >
+                  <option value="">
+                    {filteredTaskLinkTasks.length === 0 ? "Задачи не найдены" : "Выберите задачу"}
+                  </option>
+                  {filteredTaskLinkTasks.map((task: TaskCard) => (
+                    <option key={task.id} value={task.id}>
+                      {getTaskOptionLabel(task)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <label className="block">
+                <span className="app-text-muted mb-1 block text-xs font-medium">Название задачи</span>
+                <input
+                  value={taskLinkNewTitle}
+                  onChange={(event) => setTaskLinkNewTitle(event.target.value)}
+                  className="app-input w-full rounded-xl px-3 py-2 text-sm"
+                  disabled={taskLinkLoading}
+                  placeholder="Название новой задачи"
+                />
+              </label>
+              <label className="block">
+                <span className="app-text-muted mb-1 block text-xs font-medium">Описание</span>
+                <textarea
+                  value={taskLinkNewDescription}
+                  onChange={(event) => setTaskLinkNewDescription(event.target.value)}
+                  className="app-input w-full rounded-xl px-3 py-2 text-sm"
+                  disabled={taskLinkLoading}
+                  rows={3}
+                />
+              </label>
+
+              <div className="rounded-xl border border-[var(--border-subtle)]">
+                <button
+                  type="button"
+                  onClick={() => setTaskLinkDetailsOpen((current) => !current)}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+                  disabled={taskLinkLoading}
+                  aria-expanded={taskLinkDetailsOpen}
+                >
+                  <span>
+                    <span className="block text-sm font-medium text-[var(--foreground)]">
+                      Дополнительная информация
+                    </span>
+                    <span className="app-text-muted mt-0.5 block text-xs">
+                      Исполнитель, срочность, срок, колонка и метки
+                    </span>
+                  </span>
+                  <ChevronRight
+                    size={16}
+                    className={`app-text-muted shrink-0 transition-transform ${taskLinkDetailsOpen ? "rotate-90" : ""}`}
+                  />
+                </button>
+
+                {taskLinkDetailsOpen ? (
+                  <div className="space-y-3 border-t border-[var(--border-subtle)] px-3 py-3">
+                    <label className="block">
+                      <span className="app-text-muted mb-1 block text-xs font-medium">Колонка</span>
+                      <select
+                        value={taskLinkColumnId}
+                        onChange={(event) => setTaskLinkColumnId(Number(event.target.value) || "")}
+                        className="app-select w-full rounded-xl px-3 py-2 text-sm"
+                        disabled={taskLinkLoading || !selectedTaskLinkBoard}
+                      >
+                        <option value="">Выберите колонку</option>
+                        {(selectedTaskLinkBoard?.columns || [])
+                          .filter((column) => !column.is_archived)
+                          .map((column) => (
+                            <option key={column.id} value={column.id}>
+                              {column.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+
+                    <label className="block">
+                      <span className="app-text-muted mb-1 block text-xs font-medium">Исполнитель</span>
+                      <select
+                        value={taskLinkAssigneeId}
+                        onChange={(event) => setTaskLinkAssigneeId(Number(event.target.value) || "")}
+                        className="app-select w-full rounded-xl px-3 py-2 text-sm"
+                        disabled={taskLinkLoading}
+                      >
+                        <option value="">Не назначен</option>
+                        {taskLinkEmployees.map((employee) => (
+                          <option key={employee.id} value={employee.id}>
+                            {displayUserName(employee)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block">
+                        <span className="app-text-muted mb-1 block text-xs font-medium">Срочность</span>
+                        <select
+                          value={taskLinkPriority}
+                          onChange={(event) => setTaskLinkPriority(event.target.value as TaskPriority)}
+                          className="app-select w-full rounded-xl px-3 py-2 text-sm"
+                          disabled={taskLinkLoading}
+                        >
+                          {taskPriorityOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="app-text-muted mb-1 block text-xs font-medium">Срок</span>
+                        <input
+                          type="date"
+                          value={taskLinkDueDate}
+                          onChange={(event) => setTaskLinkDueDate(event.target.value)}
+                          className="app-input w-full rounded-xl px-3 py-2 text-sm"
+                          disabled={taskLinkLoading}
+                        />
+                      </label>
+                    </div>
+
+                    <div>
+                      <span className="app-text-muted mb-2 block text-xs font-medium">Метки</span>
+                      {(selectedTaskLinkBoard?.labels || []).length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {(selectedTaskLinkBoard?.labels || []).map((label) => {
+                            const selected = taskLinkLabelIds.includes(label.id);
+                            return (
+                              <button
+                                key={label.id}
+                                type="button"
+                                onClick={() => toggleTaskLinkLabel(label.id)}
+                                className={`inline-flex max-w-full items-center rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                                  selected ? "border-transparent text-white" : "border-[var(--border-subtle)] text-[var(--muted-foreground)]"
+                                }`}
+                                style={selected ? { backgroundColor: label.color || "#38bdf8" } : undefined}
+                                disabled={taskLinkLoading}
+                              >
+                                <span className="truncate">{label.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="app-text-muted text-xs">На этой доске меток нет</p>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          )}
+
+          {taskLinkError ? (
+            <div className="app-feedback-danger rounded-xl px-3 py-2 text-sm">
+              {taskLinkError}
+            </div>
+          ) : null}
+        </div>
+      </Modal>
 
       {reactionPickerForMessageId ? (
         <ReactionPickerModal

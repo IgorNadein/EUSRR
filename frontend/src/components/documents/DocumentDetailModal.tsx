@@ -25,10 +25,12 @@ import {
   Edit,
   MessageSquare,
   Link2,
+  ScrollText,
 } from "lucide-react";
 import { DocumentAcknowledgement } from "./DocumentAcknowledgement";
 import { DocumentComments } from "./DocumentComments";
 import { DocumentRelated } from "./DocumentRelated";
+import { DocumentTaskLinks } from "./DocumentTaskLinks";
 
 const DocumentPreviewPane = dynamic(
   () => import("./DocumentPreview").then((mod) => mod.DocumentPreviewPane),
@@ -63,8 +65,17 @@ export function DocumentDetailModal({
   onViewReport,
   onNavigateToRelated,
 }: DocumentDetailModalProps) {
-  const [activeTab, setActiveTab] = useState<TabType>("preview");
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [activeTabState, setActiveTabState] = useState<{ documentId: number | null; value: TabType }>({
+    documentId: null,
+    value: "preview",
+  });
+  const [fullscreenState, setFullscreenState] = useState<{ documentId: number | null; value: boolean }>({
+    documentId: null,
+    value: false,
+  });
+  const documentId = document?.id ?? null;
+  const documentHasFile = Boolean(document?.file_url);
+  const documentRequiresAcknowledgement = Boolean(document?.acknowledgement_required);
 
   if (!document) return null;
 
@@ -85,13 +96,26 @@ export function DocumentDetailModal({
   };
 
   const tabs = [
-    { id: "preview" as TabType, label: "Предпросмотр", icon: Eye },
+    ...(documentHasFile ? [{ id: "preview" as TabType, label: "Предпросмотр", icon: Eye }] : []),
     { id: "info" as TabType, label: "Информация", icon: Info },
     { id: "activity" as TabType, label: "Активность", icon: Activity },
-    { id: "acknowledgements" as TabType, label: "Ознакомления", icon: CheckCircle },
+    ...(documentRequiresAcknowledgement ? [{ id: "acknowledgements" as TabType, label: "Ознакомления", icon: CheckCircle }] : []),
     { id: "comments" as TabType, label: "Комментарии", icon: MessageSquare },
     { id: "related" as TabType, label: "Связанные", icon: Link2 },
   ];
+  const defaultTab: TabType = documentHasFile ? "preview" : "info";
+  const activeTab: TabType = activeTabState.documentId === documentId
+    ? activeTabState.value
+    : defaultTab;
+  const currentActiveTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : defaultTab;
+  const isFullscreen = fullscreenState.documentId === documentId ? fullscreenState.value : false;
+  const detailTabs = tabs.filter((tab) => tab.id !== "preview");
+  const setDocumentActiveTab = (value: TabType) => {
+    setActiveTabState({ documentId, value });
+  };
+  const setDocumentFullscreen = (value: boolean) => {
+    setFullscreenState({ documentId, value });
+  };
 
   const renderPreview = () => {
     if (!document.file_url) {
@@ -155,7 +179,7 @@ export function DocumentDetailModal({
                       <span className="hidden sm:inline">Скачать</span>
                     </a>
                     <button
-                      onClick={() => setIsFullscreen(!isFullscreen)}
+                      onClick={() => setDocumentFullscreen(!isFullscreen)}
                       className="app-action-secondary hidden items-center gap-2 rounded-lg p-2 text-sm font-medium lg:inline-flex"
                       title={isFullscreen ? "Обычный режим" : "Полный экран"}
                     >
@@ -168,6 +192,12 @@ export function DocumentDetailModal({
 
             {/* Metadata Row - Always visible */}
             <div className="app-text-muted flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+              {document.is_regulation && (
+                <div className="app-selected app-accent-text flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium">
+                  <ScrollText size={14} className="shrink-0" />
+                  <span>Регламент</span>
+                </div>
+              )}
               {document.file_name && (
                 <div className="flex items-center gap-1.5">
                   <HardDrive size={14} className="app-text-muted shrink-0" />
@@ -193,15 +223,15 @@ export function DocumentDetailModal({
 
         {/* Mobile Tabs Navigation */}
         <div className="app-divider app-surface-muted shrink-0 border-b px-4 sm:px-6 lg:hidden">
-          <nav className="flex gap-1 overflow-x-auto">
+          <nav className="app-tabs-scroll flex gap-1 overflow-x-auto overflow-y-hidden pb-1">
             {tabs.map((tab) => {
               const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
+              const isActive = currentActiveTab === tab.id;
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition ${
+                  onClick={() => setDocumentActiveTab(tab.id)}
+                  className={`flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition ${
                     isActive
                       ? "border-[var(--accent-primary)] text-[var(--accent-primary-strong)]"
                       : "border-transparent text-[var(--muted-foreground)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
@@ -220,24 +250,26 @@ export function DocumentDetailModal({
           {/* Desktop Layout: Side-by-side */}
           <div className="hidden h-full lg:flex">
             {/* Preview Panel (Left) */}
-            <div className={`${isFullscreen ? "w-full" : "w-3/5"} shrink-0 border-r border-[var(--border-subtle)] transition-all`}>
-              {renderPreview()}
-            </div>
+            {documentHasFile && (
+              <div className={`${isFullscreen ? "w-full" : "w-3/5"} shrink-0 border-r border-[var(--border-subtle)] transition-all`}>
+                {renderPreview()}
+              </div>
+            )}
 
             {/* Info Panel (Right) */}
-            {!isFullscreen && (
+            {!(documentHasFile && isFullscreen) && (
               <div className="flex min-w-0 flex-1 flex-col">
                 {/* Desktop Tabs */}
                 <div className="app-divider app-surface-muted shrink-0 border-b px-6">
-                  <nav className="flex gap-1">
-                    {tabs.slice(1).map((tab) => {
+                  <nav className="app-tabs-scroll flex gap-1 overflow-x-auto overflow-y-hidden pb-1">
+                    {detailTabs.map((tab) => {
                       const Icon = tab.icon;
-                      const isActive = activeTab === tab.id;
+                      const isActive = currentActiveTab === tab.id;
                       return (
                         <button
                           key={tab.id}
-                          onClick={() => setActiveTab(tab.id)}
-                          className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition ${
+                          onClick={() => setDocumentActiveTab(tab.id)}
+                          className={`flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition ${
                             isActive
                               ? "border-[var(--accent-primary)] text-[var(--accent-primary-strong)]"
                               : "border-transparent text-[var(--muted-foreground)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
@@ -253,7 +285,7 @@ export function DocumentDetailModal({
 
                 {/* Desktop Tab Content */}
                 <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--surface-secondary)]">
-                  {activeTab === "info" && (
+                  {currentActiveTab === "info" && (
                     <div className="p-6">
                       <div className="space-y-4">
                         {/* Description */}
@@ -423,7 +455,7 @@ export function DocumentDetailModal({
                     </div>
                   )}
 
-                  {activeTab === "activity" && (
+                  {currentActiveTab === "activity" && (
                     <div className="p-6">
                       <div className="app-surface rounded-xl p-6">
                         <h3 className="mb-4 text-lg font-semibold text-[var(--foreground)]">История активности</h3>
@@ -457,7 +489,7 @@ export function DocumentDetailModal({
                     </div>
                   )}
 
-                  {activeTab === "acknowledgements" && (
+                  {currentActiveTab === "acknowledgements" && (
                     <div className="p-6">
                       <div className="app-surface rounded-xl p-6">
                         {document.acknowledgement_required ? (
@@ -487,7 +519,7 @@ export function DocumentDetailModal({
                     </div>
                   )}
 
-                  {activeTab === "comments" && (
+                  {currentActiveTab === "comments" && (
                     <div className="p-6">
                       <div className="app-surface rounded-xl p-6">
                         <DocumentComments documentId={document.id} />
@@ -495,13 +527,18 @@ export function DocumentDetailModal({
                     </div>
                   )}
 
-                  {activeTab === "related" && (
+                  {currentActiveTab === "related" && (
                     <div className="p-6">
-                      <div className="app-surface rounded-xl p-6">
-                        <DocumentRelated
-                          documentId={document.id}
-                          onNavigate={(docId) => onNavigateToRelated?.(docId)}
-                        />
+                      <div className="space-y-4">
+                        <div className="app-surface rounded-xl p-6">
+                          <DocumentTaskLinks document={document} />
+                        </div>
+                        <div className="app-surface rounded-xl p-6">
+                          <DocumentRelated
+                            documentId={document.id}
+                            onNavigate={(docId) => onNavigateToRelated?.(docId)}
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
@@ -512,11 +549,11 @@ export function DocumentDetailModal({
 
           {/* Mobile Layout: Tabs */}
           <div className="h-full overflow-y-auto bg-[var(--surface-secondary)] lg:hidden">
-            {activeTab === "preview" && (
+            {currentActiveTab === "preview" && (
               <div className="h-full min-h-[400px]">{renderPreview()}</div>
             )}
 
-            {activeTab === "info" && (
+            {currentActiveTab === "info" && (
               <div className="p-4 sm:p-6">
                 <div className="space-y-4">
                   {/* Description */}
@@ -686,7 +723,7 @@ export function DocumentDetailModal({
               </div>
             )}
 
-            {activeTab === "activity" && (
+            {currentActiveTab === "activity" && (
               <div className="p-4 sm:p-6">
                 <div className="app-surface rounded-xl p-4 sm:p-6">
                   <h3 className="mb-4 text-lg font-semibold text-[var(--foreground)]">История активности</h3>
@@ -720,7 +757,7 @@ export function DocumentDetailModal({
               </div>
             )}
 
-            {activeTab === "acknowledgements" && (
+            {currentActiveTab === "acknowledgements" && (
               <div className="p-4 sm:p-6">
                 <div className="app-surface rounded-xl p-4 sm:p-6">
                   {document.acknowledgement_required ? (
@@ -750,7 +787,7 @@ export function DocumentDetailModal({
               </div>
             )}
 
-            {activeTab === "comments" && (
+            {currentActiveTab === "comments" && (
               <div className="p-4 sm:p-6">
                 <div className="app-surface rounded-xl p-4 sm:p-6">
                   <DocumentComments documentId={document.id} />
@@ -758,13 +795,18 @@ export function DocumentDetailModal({
               </div>
             )}
 
-            {activeTab === "related" && (
+            {currentActiveTab === "related" && (
               <div className="p-4 sm:p-6">
-                <div className="app-surface rounded-xl p-4 sm:p-6">
-                  <DocumentRelated
-                    documentId={document.id}
-                    onNavigate={(docId) => onNavigateToRelated?.(docId)}
-                  />
+                <div className="space-y-4">
+                  <div className="app-surface rounded-xl p-4 sm:p-6">
+                    <DocumentTaskLinks document={document} />
+                  </div>
+                  <div className="app-surface rounded-xl p-4 sm:p-6">
+                    <DocumentRelated
+                      documentId={document.id}
+                      onNavigate={(docId) => onNavigateToRelated?.(docId)}
+                    />
+                  </div>
                 </div>
               </div>
             )}

@@ -267,9 +267,15 @@ def _approval_recipients(approval):
         resolver_type=ApprovalRoute.ResolverType.DEPARTMENT_HEAD,
     ).first()
     if route:
-        return ProcurementApprovalResolver.get_department_approval_users(
+        department_recipients = ProcurementApprovalResolver.get_department_approval_users(
             approval.request,
         )
+        if any(
+            recipient.id == approval.approver_id
+            for recipient in department_recipients
+        ):
+            return department_recipients
+        return [approval.approver]
     return [approval.approver]
 
 

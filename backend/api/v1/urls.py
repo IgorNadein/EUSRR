@@ -179,6 +179,8 @@ urlpatterns = [
     path("notifications/", include("notifications.api.urls")),
     # Procurement API
     path("procurement/", include("api.v1.procurement.urls")),
+    # Tasks API
+    path("tasks/", include("api.v1.tasks.urls")),
     # Guests API
     path("guests/", include("api.v1.guests.urls")),
     # Search API

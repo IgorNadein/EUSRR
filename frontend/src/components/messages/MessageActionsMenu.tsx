@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCheck, Pencil, Reply, Smile, Trash2 } from "lucide-react";
+import { CheckCheck, Link2, Pencil, Reply, Smile, Trash2 } from "lucide-react";
 
 import type { Message } from "@/types/api";
 
@@ -14,6 +14,7 @@ type MessageActionsMenuProps = {
   onQuickReact: (emoji: string) => void;
   onOpenReactionPicker: () => void;
   onShowAllReaders?: () => void;
+  onLinkToTask?: () => void;
   onReply: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -29,6 +30,7 @@ export default function MessageActionsMenu({
   onQuickReact,
   onOpenReactionPicker,
   onShowAllReaders,
+  onLinkToTask,
   onReply,
   onEdit,
   onDelete,
@@ -99,6 +101,17 @@ export default function MessageActionsMenu({
           >
             <Reply size={13} className="app-text-muted" />
             Ответить
+          </button>
+        ) : null}
+
+        {canReply && onLinkToTask ? (
+          <button
+            type="button"
+            onClick={onLinkToTask}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+          >
+            <Link2 size={13} className="app-text-muted" />
+            Связать с задачей
           </button>
         ) : null}
 

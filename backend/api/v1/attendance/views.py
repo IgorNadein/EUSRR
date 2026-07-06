@@ -587,7 +587,9 @@ class AttendanceRecordDetailAPIView(APIView):
             .annotate(**_comments_count_annotation()),
             pk=record_id,
         )
-        return Response(AttendanceRecordSerializer(record).data)
+        return Response(
+            AttendanceRecordSerializer(record, context={"request": request}).data
+        )
 
     def patch(self, request, record_id):
         if not request.user.is_staff:
@@ -650,7 +652,9 @@ class AttendanceRecordDetailAPIView(APIView):
             .annotate(**_comments_count_annotation())
             .get(pk=record.pk)
         )
-        return Response(AttendanceRecordSerializer(record).data)
+        return Response(
+            AttendanceRecordSerializer(record, context={"request": request}).data
+        )
 
 
 class AttendanceRecordDayEventsAPIView(APIView):

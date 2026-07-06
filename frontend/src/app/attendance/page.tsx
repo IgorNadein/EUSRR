@@ -856,9 +856,7 @@ export default function AttendancePage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const shouldOpenEvents = params.get("events") === "1";
     const shouldOpenComments = params.get("comments") === "1";
-    if (!shouldOpenEvents && !shouldOpenComments) return;
     const recordId = Number(params.get("record"));
     if (!Number.isInteger(recordId) || recordId <= 0) return;
 

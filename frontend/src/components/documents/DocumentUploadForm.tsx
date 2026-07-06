@@ -12,11 +12,13 @@ import {
   Users,
   Building2,
   CheckCircle,
+  ScrollText,
   Tag as TagIcon,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { toast } from "sonner";
 import { processDocument, needsProcessing, type ProcessingProgress } from "@/lib/document-utils";
+import { DocumentTagQuickCreate, type QuickDocumentTag } from "./DocumentTagQuickCreate";
 
 interface Department {
   id: number;
@@ -143,6 +145,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
   // Metadata fields
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(currentFolderId ?? null);
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
+  const [isRegulation, setIsRegulation] = useState(false);
   
   // Data for selects
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -323,14 +326,17 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
     );
   };
 
+  const handleCreatedTag = (tag: QuickDocumentTag) => {
+    setDocumentTags((prev) => {
+      const next = prev.some((item) => item.id === tag.id) ? prev : [...prev, tag];
+      return [...next].sort((left, right) => left.name.localeCompare(right.name, "ru"));
+    });
+    setSelectedTags((prev) => (prev.includes(tag.id) ? prev : [...prev, tag.id]));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-
-    if (uploadItems.length === 0) {
-      setError("Выберите хотя бы один файл");
-      return;
-    }
 
     // Validate recipients if sent_to_all is false
     if (!sentToAll && selectedDepartments.length === 0 && selectedRecipients.length === 0) {
@@ -341,28 +347,45 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
     setIsSubmitting(true);
 
     try {
-      for (const item of uploadItems) {
-        const documentTitle =
-          uploadItems.length === 1
-            ? title.trim() || getDefaultDocumentTitle(item.file.name)
-            : getDefaultDocumentTitle(item.file.name);
-
+      if (uploadItems.length === 0) {
         await apiClient.createDocument({
-          title: documentTitle,
+          title: title.trim() || undefined,
           description,
-          file: getFileForUpload(item),
-          extracted_text: item.extractedText || undefined,
           folder_id: selectedFolderId ?? undefined,
           sent_to_all: sentToAll,
+          is_regulation: isRegulation,
           department_ids: sentToAll ? undefined : selectedDepartments,
           recipient_ids: sentToAll ? undefined : selectedRecipients,
           acknowledgement_required: acknowledgementRequired,
           tag_ids: selectedTags.length > 0 ? selectedTags : undefined,
         });
+      } else {
+        for (const item of uploadItems) {
+          const documentTitle =
+            uploadItems.length === 1
+              ? title.trim() || getDefaultDocumentTitle(item.file.name)
+              : getDefaultDocumentTitle(item.file.name);
+
+          await apiClient.createDocument({
+            title: documentTitle,
+            description,
+            file: getFileForUpload(item),
+            extracted_text: item.extractedText || undefined,
+            folder_id: selectedFolderId ?? undefined,
+            sent_to_all: sentToAll,
+            is_regulation: isRegulation,
+            department_ids: sentToAll ? undefined : selectedDepartments,
+            recipient_ids: sentToAll ? undefined : selectedRecipients,
+            acknowledgement_required: acknowledgementRequired,
+            tag_ids: selectedTags.length > 0 ? selectedTags : undefined,
+          });
+        }
       }
 
       toast.success(
-        uploadItems.length > 1
+        uploadItems.length === 0
+          ? "Документ успешно создан"
+          : uploadItems.length > 1
           ? `${uploadItems.length} документов успешно загружено`
           : "Документ успешно загружен"
       );
@@ -373,6 +396,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
       setUploadItems([]);
       setSelectedFolderId(currentFolderId ?? null);
       setSentToAll(true);
+      setIsRegulation(false);
       setAcknowledgementRequired(false);
       setSelectedDepartments([]);
       setSelectedRecipients([]);
@@ -402,7 +426,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
       {/* File Upload */}
       <div>
         <label className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
-          Файлы <span className="text-red-500">*</span>
+          Файлы
         </label>
         
         <div
@@ -423,7 +447,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
                 : "Перетащите файлы или нажмите для выбора"}
           </p>
           <p className="app-text-muted mt-1 text-xs">
-            Можно выбрать несколько файлов любых форматов
+            Можно выбрать несколько файлов любых форматов или создать документ без файла
           </p>
         </div>
 
@@ -516,11 +540,13 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="По умолчанию — название файла"
+            placeholder={uploadItems.length === 0 ? "Название документа" : "По умолчанию — название файла"}
             className="app-input w-full rounded-lg px-3 py-2 text-sm"
           />
           <p className="app-text-muted mt-1 text-xs">
-            Поле необязательное. Если оставить пустым, будет использовано имя файла без расширения.
+            {uploadItems.length === 0
+              ? 'Поле необязательное. Если оставить пустым, будет использовано название "Документ".'
+              : "Поле необязательное. Если оставить пустым, будет использовано имя файла без расширения."}
           </p>
         </div>
       ) : (
@@ -585,9 +611,15 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
 
       {/* Tags */}
       <div>
-        <div id="document-upload-tags-label" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
+        <div id="document-upload-tags-label" className="mb-1.5 text-sm font-medium text-[var(--foreground)]">
           Теги
         </div>
+        <DocumentTagQuickCreate
+          existingTags={documentTags}
+          disabled={loadingDocumentTags || isSubmitting}
+          onCreated={handleCreatedTag}
+          className="mb-2"
+        />
         <div
           role="group"
           aria-labelledby="document-upload-tags-label"
@@ -634,6 +666,26 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
             <>Нажмите на тег, чтобы добавить его к документу</>
           )}
         </p>
+      </div>
+
+      {/* Regulation flag */}
+      <div className="app-surface-muted flex items-start gap-3 rounded-lg p-3">
+        <input
+          type="checkbox"
+          id="isRegulation"
+          checked={isRegulation}
+          onChange={(e) => setIsRegulation(e.target.checked)}
+          className="mt-0.5 h-4 w-4 rounded border-[var(--border-strong)] text-[var(--accent-primary)]"
+        />
+        <div className="flex-1">
+          <label htmlFor="isRegulation" className="block cursor-pointer text-sm font-medium text-[var(--foreground)]">
+            <ScrollText size={14} className="mr-1 inline" />
+            Регламент
+          </label>
+          <p className="app-text-muted mt-0.5 text-xs">
+            Документ будет отображаться в отдельном разделе регламентов.
+          </p>
+        </div>
       </div>
 
       {/* Извлеченный текст */}
@@ -806,16 +858,20 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
       <div className="app-divider sticky bottom-0 z-10 -mx-4 flex gap-3 border-t bg-[var(--surface-elevated)] px-4 py-3 sm:-mx-6 sm:px-6">
         <button
           type="submit"
-          disabled={isSubmitting || isProcessing || uploadItems.length === 0}
+          disabled={isSubmitting || isProcessing}
           className="app-action-primary flex-1 rounded-lg px-4 py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isSubmitting
-            ? "Загрузка..."
+            ? uploadItems.length === 0
+              ? "Создание..."
+              : "Загрузка..."
             : isProcessing
               ? "Обработка..."
               : uploadItems.length > 1
                 ? `Загрузить ${uploadItems.length} документов`
-                : "Загрузить документ"}
+                : uploadItems.length === 1
+                  ? "Загрузить документ"
+                  : "Создать документ"}
         </button>
         
         {onCancel && (

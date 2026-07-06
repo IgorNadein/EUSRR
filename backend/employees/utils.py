@@ -425,6 +425,50 @@ def resolve_chat_participants_for_procurement_item(context_object, **kwargs):
     )
 
 
+def resolve_chat_participants_for_task(context_object, **kwargs):
+    """
+    EUSRR callback для участников комментариев задачи.
+
+    Доступ соответствует видимости доски задачи.
+    """
+    from django.db.models import Q
+    from tasks.models import Task
+
+    if not isinstance(context_object, Task):
+        return Employee.objects.none()
+
+    board = context_object.board
+    if not board.members.exists() and not board.departments.exists():
+        return Employee.objects.filter(is_active=True)
+
+    department_ids = list(board.departments.values_list("id", flat=True))
+    member_ids = board.members.values_list("id", flat=True)
+    department_member_ids = EmployeeDepartment.objects.filter(
+        department_id__in=department_ids,
+        is_active=True,
+    ).values_list("employee_id", flat=True)
+    role_member_ids = RoleAssignment.objects.filter(
+        role__department_id__in=department_ids,
+        is_active=True,
+    ).values_list("employee_id", flat=True)
+    department_head_ids = Department.objects.filter(
+        id__in=department_ids,
+        head_id__isnull=False,
+    ).values_list("head_id", flat=True)
+
+    query = (
+        Q(id=board.created_by_id)
+        | Q(id__in=member_ids)
+        | Q(id__in=department_member_ids)
+        | Q(id__in=role_member_ids)
+        | Q(id__in=department_head_ids)
+        | Q(is_staff=True)
+        | Q(is_superuser=True)
+    )
+
+    return Employee.objects.filter(query, is_active=True).distinct()
+
+
 def resolve_chat_participants(chat):
     """
     Главная функция для разрешения участников чата в EUSRR.
@@ -468,6 +512,13 @@ def resolve_chat_participants(chat):
 
         if isinstance(chat.context_object, ProcurementItem):
             return resolve_chat_participants_for_procurement_item(
+                chat.context_object, chat=chat, type=chat.type
+            )
+
+        from tasks.models import Task
+
+        if isinstance(chat.context_object, Task):
+            return resolve_chat_participants_for_task(
                 chat.context_object, chat=chat, type=chat.type
             )
 

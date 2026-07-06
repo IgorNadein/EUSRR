@@ -11,6 +11,7 @@ import {
   Ban,
   ChevronDown,
   ChevronRight,
+  Link2,
   MessageSquare,
   Paperclip,
   Pencil,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 import type { Ref } from "react";
 import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
+import TaskLinkPill from "@/components/tasks/TaskLinkPill";
 import { RequestAvatar } from "./RequestAvatar";
 import { getRequestActionState } from "./requestActions";
 import { RequestUserBadge } from "./RequestUserBadge";
@@ -40,6 +42,7 @@ type RequestListItemProps = {
   onDelete: (requestId: number) => void | Promise<void>;
   onDeleteComment: (requestId: number, commentId: number) => void | Promise<void>;
   onEdit: (request: Request) => void;
+  onLinkTask: (request: Request) => void;
   onOpenDetails: (request: Request) => void;
   onPreviewAttachment: (preview: RequestAttachmentPreview) => void;
   onReject: (requestId: number) => void | Promise<void>;
@@ -73,6 +76,7 @@ export function RequestListItem({
   onDelete,
   onDeleteComment,
   onEdit,
+  onLinkTask,
   onOpenDetails,
   onPreviewAttachment,
   onReject,
@@ -105,6 +109,8 @@ export function RequestListItem({
     : "";
   const commentCount = request.comments_count ?? comments.length;
   const decisionMaker = request.approver || request.assigned_to;
+  const linkedTasks = request.linked_tasks || [];
+  const hasMenuActions = hasSecondaryActions || Boolean(onLinkTask);
 
   return (
     <article
@@ -186,7 +192,7 @@ export function RequestListItem({
                   <span className={`app-status-pill ${status.className}`}>
                     {status.label}
                   </span>
-                  {hasSecondaryActions ? (
+                  {hasMenuActions ? (
                     <div className="relative">
                       <button
                         type="button"
@@ -204,6 +210,17 @@ export function RequestListItem({
                       </button>
                       {isMenuOpen ? (
                         <div className="app-menu absolute right-0 top-full z-20 mt-2 w-44 rounded-xl py-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onToggleMenu(null);
+                              onLinkTask(request);
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                          >
+                            <Link2 size={14} />
+                            Связать с задачей
+                          </button>
                           {canCancel ? (
                             <button
                               type="button"
@@ -261,8 +278,25 @@ export function RequestListItem({
               </p>
             ) : null}
 
+            {linkedTasks.length > 0 ? (
+              <div className={`${summary ? "mt-3" : "mt-2"} flex flex-wrap gap-1.5`}>
+                {linkedTasks.slice(0, 3).map((task) => (
+                  <TaskLinkPill
+                    key={task.link_id || task.id}
+                    task={task}
+                    maxTitleClassName="max-w-44"
+                  />
+                ))}
+                {linkedTasks.length > 3 ? (
+                  <span className="app-badge rounded-full px-2 py-1 text-[11px] font-medium">
+                    +{linkedTasks.length - 3}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+
             {canProcess ? (
-              <div className={`${summary ? "mt-3" : "mt-2"} flex flex-wrap items-center gap-1.5`}>
+              <div className={`${summary || linkedTasks.length > 0 ? "mt-3" : "mt-2"} flex flex-wrap items-center gap-1.5`}>
                 <span className="ml-auto inline-flex items-center gap-2">
                   <button
                     type="button"

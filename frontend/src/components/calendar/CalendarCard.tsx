@@ -13,6 +13,7 @@ import {
   type CalendarEventDraft,
   toCalendarEventDraft,
 } from "@/services/calendarService";
+import TaskLinkPill from "@/components/tasks/TaskLinkPill";
 import { DEFAULT_EVENT_COLOR, resolveEventColor } from "@/lib/calendar-event-colors";
 import {
   buildCalendarOptions,
@@ -23,6 +24,7 @@ import {
   toParticipantsTarget,
   type CalendarParticipantsTarget,
 } from "@/lib/calendar/ui";
+import type { TaskCard } from "@/types/api";
 
 // Типы
 interface CalendarCardProps {
@@ -41,6 +43,12 @@ const weekdays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 // Утилиты
 const sameDate = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+const getLinkedCalendarEventId = (event: CalendarEvent): number | null => {
+  const rawId = event.is_recurring && event.event_id ? event.event_id : event.id;
+  const id = typeof rawId === "number" ? rawId : Number(rawId);
+  return Number.isInteger(id) && id > 0 ? id : null;
+};
 
 /**
  * Компонент мини-календаря в сайдбаре
@@ -76,6 +84,7 @@ export const CalendarCard = memo(function CalendarCard({
 
   const [showCalendarMenu, setShowCalendarMenu] = useState(false);
   const [eventsViewMode, setEventsViewMode] = useState<"week" | "month">("week");
+  const [linkedTasksByEventId, setLinkedTasksByEventId] = useState<Record<number, TaskCard[]>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedCalendar = useMemo(
@@ -316,6 +325,55 @@ export const CalendarCard = memo(function CalendarCard({
       .sort((a, b) => new Date(a.start || "").getTime() - new Date(b.start || "").getTime())
       .slice(0, 30);
   }, [events, monthDate]);
+
+  const visibleEvents = useMemo(
+    () => (eventsViewMode === "week" ? weekEvents : monthEvents),
+    [eventsViewMode, monthEvents, weekEvents],
+  );
+
+  const visibleEventIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const event of visibleEvents) {
+      const eventId = getLinkedCalendarEventId(event);
+      if (eventId) ids.add(eventId);
+    }
+    return Array.from(ids);
+  }, [visibleEvents]);
+
+  useEffect(() => {
+    const missingEventIds = visibleEventIds.filter((eventId) => linkedTasksByEventId[eventId] === undefined);
+    if (missingEventIds.length === 0) return undefined;
+
+    let cancelled = false;
+
+    async function loadLinkedTasks() {
+      const entries = await Promise.all(
+        missingEventIds.map(async (eventId) => {
+          try {
+            const tasks = await apiClient.getCalendarEventLinkedTasks(eventId);
+            return [eventId, tasks] as const;
+          } catch {
+            return [eventId, [] as TaskCard[]] as const;
+          }
+        }),
+      );
+
+      if (cancelled) return;
+      setLinkedTasksByEventId((current) => {
+        const next = { ...current };
+        for (const [eventId, tasks] of entries) {
+          next[eventId] = tasks;
+        }
+        return next;
+      });
+    }
+
+    void loadLinkedTasks();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [linkedTasksByEventId, visibleEventIds]);
 
   return (
     <>
@@ -592,16 +650,16 @@ export const CalendarCard = memo(function CalendarCard({
         </div>
 
         {(() => {
-          const displayEvents = eventsViewMode === "week" ? weekEvents : monthEvents;
-
           if (loading) return <p className="app-text-muted text-xs">Загрузка...</p>;
           if (error) return <p className="app-feedback-danger rounded-lg px-3 py-2 text-xs">{error}</p>;
-          if (displayEvents.length === 0) return <p className="app-text-muted text-xs">Событий нет</p>;
+          if (visibleEvents.length === 0) return <p className="app-text-muted text-xs">Событий нет</p>;
 
           return (
             <div className="space-y-2">
-              {displayEvents.map((event) => {
+              {visibleEvents.map((event) => {
                 const start = event.start ? new Date(event.start) : null;
+                const eventId = getLinkedCalendarEventId(event);
+                const linkedTasks = eventId ? linkedTasksByEventId[eventId] || [] : [];
                 const dateLabel =
                   start && !Number.isNaN(start.getTime())
                     ? start.toLocaleString("ru-RU", {
@@ -614,26 +672,55 @@ export const CalendarCard = memo(function CalendarCard({
                     : "Без даты";
 
                 return (
-                  <button
+                  <div
                     key={`${eventsViewMode}-${event.id}-${event.start || ""}`}
-                    type="button"
-                    onClick={() => handleEventClick(event)}
-                    className="w-full rounded-lg bg-[var(--surface-secondary)] px-2.5 py-2 text-left transition hover:bg-[var(--surface-tertiary)]"
+                    className="w-full rounded-lg bg-[var(--surface-secondary)] px-2.5 py-2 transition hover:bg-[var(--surface-tertiary)]"
                   >
-                    <div className="flex items-center gap-1">
-                      <div
-                        className="h-2 w-2 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: resolveEventColor(event.color_event) }}
-                      />
-                      <p className="truncate text-xs font-medium text-[var(--foreground)]">{event.title}</p>
-                      {(event.is_recurring || event.rule) && (
-                        <span className="app-accent-text shrink-0 text-[10px]" title="Повторяющееся событие">
-                          ⟲
-                        </span>
-                      )}
-                    </div>
-                    <p className="app-text-muted mt-0.5 text-[11px]">{dateLabel}</p>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => handleEventClick(event)}
+                      className="block w-full text-left"
+                    >
+                      <div className="flex items-center gap-1">
+                        <div
+                          className="h-2 w-2 flex-shrink-0 rounded-full"
+                          style={{ backgroundColor: resolveEventColor(event.color_event) }}
+                        />
+                        <p className="truncate text-xs font-medium text-[var(--foreground)]">{event.title}</p>
+                        {(event.is_recurring || event.rule) && (
+                          <span className="app-accent-text shrink-0 text-[10px]" title="Повторяющееся событие">
+                            ⟲
+                          </span>
+                        )}
+                      </div>
+                      <p className="app-text-muted mt-0.5 text-[11px]">{dateLabel}</p>
+                    </button>
+
+                    {linkedTasks.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {linkedTasks.slice(0, 2).map((task) => (
+                          <TaskLinkPill
+                            key={task.id}
+                            task={{
+                              id: task.id,
+                              title: task.title,
+                              board_id: task.board,
+                              board_name: task.board_name || "",
+                              column_color: task.column_color,
+                              priority: task.priority,
+                              priority_display: task.priority_display,
+                            }}
+                            maxTitleClassName="max-w-32"
+                          />
+                        ))}
+                        {linkedTasks.length > 2 ? (
+                          <span className="app-pill inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium">
+                            +{linkedTasks.length - 2}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
                 );
               })}
             </div>

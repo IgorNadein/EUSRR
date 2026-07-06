@@ -17,6 +17,7 @@ import {
 
 import { RequestAvatar } from "@/components/requests/RequestAvatar";
 import MessageActionsMenu from "@/components/messages/MessageActionsMenu";
+import TaskLinkPill from "@/components/tasks/TaskLinkPill";
 import { resolveMediaUrl } from "@/lib/url";
 import {
   formatFileSize,
@@ -74,6 +75,7 @@ type ChatMessageItemProps = {
   onQuickReact: (message: Message, emoji: string) => void;
   onOpenReactionPicker: (message: Message) => void;
   onShowAllReaders?: (message: Message) => void;
+  onLinkToTask?: (message: Message) => void;
   onRetry?: (message: Message) => void;
   isRetrying?: boolean;
   retryDisabled?: boolean;
@@ -153,6 +155,7 @@ export default function ChatMessageItem({
   onQuickReact,
   onOpenReactionPicker,
   onShowAllReaders,
+  onLinkToTask,
   onRetry,
   isRetrying = false,
   retryDisabled = false,
@@ -173,6 +176,7 @@ export default function ChatMessageItem({
   const hasActions = canReply || canManage;
   const isRead = Boolean(message.is_read);
   const sendState = message.send_state;
+  const linkedTasks = message.linked_tasks || [];
   const reactionUsers = useMemo(() => {
     const summary = message.reactions_summary || {};
     return Object.fromEntries(
@@ -454,6 +458,27 @@ export default function ChatMessageItem({
               </div>
             ) : null}
 
+            {linkedTasks.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {linkedTasks.slice(0, 2).map((task) => (
+                  <TaskLinkPill
+                    key={task.link_id}
+                    task={task}
+                    tone={isMine ? "onAccent" : "default"}
+                  />
+                ))}
+                {linkedTasks.length > 2 ? (
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                      isMine ? "bg-white/18 text-white" : "app-pill"
+                    }`}
+                  >
+                    +{linkedTasks.length - 2}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className={`mt-1 flex items-center ${isMine ? "justify-end gap-1.5" : "justify-end"}`}>
               {isMine && sendState === "failed" && onRetry ? (
                 <button
@@ -530,6 +555,7 @@ export default function ChatMessageItem({
                 onQuickReact={(emoji) => onQuickReact(message, emoji)}
                 onOpenReactionPicker={() => onOpenReactionPicker(message)}
                 onShowAllReaders={onShowAllReaders ? () => onShowAllReaders(message) : undefined}
+                onLinkToTask={onLinkToTask ? () => onLinkToTask(message) : undefined}
                 onReply={() => onReply(message)}
                 onEdit={() => onEdit(message)}
                 onDelete={() => onDelete(message)}

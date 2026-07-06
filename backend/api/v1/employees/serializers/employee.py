@@ -6,6 +6,7 @@ from typing import Any, Dict
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 from employees.models import EmployeeDepartment, Position, Skill
 from employees.services.personnel_state import resolve_employee_personnel_state
@@ -21,6 +22,140 @@ from .shared import (
 )
 
 Employee = get_user_model()
+
+
+def _linked_task_payloads_for_employee(obj, user) -> list[dict]:
+    if not user or not getattr(user, "is_authenticated", False):
+        return []
+
+    try:
+        from tasks.access import task_board_access_q
+        from tasks.models import (
+            TaskBoard,
+            TaskLinkedObject,
+            TaskLinkedObjectKind,
+        )
+    except Exception:
+        return []
+
+    content_type = ContentType.objects.get_for_model(Employee)
+    accessible_boards = TaskBoard.objects.filter(
+        is_archived=False,
+    ).filter(task_board_access_q(user))
+
+    links = (
+        TaskLinkedObject.objects.filter(
+            kind=TaskLinkedObjectKind.EMPLOYEE,
+            content_type=content_type,
+            object_id=obj.id,
+            task__board__in=accessible_boards,
+        )
+        .select_related("task", "task__board", "task__column")
+        .order_by("task__title", "task_id")
+    )
+
+    return [
+        {
+            "link_id": link.id,
+            "id": link.task_id,
+            "title": link.task.title,
+            "board_id": link.task.board_id,
+            "board_name": link.task.board.name,
+            "column_id": link.task.column_id,
+            "column_name": link.task.column.name,
+            "column_color": link.task.column.color,
+            "priority": link.task.priority,
+            "priority_display": link.task.get_priority_display(),
+        }
+        for link in links
+    ]
+
+
+def _employee_personnel_state_payload(obj):
+    prefetched = getattr(obj, "_prefetched_objects_cache", {})
+    actions = prefetched.get("actions") if prefetched else None
+    state = resolve_employee_personnel_state(
+        obj,
+        timezone.localdate(),
+        actions=actions,
+    )
+    return {
+        "status": state.status,
+        "label": state.label or "Работает",
+        "action_id": state.action_id,
+        "date_from": state.date_from,
+        "date_to": state.date_to,
+        "expects_attendance": state.expects_attendance,
+    }
+
+
+def _normalize_attendance_time(value) -> str | None:
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if "T" in text:
+        text = text.split("T", 1)[1]
+    if len(text) >= 5 and text[2] == ":":
+        return text[:5]
+    return text
+
+
+def _employee_attendance_status_payload(obj):
+    has_attendance_annotation = hasattr(obj, "latest_attendance_record_id")
+    record_id = getattr(obj, "latest_attendance_record_id", None)
+    record_date = getattr(obj, "latest_attendance_date", None)
+    arrival_time = getattr(obj, "latest_attendance_arrival_time", None)
+    departure_time = getattr(obj, "latest_attendance_departure_time", None)
+
+    if (
+        record_id is None
+        and not has_attendance_annotation
+        and hasattr(obj, "attendance_records")
+    ):
+        latest_record = obj.attendance_records.order_by("-date", "-id").first()
+        if latest_record is not None:
+            record_id = latest_record.id
+            record_date = latest_record.date
+            arrival_time = latest_record.arrival_time
+            departure_time = latest_record.departure_time
+
+    if record_id is None or record_date is None:
+        return None
+
+    event = "none"
+    label = "Без отметок"
+    time_value = None
+
+    departure = _normalize_attendance_time(departure_time)
+    arrival = _normalize_attendance_time(arrival_time)
+    if departure:
+        event = "departure"
+        label = "Уход"
+        time_value = departure
+    elif arrival:
+        event = "arrival"
+        label = "Приход"
+        time_value = arrival
+
+    if hasattr(record_date, "strftime"):
+        display_date = record_date.strftime("%d.%m.%Y")
+    else:
+        display_date = str(record_date)
+
+    display = f"{label} · {display_date}"
+    if time_value:
+        display = f"{display}, {time_value}"
+
+    return {
+        "record_id": record_id,
+        "date": record_date,
+        "time": time_value,
+        "event": event,
+        "label": label,
+        "display": display,
+    }
 
 
 class EmployeeDepartmentSerializer(serializers.Serializer):
@@ -46,6 +181,15 @@ class EmployeePersonnelStateSerializer(serializers.Serializer):
     date_from = serializers.DateField(allow_null=True)
     date_to = serializers.DateField(allow_null=True)
     expects_attendance = serializers.BooleanField()
+
+
+class EmployeeAttendanceStatusSerializer(serializers.Serializer):
+    record_id = serializers.IntegerField()
+    date = serializers.DateField()
+    time = serializers.CharField(allow_null=True)
+    event = serializers.CharField()
+    label = serializers.CharField()
+    display = serializers.CharField()
 
 
 class EmployeeSerializer(serializers.ModelSerializer):
@@ -78,6 +222,8 @@ class EmployeeSerializer(serializers.ModelSerializer):
     departments = serializers.SerializerMethodField()
     auth = serializers.SerializerMethodField(read_only=True)
     personnel_state = serializers.SerializerMethodField(read_only=True)
+    attendance_status = serializers.SerializerMethodField(read_only=True)
+    linked_tasks = serializers.SerializerMethodField()
 
     class Meta:
         model = Employee
@@ -112,6 +258,8 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "date_joined",
             "auth",
             "personnel_state",
+            "attendance_status",
+            "linked_tasks",
         )
         read_only_fields = (
             "is_ldap_managed",
@@ -124,6 +272,8 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "date_joined",
             "auth",
             "personnel_state",
+            "attendance_status",
+            "linked_tasks",
         )
         extra_kwargs = {
             "password": {"write_only": True, "required": False},
@@ -275,15 +425,21 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(EmployeePersonnelStateSerializer())
     def get_personnel_state(self, obj):
-        state = resolve_employee_personnel_state(obj, timezone.localdate())
-        return {
-            "status": state.status,
-            "label": state.label or "Работает",
-            "action_id": state.action_id,
-            "date_from": state.date_from,
-            "date_to": state.date_to,
-            "expects_attendance": state.expects_attendance,
-        }
+        return _employee_personnel_state_payload(obj)
+
+    @extend_schema_field(EmployeeAttendanceStatusSerializer(allow_null=True))
+    def get_attendance_status(self, obj):
+        return _employee_attendance_status_payload(obj)
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_linked_tasks(self, obj):
+        prefetched = getattr(obj, "_linked_task_payloads", None)
+        if prefetched is not None:
+            return prefetched
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return _linked_task_payloads_for_employee(obj, user)
 
 
 class EmployeeBriefSerializer(serializers.ModelSerializer):
@@ -343,6 +499,9 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
     skills = SkillSerializer(many=True, read_only=True)
     department_relation = serializers.SerializerMethodField()
+    personnel_state = serializers.SerializerMethodField(read_only=True)
+    attendance_status = serializers.SerializerMethodField(read_only=True)
+    linked_tasks = serializers.SerializerMethodField()
 
     class Meta:
         model = Employee
@@ -361,7 +520,28 @@ class EmployeeListSerializer(serializers.ModelSerializer):
             "created_at",
             "display_name",
             "department_relation",
+            "personnel_state",
+            "attendance_status",
+            "linked_tasks",
         )
+
+    @extend_schema_field(EmployeePersonnelStateSerializer())
+    def get_personnel_state(self, obj):
+        return _employee_personnel_state_payload(obj)
+
+    @extend_schema_field(EmployeeAttendanceStatusSerializer(allow_null=True))
+    def get_attendance_status(self, obj):
+        return _employee_attendance_status_payload(obj)
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_linked_tasks(self, obj):
+        prefetched = getattr(obj, "_linked_task_payloads", None)
+        if prefetched is not None:
+            return prefetched
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return _linked_task_payloads_for_employee(obj, user)
 
     @extend_schema_field(EmployeeDepartmentRelationSerializer(allow_null=True))
     def get_department_relation(self, obj):

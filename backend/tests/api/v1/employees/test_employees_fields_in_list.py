@@ -4,8 +4,10 @@ import itertools
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.utils import timezone
+from employees.constants import ACTION_WORKING
 from employees.models import (Department, DepartmentRole, EmployeeDepartment,
-                              Position)
+                              EmployeeAction, Position)
 from rest_framework import status
 from rest_framework.test import APIClient
 from tests.conftest import _unique_phone
@@ -72,6 +74,17 @@ def test_list_includes_basic_fields(api):
     emp = make_user(
         "emp@example.com", first_name="Ivan", last_name="Ivanov", position=pos
     )
+    EmployeeAction.objects.filter(employee=emp).delete()
+    EmployeeAction.objects.create(
+        employee=emp,
+        action=ACTION_WORKING,
+        date=timezone.now().replace(
+            hour=23,
+            minute=59,
+            second=59,
+            microsecond=0,
+        ),
+    )
 
     url = reverse("api:v1:employees-list")
     r = api.get(url)
@@ -84,6 +97,8 @@ def test_list_includes_basic_fields(api):
     assert row.get("first_name") == "Ivan"
     assert row.get("last_name") == "Ivanov"
     assert "avatar" in row, "Поле 'avatar' должно присутствовать (может быть пустым)"
+    assert row.get("personnel_state", {}).get("status") == "working"
+    assert row.get("personnel_state", {}).get("label") == "Работает"
 
     if "position" in row and isinstance(row["position"], dict):
         assert row["position"].get("id") == pos.id

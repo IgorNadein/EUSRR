@@ -28,6 +28,15 @@ export interface EmployeePersonnelState {
   expects_attendance: boolean;
 }
 
+export interface EmployeeAttendanceStatus {
+  record_id: number;
+  date: string;
+  time: string | null;
+  event: "arrival" | "departure" | "none" | string;
+  label: string;
+  display: string;
+}
+
 export interface EmployeeDepartment {
   id: number;
   name: string;
@@ -58,6 +67,7 @@ export interface User {
   skills?: Skill[];
   actions?: EmployeeAction[];
   personnel_state?: EmployeePersonnelState;
+  attendance_status?: EmployeeAttendanceStatus | null;
   email_verified?: boolean;
   is_ldap_managed?: boolean;
   created_at?: string;
@@ -65,6 +75,7 @@ export interface User {
   last_login?: string;
   last_activity_at?: string;
   date_joined?: string;
+  linked_tasks?: MessageLinkedTask[];
   auth?: {
     id?: number;
     email?: string;
@@ -140,6 +151,318 @@ export interface LoginResponse {
   refresh: string;
 }
 
+export type TaskPriority = "low" | "medium" | "high" | "critical";
+
+export interface TaskColumn {
+  id: number;
+  board: number;
+  name: string;
+  position: number;
+  color?: string;
+  is_done: boolean;
+  is_archived: boolean;
+  tasks_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskLabel {
+  id: number;
+  board: number;
+  name: string;
+  color: string;
+}
+
+export interface TaskCard {
+  id: number;
+  board: number;
+  board_name?: string;
+  column: number;
+  column_name?: string;
+  column_color?: string;
+  title: string;
+  description?: string;
+  created_by?: User;
+  assignee?: User | null;
+  labels?: TaskLabel[];
+  priority: TaskPriority;
+  priority_display?: string;
+  due_date?: string | null;
+  position: number;
+  completed_at?: string | null;
+  linked_posts_count?: number;
+  linked_messages_count?: number;
+  linked_events_count?: number;
+  linked_documents_count?: number;
+  linked_requests_count?: number;
+  linked_procurement_requests_count?: number;
+  linked_employees_count?: number;
+  linked_guests_count?: number;
+  linked_guest_visits_count?: number;
+  linked_attendance_records_count?: number;
+  linked_objects_count?: number;
+  comments_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskBoard {
+  id: number;
+  name: string;
+  description?: string;
+  created_by?: User;
+  members?: number[];
+  member_details?: User[];
+  departments?: number[];
+  department_details?: Department[];
+  is_archived: boolean;
+  columns: TaskColumn[];
+  labels: TaskLabel[];
+  tasks: TaskCard[];
+  tasks_count?: number;
+  is_default_for_current_user?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskLinkedPost {
+  id: number;
+  kind: "post";
+  post_id: number;
+  post: Post | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
+export interface TaskLinkedMessage {
+  id: number;
+  kind: "message";
+  message_id: number;
+  message: Message | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
+export interface TaskLinkedCalendarEvent {
+  id: number;
+  kind: "calendar_event";
+  event_id: number;
+  event: CalendarEvent | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
+export interface TaskLinkedDocument {
+  id: number;
+  kind: "document";
+  document_id: number;
+  document: Document | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
+export interface TaskLinkedRequest {
+  id: number;
+  kind: "request";
+  request_id: number;
+  request: {
+    id: number;
+    title?: string;
+    display_title?: string;
+    type?: string;
+    type_display?: string;
+    status?: string;
+    status_display?: string;
+    comment?: string;
+    date_from?: string | null;
+    date_to?: string | null;
+    employee?: User;
+    created_at?: string;
+    updated_at?: string;
+  } | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
+export interface TaskLinkedProcurementRequest {
+  id: number;
+  kind: "procurement_request";
+  procurement_request_id: number;
+  procurement_request: {
+    id: number;
+    title?: string;
+    description?: string;
+    status?: ProcurementStatus | string;
+    status_display?: string;
+    urgency?: UrgencyLevel | string;
+    urgency_display?: string;
+    fulfillment_status?: ProcurementFulfillmentStatus | string;
+    fulfillment_status_display?: string;
+    department_id?: number | null;
+    department_name?: string | null;
+    processing_department_id?: number | null;
+    processing_department_name?: string | null;
+    requestor?: User | null;
+    executor?: User | null;
+    total_cost?: string | number;
+    items_count?: number;
+    created_at?: string;
+    updated_at?: string;
+  } | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
+export interface TaskLinkedEmployee {
+  id: number;
+  kind: "employee";
+  employee_id: number;
+  employee: {
+    id: number;
+    first_name?: string;
+    last_name?: string;
+    patronymic?: string;
+    email?: string;
+    phone_number?: string;
+    display_name?: string;
+    full_name?: string;
+    avatar?: string;
+    position?: Position | null;
+    departments?: EmployeeDepartment[];
+    is_active?: boolean;
+    personnel_state?: EmployeePersonnelState | null;
+    attendance_status?: EmployeeAttendanceStatus | null;
+  } | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
+export interface TaskLinkedGuest {
+  id: number;
+  kind: "guest";
+  guest_id: number;
+  guest: Guest | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
+export interface TaskLinkedGuestVisit {
+  id: number;
+  kind: "guest_visit";
+  guest_visit_id: number;
+  guest_visit: {
+    id: number;
+    guest: Guest;
+    inviter?: User | null;
+    inviter_snapshot_name?: string;
+    inviter_snapshot_email?: string;
+    purpose?: string;
+    visit_comment?: string;
+    status?: GuestVisitStatus;
+    status_display?: string;
+    access_starts_at?: string | null;
+    access_expires_at?: string | null;
+    all_day?: boolean;
+    unlimited?: boolean;
+    submitted_at?: string | null;
+    is_active_now?: boolean;
+    is_expired?: boolean;
+    created_at?: string;
+    updated_at?: string;
+  } | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
+export interface TaskLinkedAttendanceRecord {
+  id: number;
+  kind: "attendance_record";
+  attendance_record_id: number;
+  attendance_record: {
+    id: number;
+    employee_id?: number;
+    employee?: User | null;
+    date?: string;
+    display_name?: string;
+    arrival_time?: string | null;
+    departure_time?: string | null;
+    work_hours?: number | string | null;
+    expected_hours?: number | string | null;
+    is_workday?: boolean;
+    effective_is_workday?: boolean;
+    is_late?: boolean;
+    late_minutes?: number | null;
+    is_early_leave?: boolean;
+    early_leave_minutes?: number | null;
+    is_underwork?: boolean;
+    underwork_hours?: number | string | null;
+    is_overtime?: boolean;
+    overtime_hours?: number | string | null;
+    is_absent?: boolean;
+    statuses?: string[];
+    employee_issues?: string[];
+    technical_issues?: string[];
+    personnel_status?: string;
+    personnel_status_label?: string;
+    comments_count?: number;
+    updated_at?: string;
+  } | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
+export interface TaskActivity {
+  id: number;
+  action: "created" | "updated" | "moved" | "linked" | "unlinked";
+  action_display?: string;
+  actor?: User | null;
+  object_kind?: "post" | "message" | "calendar_event" | "document" | "request" | "procurement_request" | "employee" | "guest" | "guest_visit" | "attendance_record" | "";
+  object_id?: number | null;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface TaskComment {
+  id: number;
+  task: number;
+  author: User;
+  text: string;
+  created_at: string;
+}
+
+export interface MessageLinkedTask {
+  link_id: number;
+  id: number;
+  title: string;
+  board_id: number;
+  board_name: string;
+  column_id?: number;
+  column_name?: string;
+  column_color?: string;
+  priority?: TaskPriority;
+  priority_display?: string;
+}
+
 export interface ChangePasswordPayload {
   current_password: string;
   new_password: string;
@@ -177,6 +500,11 @@ export interface Department {
   head?: User;
   employees_count?: number;
   role_only_count?: number;
+}
+
+export interface ProcurementCreateOptions {
+  processing_departments: Pick<Department, "id" | "name">[];
+  default_processing_department: number | null;
 }
 
 export interface DepartmentMemberRole {
@@ -257,6 +585,7 @@ export interface Post {
   likes_count: number;
   comments_count: number;
   is_liked?: boolean;
+  linked_tasks?: MessageLinkedTask[];
 }
 
 export interface Comment {
@@ -283,6 +612,7 @@ export interface Document {
   id: number;
   title: string;
   description?: string;
+  extracted_text?: string;
   file?: string;
   file_url?: string;
   file_name?: string;
@@ -305,11 +635,13 @@ export interface Document {
   modified_by?: User;
   modified_at?: string;
   sent_to_all?: boolean;
+  is_regulation?: boolean;
   recipients?: User[];
   departments?: { id: number; name: string }[];
   acknowledgements?: DocumentAcknowledgement[];
   acknowledgement_required?: boolean;
   is_acknowledged?: boolean;
+  linked_tasks?: MessageLinkedTask[];
 }
 
 // Guests
@@ -337,6 +669,7 @@ export interface Guest {
   position?: string;
   comments_count?: number;
   visits_count?: number;
+  linked_tasks?: MessageLinkedTask[];
   document_folder?: {
     id: number;
     name: string;
@@ -407,6 +740,7 @@ export interface GuestVisit {
   can_delete: boolean;
   comments_count: number;
   has_unread_info_response: boolean;
+  linked_tasks?: MessageLinkedTask[];
   events: GuestVisitEvent[];
 }
 
@@ -529,6 +863,7 @@ export interface Request {
   is_recipient?: boolean;
   can_decide?: boolean;
   comments_count?: number;
+  linked_tasks?: MessageLinkedTask[];
   is_final?: boolean;
   attachment?: string | null;
   attachment_url?: string | null;
@@ -689,6 +1024,32 @@ export interface ProcurementApproval {
   created_at: string;
 }
 
+export interface ProcurementApprovalStepSelection {
+  priority: number;
+  approver: number;
+  step_name?: string;
+}
+
+export interface ProcurementApprovalRouteOption {
+  route_id: number;
+  priority: number;
+  step_name: string;
+  resolver_type: "department_head" | "fixed_employee" | string;
+  min_amount?: string | number | null;
+  is_amount_applicable: boolean;
+  is_available: boolean;
+  missing_reason?: string | null;
+  approver?: User | null;
+}
+
+export interface ProcurementApprovalOptions {
+  request_id: number;
+  total_cost: string | number;
+  auto_steps: ProcurementApprovalRouteOption[];
+  available_steps: ProcurementApprovalRouteOption[];
+  missing_auto_steps: ProcurementApprovalRouteOption[];
+}
+
 export interface ProcurementRequest {
   id: number;
   title: string;
@@ -733,6 +1094,7 @@ export interface ProcurementRequest {
   can_current_user_submit_for_approval?: boolean;
   can_current_user_start_work?: boolean;
   can_current_user_process_items?: boolean;
+  linked_tasks?: MessageLinkedTask[];
   created_at: string;
   updated_at: string;
   submitted_at?: string | null;
@@ -883,6 +1245,7 @@ export interface Message {
       avatar?: string | null;
     }>;
   }>;
+  linked_tasks?: MessageLinkedTask[];
 }
 
 export interface MessageReplyPreview {

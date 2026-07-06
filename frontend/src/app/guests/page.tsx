@@ -21,6 +21,7 @@ import {
   History,
   IdCard,
   Info,
+  Link2,
   Loader2,
   Mail,
   MessageSquare,
@@ -43,13 +44,15 @@ import {
 import { AppShell } from "@/components/AppShell";
 import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
 import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
+import TaskLinkPill from "@/components/tasks/TaskLinkPill";
+import { RelatedTaskLinks } from "@/components/tasks/RelatedTaskLinks";
 import { Modal } from "@/components/ui";
 import { useUser } from "@/contexts/UserContext";
 import { apiClient } from "@/lib/api";
 import { canManageGuestAccounts, canViewAllGuestVisits } from "@/lib/permissions";
 import { displayUserName, extractNextPage, formatDateTime } from "@/lib/shared";
 import { resolveMediaUrl } from "@/lib/url";
-import type { Document, Guest, GuestVisit, GuestVisitComment, GuestVisitStatus } from "@/types/api";
+import type { Document, Guest, GuestVisit, GuestVisitComment, GuestVisitStatus, TaskCard } from "@/types/api";
 
 const AvatarCropper = dynamic(() => import("@/components/AvatarCropper"), {
   ssr: false,
@@ -258,6 +261,26 @@ const toApiDateTime = (value: string): string | null => {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 };
 
+const isGuestVisitPeriodActionable = (visit: GuestVisit): boolean => {
+  if (visit.unlimited) return true;
+  if (visit.is_expired) return false;
+  if (!visit.access_expires_at) return true;
+  const expiresAt = new Date(visit.access_expires_at).getTime();
+  return Number.isNaN(expiresAt) || expiresAt > Date.now();
+};
+
+const canSubmitGuestVisit = (visit: GuestVisit): boolean => (
+  Boolean(visit.can_submit && isGuestVisitPeriodActionable(visit))
+);
+
+const canApproveGuestVisit = (visit: GuestVisit): boolean => (
+  Boolean(visit.can_approve && isGuestVisitPeriodActionable(visit))
+);
+
+const canReturnGuestVisitToWork = (visit: GuestVisit): boolean => (
+  Boolean(visit.can_return_to_work && isGuestVisitPeriodActionable(visit))
+);
+
 const guestName = (guest?: Guest | null): string => (
   guest?.full_name || [guest?.last_name, guest?.first_name, guest?.patronymic].filter(Boolean).join(" ") || "Гость"
 );
@@ -404,6 +427,8 @@ function GuestsPageContent() {
   const [photoGuest, setPhotoGuest] = useState<Guest | null>(null);
   const [editingGuest, setEditingGuest] = useState<Guest | null>(null);
   const [guestEditForm, setGuestEditForm] = useState<GuestEditState | null>(null);
+  const [taskLinkGuest, setTaskLinkGuest] = useState<Guest | null>(null);
+  const [taskLinkVisit, setTaskLinkVisit] = useState<GuestVisit | null>(null);
   const [visitMenuOpenId, setVisitMenuOpenId] = useState<number | null>(null);
   const [visitCommentsOpenId, setVisitCommentsOpenId] = useState<number | null>(null);
   const [visitCommentDrafts, setVisitCommentDrafts] = useState<Record<number, string>>({});
@@ -411,6 +436,7 @@ function GuestsPageContent() {
   const [guestCommentDrafts, setGuestCommentDrafts] = useState<Record<number, string>>({});
 
   const openedVisitParamRef = useRef<string | null>(null);
+  const openedGuestParamRef = useRef<string | null>(null);
   const visitMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -620,6 +646,26 @@ function GuestsPageContent() {
       }
     })();
   }, [loadComments, refreshVisit, searchParams]);
+
+  useEffect(() => {
+    const guestParam = searchParams.get("guest");
+    if (!guestParam || openedGuestParamRef.current === guestParam) return;
+    const guestId = Number(guestParam);
+    if (!Number.isFinite(guestId) || guestId <= 0) return;
+    openedGuestParamRef.current = guestParam;
+    (async () => {
+      try {
+        setBusyKey(`open-guest-${guestId}`);
+        const guest = await apiClient.getGuest(guestId) as Guest;
+        setActiveTab("guests");
+        setDetailsGuest(guest);
+      } catch (err) {
+        setActionError(getReadableError(err, "Не удалось открыть гостя"));
+      } finally {
+        setBusyKey(null);
+      }
+    })();
+  }, [searchParams]);
 
   const documentOptions = useMemo(
     () => {
@@ -1089,6 +1135,17 @@ function GuestsPageContent() {
     setDetailsVisit((current) => current?.guest.id === updated.id ? { ...current, guest: updated } : current);
     setDetailsGuest((current) => current?.id === updated.id ? updated : current);
     setEditingGuest((current) => current?.id === updated.id ? updated : current);
+    setTaskLinkGuest((current) => current?.id === updated.id ? updated : current);
+  };
+
+  const handleGuestTaskLinked = async (guestId: number) => {
+    const updated = await apiClient.getGuest(guestId) as Guest;
+    applyGuestUpdate(updated);
+  };
+
+  const handleVisitTaskLinked = async (visitId: number) => {
+    const updated = await refreshVisit(visitId);
+    setTaskLinkVisit((current) => current?.id === updated.id ? updated : current);
   };
 
   const saveGuestEdit = async () => {
@@ -1310,6 +1367,10 @@ function GuestsPageContent() {
                       setActionComment("");
                     }}
                     onEdit={openEdit}
+                    onLinkTask={(nextVisit) => {
+                      setVisitMenuOpenId(null);
+                      setTaskLinkVisit(nextVisit);
+                    }}
                     onOpen={openDetails}
                     onAddComment={addListComment}
                     onCommentDraftChange={updateVisitCommentDraft}
@@ -1355,6 +1416,9 @@ function GuestsPageContent() {
             guests={guests}
             loading={guestsLoading}
             onEditGuest={openGuestEdit}
+            onLinkTask={(guest) => {
+              setTaskLinkGuest(guest);
+            }}
             onOpenGuest={openGuestDetails}
             onOpenGuestPhoto={setPhotoGuest}
             onOpenGuestVisits={openGuestVisits}
@@ -1409,8 +1473,55 @@ function GuestsPageContent() {
         onClose={closeDetails}
         onDeleteComment={deleteComment}
         onEdit={openEdit}
+        onLinkTask={(visit) => {
+          setDetailsVisit(null);
+          setTaskLinkVisit(visit);
+        }}
         onRunAction={runVisitAction}
       />
+
+      {taskLinkGuest ? (
+        <RelatedTaskLinks
+          key={`guest-task-link-${taskLinkGuest.id}`}
+          entityLabel="Гость"
+          entityTitle={guestName(taskLinkGuest)}
+          entitySubtitle={[taskLinkGuest.organization, taskLinkGuest.email, taskLinkGuest.phone].filter(Boolean).join(" · ")}
+          defaultTaskTitle={`Задача по гостю: ${guestName(taskLinkGuest)}`}
+          defaultTaskDescription={[
+            taskLinkGuest.organization ? `Организация: ${taskLinkGuest.organization}` : "",
+            taskLinkGuest.position ? `Должность: ${taskLinkGuest.position}` : "",
+            taskLinkGuest.phone ? `Телефон: ${taskLinkGuest.phone}` : "",
+            taskLinkGuest.email ? `Email: ${taskLinkGuest.email}` : "",
+          ].filter(Boolean).join("\n")}
+          successMessage="Гость связан с задачей"
+          variant="dialog"
+          open
+          loadLinkedTasks={() => apiClient.getGuestLinkedTasks(taskLinkGuest.id) as Promise<TaskCard[]>}
+          linkTask={(taskId) => apiClient.linkTaskGuest(taskId, taskLinkGuest.id)}
+          onClose={() => setTaskLinkGuest(null)}
+          onLinked={() => void handleGuestTaskLinked(taskLinkGuest.id)}
+        />
+      ) : null}
+
+      {taskLinkVisit ? (
+        <RelatedTaskLinks
+          key={`guest-visit-task-link-${taskLinkVisit.id}`}
+          entityLabel="Заявка на гостевой визит"
+          entityTitle={`#${taskLinkVisit.id} · ${guestName(taskLinkVisit.guest)}`}
+          entitySubtitle={taskLinkVisit.unlimited
+            ? "Бессрочно"
+            : `${formatDateTime(taskLinkVisit.access_starts_at) || "—"} - ${formatDateTime(taskLinkVisit.access_expires_at) || "—"}`}
+          defaultTaskTitle={`Задача по гостевому визиту #${taskLinkVisit.id}: ${guestName(taskLinkVisit.guest)}`}
+          defaultTaskDescription={taskLinkVisit.purpose || ""}
+          successMessage="Заявка на гостевой визит связана с задачей"
+          variant="dialog"
+          open
+          loadLinkedTasks={() => apiClient.getGuestVisitLinkedTasks(taskLinkVisit.id) as Promise<TaskCard[]>}
+          linkTask={(taskId) => apiClient.linkTaskGuestVisit(taskId, taskLinkVisit.id)}
+          onClose={() => setTaskLinkVisit(null)}
+          onLinked={() => void handleVisitTaskLinked(taskLinkVisit.id)}
+        />
+      ) : null}
 
       <ActionCommentModal
         action={actionDialog}
@@ -1427,10 +1538,20 @@ function GuestsPageContent() {
       <GuestDetailModal
         canEdit={canAdminGuests}
         guest={detailsGuest}
-        onClose={() => setDetailsGuest(null)}
+        onClose={() => {
+          setDetailsGuest(null);
+          if (searchParams.get("guest")) {
+            router.replace("/guests");
+            openedGuestParamRef.current = null;
+          }
+        }}
         onEdit={(guest) => {
           setDetailsGuest(null);
           openGuestEdit(guest);
+        }}
+        onLinkTask={(guest) => {
+          setDetailsGuest(null);
+          setTaskLinkGuest(guest);
         }}
       />
 
@@ -1678,6 +1799,34 @@ function GuestVisitControls({
   );
 }
 
+function LinkedTaskPills({
+  tasks,
+  max = 3,
+  className = "",
+}: {
+  tasks?: Guest["linked_tasks"] | GuestVisit["linked_tasks"];
+  max?: number;
+  className?: string;
+}) {
+  if (!tasks || tasks.length === 0) return null;
+  return (
+    <div className={`flex flex-wrap gap-1.5 ${className}`}>
+      {tasks.slice(0, max).map((task) => (
+        <TaskLinkPill
+          key={task.link_id || task.id}
+          task={task}
+          maxTitleClassName="max-w-44"
+        />
+      ))}
+      {tasks.length > max ? (
+        <span className="app-badge inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium">
+          +{tasks.length - max}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function GuestVisitRow({
   busyKey,
   canDeleteAllComments,
@@ -1693,6 +1842,7 @@ function GuestVisitRow({
   onCommentDraftChange,
   onDeleteComment,
   onEdit,
+  onLinkTask,
   onOpen,
   onOpenGuestPhoto,
   onRunAction,
@@ -1713,6 +1863,7 @@ function GuestVisitRow({
   onCommentDraftChange: (visitId: number, value: string) => void;
   onDeleteComment: (visit: GuestVisit, commentId: number) => void | Promise<void>;
   onEdit: (visit: GuestVisit) => void;
+  onLinkTask: (visit: GuestVisit) => void;
   onOpen: (visit: GuestVisit) => void | Promise<void>;
   onOpenGuestPhoto: (guest: Guest) => void;
   onRunAction: (visit: GuestVisit, action: "submit" | "sync") => void | Promise<void>;
@@ -1770,6 +1921,7 @@ function GuestVisitRow({
               visit={visit}
               onActionDialog={onActionDialog}
               onEdit={onEdit}
+              onLinkTask={onLinkTask}
               onRunAction={onRunAction}
               onToggleMenu={onToggleMenu}
             />
@@ -1784,6 +1936,7 @@ function GuestVisitRow({
             </div>
             <p className="app-text-muted mt-2 line-clamp-2 text-sm">{visit.purpose}</p>
           </button>
+          <LinkedTaskPills tasks={visit.linked_tasks} className="mt-2" />
           {visit.documents?.length ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {visit.documents.map((document) => {
@@ -1913,9 +2066,11 @@ function VisitQuickActionButtons({
   onActionDialog: (kind: ActionKind) => void;
   onRunAction: (visit: GuestVisit, action: "submit" | "sync") => void | Promise<void>;
 }) {
-  const canSubmitDirectly = visit.can_submit && visit.status !== "needs_info";
-  const canProvideInfo = visit.status === "needs_info" && visit.can_submit;
-  if (!canSubmitDirectly && !canProvideInfo && !visit.can_approve && !visit.can_reject) return null;
+  const canSubmit = canSubmitGuestVisit(visit);
+  const canApprove = canApproveGuestVisit(visit);
+  const canSubmitDirectly = canSubmit && visit.status !== "needs_info";
+  const canProvideInfo = visit.status === "needs_info" && canSubmit;
+  if (!canSubmitDirectly && !canProvideInfo && !canApprove && !visit.can_reject) return null;
 
   return (
     <div className="mt-3 flex items-center justify-end gap-1.5">
@@ -1940,7 +2095,7 @@ function VisitQuickActionButtons({
           <MessageSquare size={16} />
         </button>
       ) : null}
-      {visit.can_approve ? (
+      {canApprove ? (
           <button
             type="button"
             onClick={() => onActionDialog("approve")}
@@ -1973,6 +2128,7 @@ function VisitActionButtons({
   visit,
   onActionDialog,
   onEdit,
+  onLinkTask,
   onRunAction,
   onToggleMenu,
 }: {
@@ -1984,6 +2140,7 @@ function VisitActionButtons({
   visit: GuestVisit;
   onActionDialog: (kind: ActionKind) => void;
   onEdit: (visit: GuestVisit) => void;
+  onLinkTask: (visit: GuestVisit) => void;
   onRunAction: (visit: GuestVisit, action: "submit" | "sync") => void | Promise<void>;
   onToggleMenu?: (visitId: number | null) => void;
 }) {
@@ -1997,7 +2154,7 @@ function VisitActionButtons({
   if (variant === "full") {
     return (
       <div className="flex flex-wrap items-center gap-1.5 pt-1">
-        {visit.can_approve ? (
+        {canApproveGuestVisit(visit) ? (
           <button type="button" onClick={() => onActionDialog("approve")} className={buttonClass("app-action-approve")} title="Одобрить">
             <ThumbsUp size={approvalIconSize} className="text-emerald-500" />
             {showLabels ? <span className="text-emerald-500">Одобрить</span> : null}
@@ -2020,13 +2177,7 @@ function VisitActionButtons({
   }
 
   const meta = statusMeta[visit.status] || { label: visit.status, className: "app-badge" };
-  const hasSecondaryActions = visit.can_edit
-    || visit.can_request_info
-    || visit.can_revoke
-    || visit.can_cancel
-    || visit.can_return_to_work
-    || visit.can_delete
-    || visit.can_sync_ldap;
+  const hasSecondaryActions = true;
 
   return (
     <div className="flex shrink-0 flex-col items-start gap-2 lg:items-end">
@@ -2047,6 +2198,17 @@ function VisitActionButtons({
             </button>
             {isMenuOpen ? (
               <div className="app-menu absolute right-0 top-full z-20 mt-2 w-56 rounded-xl py-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onToggleMenu?.(null);
+                    onLinkTask(visit);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                >
+                  <Link2 size={14} className="app-text-muted" />
+                  Связать с задачей
+                </button>
                 {visit.can_edit ? (
                   <button
                     type="button"
@@ -2099,7 +2261,7 @@ function VisitActionButtons({
                     Отменить
                   </button>
                 ) : null}
-                {visit.can_return_to_work ? (
+                {canReturnGuestVisitToWork(visit) ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -2154,24 +2316,19 @@ function VisitSecondaryActionsMenu({
   visit,
   onActionDialog,
   onEdit,
+  onLinkTask,
   onRunAction,
 }: {
   busyKey: string | null;
   visit: GuestVisit;
   onActionDialog: (kind: ActionKind) => void;
   onEdit: (visit: GuestVisit) => void;
+  onLinkTask: (visit: GuestVisit) => void;
   onRunAction: (visit: GuestVisit, action: "submit" | "sync") => void | Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const hasActions = visit.can_submit
-    || visit.can_edit
-    || (visit.status === "needs_info" && visit.can_submit)
-    || visit.can_revoke
-    || visit.can_return_to_work
-    || visit.can_cancel
-    || visit.can_delete
-    || visit.can_sync_ldap;
+  const hasActions = true;
 
   useEffect(() => {
     if (!open) return;
@@ -2207,7 +2364,18 @@ function VisitSecondaryActionsMenu({
       </button>
       {open ? (
         <div className="app-menu absolute right-0 top-full z-30 mt-2 w-64 rounded-xl py-1.5">
-          {visit.can_submit ? (
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onLinkTask(visit);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+          >
+            <Link2 size={14} className="app-text-muted" />
+            Связать с задачей
+          </button>
+          {canSubmitGuestVisit(visit) ? (
             <button
               type="button"
               onClick={() => {
@@ -2234,7 +2402,7 @@ function VisitSecondaryActionsMenu({
               Редактировать
             </button>
           ) : null}
-          {visit.status === "needs_info" && visit.can_submit ? (
+          {visit.status === "needs_info" && canSubmitGuestVisit(visit) ? (
             <button
               type="button"
               onClick={() => {
@@ -2260,7 +2428,7 @@ function VisitSecondaryActionsMenu({
               Отозвать доступ
             </button>
           ) : null}
-          {visit.can_return_to_work ? (
+          {canReturnGuestVisitToWork(visit) ? (
             <button
               type="button"
               onClick={() => {
@@ -2919,6 +3087,7 @@ function GuestVisitDetailModal({
   onClose,
   onDeleteComment,
   onEdit,
+  onLinkTask,
   onRunAction,
 }: {
   busyKey: string | null;
@@ -2929,6 +3098,7 @@ function GuestVisitDetailModal({
   onClose: () => void;
   onDeleteComment: (visit: GuestVisit, commentId: number) => void | Promise<void>;
   onEdit: (visit: GuestVisit) => void;
+  onLinkTask: (visit: GuestVisit) => void;
   onRunAction: (visit: GuestVisit, action: "submit" | "sync") => void | Promise<void>;
 }) {
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
@@ -2939,7 +3109,7 @@ function GuestVisitDetailModal({
     setCommentDrafts((current) => ({ ...current, [visit.id]: value }));
   };
   const meta = statusMeta[visit.status] || { label: visit.status, className: "app-badge" };
-  const hasDecisionActions = visit.can_approve
+  const hasDecisionActions = canApproveGuestVisit(visit)
     || visit.can_reject
     || visit.can_request_info;
 
@@ -2957,6 +3127,7 @@ function GuestVisitDetailModal({
             visit={visit}
             onActionDialog={(kind) => onActionDialog(kind, visit)}
             onEdit={onEdit}
+            onLinkTask={onLinkTask}
             onRunAction={onRunAction}
           />
         </div>
@@ -2990,6 +3161,7 @@ function GuestVisitDetailModal({
                 visit={visit}
                 onActionDialog={(kind) => onActionDialog(kind, visit)}
                 onEdit={onEdit}
+                onLinkTask={onLinkTask}
                 onRunAction={onRunAction}
               />
             </div>
@@ -3057,6 +3229,17 @@ function GuestVisitDetailModal({
         </div>
 
         <aside className="space-y-4">
+          <section className="app-surface-muted rounded-xl p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <Link2 size={16} className="app-text-muted" />
+              <h3 className="text-sm font-semibold text-[var(--foreground)]">Связанные задачи</h3>
+            </div>
+            <LinkedTaskPills tasks={visit.linked_tasks} max={4} />
+            {visit.linked_tasks?.length ? null : (
+              <p className="app-text-muted text-xs">Связанных задач нет.</p>
+            )}
+          </section>
+
           <section className="app-surface-muted rounded-xl p-4">
             <div className="mb-3 flex items-center gap-2">
               <div className="flex items-center gap-2">
@@ -3302,6 +3485,7 @@ function GuestRegistryPanel({
   onCommentDraftChange,
   onDeleteComment,
   onEditGuest,
+  onLinkTask,
   onOpenGuest,
   onOpenGuestPhoto,
   onOpenGuestVisits,
@@ -3334,6 +3518,7 @@ function GuestRegistryPanel({
   onCommentDraftChange: (guestId: number, value: string) => void;
   onDeleteComment: (guest: Guest, commentId: number) => void | Promise<void>;
   onEditGuest: (guest: Guest) => void;
+  onLinkTask: (guest: Guest) => void;
   onOpenGuest: (guest: Guest) => void;
   onOpenGuestPhoto: (guest: Guest) => void;
   onOpenGuestVisits: (guest: Guest) => void;
@@ -3457,7 +3642,7 @@ function GuestRegistryPanel({
             { label: "Email", value: normalizeGuestMeta(guest.email), icon: Mail },
             { label: "Телефон", value: normalizeGuestMeta(guest.phone), icon: Phone },
           ].filter((item) => item.always || Boolean(item.value));
-          const hasActions = canEditGuests || canManageLdap;
+          const hasActions = true;
           const isGuestMenuOpen = guestMenuOpenId === guest.id;
           const commentsForGuest = commentsByGuest[guest.id] || [];
           const visibleCommentsCount = guest.comments_count || commentsForGuest.length;
@@ -3526,6 +3711,7 @@ function GuestRegistryPanel({
                         <span className="min-w-0 truncate">Заявки {visitsCount}</span>
                       </button>
                     </div>
+                    <LinkedTaskPills tasks={guest.linked_tasks} className="mt-2" />
                     {guest.ldap_last_error ? <p className="app-feedback-danger mt-2 rounded-lg p-2 text-xs">{guest.ldap_last_error}</p> : null}
                   </div>
                 </div>
@@ -3546,6 +3732,17 @@ function GuestRegistryPanel({
                       </button>
                       {isGuestMenuOpen ? (
                         <div className="app-menu absolute right-0 top-full z-20 mt-2 w-56 rounded-xl py-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setGuestMenuOpenId(null);
+                              onLinkTask(guest);
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                          >
+                            <Link2 size={14} className="app-text-muted" />
+                            Связать с задачей
+                          </button>
                           {canEditGuests ? (
                             <button
                               type="button"
@@ -3766,11 +3963,13 @@ function GuestDetailModal({
   guest,
   onClose,
   onEdit,
+  onLinkTask,
 }: {
   canEdit: boolean;
   guest: Guest | null;
   onClose: () => void;
   onEdit: (guest: Guest) => void;
+  onLinkTask: (guest: Guest) => void;
 }) {
   if (!guest) return null;
 
@@ -3797,6 +3996,14 @@ function GuestDetailModal({
       footer={
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="app-action-secondary rounded-lg px-4 py-2 text-sm font-medium">Закрыть</button>
+          <button
+            type="button"
+            onClick={() => onLinkTask(guest)}
+            className="app-action-secondary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium"
+          >
+            <Link2 size={15} />
+            Связать с задачей
+          </button>
           {canEdit ? (
             <button
               type="button"
@@ -3868,6 +4075,17 @@ function GuestDetailModal({
               <p className="app-feedback-danger mt-3 rounded-lg p-2 text-xs">{guest.ldap_last_error}</p>
             ) : null}
           </InfoBlock>
+        </section>
+
+        <section className="app-surface-muted rounded-xl p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Link2 size={16} className="app-text-muted" />
+            <h3 className="text-sm font-semibold text-[var(--foreground)]">Связанные задачи</h3>
+          </div>
+          <LinkedTaskPills tasks={guest.linked_tasks} max={4} />
+          {guest.linked_tasks?.length ? null : (
+            <p className="app-text-muted text-sm">Связанных задач нет.</p>
+          )}
         </section>
 
         <section className="app-surface-muted rounded-xl p-4">

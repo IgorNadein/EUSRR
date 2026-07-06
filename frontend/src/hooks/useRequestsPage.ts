@@ -170,6 +170,19 @@ export function useRequestsPage(_userId: number | null | undefined) {
     [view, typeFilter, statusFilter, employeeFilter, createdFromFilter, createdToFilter, periodFromFilter, periodToFilter],
   );
 
+  const refreshRequests = useCallback(async () => {
+    const response = await apiClient.getRequests(buildRequestParams(1));
+    const nextRequests = response.results || [];
+    setRequests(nextRequests);
+    setNextPage(extractNextPage(response.next));
+    setDetailsRequest((prev) => {
+      if (!prev) return prev;
+      const updated = nextRequests.find((request: Request) => request.id === prev.id);
+      return updated ? { ...prev, ...updated } : prev;
+    });
+    return nextRequests;
+  }, [buildRequestParams]);
+
   /* ── load data ── */
   useEffect(() => {
     let cancelled = false;
@@ -559,6 +572,7 @@ export function useRequestsPage(_userId: number | null | undefined) {
     /* actions */
     handleApprove, handleReject, handleCancel, handleDelete,
     toggleRow, toggleComments, handleAddComment, handleDeleteComment,
+    refreshRequests,
     isFinal,
   };
 }

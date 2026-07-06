@@ -1,5 +1,6 @@
 """ViewSets для API модуля закупок."""
 
+from django.contrib.contenttypes.models import ContentType
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from django.db.models import Q
 from django.utils import timezone
@@ -14,9 +15,11 @@ from procurement.constants import (
     ProcurementStatus,
     EquipmentStatus,
     ProcurementItemExecutionStatus,
+    get_default_approval_step_name,
 )
 from procurement.models import (
     Approval,
+    ApprovalRoute,
     Budget,
     Equipment,
     EquipmentCategory,
@@ -25,6 +28,7 @@ from procurement.models import (
     ProcurementItem,
     ProcurementRequest,
     ProcurementRequestView,
+    ProcurementSettings,
     Supplier,
 )
 from procurement.notifications.handlers import (
@@ -41,6 +45,7 @@ from procurement.notifications.read_service import (
 )
 from communications import comments_helpers
 from communications.models import Message
+from ..employees.serializers import EmployeeBriefSerializer
 from procurement.services import ProcurementApprovalResolver
 from .permissions import (
     CanApproveProcurementRequest,
@@ -58,7 +63,9 @@ from .serializers import (
     ProcurementDepartmentStatsSerializer,
     ProcurementOverviewStatsSerializer,
     ProcurementItemSerializer,
+    ProcurementManualApprovalStepsSerializer,
     ProcurementNotificationReadResponseSerializer,
+    ProcurementRequestCreateOptionsSerializer,
     ProcurementRequestCreateSerializer,
     ProcurementRequestDetailSerializer,
     ProcurementRequestListSerializer,
@@ -85,6 +92,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         "urgency": ["exact"],
         "department": ["exact"],
         "processing_department": ["exact"],
+        "requestor": ["exact"],
         "executor": ["exact"],
         "fulfillment_status": ["exact"],
     }
@@ -107,6 +115,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             "mark_all_received",
             "notify_arrival",
             "set_viewed",
+            "approval_options",
         ]:
             return ProcurementRequestDetailSerializer
         return ProcurementRequestListSerializer
@@ -115,7 +124,12 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         """Выбрать права доступа в зависимости от действия."""
         if self.action in ["approve", "reject"]:
             permission_classes = [CanApproveProcurementRequest]
-        elif self.action in ["submit", "set_viewed"]:
+        elif self.action in [
+            "submit",
+            "set_viewed",
+            "create_options",
+            "approval_options",
+        ]:
             permission_classes = [permissions.IsAuthenticated]
         else:
             # Для create, update, delete и остальных действий
@@ -138,6 +152,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             Value,
         )
         from django.db.models.functions import Cast, Coalesce
+        from django.utils.dateparse import parse_date
         from django.utils import timezone
         from communications.models import Chat
         from notifications.models import Notification
@@ -196,6 +211,8 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         )
         scope = self.request.query_params.get("scope", None)
         period = self.request.query_params.get("period", None)
+        date_from = self.request.query_params.get("date_from", None)
+        date_to = self.request.query_params.get("date_to", None)
         participant_department_ids = (
             ProcurementApprovalResolver.get_user_department_participant_ids(
                 user,
@@ -309,7 +326,210 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 start_date = now - timedelta(days=90)
                 queryset = queryset.filter(created_at__gte=start_date)
 
+        if date_from:
+            parsed_date_from = parse_date(date_from)
+            if parsed_date_from:
+                queryset = queryset.filter(created_at__date__gte=parsed_date_from)
+        if date_to:
+            parsed_date_to = parse_date(date_to)
+            if parsed_date_to:
+                queryset = queryset.filter(created_at__date__lte=parsed_date_to)
+
         return queryset.distinct()
+
+    def _attach_linked_task_payloads(
+        self,
+        requests: list[ProcurementRequest],
+    ) -> None:
+        """Предзагрузить компактные бейджи задач для списка закупок."""
+        if not requests:
+            return
+
+        user = getattr(self.request, "user", None)
+        request_ids = [request_obj.id for request_obj in requests]
+        mapping = {request_id: [] for request_id in request_ids}
+
+        if user and user.is_authenticated:
+            from tasks.access import task_board_access_q
+            from tasks.models import (
+                TaskBoard,
+                TaskLinkedObject,
+                TaskLinkedObjectKind,
+            )
+
+            request_ct = ContentType.objects.get_for_model(ProcurementRequest)
+            accessible_boards = TaskBoard.objects.filter(
+                is_archived=False,
+            ).filter(task_board_access_q(user))
+
+            links = (
+                TaskLinkedObject.objects.filter(
+                    kind=TaskLinkedObjectKind.PROCUREMENT_REQUEST,
+                    content_type=request_ct,
+                    object_id__in=request_ids,
+                    task__board__in=accessible_boards,
+                )
+                .select_related("task", "task__board", "task__column")
+                .order_by("object_id", "task__title", "task_id")
+            )
+
+            for link in links:
+                mapping.setdefault(link.object_id, []).append(
+                    {
+                        "link_id": link.id,
+                        "id": link.task_id,
+                        "title": link.task.title,
+                        "board_id": link.task.board_id,
+                        "board_name": link.task.board.name,
+                        "column_id": link.task.column_id,
+                        "column_name": link.task.column.name,
+                        "column_color": link.task.column.color,
+                        "priority": link.task.priority,
+                        "priority_display": link.task.get_priority_display(),
+                    }
+                )
+
+        for request_obj in requests:
+            request_obj._linked_task_payloads = mapping.get(request_obj.id, [])
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            self._attach_linked_task_payloads(list(page))
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        requests = list(queryset)
+        self._attach_linked_task_payloads(requests)
+        serializer = self.get_serializer(requests, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="create-options")
+    def create_options(self, request):
+        """Вернуть настройки выбора отделов для формы создания заявки."""
+        settings = ProcurementSettings.get_solo()
+        departments = settings.get_processing_departments_queryset().order_by(
+            "name"
+        )
+        default_department_id = settings.default_processing_department_id
+        if (
+            default_department_id
+            and not departments.filter(pk=default_department_id).exists()
+        ):
+            default_department_id = None
+
+        serializer = ProcurementRequestCreateOptionsSerializer(
+            {
+                "processing_departments": departments,
+                "default_processing_department": default_department_id,
+            }
+        )
+        return Response(serializer.data)
+
+    def _approval_step_payload(
+        self,
+        *,
+        route,
+        step=None,
+        is_amount_applicable=False,
+        missing_reason=None,
+    ):
+        priority, approver, step_name = step or (route.priority, None, "")
+        return {
+            "route_id": route.id,
+            "priority": priority,
+            "step_name": step_name
+            or route.name
+            or get_default_approval_step_name(
+                route.priority,
+                resolver_type=route.resolver_type,
+            ),
+            "resolver_type": route.resolver_type,
+            "min_amount": route.min_amount,
+            "is_amount_applicable": is_amount_applicable,
+            "is_available": approver is not None,
+            "missing_reason": missing_reason,
+            "approver": (
+                EmployeeBriefSerializer(approver).data
+                if approver is not None
+                else None
+            ),
+        }
+
+    def _build_auto_approval_payload(self, procurement_request):
+        applicable_priorities = set(
+            procurement_request.get_required_approval_routes().values_list(
+                "priority",
+                flat=True,
+            )
+        )
+        routes = ApprovalRoute.objects.select_related("employee").order_by(
+            "priority",
+            "id",
+        )
+        available_steps = []
+        auto_steps = []
+        missing_auto_steps = []
+
+        for route in routes:
+            step = ProcurementApprovalResolver.resolve_approval_step(
+                procurement_request,
+                route,
+            )
+            missing_reason = None
+            if step is None:
+                if (
+                    route.resolver_type
+                    == ApprovalRoute.ResolverType.DEPARTMENT_HEAD
+                ):
+                    missing_reason = "department_head_missing"
+                elif (
+                    route.resolver_type
+                    == ApprovalRoute.ResolverType.FIXED_EMPLOYEE
+                ):
+                    missing_reason = "approver_missing_or_inactive"
+
+            payload = self._approval_step_payload(
+                route=route,
+                step=step,
+                is_amount_applicable=route.priority in applicable_priorities,
+                missing_reason=missing_reason,
+            )
+            available_steps.append(payload)
+            if payload["is_amount_applicable"]:
+                if payload["is_available"]:
+                    auto_steps.append(payload)
+                else:
+                    missing_auto_steps.append(payload)
+
+        return {
+            "request_id": procurement_request.id,
+            "total_cost": procurement_request.total_cost,
+            "auto_steps": auto_steps,
+            "available_steps": available_steps,
+            "missing_auto_steps": missing_auto_steps,
+        }
+
+    @action(detail=True, methods=["get"], url_path="approval-options")
+    def approval_options(self, request, pk=None):
+        """Вернуть автоматический и ручной наборы согласующих."""
+        procurement_request = self.get_object()
+        if not ProcurementApprovalResolver.user_can_submit_for_approval(
+            request.user,
+            procurement_request,
+        ):
+            return Response(
+                {"error": "Вы не можете отправить эту заявку на согласование"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if procurement_request.items.count() == 0:
+            return Response(
+                {"error": "Добавьте хотя бы одну позицию в заявку"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(self._build_auto_approval_payload(procurement_request))
 
     @action(detail=True, methods=["get", "post"])
     def comments(self, request, pk=None):
@@ -450,25 +670,63 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        required_priorities = (
-            procurement_request.get_required_approval_priorities()
+        manual_serializer = ProcurementManualApprovalStepsSerializer(
+            data=request.data or {},
         )
-        if not required_priorities:
+        if not manual_serializer.is_valid():
             return Response(
-                {
-                    "error": (
-                        "Для этой суммы заявки не настроены "
-                        "маршруты согласования"
-                    )
-                },
+                manual_serializer.errors,
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        manual_steps = manual_serializer.validated_data.get(
+            "approval_steps",
+        ) or []
 
-        resolved_approvals, missing_routes = (
-            ProcurementApprovalResolver.resolve_required_approvers_detailed(
-                procurement_request
+        if manual_steps:
+            routes_by_priority = {
+                route.priority: route
+                for route in ApprovalRoute.objects.filter(
+                    priority__in=[
+                        step["priority"] for step in manual_steps
+                    ]
+                )
+            }
+            resolved_approvals = []
+            for step in sorted(manual_steps, key=lambda item: item["priority"]):
+                route = routes_by_priority[step["priority"]]
+                step_name = (
+                    step.get("step_name", "").strip()
+                    or route.name
+                    or get_default_approval_step_name(
+                        route.priority,
+                        resolver_type=route.resolver_type,
+                    )
+                )
+                resolved_approvals.append(
+                    (route.priority, step["approver"], step_name)
+                )
+            missing_routes = []
+        else:
+            required_priorities = (
+                procurement_request.get_required_approval_priorities()
             )
-        )
+            if not required_priorities:
+                return Response(
+                    {
+                        "error": (
+                            "Для этой суммы заявки не настроены "
+                            "маршруты согласования"
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            resolved_approvals, missing_routes = (
+                ProcurementApprovalResolver.resolve_required_approvers_detailed(
+                    procurement_request
+                )
+            )
+
         if missing_routes:
             missing_priorities = [
                 route["priority"] for route in missing_routes
@@ -653,7 +911,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         """Получить заявки, ожидающие согласования текущим польз."""
         # Находим заявки где есть pending approval для текущего юзера
         base_queryset = self.filter_queryset(
-            self.queryset.filter(
+            self.get_queryset().filter(
                 status=ProcurementStatus.PENDING,
             )
         )

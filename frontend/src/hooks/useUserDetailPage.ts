@@ -398,6 +398,7 @@ export function useUserDetailPage(userId: number, currentUser: User | null) {
     positions,
     positionsError,
     positionsLoading,
+    refreshPerson,
     setActionField,
     setAvatarFailed,
     setEditField,

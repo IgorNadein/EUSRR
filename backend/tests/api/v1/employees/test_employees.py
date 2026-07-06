@@ -3,7 +3,9 @@ import itertools
 import datetime as dt
 
 import pytest
+from attendance.models import AttendanceAnalysisRun, AttendanceRecord
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -17,6 +19,13 @@ from employees.models import (
     Skill,
 )
 from employees.constants import ACTION_DISMISSED  # для фильтра actually_active
+from tasks.models import (
+    Task,
+    TaskBoard,
+    TaskColumn,
+    TaskLinkedObject,
+    TaskLinkedObjectKind,
+)
 from tests.conftest import _unique_phone
 
 pytestmark = pytest.mark.django_db
@@ -85,6 +94,84 @@ def test_list_ok_for_authenticated(api_client: APIClient):
     ids = {it["id"] for it in items}
     assert e1.id in ids and e2.id in ids
 
+
+def test_list_includes_visible_linked_tasks_only(api_client: APIClient):
+    user = make_user("employee-link-user@example.com")
+    target = make_user("employee-link-target@example.com")
+    hidden_member = make_user("employee-link-hidden@example.com")
+    visible_board = TaskBoard.objects.create(
+        name="Видимая доска сотрудника",
+        created_by=user,
+    )
+    visible_column = TaskColumn.objects.create(
+        board=visible_board,
+        name="Новые",
+        position=1000,
+        color="#38bdf8",
+    )
+    visible_task = Task.objects.create(
+        board=visible_board,
+        column=visible_column,
+        title="Видимая задача сотрудника",
+        created_by=user,
+        priority="high",
+    )
+    hidden_board = TaskBoard.objects.create(
+        name="Скрытая доска сотрудника",
+        created_by=hidden_member,
+    )
+    hidden_board.members.add(hidden_member)
+    hidden_column = TaskColumn.objects.create(
+        board=hidden_board,
+        name="Новые",
+        position=1000,
+        color="#ef4444",
+    )
+    hidden_task = Task.objects.create(
+        board=hidden_board,
+        column=hidden_column,
+        title="Скрытая задача сотрудника",
+        created_by=hidden_member,
+        priority="critical",
+    )
+    employee_ct = ContentType.objects.get_for_model(User)
+    visible_link = TaskLinkedObject.objects.create(
+        task=visible_task,
+        kind=TaskLinkedObjectKind.EMPLOYEE,
+        content_type=employee_ct,
+        object_id=target.id,
+        created_by=user,
+    )
+    TaskLinkedObject.objects.create(
+        task=hidden_task,
+        kind=TaskLinkedObjectKind.EMPLOYEE,
+        content_type=employee_ct,
+        object_id=target.id,
+        created_by=hidden_member,
+    )
+
+    api_client.force_authenticate(user=user)
+    response = api_client.get(reverse("api:v1:employees-list"))
+
+    assert response.status_code == status.HTTP_200_OK
+    items = extract_results(response.json())
+    target_payload = next(item for item in items if item["id"] == target.id)
+    assert target_payload["linked_tasks"] == [
+        {
+            "link_id": visible_link.id,
+            "id": visible_task.id,
+            "title": "Видимая задача сотрудника",
+            "board_id": visible_board.id,
+            "board_name": "Видимая доска сотрудника",
+            "column_id": visible_column.id,
+            "column_name": "Новые",
+            "column_color": "#38bdf8",
+            "priority": "high",
+            "priority_display": "Высокий",
+        }
+    ]
+
+
 def test_retrieve_requires_auth(api_client: APIClient):
     e = make_user("x@example.com")
     url = reverse("api:v1:employees-detail", args=[e.pk])
@@ -101,6 +188,75 @@ def test_retrieve_ok(api_client: APIClient):
     data = resp.json()
     assert data["id"] == e.id
     assert data["email"] == e.email
+
+
+def test_retrieve_exposes_last_attendance_status_to_authenticated_users(
+    api_client: APIClient,
+):
+    viewer = make_user("attendance-viewer@example.com")
+    target = make_user("attendance-target@example.com")
+    run = AttendanceAnalysisRun.objects.create(
+        employee=target,
+        period_start=dt.date(2026, 4, 1),
+        period_end=dt.date(2026, 4, 30),
+    )
+    AttendanceRecord.objects.create(
+        analysis_run=run,
+        employee=target,
+        date=dt.date(2026, 4, 10),
+        arrival_time="08:35",
+    )
+    latest = AttendanceRecord.objects.create(
+        analysis_run=run,
+        employee=target,
+        date=dt.date(2026, 4, 11),
+        arrival_time="08:20",
+        departure_time="17:45",
+    )
+
+    api_client.force_authenticate(user=viewer)
+    response = api_client.get(reverse("api:v1:employees-detail", args=[target.pk]))
+
+    assert response.status_code == status.HTTP_200_OK
+    payload = response.json()["attendance_status"]
+    assert payload == {
+        "record_id": latest.id,
+        "date": "2026-04-11",
+        "time": "17:45",
+        "event": "departure",
+        "label": "Уход",
+        "display": "Уход · 11.04.2026, 17:45",
+    }
+
+
+def test_retrieve_last_attendance_status_uses_arrival_when_no_departure(
+    api_client: APIClient,
+):
+    viewer = make_user("attendance-arrival-viewer@example.com")
+    target = make_user("attendance-arrival-target@example.com")
+    run = AttendanceAnalysisRun.objects.create(
+        employee=target,
+        period_start=dt.date(2026, 4, 1),
+        period_end=dt.date(2026, 4, 30),
+    )
+    record = AttendanceRecord.objects.create(
+        analysis_run=run,
+        employee=target,
+        date=dt.date(2026, 4, 12),
+        arrival_time="09:05",
+        departure_time=None,
+    )
+
+    api_client.force_authenticate(user=viewer)
+    response = api_client.get(reverse("api:v1:employees-detail", args=[target.pk]))
+
+    assert response.status_code == status.HTTP_200_OK
+    payload = response.json()["attendance_status"]
+    assert payload["record_id"] == record.id
+    assert payload["date"] == "2026-04-12"
+    assert payload["time"] == "09:05"
+    assert payload["event"] == "arrival"
+    assert payload["label"] == "Приход"
 
 
 def test_update_attendance_aliases_normalizes_values(api_client: APIClient):

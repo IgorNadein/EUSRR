@@ -492,6 +492,16 @@ html[data-bs-theme="dark"] .app-input::-webkit-calendar-picker-indicator {
   background: var(--surface-secondary);
 }
 
+.app-menu-danger-item {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--danger-foreground);
+}
+
+.app-menu-danger-item:hover {
+  background: var(--danger-soft);
+}
+
 .app-action-danger {
   border: 1px solid color-mix(in srgb, var(--danger-foreground) 18%, var(--border-strong));
   background: var(--surface-elevated);
@@ -867,4 +877,64 @@ html[data-bs-theme="dark"] .shadow-xl {
 }
 *::-webkit-scrollbar {
   display: none; /* Chrome/Safari/Opera */
+}
+
+.app-tabs-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent-primary) 45%, var(--surface-tertiary)) transparent;
+  -ms-overflow-style: auto;
+}
+
+.app-tabs-scroll::-webkit-scrollbar {
+  display: block;
+  height: 6px;
+}
+
+.app-tabs-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-tabs-scroll::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--accent-primary) 42%, var(--surface-tertiary));
+}
+
+.app-tabs-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-primary);
+}
+
+.tasks-board-scroll,
+.tasks-column-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent-primary) 42%, var(--surface-tertiary)) transparent;
+  -ms-overflow-style: auto;
+}
+
+.tasks-board-scroll::-webkit-scrollbar,
+.tasks-column-scroll::-webkit-scrollbar {
+  display: block;
+}
+
+.tasks-board-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+
+.tasks-column-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tasks-board-scroll::-webkit-scrollbar-track,
+.tasks-column-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tasks-board-scroll::-webkit-scrollbar-thumb,
+.tasks-column-scroll::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--accent-primary) 38%, var(--surface-tertiary));
+}
+
+.tasks-board-scroll::-webkit-scrollbar-thumb:hover,
+.tasks-column-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-primary);
 }

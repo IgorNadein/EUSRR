@@ -8,6 +8,7 @@ import {
   BriefcaseBusiness,
   ChevronRight,
   History,
+  Link2,
   Mail,
   MessageCircle,
   Pencil,
@@ -16,12 +17,15 @@ import {
 
 import { AppShell } from "../../../components/AppShell";
 import EmployeeAttendanceCard from "@/components/attendance/EmployeeAttendanceCard";
+import { EmployeeTaskLinks } from "@/components/employees/EmployeeTaskLinks";
+import TaskLinkPill from "@/components/tasks/TaskLinkPill";
 import ChangeUserPositionModal from "@/components/users/ChangeUserPositionModal";
 import EditUserProfileModal from "@/components/users/EditUserProfileModal";
 import EmployeeActionModal from "@/components/users/EmployeeActionModal";
 import EmployeeActionsTimeline from "@/components/users/EmployeeActionsTimeline";
 import {
   ProfileContactsPanel,
+  ProfileAttendanceStatusPill,
   ProfileDepartmentBadge,
   ProfileDepartmentsCard,
   ProfileHeroCard,
@@ -91,6 +95,7 @@ export default function UserDetailPage() {
     positions,
     positionsError,
     positionsLoading,
+    refreshPerson,
     setActionField,
     setAvatarFailed,
     setEditField,
@@ -128,6 +133,7 @@ export default function UserDetailPage() {
   const [skillsSaving, setSkillsSaving] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [taskLinksOpen, setTaskLinksOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -362,10 +368,10 @@ export default function UserDetailPage() {
             <ProfileHeroCard
               caption="Профиль сотрудника"
               statusBadge={
-                (person.personnel_state || latestAction || canEdit || canManageActions) ? (
+                (person.personnel_state || person.attendance_status || latestAction || currentUser) ? (
                   <div
                     ref={profileMenuOpen ? profileMenuRef : null}
-                    className="relative flex items-center gap-2"
+                    className="relative flex max-w-full flex-wrap items-center justify-end gap-2"
                   >
                     {person.personnel_state ? (
                       <span
@@ -374,7 +380,8 @@ export default function UserDetailPage() {
                         {person.personnel_state.label || person.personnel_state.status}
                       </span>
                     ) : null}
-                    {(canEdit || canManageActions) ? (
+                    <ProfileAttendanceStatusPill status={person.attendance_status} />
+                    {currentUser ? (
                       <>
                         <button
                           type="button"
@@ -392,6 +399,17 @@ export default function UserDetailPage() {
                         </button>
                         {profileMenuOpen ? (
                           <div className="app-menu absolute right-0 top-full z-20 mt-2 w-64 rounded-xl py-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProfileMenuOpen(false);
+                                setTaskLinksOpen(true);
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                            >
+                              <Link2 size={14} className="app-text-muted" />
+                              Связать с задачей
+                            </button>
                             {canEdit ? (
                               <button
                                 type="button"
@@ -469,28 +487,24 @@ export default function UserDetailPage() {
                 ) : undefined
               }
               actionRow={
-                currentUser && (currentUser.id !== person.id || canEdit) ? (
+                currentUser && currentUser.id !== person.id ? (
                   <>
-                    {currentUser.id !== person.id ? (
-                      <>
-                        <button
-                          onClick={handleStartChat}
-                          disabled={creatingChat}
-                          className="app-action-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
-                        >
-                          <MessageCircle size={16} />
-                          {creatingChat ? "Загрузка..." : "Написать"}
-                        </button>
-                        {person.phone_number ? (
-                          <a
-                            href={`tel:${formatPhoneForLink(person.phone_number)}`}
-                            className="app-action-secondary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium"
-                          >
-                            <Phone size={16} />
-                            Позвонить
-                          </a>
-                        ) : null}
-                      </>
+                    <button
+                      onClick={handleStartChat}
+                      disabled={creatingChat}
+                      className="app-action-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+                    >
+                      <MessageCircle size={16} />
+                      {creatingChat ? "Загрузка..." : "Написать"}
+                    </button>
+                    {person.phone_number ? (
+                      <a
+                        href={`tel:${formatPhoneForLink(person.phone_number)}`}
+                        className="app-action-secondary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium"
+                      >
+                        <Phone size={16} />
+                        Позвонить
+                      </a>
                     ) : null}
                   </>
                 ) : undefined
@@ -502,6 +516,40 @@ export default function UserDetailPage() {
                 />
               }
             />
+
+            <section className="app-surface rounded-2xl p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="app-card-caption">Связанные задачи</p>
+                  <p className="app-text-muted mt-1 text-xs">
+                    Задачи, привязанные к этому сотруднику
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTaskLinksOpen(true)}
+                  className="app-action-primary inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+                >
+                  <Link2 size={14} />
+                  Связать
+                </button>
+              </div>
+              {person.linked_tasks && person.linked_tasks.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {person.linked_tasks.map((task) => (
+                    <TaskLinkPill
+                      key={task.link_id || task.id}
+                      task={task}
+                      maxTitleClassName="max-w-56"
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="app-surface-muted rounded-xl border border-dashed border-[var(--border-subtle)] px-3 py-4 text-center">
+                  <p className="app-text-muted text-sm">Связанных задач нет</p>
+                </div>
+              )}
+            </section>
 
             <ProfileSkillsCard
               inputValue={skillName}
@@ -591,6 +639,16 @@ export default function UserDetailPage() {
         onFieldChange={(field, value) => setActionField(field, value)}
         onSave={handleSaveAction}
       />
+
+      {person && taskLinksOpen ? (
+        <EmployeeTaskLinks
+          employee={person}
+          variant="dialog"
+          open={taskLinksOpen}
+          onClose={() => setTaskLinksOpen(false)}
+          onLinked={() => void refreshPerson()}
+        />
+      ) : null}
     </AppShell>
   );
 }

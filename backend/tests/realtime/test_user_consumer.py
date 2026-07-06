@@ -10,7 +10,7 @@
 - Открытие/закрытие активного чата
 """
 import pytest
-from channels.testing import WebsocketCommunicator
+from channels.layers import get_channel_layer
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
 
@@ -75,6 +75,44 @@ class TestUserConsumerConnection:
         await communicator.disconnect()
         
         # После отключения не должно быть ошибок
+
+
+@pytest.mark.asyncio
+class TestUserConsumerTaskBoardEvents:
+    """Тесты realtime-событий доски задач."""
+
+    async def test_task_board_update_event(self, ws_communicator, user):
+        """Пользователь получает событие обновления доски через личный канал."""
+        communicator = await ws_communicator(user=user)
+
+        connected, _ = await communicator.connect()
+        assert connected
+
+        channel_layer = get_channel_layer()
+        await channel_layer.group_send(
+            f"user_{user.id}",
+            {
+                "type": "task_board_update",
+                "event": "moved",
+                "data": {
+                    "board_id": 15,
+                    "model": "task",
+                    "object_id": 42,
+                    "column_id": 7,
+                },
+            },
+        )
+
+        response = await communicator.receive_json_from(timeout=5)
+
+        assert response["type"] == "task_board_update"
+        assert response["event"] == "moved"
+        assert response["data"]["board_id"] == 15
+        assert response["data"]["model"] == "task"
+        assert response["data"]["object_id"] == 42
+        assert response["data"]["column_id"] == 7
+
+        await communicator.disconnect()
 
 @pytest.mark.asyncio
 class TestUserConsumerChatManagement:

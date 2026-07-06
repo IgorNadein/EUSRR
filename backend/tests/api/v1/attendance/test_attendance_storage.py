@@ -1,8 +1,9 @@
 from unittest.mock import patch
 from io import BytesIO
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
+from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse
 from django.utils import timezone
 from openpyxl import load_workbook
@@ -22,6 +23,13 @@ from employees.constants import (
     ACTION_RETURNED_FROM_LEAVE,
 )
 from employees.models import EmployeeAction
+from tasks.models import (
+    Task,
+    TaskBoard,
+    TaskColumn,
+    TaskLinkedObject,
+    TaskLinkedObjectKind,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -183,6 +191,68 @@ def test_analyze_saves_run_and_records(auth_client_factory, user_factory):
     assert record.personnel_status == "normal"
     assert record.statuses == ["late", "underwork"]
     assert record.raw_data["employee_id"] == "42"
+
+
+def test_attendance_records_include_visible_linked_tasks(
+    auth_client_factory,
+    user_factory,
+):
+    employee = user_factory()
+    client = auth_client_factory(employee)
+    run = AttendanceAnalysisRun.objects.create(
+        employee=employee,
+        period_start=date(2026, 4, 20),
+        period_end=date(2026, 4, 20),
+    )
+    record = AttendanceRecord.objects.create(
+        analysis_run=run,
+        employee=employee,
+        date=date(2026, 4, 20),
+        display_name="Сотрудник Посещаемость",
+    )
+    board = TaskBoard.objects.create(
+        name="Доска посещаемости",
+        created_by=employee,
+    )
+    column = TaskColumn.objects.create(
+        board=board,
+        name="Новые",
+        color="#38bdf8",
+        position=1000,
+    )
+    task = Task.objects.create(
+        board=board,
+        column=column,
+        title="Разобрать посещаемость",
+        created_by=employee,
+        priority="high",
+    )
+    link = TaskLinkedObject.objects.create(
+        task=task,
+        kind=TaskLinkedObjectKind.ATTENDANCE_RECORD,
+        content_type=ContentType.objects.get_for_model(AttendanceRecord),
+        object_id=record.id,
+        created_by=employee,
+    )
+
+    response = client.get(_records_url(), {"employee_id": employee.id})
+
+    assert response.status_code == 200
+    payload = response.data["results"][0]
+    assert payload["linked_tasks"] == [
+        {
+            "link_id": link.id,
+            "id": task.id,
+            "title": "Разобрать посещаемость",
+            "board_id": board.id,
+            "board_name": "Доска посещаемости",
+            "column_id": column.id,
+            "column_name": "Новые",
+            "column_color": "#38bdf8",
+            "priority": "high",
+            "priority_display": "Высокий",
+        }
+    ]
 
 
 def test_weekly_summary_counts_present_and_absent_people(

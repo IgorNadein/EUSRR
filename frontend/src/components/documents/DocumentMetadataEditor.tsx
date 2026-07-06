@@ -1,11 +1,52 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Modal } from '@/components/ui';
 import { apiClient } from '@/lib/api';
 import { toast } from 'sonner';
-import { Folder, Tag as TagIcon, Loader2 } from 'lucide-react';
-import type { Document } from '@/types/api';
+import {
+  AlertCircle,
+  Building2,
+  CheckCircle,
+  FileText,
+  Folder,
+  Loader2,
+  ScrollText,
+  Tag as TagIcon,
+  Upload,
+  Users,
+  X,
+} from 'lucide-react';
+import type { Department, Document, User } from '@/types/api';
+import { DocumentTagQuickCreate, type QuickDocumentTag } from './DocumentTagQuickCreate';
+
+type DocumentTagOption = NonNullable<Document["tags"]>[number];
+
+interface FolderOption {
+  id: number;
+  name: string;
+  parent_id?: number | null;
+  path?: string;
+}
+
+interface FolderOptionRow {
+  folder: FolderOption;
+  level: number;
+}
+
+interface DocumentUpdatePayload {
+  title?: string;
+  description?: string;
+  extracted_text?: string;
+  file?: File;
+  tag_ids?: number[];
+  folder?: number | null;
+  is_regulation?: boolean;
+  sent_to_all?: boolean;
+  acknowledgement_required?: boolean;
+  recipient_ids?: number[];
+  department_ids?: number[];
+}
 
 interface DocumentMetadataEditorProps {
   isOpen: boolean;
@@ -14,109 +55,143 @@ interface DocumentMetadataEditorProps {
   onUpdate?: () => void;
 }
 
+type ListResponse<T> = T[] | { results?: T[] };
+
+function normalizeList<T>(response: ListResponse<T>): T[] {
+  return Array.isArray(response) ? response : response.results || [];
+}
+
+function arraysEqual(a: number[], b: number[]): boolean {
+  if (a.length !== b.length) return false;
+  const sortedA = [...a].sort((left, right) => left - right);
+  const sortedB = [...b].sort((left, right) => left - right);
+  return sortedA.every((value, index) => value === sortedB[index]);
+}
+
+function formatFileSize(bytes?: number): string {
+  if (!bytes) return '';
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} МБ`;
+}
+
+function getEmployeeLabel(employee: User): string {
+  const name = [employee.last_name, employee.first_name, employee.patronymic]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+  return employee.email ? `${name || employee.email} (${employee.email})` : name || `ID ${employee.id}`;
+}
+
+function buildFolderOptionRows(folders: FolderOption[]): FolderOptionRow[] {
+  const childrenByParent = new Map<number | null, FolderOption[]>();
+
+  folders.forEach((folder) => {
+    const parentId = folder.parent_id ?? null;
+    const children = childrenByParent.get(parentId) || [];
+    children.push(folder);
+    childrenByParent.set(parentId, children);
+  });
+
+  childrenByParent.forEach((children) => {
+    children.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  });
+
+  const rows: FolderOptionRow[] = [];
+  const appendChildren = (parentId: number | null, level: number) => {
+    (childrenByParent.get(parentId) || []).forEach((folder) => {
+      rows.push({ folder, level });
+      appendChildren(folder.id, level + 1);
+    });
+  };
+
+  appendChildren(null, 0);
+  return rows;
+}
+
 export function DocumentMetadataEditor({
   isOpen,
   onClose,
   document,
   onUpdate,
 }: DocumentMetadataEditorProps) {
-  // Form state
+  const [title, setTitle] = useState(document.title || '');
+  const [description, setDescription] = useState(document.description || '');
+  const [extractedText, setExtractedText] = useState(document.extracted_text || '');
+  const [replacementFile, setReplacementFile] = useState<File | null>(null);
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<number | null>(document.folder?.id || null);
+  const [isRegulation, setIsRegulation] = useState(Boolean(document.is_regulation));
+  const [sentToAll, setSentToAll] = useState(Boolean(document.sent_to_all ?? true));
+  const [acknowledgementRequired, setAcknowledgementRequired] = useState(Boolean(document.acknowledgement_required));
+  const [selectedDepartments, setSelectedDepartments] = useState<number[]>([]);
+  const [selectedRecipients, setSelectedRecipients] = useState<number[]>([]);
 
-  // Data lists
-  const [documentTags, setDocumentTags] = useState<any[]>([]);
-  const [folders, setFolders] = useState<any[]>([]);
+  const [documentTags, setDocumentTags] = useState<DocumentTagOption[]>([]);
+  const [folders, setFolders] = useState<FolderOption[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [employees, setEmployees] = useState<User[]>([]);
 
-  // Loading states
-  const [loadingTags, setLoadingTags] = useState(false);
-  const [loadingFolders, setLoadingFolders] = useState(false);
+  const [loadingReferences, setLoadingReferences] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load current document tags
+  const folderOptionRows = useMemo(() => buildFolderOptionRows(folders), [folders]);
+
   useEffect(() => {
-    if (isOpen && document) {
-      // Load current tags
-      if (document.tags && Array.isArray(document.tags)) {
-        setSelectedTags(document.tags.map((t: any) => t.id));
-      }
-    }
+    if (!isOpen) return;
+
+    setTitle(document.title || '');
+    setDescription(document.description || '');
+    setExtractedText(document.extracted_text || '');
+    setReplacementFile(null);
+    setSelectedTags((document.tags || []).map((tag) => tag.id));
+    setSelectedFolder(document.folder?.id || null);
+    setIsRegulation(Boolean(document.is_regulation));
+    setSentToAll(Boolean(document.sent_to_all ?? true));
+    setAcknowledgementRequired(Boolean(document.acknowledgement_required));
+    setSelectedDepartments((document.departments || []).map((department) => department.id));
+    setSelectedRecipients((document.recipients || []).map((recipient) => recipient.id));
+    setError(null);
   }, [isOpen, document]);
 
-  // Load reference data
   useEffect(() => {
-    if (isOpen) {
-      loadAllData();
-    }
+    if (!isOpen) return;
+
+    let cancelled = false;
+
+    const loadReferenceData = async () => {
+      setLoadingReferences(true);
+      try {
+        const [tagsResponse, foldersResponse, departmentsResponse, employeesResponse] = await Promise.all([
+          apiClient.getDocumentTags({ limit: 1000 }),
+          apiClient.getFolders({ limit: 1000 }),
+          apiClient.getDepartments({ limit: 1000 }),
+          apiClient.getEmployees({ limit: 1000, is_active: true, ordering: 'last_name,first_name' }),
+        ]);
+
+        if (cancelled) return;
+
+        setDocumentTags(normalizeList<DocumentTagOption>(tagsResponse));
+        setFolders(normalizeList<FolderOption>(foldersResponse));
+        setDepartments(normalizeList<Department>(departmentsResponse));
+        setEmployees(normalizeList<User>(employeesResponse));
+      } catch (err) {
+        console.error('Error loading document edit references:', err);
+        if (!cancelled) {
+          toast.error('Не удалось загрузить справочники для редактирования');
+        }
+      } finally {
+        if (!cancelled) setLoadingReferences(false);
+      }
+    };
+
+    void loadReferenceData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen]);
-
-  const loadAllData = async () => {
-    // Load tags
-    try {
-      setLoadingTags(true);
-      const tagsResponse = await apiClient.getDocumentTags();
-      setDocumentTags(tagsResponse.results || tagsResponse);
-    } catch (err) {
-      console.error('Error loading tags:', err);
-    } finally {
-      setLoadingTags(false);
-    }
-
-    // Load folders
-    try {
-      setLoadingFolders(true);
-      const foldersResponse = await apiClient.getFolders({});
-      setFolders(foldersResponse.results || foldersResponse);
-    } catch (err) {
-      console.error('Error loading folders:', err);
-    } finally {
-      setLoadingFolders(false);
-    }
-  };
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    setError(null);
-
-    try {
-      // Prepare update data
-      const updateData: any = {};
-
-      // Tags
-      const currentTagIds = (document.tags || []).map((t: any) => t.id).sort();
-      const newTagIds = [...selectedTags].sort();
-      if (JSON.stringify(currentTagIds) !== JSON.stringify(newTagIds)) {
-        updateData.tag_ids = selectedTags;
-      }
-
-      // Folder
-      if (selectedFolder !== (document.folder?.id || null)) {
-        updateData.folder = selectedFolder;
-      }
-
-      // If nothing changed
-      if (Object.keys(updateData).length === 0) {
-        toast.info('Нет изменений для сохранения');
-        onClose();
-        return;
-      }
-
-      // Send update request
-      await apiClient.updateDocument(document.id, updateData);
-
-      toast.success('Метаданные документа обновлены');
-      onUpdate?.();
-      onClose();
-    } catch (err: any) {
-      console.error('Error updating document metadata:', err);
-      const errorMsg = err.response?.data?.detail || 'Не удалось обновить метаданные';
-      setError(errorMsg);
-      toast.error(errorMsg);
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   const toggleTag = (tagId: number) => {
     setSelectedTags((prev) =>
@@ -124,98 +199,452 @@ export function DocumentMetadataEditor({
     );
   };
 
+  const handleCreatedTag = (tag: QuickDocumentTag) => {
+    setDocumentTags((prev) => {
+      const next = prev.some((item) => item.id === tag.id) ? prev : [...prev, tag];
+      return [...next].sort((left, right) => left.name.localeCompare(right.name, 'ru'));
+    });
+    setSelectedTags((prev) => (prev.includes(tag.id) ? prev : [...prev, tag.id]));
+  };
+
+  const handleSave = async () => {
+    const nextTitle = title.trim();
+    setError(null);
+
+    if (!nextTitle) {
+      setError('Укажите название документа');
+      return;
+    }
+
+    if (!sentToAll && selectedDepartments.length === 0 && selectedRecipients.length === 0) {
+      setError('Выберите хотя бы один отдел или сотрудника либо включите доступ для всей компании');
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const updateData: DocumentUpdatePayload = {};
+      const currentTagIds = (document.tags || []).map((tag) => tag.id);
+      const currentDepartmentIds = (document.departments || []).map((department) => department.id);
+      const currentRecipientIds = (document.recipients || []).map((recipient) => recipient.id);
+      const currentFolder = document.folder?.id || null;
+      const currentSentToAll = Boolean(document.sent_to_all ?? true);
+
+      if (nextTitle !== document.title) {
+        updateData.title = nextTitle;
+      }
+
+      if (description !== (document.description || '')) {
+        updateData.description = description;
+      }
+
+      if (extractedText !== (document.extracted_text || '')) {
+        updateData.extracted_text = extractedText;
+      }
+
+      if (replacementFile) {
+        updateData.file = replacementFile;
+      }
+
+      if (selectedFolder !== currentFolder) {
+        updateData.folder = selectedFolder;
+      }
+
+      if (isRegulation !== Boolean(document.is_regulation)) {
+        updateData.is_regulation = isRegulation;
+      }
+
+      if (sentToAll !== currentSentToAll) {
+        updateData.sent_to_all = sentToAll;
+      }
+
+      if (acknowledgementRequired !== Boolean(document.acknowledgement_required)) {
+        updateData.acknowledgement_required = acknowledgementRequired;
+      }
+
+      if (!arraysEqual(currentTagIds, selectedTags)) {
+        updateData.tag_ids = selectedTags;
+      }
+
+      if (!sentToAll) {
+        if (sentToAll !== currentSentToAll || !arraysEqual(currentDepartmentIds, selectedDepartments)) {
+          updateData.department_ids = selectedDepartments;
+        }
+
+        if (sentToAll !== currentSentToAll || !arraysEqual(currentRecipientIds, selectedRecipients)) {
+          updateData.recipient_ids = selectedRecipients;
+        }
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        toast.info('Нет изменений для сохранения');
+        onClose();
+        return;
+      }
+
+      await apiClient.updateDocument(document.id, updateData);
+
+      toast.success('Документ обновлён');
+      onUpdate?.();
+      onClose();
+    } catch (err) {
+      console.error('Error updating document:', err);
+      const errorMsg = err instanceof Error ? err.message : 'Не удалось обновить документ';
+      setError(errorMsg);
+      toast.error(errorMsg);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Редактирование метаданных"
-      size="lg"
+      title="Редактирование документа"
+      size="xl"
     >
-      <div className="space-y-4">
+      <div className="space-y-5">
         {error && (
-          <div className="app-feedback-danger rounded-lg p-3">
+          <div className="app-feedback-danger flex items-start gap-2 rounded-lg p-3">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <p className="text-sm">{error}</p>
           </div>
         )}
 
-        {/* Document info */}
-        <div className="app-surface-muted rounded-lg p-3">
-          <p className="text-sm font-medium text-[var(--foreground)]">{document.title}</p>
-          <p className="app-text-muted mt-1 text-xs">ID: {document.id}</p>
-        </div>
+        <section className="space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
+            <FileText className="h-4 w-4" />
+            Основное
+          </div>
 
-        {/* Tags */}
-        <div>
-          <label className="mb-2 flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
-            <TagIcon className="h-4 w-4" />
-            Теги
-          </label>
-          {loadingTags ? (
-            <div className="app-surface flex items-center justify-center rounded-md py-8">
-              <Loader2 className="app-text-muted h-5 w-5 animate-spin" />
-            </div>
-          ) : documentTags.length === 0 ? (
-            <div className="app-surface-muted app-text-muted rounded-md p-3 text-center text-sm">
-              Нет доступных тегов
-            </div>
-          ) : (
-            <div className="app-surface max-h-48 space-y-2 overflow-y-auto rounded-md p-3">
-              {documentTags.map((tag) => (
-                <label
-                  key={tag.id}
-                  className="flex cursor-pointer items-center gap-2 rounded p-2 transition hover:bg-[var(--surface-secondary)]"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedTags.includes(tag.id)}
-                    onChange={() => toggleTag(tag.id)}
-                    disabled={isSaving}
-                    className="h-4 w-4 rounded border-[var(--border-strong)] text-[var(--accent-primary)]"
-                  />
-                  <span className="text-sm text-[var(--foreground)]">{tag.name}</span>
-                  {tag.color && (
-                    <span
-                      className="ml-auto h-3 w-3 rounded-full"
-                      style={{ backgroundColor: tag.color }}
-                    />
-                  )}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(240px,320px)]">
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="documentEditTitle" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
+                  Название
                 </label>
+                <input
+                  id="documentEditTitle"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  disabled={isSaving}
+                  className="app-input w-full rounded-lg px-3 py-2 text-sm"
+                  placeholder="Название документа"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="documentEditDescription" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
+                  Описание
+                </label>
+                <textarea
+                  id="documentEditDescription"
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  disabled={isSaving}
+                  rows={4}
+                  className="app-input w-full rounded-lg px-3 py-2 text-sm"
+                  placeholder="Описание документа"
+                />
+              </div>
+            </div>
+
+            <div className="app-surface-muted rounded-lg p-3 text-sm">
+              <p className="font-medium text-[var(--foreground)]">ID: {document.id}</p>
+              <div className="app-text-muted mt-2 space-y-1 text-xs">
+                <p>Текущий файл: {document.file_name || 'не прикреплён'}</p>
+                {document.file_size ? <p>Размер: {formatFileSize(document.file_size)}</p> : null}
+                {document.folder_path ? <p>Папка: {document.folder_path}</p> : null}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
+            <Upload className="h-4 w-4" />
+            Файл документа
+          </div>
+
+          <div className="app-surface-muted rounded-lg p-3">
+            <label
+              htmlFor="documentEditFile"
+              className="app-action-secondary inline-flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
+            >
+              <Upload className="h-4 w-4" />
+              Выбрать новый файл
+            </label>
+            <input
+              id="documentEditFile"
+              type="file"
+              onChange={(event) => setReplacementFile(event.target.files?.[0] || null)}
+              disabled={isSaving}
+              className="sr-only"
+            />
+            <p className="app-text-muted mt-2 text-xs">
+              Если файл не выбрать, текущий файл останется без изменений.
+            </p>
+
+            {replacementFile && (
+              <div className="app-selected app-accent-text mt-3 flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm">
+                <span className="min-w-0 truncate">
+                  Новый файл: {replacementFile.name} ({formatFileSize(replacementFile.size)})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setReplacementFile(null)}
+                  disabled={isSaving}
+                  className="app-action-secondary inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
+                  title="Убрать выбранный файл"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label htmlFor="documentEditExtractedText" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
+              Текст для поиска
+            </label>
+            <textarea
+              id="documentEditExtractedText"
+              value={extractedText}
+              onChange={(event) => setExtractedText(event.target.value)}
+              disabled={isSaving}
+              rows={5}
+              className="app-input w-full rounded-lg px-3 py-2 font-mono text-sm"
+              placeholder="Распознанный или вручную добавленный текст документа"
+            />
+            <p className="app-text-muted mt-1 text-xs">Символов: {extractedText.length}</p>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
+            <TagIcon className="h-4 w-4" />
+            Категоризация
+          </div>
+
+          <div>
+            <label htmlFor="documentEditFolder" className="mb-1.5 flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
+              <Folder className="h-4 w-4" />
+              Папка
+            </label>
+            <select
+              id="documentEditFolder"
+              value={selectedFolder || ''}
+              onChange={(event) => setSelectedFolder(event.target.value ? Number(event.target.value) : null)}
+              disabled={loadingReferences || isSaving}
+              className="app-select w-full rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="">Без папки (корень)</option>
+              {folderOptionRows.map(({ folder, level }) => (
+                <option key={folder.id} value={folder.id}>
+                  {`${'— '.repeat(level)}${folder.name}`}
+                </option>
               ))}
+            </select>
+          </div>
+
+          <div>
+            <div id="document-edit-tags-label" className="mb-1.5 flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
+              <TagIcon className="h-4 w-4" />
+              Теги
+            </div>
+            <DocumentTagQuickCreate
+              existingTags={documentTags}
+              disabled={loadingReferences || isSaving}
+              onCreated={handleCreatedTag}
+              className="mb-2"
+            />
+            <div
+              role="group"
+              aria-labelledby="document-edit-tags-label"
+              className="app-surface-muted flex min-h-12 flex-wrap items-center gap-2 rounded-lg p-2"
+            >
+              {loadingReferences ? (
+                <span className="app-text-muted px-1 text-sm">Загрузка тегов...</span>
+              ) : documentTags.length === 0 ? (
+                <span className="app-text-muted px-1 text-sm">Нет доступных тегов</span>
+              ) : (
+                documentTags.map((tag) => (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    onClick={() => toggleTag(tag.id)}
+                    disabled={isSaving}
+                    className={`inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition disabled:opacity-50 ${
+                      selectedTags.includes(tag.id)
+                        ? 'app-badge app-badge-accent'
+                        : 'app-badge hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]'
+                    }`}
+                    aria-pressed={selectedTags.includes(tag.id)}
+                  >
+                    {tag.color && (
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: tag.color }}
+                      />
+                    )}
+                    <span className="truncate">{tag.name}</span>
+                  </button>
+                ))
+              )}
+            </div>
+            <p className="app-text-muted mt-1 text-xs">Выбрано: {selectedTags.length}</p>
+          </div>
+
+          <div className="app-surface-muted flex items-start gap-3 rounded-lg p-3">
+            <input
+              type="checkbox"
+              id="metadataIsRegulation"
+              checked={isRegulation}
+              onChange={(event) => setIsRegulation(event.target.checked)}
+              disabled={isSaving}
+              className="mt-0.5 h-4 w-4 rounded border-[var(--border-strong)] text-[var(--accent-primary)] disabled:opacity-50"
+            />
+            <div className="flex-1">
+              <label htmlFor="metadataIsRegulation" className="block cursor-pointer text-sm font-medium text-[var(--foreground)]">
+                <ScrollText className="mr-1 inline h-4 w-4" />
+                Регламент
+              </label>
+              <p className="app-text-muted mt-0.5 text-xs">
+                Документ будет отображаться в отдельном разделе регламентов.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
+            <Users className="h-4 w-4" />
+            Доступ и ознакомление
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="app-surface-muted flex items-start gap-3 rounded-lg p-3">
+              <input
+                type="checkbox"
+                id="metadataSentToAll"
+                checked={sentToAll}
+                onChange={(event) => {
+                  setSentToAll(event.target.checked);
+                  if (event.target.checked) {
+                    setSelectedDepartments([]);
+                    setSelectedRecipients([]);
+                  }
+                }}
+                disabled={isSaving}
+                className="mt-0.5 h-4 w-4 rounded border-[var(--border-strong)] text-[var(--accent-primary)] disabled:opacity-50"
+              />
+              <div className="flex-1">
+                <label htmlFor="metadataSentToAll" className="block cursor-pointer text-sm font-medium text-[var(--foreground)]">
+                  Для всей компании
+                </label>
+                <p className="app-text-muted mt-0.5 text-xs">Документ доступен всем активным сотрудникам.</p>
+              </div>
+            </div>
+
+            <div className="app-surface-muted flex items-start gap-3 rounded-lg p-3">
+              <input
+                type="checkbox"
+                id="metadataAcknowledgementRequired"
+                checked={acknowledgementRequired}
+                onChange={(event) => setAcknowledgementRequired(event.target.checked)}
+                disabled={isSaving}
+                className="mt-0.5 h-4 w-4 rounded border-[var(--border-strong)] text-[var(--accent-primary)] disabled:opacity-50"
+              />
+              <div className="flex-1">
+                <label htmlFor="metadataAcknowledgementRequired" className="block cursor-pointer text-sm font-medium text-[var(--foreground)]">
+                  <CheckCircle className="mr-1 inline h-4 w-4" />
+                  Требуется ознакомление
+                </label>
+                <p className="app-text-muted mt-0.5 text-xs">Получатели должны подтвердить прочтение документа.</p>
+              </div>
+            </div>
+          </div>
+
+          {!sentToAll && (
+            <div className="app-surface-muted grid grid-cols-1 gap-4 rounded-lg p-4 lg:grid-cols-2">
+              <div>
+                <label htmlFor="metadataDepartments" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
+                  <Building2 className="mr-1 inline h-4 w-4" />
+                  Отделы
+                </label>
+                <select
+                  id="metadataDepartments"
+                  multiple
+                  value={selectedDepartments.map(String)}
+                  onChange={(event) => {
+                    const values = Array.from(event.target.selectedOptions, (option) => Number(option.value));
+                    setSelectedDepartments(values);
+                  }}
+                  disabled={loadingReferences || isSaving}
+                  className="app-select w-full rounded-lg px-3 py-2 text-sm"
+                  size={7}
+                >
+                  {departments.length === 0 ? (
+                    <option disabled>Нет доступных отделов</option>
+                  ) : (
+                    departments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <p className="app-text-muted mt-1 text-xs">Удерживайте Ctrl/Cmd для выбора нескольких.</p>
+              </div>
+
+              <div>
+                <label htmlFor="metadataRecipients" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
+                  <Users className="mr-1 inline h-4 w-4" />
+                  Сотрудники
+                </label>
+                <select
+                  id="metadataRecipients"
+                  multiple
+                  value={selectedRecipients.map(String)}
+                  onChange={(event) => {
+                    const values = Array.from(event.target.selectedOptions, (option) => Number(option.value));
+                    setSelectedRecipients(values);
+                  }}
+                  disabled={loadingReferences || isSaving}
+                  className="app-select w-full rounded-lg px-3 py-2 text-sm"
+                  size={7}
+                >
+                  {employees.length === 0 ? (
+                    <option disabled>Нет доступных сотрудников</option>
+                  ) : (
+                    employees.map((employee) => (
+                      <option key={employee.id} value={employee.id}>
+                        {getEmployeeLabel(employee)}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <p className="app-text-muted mt-1 text-xs">Можно выбрать сотрудников напрямую, отделы или оба варианта.</p>
+              </div>
+
+              {selectedDepartments.length === 0 && selectedRecipients.length === 0 && (
+                <div className="app-feedback-warning flex items-start gap-2 rounded-lg p-3 text-xs lg:col-span-2">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>Выберите хотя бы один отдел или сотрудника.</span>
+                </div>
+              )}
             </div>
           )}
-          <p className="app-text-muted mt-1 text-xs">
-            Выбрано: {selectedTags.length} {selectedTags.length === 1 ? 'тег' : 'тегов'}
-          </p>
-        </div>
+        </section>
 
-        {/* Folder */}
-        <div>
-          <label className="mb-2 flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
-            <Folder className="h-4 w-4" />
-            Папка
-          </label>
-          <select
-            value={selectedFolder || ''}
-            onChange={(e) => setSelectedFolder(e.target.value ? Number(e.target.value) : null)}
-            disabled={loadingFolders || isSaving}
-            className="app-select w-full rounded-md px-3 py-2 text-sm"
-          >
-            <option value="">Без папки (корень)</option>
-            {folders.map((folder) => (
-              <option key={folder.id} value={folder.id}>
-                {folder.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Actions */}
-        <div className="app-divider flex items-center justify-end gap-3 border-t pt-4">
+        <div className="app-divider sticky bottom-0 z-10 -mx-4 flex items-center justify-end gap-3 border-t bg-[var(--surface-elevated)] px-4 pt-4 sm:-mx-6 sm:px-6">
           <button
             type="button"
             onClick={onClose}
             disabled={isSaving}
-            className="app-action-secondary rounded-md px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
+            className="app-action-secondary rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
           >
             Отмена
           </button>
@@ -223,7 +652,7 @@ export function DocumentMetadataEditor({
             type="button"
             onClick={handleSave}
             disabled={isSaving}
-            className="app-action-primary flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
+            className="app-action-primary flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSaving ? (
               <>

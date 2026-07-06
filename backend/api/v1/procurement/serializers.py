@@ -6,6 +6,7 @@ import re
 from datetime import date
 
 from drf_spectacular.utils import extend_schema_field
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
 
@@ -22,12 +23,16 @@ from procurement.models import (
     Equipment,
     EquipmentCategory,
     MaintenanceRecord,
+    ApprovalRoute,
     ProcurementItem,
     ProcurementRequest,
     ProcurementRequestView,
+    ProcurementSettings,
     Supplier,
 )
-from ..employees.serializers import EmployeeBriefSerializer
+from ..employees.serializers import DepartmentBriefSerializer, EmployeeBriefSerializer
+
+User = get_user_model()
 
 
 PROBLEM_ITEM_STATUSES = {
@@ -117,6 +122,25 @@ def _validate_item_quantities(attrs, instance=None):
     return attrs
 
 
+def _validate_processing_department_available(processing_department):
+    if not processing_department:
+        return
+
+    settings = ProcurementSettings.get_solo()
+    available_departments = settings.available_processing_departments.all()
+    if (
+        available_departments.exists()
+        and not available_departments.filter(pk=processing_department.pk).exists()
+    ):
+        raise serializers.ValidationError(
+            {
+                "processing_department": (
+                    "Выберите отдел-исполнитель из доступных для закупок."
+                )
+            }
+        )
+
+
 def _request_items(obj):
     return list(obj.items.all())
 
@@ -144,6 +168,7 @@ class ProcurementRequestSummaryMixin(serializers.Serializer):
     total_ordered_quantity = serializers.SerializerMethodField()
     total_received_quantity = serializers.SerializerMethodField()
     quantity_unit_label = serializers.SerializerMethodField()
+    linked_tasks = serializers.SerializerMethodField()
 
     @extend_schema_field(serializers.BooleanField())
     def get_is_viewed(self, obj):
@@ -235,6 +260,60 @@ class ProcurementRequestSummaryMixin(serializers.Serializer):
         if len(units) == 1:
             return _unit_display_label(next(iter(units)))
         return "единиц"
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_linked_tasks(self, obj: ProcurementRequest) -> list[dict]:
+        prefetched = getattr(obj, "_linked_task_payloads", None)
+        if prefetched is not None:
+            return prefetched
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not getattr(user, "is_authenticated", False):
+            return []
+
+        try:
+            from django.contrib.contenttypes.models import ContentType
+            from tasks.access import task_board_access_q
+            from tasks.models import (
+                TaskBoard,
+                TaskLinkedObject,
+                TaskLinkedObjectKind,
+            )
+        except Exception:
+            return []
+
+        content_type = ContentType.objects.get_for_model(ProcurementRequest)
+        accessible_boards = TaskBoard.objects.filter(
+            is_archived=False,
+        ).filter(task_board_access_q(user))
+
+        links = (
+            TaskLinkedObject.objects.filter(
+                kind=TaskLinkedObjectKind.PROCUREMENT_REQUEST,
+                content_type=content_type,
+                object_id=obj.id,
+                task__board__in=accessible_boards,
+            )
+            .select_related("task", "task__board", "task__column")
+            .order_by("task__title", "task_id")
+        )
+
+        return [
+            {
+                "link_id": link.id,
+                "id": link.task_id,
+                "title": link.task.title,
+                "board_id": link.task.board_id,
+                "board_name": link.task.board.name,
+                "column_id": link.task.column_id,
+                "column_name": link.task.column.name,
+                "column_color": link.task.column.color,
+                "priority": link.task.priority,
+                "priority_display": link.task.get_priority_display(),
+            }
+            for link in links
+        ]
 
 
 class ProcurementItemSerializer(serializers.ModelSerializer):
@@ -415,6 +494,57 @@ class ProcurementItemEditSerializer(ProcurementItemCreateSerializer):
         ]
 
 
+class ProcurementRequestCreateOptionsSerializer(serializers.Serializer):
+    """Опции формы создания заявки на закупку."""
+
+    processing_departments = DepartmentBriefSerializer(many=True)
+    default_processing_department = serializers.IntegerField(allow_null=True)
+
+
+class ProcurementManualApprovalStepSerializer(serializers.Serializer):
+    """Ручной этап согласования при отправке заявки."""
+
+    priority = serializers.IntegerField(min_value=1)
+    approver = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(is_active=True),
+    )
+    step_name = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=150,
+    )
+
+    def validate_priority(self, value):
+        if not ApprovalRoute.objects.filter(priority=value).exists():
+            raise serializers.ValidationError(
+                "Выберите настроенный этап согласования."
+            )
+        return value
+
+
+class ProcurementManualApprovalStepsSerializer(serializers.Serializer):
+    """Список ручных этапов согласования."""
+
+    approval_steps = ProcurementManualApprovalStepSerializer(
+        many=True,
+        required=False,
+        allow_empty=True,
+    )
+
+    def validate_approval_steps(self, value):
+        priorities = [item["priority"] for item in value]
+        duplicate_priorities = {
+            priority
+            for priority in priorities
+            if priorities.count(priority) > 1
+        }
+        if duplicate_priorities:
+            raise serializers.ValidationError(
+                "Каждый этап согласования можно выбрать только один раз."
+            )
+        return value
+
+
 class ApprovalSerializer(serializers.ModelSerializer):
     """Сериализатор для согласований."""
 
@@ -562,6 +692,7 @@ class ProcurementRequestListSerializer(
             "total_received_quantity",
             "quantity_unit_label",
             "comments_count",
+            "linked_tasks",
             "can_current_user_approve",
             "can_current_user_submit_for_approval",
             "can_current_user_start_work",
@@ -600,6 +731,7 @@ class ProcurementRequestListSerializer(
             "total_received_quantity",
             "quantity_unit_label",
             "comments_count",
+            "linked_tasks",
             "can_current_user_approve",
             "can_current_user_submit_for_approval",
             "can_current_user_start_work",
@@ -665,6 +797,10 @@ class ProcurementRequestListSerializer(
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        if "processing_department" in attrs:
+            _validate_processing_department_available(
+                attrs.get("processing_department")
+            )
         items_data = attrs.get("items")
         if items_data is None:
             return attrs
@@ -808,6 +944,7 @@ class ProcurementRequestDetailSerializer(
             "required_approval_priorities",
             "is_editable",
             "comments_count",
+            "linked_tasks",
             "can_current_user_approve",
             "can_current_user_submit_for_approval",
             "can_current_user_start_work",
@@ -843,6 +980,7 @@ class ProcurementRequestDetailSerializer(
             "processing_department_name",
             "fulfillment_status_display",
             "comments_count",
+            "linked_tasks",
             "can_current_user_approve",
             "can_current_user_submit_for_approval",
             "can_current_user_start_work",
@@ -876,6 +1014,9 @@ class ProcurementRequestCreateSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "requestor", "status", "created_at"]
 
     def validate(self, attrs):
+        _validate_processing_department_available(
+            attrs.get("processing_department")
+        )
         if (
             not attrs.get("processing_department")
             and not attrs.get("description", "").strip()

@@ -10,6 +10,7 @@ import { AppShell } from "../../components/AppShell";
 import { useUser } from "@/contexts/UserContext";
 import { apiClient } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/url";
+import { getEmployeeActionTone } from "@/lib/users/userDetailUtils";
 import type { Chat, User } from "@/types/api";
 
 type PrivateChat = Chat & { member_ids?: number[] };
@@ -196,6 +197,7 @@ export default function EmployeesPage() {
             const initials = getInitials(employee);
             const position = employee.position?.name || "Сотрудник";
             const isCurrentUser = currentUser?.id === employee.id;
+            const personnelState = employee.personnel_state;
 
             return (
               <div
@@ -223,9 +225,18 @@ export default function EmployeesPage() {
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="app-text-wrap text-sm font-semibold text-[var(--foreground)]">
-                      {fullName || "Сотрудник"}
-                    </p>
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <p className="app-text-wrap min-w-0 text-sm font-semibold text-[var(--foreground)]">
+                        {fullName || "Сотрудник"}
+                      </p>
+                      {personnelState ? (
+                        <span
+                          className={`app-status-pill shrink-0 ${getEmployeeActionTone(personnelState.status).badgeClass}`}
+                        >
+                          {personnelState.label || personnelState.status}
+                        </span>
+                      ) : null}
+                    </div>
                     <p className="app-text-muted text-xs">{position}</p>
                     {employee.email ? (
                       <p className="app-text-wrap app-text-muted mt-1 text-xs">
@@ -235,7 +246,8 @@ export default function EmployeesPage() {
                   </div>
                 </Link>
 
-                {!isCurrentUser ? (
+                <div className="flex shrink-0 items-center gap-2">
+                  {!isCurrentUser ? (
                   <button
                     type="button"
                     onClick={(event) => void handleStartChat(employee, event)}
@@ -249,7 +261,8 @@ export default function EmployeesPage() {
                       <MessageCircle size={18} />
                     )}
                   </button>
-                ) : null}
+                  ) : null}
+                </div>
               </div>
             );
           })}

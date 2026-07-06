@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Building2, CalendarCheck, CalendarDays, Download, FileSignature, FileText, Home as HomeIcon, Loader2, Menu, MessageSquare, Search, Send, ShoppingCart, UserRoundPlus, Users } from "lucide-react";
+import { AlertTriangle, Building2, CalendarCheck, CalendarDays, Download, FileSignature, FileText, Home as HomeIcon, Kanban, Loader2, Menu, MessageSquare, Search, Send, ShoppingCart, UserRoundPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -56,6 +56,7 @@ const navItems = [
   { href: "/guests", label: "Гости", icon: UserRoundPlus, category: "Гости" },
   // { href: "/equipment", label: "Оборудование", icon: Monitor },
   { href: "/procurement", label: "Закупки", icon: ShoppingCart, category: "Закупки", autoReadOnNavigate: false },
+  { href: "/tasks", label: "Доска", icon: Kanban, category: "Доска" },
   { href: "/documents", label: "Документы", icon: FileText, category: "Документы" },
   // { href: "/finances", label: "Финансы", icon: Wallet },
 ];
@@ -252,7 +253,7 @@ function Header({ mobileNavPlacement, suppressMobileChrome = false, onOpenLeftNa
                   ) : null}
                   <div className="app-divider my-1 border-t" />
                   <button
-                    className="app-action-danger w-full px-4 py-2 text-left text-sm transition"
+                    className="app-menu-danger-item w-full px-4 py-2 text-left text-sm transition"
                     onClick={() => { setUserMenuOpen(false); logout(); }}
                   >Выйти</button>
                 </div>

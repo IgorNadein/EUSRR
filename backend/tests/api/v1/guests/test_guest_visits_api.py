@@ -10,6 +10,13 @@ from documents.models import Document
 from filer.models import Folder
 from guests.constants import GuestVisitStatus
 from guests.models import Guest, GuestVisit
+from tasks.models import (
+    Task,
+    TaskBoard,
+    TaskColumn,
+    TaskLinkedObject,
+    TaskLinkedObjectKind,
+)
 
 
 TINY_PNG_BASE64 = (
@@ -793,6 +800,61 @@ def test_guest_visit_action_flags_match_valid_transitions(
 
 
 @pytest.mark.django_db
+def test_expired_guest_visit_period_hides_blocked_actions(
+    auth_client_factory,
+    user_factory,
+):
+    inviter = user_factory()
+    admin = user_factory(staff=True)
+    inviter_client = auth_client_factory(inviter)
+    admin_client = auth_client_factory(admin)
+    guest = Guest.objects.create(first_name="Expired", last_name="Actions")
+    starts_at = timezone.now() - timedelta(days=2)
+    expires_at = timezone.now() - timedelta(days=1)
+
+    draft = GuestVisit.objects.create(
+        guest=guest,
+        inviter=inviter,
+        purpose="Draft expired",
+        status=GuestVisitStatus.DRAFT,
+        access_starts_at=starts_at,
+        access_expires_at=expires_at,
+    )
+    pending = GuestVisit.objects.create(
+        guest=guest,
+        inviter=inviter,
+        purpose="Pending expired",
+        status=GuestVisitStatus.PENDING,
+        access_starts_at=starts_at,
+        access_expires_at=expires_at,
+    )
+    expired = GuestVisit.objects.create(
+        guest=guest,
+        inviter=inviter,
+        purpose="Closed expired",
+        status=GuestVisitStatus.EXPIRED,
+        access_starts_at=starts_at,
+        access_expires_at=expires_at,
+    )
+
+    draft_response = inviter_client.get(f"/api/v1/guests/visits/{draft.id}/")
+    pending_response = admin_client.get(f"/api/v1/guests/visits/{pending.id}/")
+    expired_response = inviter_client.get(f"/api/v1/guests/visits/{expired.id}/")
+
+    assert draft_response.status_code == 200
+    assert pending_response.status_code == 200
+    assert expired_response.status_code == 200
+
+    draft_payload = draft_response.json()
+    pending_payload = pending_response.json()
+    expired_payload = expired_response.json()
+
+    assert draft_payload["can_submit"] is False
+    assert pending_payload["can_approve"] is False
+    assert expired_payload["can_return_to_work"] is False
+
+
+@pytest.mark.django_db
 def test_invalid_api_transitions_return_400(auth_client_factory, user_factory):
     user = user_factory()
     admin = user_factory(staff=True)
@@ -1345,6 +1407,141 @@ def test_guest_admin_endpoints_permissions_and_actions(
     assert blacklisted.json()["is_active"] is False
     assert restored.status_code == 200
     assert restored.json()["is_blacklisted"] is False
+
+
+@pytest.mark.django_db
+def test_guest_and_visit_lists_include_visible_linked_tasks_only(
+    auth_client_factory,
+    user_factory,
+):
+    user = user_factory()
+    hidden_member = user_factory()
+    client = auth_client_factory(user)
+    guest = Guest.objects.create(
+        first_name="Linked",
+        last_name="Guest",
+        created_by=user,
+    )
+    visit = GuestVisit.objects.create(
+        guest=guest,
+        inviter=user,
+        purpose="Linked visit",
+        access_starts_at=timezone.now(),
+        access_expires_at=timezone.now() + timedelta(days=1),
+    )
+    visible_board = TaskBoard.objects.create(
+        name="Видимая гостевая доска",
+        created_by=user,
+    )
+    visible_column = TaskColumn.objects.create(
+        board=visible_board,
+        name="Новые",
+        position=1000,
+        color="#38bdf8",
+    )
+    visible_guest_task = Task.objects.create(
+        board=visible_board,
+        column=visible_column,
+        title="Видимая задача гостя",
+        created_by=user,
+        priority="high",
+    )
+    visible_visit_task = Task.objects.create(
+        board=visible_board,
+        column=visible_column,
+        title="Видимая задача визита",
+        created_by=user,
+        priority="medium",
+    )
+    hidden_board = TaskBoard.objects.create(
+        name="Скрытая гостевая доска",
+        created_by=hidden_member,
+    )
+    hidden_board.members.add(hidden_member)
+    hidden_column = TaskColumn.objects.create(
+        board=hidden_board,
+        name="Скрытые",
+        position=1000,
+        color="#ef4444",
+    )
+    hidden_guest_task = Task.objects.create(
+        board=hidden_board,
+        column=hidden_column,
+        title="Скрытая задача гостя",
+        created_by=hidden_member,
+        priority="critical",
+    )
+    hidden_visit_task = Task.objects.create(
+        board=hidden_board,
+        column=hidden_column,
+        title="Скрытая задача визита",
+        created_by=hidden_member,
+        priority="critical",
+    )
+    guest_ct = ContentType.objects.get_for_model(Guest)
+    visit_ct = ContentType.objects.get_for_model(GuestVisit)
+    visible_guest_link = TaskLinkedObject.objects.create(
+        task=visible_guest_task,
+        kind=TaskLinkedObjectKind.GUEST,
+        content_type=guest_ct,
+        object_id=guest.id,
+        created_by=user,
+    )
+    TaskLinkedObject.objects.create(
+        task=hidden_guest_task,
+        kind=TaskLinkedObjectKind.GUEST,
+        content_type=guest_ct,
+        object_id=guest.id,
+        created_by=hidden_member,
+    )
+    visible_visit_link = TaskLinkedObject.objects.create(
+        task=visible_visit_task,
+        kind=TaskLinkedObjectKind.GUEST_VISIT,
+        content_type=visit_ct,
+        object_id=visit.id,
+        created_by=user,
+    )
+    TaskLinkedObject.objects.create(
+        task=hidden_visit_task,
+        kind=TaskLinkedObjectKind.GUEST_VISIT,
+        content_type=visit_ct,
+        object_id=visit.id,
+        created_by=hidden_member,
+    )
+
+    guests = _results(client.get("/api/v1/guests/").json())
+    visits = _results(client.get("/api/v1/guests/visits/").json())
+
+    guest_payload = next(item for item in guests if item["id"] == guest.id)
+    visit_payload = next(item for item in visits if item["id"] == visit.id)
+    assert guest_payload["linked_tasks"] == [
+        {
+            "link_id": visible_guest_link.id,
+            "id": visible_guest_task.id,
+            "title": "Видимая задача гостя",
+            "board_id": visible_board.id,
+            "board_name": "Видимая гостевая доска",
+            "column_id": visible_column.id,
+            "column_name": "Новые",
+            "column_color": "#38bdf8",
+            "priority": "high",
+            "priority_display": "Высокий",
+        }
+    ]
+    assert visit_payload["linked_tasks"] == [
+        {
+            "link_id": visible_visit_link.id,
+            "id": visible_visit_task.id,
+            "title": "Видимая задача визита",
+            "board_id": visible_board.id,
+            "board_name": "Видимая гостевая доска",
+            "column_id": visible_column.id,
+            "column_name": "Новые",
+            "column_color": "#38bdf8",
+            "priority": "medium",
+            "priority_display": "Средний",
+        }
+    ]
 
 
 @pytest.mark.django_db

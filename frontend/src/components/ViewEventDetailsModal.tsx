@@ -1,17 +1,84 @@
 "use client";
 
-import { Edit2, Trash2, Clock, Calendar, FileText, Users } from "lucide-react";
+import {
+  Calendar,
+  ChevronRight,
+  Clock,
+  Edit2,
+  FileText,
+  Kanban,
+  Link2,
+  Loader2,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { Modal } from "@/components/ui";
 import { resolveEventColor } from "@/lib/calendar-event-colors";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { apiClient } from "@/lib/api";
+import { displayUserName } from "@/lib/shared";
+import type { TaskBoard, TaskCard, TaskPriority, User } from "@/types/api";
+
+type EventRuleData = {
+  frequency?: string;
+  params?: {
+    byweekday?: unknown;
+    count?: number | string;
+  };
+};
+
+type EventDetails = Record<string, unknown> & {
+  id?: number;
+  title?: string;
+  description?: string;
+  start?: string | Date | null;
+  end?: string | Date | null;
+  calendar?: number | null;
+  color_event?: string | null;
+  can_edit?: boolean;
+  can_delete?: boolean;
+  rule?: number | null;
+  rule_data?: EventRuleData | null;
+  end_recurring_period?: string | Date | null;
+};
+
+type EventParticipant = {
+  id: number | string;
+  user_name?: string;
+  distinction?: string;
+};
+
+const taskPriorityOptions: { value: TaskPriority; label: string }[] = [
+  { value: "low", label: "Низкая" },
+  { value: "medium", label: "Средняя" },
+  { value: "high", label: "Высокая" },
+  { value: "critical", label: "Критическая" },
+];
+
+function getTaskOptionLabel(task: TaskCard) {
+  return `#${task.id} - ${task.title}`;
+}
+
+function taskMatchesSearch(task: TaskCard, query: string) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return true;
+  return [
+    String(task.id),
+    task.title,
+    task.description || "",
+    task.assignee ? displayUserName(task.assignee) : "",
+  ]
+    .join(" ")
+    .toLowerCase()
+    .includes(normalized);
+}
 
 interface ViewEventDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  event: any | null;
+  event: EventDetails | null;
   onEdit: () => void;
   onDelete: () => void;
   showParticipants?: boolean;
@@ -40,9 +107,13 @@ const WEEKDAY_LABELS: Record<number, string> = {
 };
 
 // Нормализация byweekday в массив чисел
-function normalizeByweekday(byweekday: any): number[] {
+function normalizeByweekday(byweekday: unknown): number[] {
   if (!byweekday) return [];
-  if (Array.isArray(byweekday)) return byweekday;
+  if (Array.isArray(byweekday)) {
+    return byweekday
+      .map((day) => Number(day))
+      .filter((day) => Number.isFinite(day));
+  }
   if (typeof byweekday === 'string') {
     return byweekday.split(',').map(d => parseInt(d.trim(), 10)).filter(n => !isNaN(n));
   }
@@ -58,78 +129,268 @@ export function ViewEventDetailsModal({
   onDelete,
   showParticipants = false,
 }: ViewEventDetailsModalProps) {
-  const [participants, setParticipants] = useState<any[]>([]);
+  const [participants, setParticipants] = useState<EventParticipant[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
+  const [linkedTasks, setLinkedTasks] = useState<TaskCard[]>([]);
+  const [linkedTasksLoading, setLinkedTasksLoading] = useState(false);
+  const [linkedTasksError, setLinkedTasksError] = useState<string | null>(null);
+  const [taskLinkOpen, setTaskLinkOpen] = useState(false);
+  const [taskLinkBoards, setTaskLinkBoards] = useState<TaskBoard[]>([]);
+  const [taskLinkEmployees, setTaskLinkEmployees] = useState<User[]>([]);
+  const [taskLinkBoardId, setTaskLinkBoardId] = useState<number | "">("");
+  const [taskLinkTaskId, setTaskLinkTaskId] = useState<number | "">("");
+  const [taskLinkSearch, setTaskLinkSearch] = useState("");
+  const [taskLinkMode, setTaskLinkMode] = useState<"existing" | "create">("existing");
+  const [taskLinkTitle, setTaskLinkTitle] = useState("");
+  const [taskLinkDescription, setTaskLinkDescription] = useState("");
+  const [taskLinkDetailsOpen, setTaskLinkDetailsOpen] = useState(false);
+  const [taskLinkColumnId, setTaskLinkColumnId] = useState<number | "">("");
+  const [taskLinkAssigneeId, setTaskLinkAssigneeId] = useState<number | "">("");
+  const [taskLinkPriority, setTaskLinkPriority] = useState<TaskPriority>("medium");
+  const [taskLinkDueDate, setTaskLinkDueDate] = useState("");
+  const [taskLinkLabelIds, setTaskLinkLabelIds] = useState<number[]>([]);
+  const [taskLinkLoading, setTaskLinkLoading] = useState(false);
+  const [taskLinkError, setTaskLinkError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (isOpen && event?.id && showParticipants) {
-      loadParticipants();
-    } else {
-      setParticipants([]);
-    }
-  }, [isOpen, event?.id, showParticipants]);
-
-  const loadParticipants = async () => {
+  const loadParticipants = useCallback(async () => {
     if (!event?.id) return;
 
     try {
       setLoadingParticipants(true);
       const result = await apiClient.getEventParticipants(event.id);
-      const participantsList = Array.isArray(result) ? result : (result?.results || []);
+      const participantsList = (Array.isArray(result) ? result : (result?.results || [])) as EventParticipant[];
       setParticipants(participantsList);
     } catch (error) {
       console.error("Failed to load participants:", error);
     } finally {
       setLoadingParticipants(false);
     }
-  };
+  }, [event?.id]);
+
+  const loadLinkedTasks = useCallback(async () => {
+    if (!event?.id) return;
+
+    try {
+      setLinkedTasksLoading(true);
+      setLinkedTasksError(null);
+      const tasks = await apiClient.getCalendarEventLinkedTasks(event.id);
+      setLinkedTasks(tasks);
+    } catch (error) {
+      setLinkedTasksError(error instanceof Error ? error.message : "Не удалось загрузить связанные объекты");
+    } finally {
+      setLinkedTasksLoading(false);
+    }
+  }, [event?.id]);
+
+  useEffect(() => {
+    if (isOpen && event?.id && showParticipants) {
+      void loadParticipants();
+    } else {
+      setParticipants([]);
+    }
+  }, [isOpen, event?.id, showParticipants, loadParticipants]);
+
+  useEffect(() => {
+    if (isOpen && event?.id) {
+      void loadLinkedTasks();
+    } else {
+      setLinkedTasks([]);
+      setLinkedTasksError(null);
+    }
+  }, [isOpen, event?.id, loadLinkedTasks]);
 
   if (!isOpen || !event) return null;
 
-  const formatDateTime = (dateStr: string) => {
+  const formatDateTime = (dateStr?: string | Date | null) => {
+    if (!dateStr) return "";
     const date = new Date(dateStr);
     return format(date, "d MMMM yyyy, HH:mm", { locale: ru });
   };
 
-  const formatDate = (dateStr: string) => {
+  const formatDate = (dateStr?: string | Date | null) => {
+    if (!dateStr) return "";
     const date = new Date(dateStr);
     return format(date, "d MMMM yyyy", { locale: ru });
   };
 
-  const capitalizedStart = formatDateTime(event.start).charAt(0).toUpperCase() + formatDateTime(event.start).slice(1);
-  const capitalizedEnd = formatDateTime(event.end).charAt(0).toUpperCase() + formatDateTime(event.end).slice(1);
+  const formattedStart = formatDateTime(event.start);
+  const formattedEnd = formatDateTime(event.end);
+  const capitalizedStart = formattedStart.charAt(0).toUpperCase() + formattedStart.slice(1);
+  const capitalizedEnd = formattedEnd.charAt(0).toUpperCase() + formattedEnd.slice(1);
   const canEdit = event.can_edit !== false;
   const canDelete = event.can_delete !== false;
+  const ruleFrequency = typeof event.rule_data?.frequency === "string"
+    ? event.rule_data.frequency
+    : "";
+  const ruleFrequencyLabel = ruleFrequency
+    ? FREQUENCY_LABELS[ruleFrequency] || ruleFrequency
+    : "";
+  const ruleParams = event.rule_data?.params;
+  const selectedTaskLinkBoard = taskLinkBoards.find((board) => board.id === taskLinkBoardId) || null;
+  const selectedTaskLinkTask = (selectedTaskLinkBoard?.tasks || []).find((task) => task.id === taskLinkTaskId) || null;
+  const selectedTaskLinkColumn = (
+    (selectedTaskLinkBoard?.columns || []).find((column) => column.id === taskLinkColumnId) ||
+    (selectedTaskLinkBoard?.columns || []).find((column) => !column.is_archived) ||
+    null
+  );
+  const availableTaskLinkTasks = selectedTaskLinkBoard?.tasks || [];
+  const filteredTaskLinkTasks = availableTaskLinkTasks.filter((task: TaskCard) => taskMatchesSearch(task, taskLinkSearch));
+
+  const openTaskLinkModal = async () => {
+    if (!event?.id) return;
+    setTaskLinkOpen(true);
+    setTaskLinkError(null);
+    setTaskLinkLoading(true);
+    setTaskLinkTitle(event.title || "Задача по событию");
+    setTaskLinkDescription(event.description || "");
+    try {
+      const [response, employeesResponse] = await Promise.all([
+        apiClient.getTaskBoards(),
+        apiClient.getEmployees({ limit: 200, is_active: true, ordering: "last_name" }),
+      ]);
+      const boards = (response.results || response || []) as TaskBoard[];
+      const employees = (employeesResponse.results || employeesResponse || []) as User[];
+      setTaskLinkBoards(boards);
+      setTaskLinkEmployees(employees);
+      const firstBoardWithTasks = boards.find((board) => (board.tasks || []).length > 0) || boards[0] || null;
+      const firstColumn = firstBoardWithTasks?.columns?.find((column) => !column.is_archived) || null;
+      setTaskLinkBoardId(firstBoardWithTasks?.id || "");
+      setTaskLinkTaskId(firstBoardWithTasks?.tasks?.[0]?.id || "");
+      setTaskLinkSearch("");
+      setTaskLinkColumnId(firstColumn?.id || "");
+      setTaskLinkMode(firstBoardWithTasks?.tasks?.length ? "existing" : "create");
+      setTaskLinkDetailsOpen(false);
+      setTaskLinkAssigneeId("");
+      setTaskLinkPriority("medium");
+      setTaskLinkDueDate("");
+      setTaskLinkLabelIds([]);
+    } catch (error) {
+      setTaskLinkError(error instanceof Error ? error.message : "Не удалось загрузить задачи");
+    } finally {
+      setTaskLinkLoading(false);
+    }
+  };
+
+  const closeTaskLinkModal = () => {
+    if (taskLinkLoading) return;
+    setTaskLinkOpen(false);
+    setTaskLinkError(null);
+    setTaskLinkBoardId("");
+    setTaskLinkTaskId("");
+    setTaskLinkSearch("");
+    setTaskLinkMode("existing");
+    setTaskLinkTitle("");
+    setTaskLinkDescription("");
+    setTaskLinkDetailsOpen(false);
+    setTaskLinkColumnId("");
+    setTaskLinkAssigneeId("");
+    setTaskLinkPriority("medium");
+    setTaskLinkDueDate("");
+    setTaskLinkLabelIds([]);
+  };
+
+  const handleTaskLinkBoardChange = (boardId: number | "") => {
+    setTaskLinkBoardId(boardId);
+    const nextBoard = taskLinkBoards.find((board) => board.id === boardId) || null;
+    setTaskLinkTaskId(nextBoard?.tasks?.[0]?.id || "");
+    setTaskLinkSearch("");
+    setTaskLinkColumnId(nextBoard?.columns?.find((column) => !column.is_archived)?.id || "");
+    setTaskLinkLabelIds([]);
+    if (!nextBoard?.tasks?.length) {
+      setTaskLinkMode("create");
+    }
+  };
+
+  const handleTaskLinkSearchChange = (value: string) => {
+    setTaskLinkSearch(value);
+    const nextTask = availableTaskLinkTasks.find((task: TaskCard) => taskMatchesSearch(task, value));
+    setTaskLinkTaskId(nextTask?.id || "");
+  };
+
+  const toggleTaskLinkLabel = (labelId: number) => {
+    setTaskLinkLabelIds((current) => (
+      current.includes(labelId)
+        ? current.filter((id) => id !== labelId)
+        : [...current, labelId]
+    ));
+  };
+
+  const saveTaskLink = async () => {
+    if (!event?.id || !selectedTaskLinkBoard) return;
+    if (taskLinkMode === "existing" && !selectedTaskLinkTask) return;
+    if (taskLinkMode === "create" && !taskLinkTitle.trim()) return;
+
+    setTaskLinkLoading(true);
+    setTaskLinkError(null);
+    try {
+      let taskToLink = selectedTaskLinkTask;
+      if (taskLinkMode === "create") {
+        if (!selectedTaskLinkColumn) {
+          setTaskLinkError("На выбранной доске нет колонки для новой задачи");
+          return;
+        }
+        taskToLink = await apiClient.createTask({
+          board: selectedTaskLinkBoard.id,
+          column: selectedTaskLinkColumn.id,
+          title: taskLinkTitle.trim(),
+          description: taskLinkDescription.trim(),
+          assignee_id: taskLinkAssigneeId || null,
+          priority: taskLinkPriority,
+          due_date: taskLinkDueDate || null,
+          label_ids: taskLinkLabelIds,
+        });
+      }
+
+      if (!taskToLink) return;
+      await apiClient.linkTaskCalendarEvent(taskToLink.id, event.id);
+      await loadLinkedTasks();
+      closeTaskLinkModal();
+    } catch (error) {
+      setTaskLinkError(error instanceof Error ? error.message : "Не удалось связать событие с задачей");
+    } finally {
+      setTaskLinkLoading(false);
+    }
+  };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={event.title}
-      size="sm"
-      footer={canEdit || canDelete ? (
-        <div className="flex gap-2">
-          {canEdit ? (
-            <button
-              onClick={onEdit}
-              className="app-action-primary flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium"
-            >
-              <Edit2 size={16} />
-              Редактировать
-            </button>
-          ) : null}
-          {canDelete ? (
-            <button
-              onClick={onDelete}
-              className="app-action-danger rounded-lg px-4 py-2.5 text-sm font-medium"
-              title="Удалить событие"
-            >
-              <Trash2 size={16} />
-            </button>
-          ) : null}
-        </div>
-      ) : undefined}
-    >
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title={event.title}
+        size="sm"
+        footer={canEdit || canDelete || event.id ? (
+          <div className="flex flex-wrap gap-2">
+            {event.id ? (
+              <button
+                onClick={() => void openTaskLinkModal()}
+                className="app-action-secondary flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium"
+              >
+                <Link2 size={16} />
+                Связать с задачей
+              </button>
+            ) : null}
+            {canEdit ? (
+              <button
+                onClick={onEdit}
+                className="app-action-primary flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium"
+              >
+                <Edit2 size={16} />
+                Редактировать
+              </button>
+            ) : null}
+            {canDelete ? (
+              <button
+                onClick={onDelete}
+                className="app-action-danger rounded-lg px-4 py-2.5 text-sm font-medium"
+                title="Удалить событие"
+              >
+                <Trash2 size={16} />
+              </button>
+            ) : null}
+          </div>
+        ) : undefined}
+      >
       <div className="space-y-4">
         {/* Event meta */}
         <div className="flex items-center gap-2">
@@ -169,18 +430,18 @@ export function ViewEventDetailsModal({
               </div>
               <div className="app-accent-text space-y-1 text-sm">
                 <div>
-                  Частота: <span className="font-medium">{FREQUENCY_LABELS[event.rule_data.frequency] || event.rule_data.frequency}</span>
+                  Частота: <span className="font-medium">{ruleFrequencyLabel}</span>
                 </div>
-                {event.rule_data.params?.byweekday && (
+                {Boolean(ruleParams?.byweekday) && (
                   <div>
                     Дни недели: <span className="font-medium">
-                      {normalizeByweekday(event.rule_data.params.byweekday).map((day: number) => WEEKDAY_LABELS[day]).join(", ")}
+                      {normalizeByweekday(ruleParams?.byweekday).map((day: number) => WEEKDAY_LABELS[day]).join(", ")}
                     </span>
                   </div>
                 )}
-                {event.rule_data.params?.count && (
+                {Boolean(ruleParams?.count) && (
                   <div>
-                    Повторений: <span className="font-medium">{event.rule_data.params.count}</span>
+                    Повторений: <span className="font-medium">{String(ruleParams?.count)}</span>
                   </div>
                 )}
                 {event.end_recurring_period && (
@@ -206,6 +467,79 @@ export function ViewEventDetailsModal({
             </div>
           )}
 
+          {event.id ? (
+            <div className="flex items-start gap-2.5">
+              <Link2 size={18} className="app-text-muted mt-0.5 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="text-sm font-medium text-[var(--foreground)]">
+                      Связанные объекты
+                    </p>
+                    <span className="app-pill-count rounded-full px-2 py-0.5 text-[10px] font-bold">
+                      {linkedTasks.length}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void openTaskLinkModal()}
+                    className="app-action-ghost shrink-0 rounded-lg px-2 py-1 text-xs font-medium"
+                  >
+                    Добавить
+                  </button>
+                </div>
+
+                {linkedTasksLoading ? (
+                  <div className="app-surface-muted flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-3 py-2">
+                    <Loader2 size={14} className="app-text-muted animate-spin" />
+                    <span className="app-text-muted text-xs">Загрузка связанных объектов...</span>
+                  </div>
+                ) : linkedTasksError ? (
+                  <div className="app-feedback-danger rounded-lg px-3 py-2 text-xs">
+                    {linkedTasksError}
+                  </div>
+                ) : linkedTasks.length > 0 ? (
+                  <div className="space-y-2">
+                    {linkedTasks.map((task) => (
+                      <a
+                        key={task.id}
+                        href={`/tasks?board=${task.board}&task=${task.id}`}
+                        className="app-surface-muted group flex min-w-0 items-center gap-3 rounded-lg border border-[var(--border-subtle)] px-3 py-2 transition hover:border-[var(--accent-primary)] hover:bg-[var(--surface-elevated)]"
+                      >
+                        <span className="app-selected flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
+                          <Kanban size={15} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="app-card-caption block">Задача</span>
+                          <span className="app-text-wrap block truncate text-sm font-medium text-[var(--foreground)]">
+                            {task.title}
+                          </span>
+                          <span className="app-text-muted mt-0.5 block truncate text-xs">
+                            {task.board_name || `Доска #${task.board}`}
+                            {task.column_name ? ` · ${task.column_name}` : ""}
+                          </span>
+                        </span>
+                        <ChevronRight
+                          size={15}
+                          className="app-text-muted shrink-0 transition-transform group-hover:translate-x-0.5"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="app-surface-muted rounded-lg border border-dashed border-[var(--border-subtle)] px-3 py-3">
+                    <p className="text-xs font-medium text-[var(--foreground)]">
+                      Связанных объектов пока нет
+                    </p>
+                    <p className="app-text-muted mt-1 text-xs">
+                      Можно связать событие с существующей задачей или создать новую.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+
           {/* Participants */}
           {showParticipants && (
             <div className="flex items-start gap-2.5">
@@ -218,7 +552,7 @@ export function ViewEventDetailsModal({
                   <p className="app-text-muted text-xs">Загрузка...</p>
                 ) : participants.length > 0 ? (
                   <div className="space-y-1.5">
-                    {participants.map((participant: any) => (
+                    {participants.map((participant) => (
                       <div
                         key={participant.id}
                         className="app-surface-muted flex items-center gap-2 rounded-lg px-2.5 py-2"
@@ -247,6 +581,274 @@ export function ViewEventDetailsModal({
           )}
 
       </div>
-    </Modal>
+      </Modal>
+
+      <Modal
+        isOpen={taskLinkOpen}
+        onClose={closeTaskLinkModal}
+        title="Связать с задачей"
+        size="md"
+        closeOnClickOutside
+        footer={(
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={closeTaskLinkModal}
+              className="app-action-secondary rounded-xl px-4 py-2 text-sm font-medium"
+              disabled={taskLinkLoading}
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={() => void saveTaskLink()}
+              className="app-action-primary inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-60"
+              disabled={
+                taskLinkLoading ||
+                (taskLinkMode === "existing"
+                  ? !selectedTaskLinkTask
+                  : !taskLinkTitle.trim() || !selectedTaskLinkColumn)
+              }
+            >
+              {taskLinkLoading ? <Loader2 size={16} className="animate-spin" /> : <Link2 size={16} />}
+              {taskLinkMode === "create" ? "Создать и связать" : "Связать"}
+            </button>
+          </div>
+        )}
+      >
+        <div className="space-y-4">
+          <div className="app-surface-muted rounded-xl border border-[var(--border-subtle)] p-3">
+            <p className="app-card-caption">Событие</p>
+            <p className="app-text-wrap mt-1 line-clamp-3 text-sm text-[var(--foreground)]">
+              {event.title}
+            </p>
+          </div>
+
+          <label className="block">
+            <span className="app-text-muted mb-1 block text-xs font-medium">Доска</span>
+            <select
+              value={taskLinkBoardId}
+              onChange={(selectEvent) => handleTaskLinkBoardChange(Number(selectEvent.target.value) || "")}
+              className="app-select w-full rounded-xl px-3 py-2 text-sm"
+              disabled={taskLinkLoading}
+            >
+              <option value="">Выберите доску</option>
+              {taskLinkBoards.map((board) => (
+                <option key={board.id} value={board.id}>
+                  {board.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setTaskLinkMode("existing")}
+              className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                taskLinkMode === "existing"
+                  ? "app-selected border-[var(--accent-primary)]"
+                  : "border-[var(--border-subtle)] text-[var(--muted-foreground)] hover:border-[var(--border-strong)]"
+              }`}
+              disabled={taskLinkLoading || !selectedTaskLinkBoard || (selectedTaskLinkBoard.tasks || []).length === 0}
+            >
+              Выбрать задачу
+            </button>
+            <button
+              type="button"
+              onClick={() => setTaskLinkMode("create")}
+              className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                taskLinkMode === "create"
+                  ? "app-selected border-[var(--accent-primary)]"
+                  : "border-[var(--border-subtle)] text-[var(--muted-foreground)] hover:border-[var(--border-strong)]"
+              }`}
+              disabled={taskLinkLoading || !selectedTaskLinkBoard}
+            >
+              Создать задачу
+            </button>
+          </div>
+
+          {taskLinkMode === "existing" ? (
+            <div className="space-y-2">
+              <label className="block">
+                <span className="app-text-muted mb-1 block text-xs font-medium">Поиск задачи</span>
+                <input
+                  value={taskLinkSearch}
+                  onChange={(inputEvent) => handleTaskLinkSearchChange(inputEvent.target.value)}
+                  className="app-input w-full rounded-xl px-3 py-2 text-sm"
+                  disabled={taskLinkLoading || !selectedTaskLinkBoard}
+                  placeholder="ID, название, описание или исполнитель"
+                />
+              </label>
+              <label className="block">
+                <span className="app-text-muted mb-1 block text-xs font-medium">Задача</span>
+                <select
+                  value={taskLinkTaskId}
+                  onChange={(selectEvent) => setTaskLinkTaskId(Number(selectEvent.target.value) || "")}
+                  className="app-select w-full rounded-xl px-3 py-2 text-sm"
+                  disabled={taskLinkLoading || !selectedTaskLinkBoard || filteredTaskLinkTasks.length === 0}
+                >
+                  <option value="">
+                    {filteredTaskLinkTasks.length === 0 ? "Задачи не найдены" : "Выберите задачу"}
+                  </option>
+                  {filteredTaskLinkTasks.map((task: TaskCard) => (
+                    <option key={task.id} value={task.id}>
+                      {getTaskOptionLabel(task)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <label className="block">
+                <span className="app-text-muted mb-1 block text-xs font-medium">Название задачи</span>
+                <input
+                  value={taskLinkTitle}
+                  onChange={(inputEvent) => setTaskLinkTitle(inputEvent.target.value)}
+                  className="app-input w-full rounded-xl px-3 py-2 text-sm"
+                  disabled={taskLinkLoading}
+                  placeholder="Название новой задачи"
+                />
+              </label>
+              <label className="block">
+                <span className="app-text-muted mb-1 block text-xs font-medium">Описание</span>
+                <textarea
+                  value={taskLinkDescription}
+                  onChange={(inputEvent) => setTaskLinkDescription(inputEvent.target.value)}
+                  className="app-input w-full rounded-xl px-3 py-2 text-sm"
+                  disabled={taskLinkLoading}
+                  rows={3}
+                />
+              </label>
+
+              <div className="rounded-xl border border-[var(--border-subtle)]">
+                <button
+                  type="button"
+                  onClick={() => setTaskLinkDetailsOpen((current) => !current)}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+                  disabled={taskLinkLoading}
+                  aria-expanded={taskLinkDetailsOpen}
+                >
+                  <span>
+                    <span className="block text-sm font-medium text-[var(--foreground)]">
+                      Дополнительная информация
+                    </span>
+                    <span className="app-text-muted mt-0.5 block text-xs">
+                      Исполнитель, срочность, срок, колонка и метки
+                    </span>
+                  </span>
+                  <ChevronRight
+                    size={16}
+                    className={`app-text-muted shrink-0 transition-transform ${taskLinkDetailsOpen ? "rotate-90" : ""}`}
+                  />
+                </button>
+
+                {taskLinkDetailsOpen ? (
+                  <div className="space-y-3 border-t border-[var(--border-subtle)] px-3 py-3">
+                    <label className="block">
+                      <span className="app-text-muted mb-1 block text-xs font-medium">Колонка</span>
+                      <select
+                        value={taskLinkColumnId}
+                        onChange={(selectEvent) => setTaskLinkColumnId(Number(selectEvent.target.value) || "")}
+                        className="app-select w-full rounded-xl px-3 py-2 text-sm"
+                        disabled={taskLinkLoading || !selectedTaskLinkBoard}
+                      >
+                        <option value="">Выберите колонку</option>
+                        {(selectedTaskLinkBoard?.columns || [])
+                          .filter((column) => !column.is_archived)
+                          .map((column) => (
+                            <option key={column.id} value={column.id}>
+                              {column.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+
+                    <label className="block">
+                      <span className="app-text-muted mb-1 block text-xs font-medium">Исполнитель</span>
+                      <select
+                        value={taskLinkAssigneeId}
+                        onChange={(selectEvent) => setTaskLinkAssigneeId(Number(selectEvent.target.value) || "")}
+                        className="app-select w-full rounded-xl px-3 py-2 text-sm"
+                        disabled={taskLinkLoading}
+                      >
+                        <option value="">Не назначен</option>
+                        {taskLinkEmployees.map((employee) => (
+                          <option key={employee.id} value={employee.id}>
+                            {displayUserName(employee)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block">
+                        <span className="app-text-muted mb-1 block text-xs font-medium">Срочность</span>
+                        <select
+                          value={taskLinkPriority}
+                          onChange={(selectEvent) => setTaskLinkPriority(selectEvent.target.value as TaskPriority)}
+                          className="app-select w-full rounded-xl px-3 py-2 text-sm"
+                          disabled={taskLinkLoading}
+                        >
+                          {taskPriorityOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="app-text-muted mb-1 block text-xs font-medium">Срок</span>
+                        <input
+                          type="date"
+                          value={taskLinkDueDate}
+                          onChange={(inputEvent) => setTaskLinkDueDate(inputEvent.target.value)}
+                          className="app-input w-full rounded-xl px-3 py-2 text-sm"
+                          disabled={taskLinkLoading}
+                        />
+                      </label>
+                    </div>
+
+                    <div>
+                      <span className="app-text-muted mb-2 block text-xs font-medium">Метки</span>
+                      {(selectedTaskLinkBoard?.labels || []).length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {(selectedTaskLinkBoard?.labels || []).map((label) => {
+                            const selected = taskLinkLabelIds.includes(label.id);
+                            return (
+                              <button
+                                key={label.id}
+                                type="button"
+                                onClick={() => toggleTaskLinkLabel(label.id)}
+                                className={`inline-flex max-w-full items-center rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                                  selected ? "border-transparent text-white" : "border-[var(--border-subtle)] text-[var(--muted-foreground)]"
+                                }`}
+                                style={selected ? { backgroundColor: label.color || "#38bdf8" } : undefined}
+                                disabled={taskLinkLoading}
+                              >
+                                <span className="truncate">{label.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="app-text-muted text-xs">На этой доске меток нет</p>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          )}
+
+          {taskLinkError ? (
+            <div className="app-feedback-danger rounded-xl px-3 py-2 text-sm">
+              {taskLinkError}
+            </div>
+          ) : null}
+        </div>
+      </Modal>
+    </>
   );
 }

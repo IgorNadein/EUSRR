@@ -319,3 +319,16 @@ class UserConsumer(ChatConsumerMixin, AsyncJsonWebsocketConsumer):
                 "data": event.get("data", {}),
             }
         )
+
+    async def task_board_update(self, event):
+        """
+        Обновление доски задач.
+        Вызывается из tasks/realtime.py
+        """
+        await self.send_json(
+            {
+                "type": "task_board_update",
+                "event": event.get("event", "updated"),
+                "data": event.get("data", {}),
+            }
+        )

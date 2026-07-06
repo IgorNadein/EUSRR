@@ -22,6 +22,7 @@ type RequestListSectionProps = {
   loadMoreRef: RefObject<HTMLDivElement | null>;
   loadingMore: boolean;
   nextPage: number | null;
+  onLinkTask: (request: Request) => void;
   openEdit: (request: Request) => void;
   requestMenuOpenId: number | null;
   requestMenuRef: RefObject<HTMLDivElement | null>;
@@ -52,6 +53,7 @@ export function RequestListSection({
   loadMoreRef,
   loadingMore,
   nextPage,
+  onLinkTask,
   openEdit,
   requestMenuOpenId,
   requestMenuRef,
@@ -89,6 +91,7 @@ export function RequestListSection({
             onDelete={handleDelete}
             onDeleteComment={handleDeleteComment}
             onEdit={openEdit}
+            onLinkTask={onLinkTask}
             onOpenDetails={setDetailsRequest}
             onPreviewAttachment={setAttachmentPreview}
             onReject={handleReject}

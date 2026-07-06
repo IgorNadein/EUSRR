@@ -86,7 +86,7 @@ export function MobileLeftDrawer({ isOpen, onClose, children }: LeftNavDrawerPro
                 onClick={() => { onClose(); router.push("/settings"); }}
               >Настройки</button>
               <button
-                className="app-action-danger w-full rounded-lg px-3 py-2 text-left text-sm transition"
+                className="app-menu-danger-item w-full rounded-lg px-3 py-2 text-left text-sm transition"
                 onClick={() => { onClose(); logout(); }}
               >Выйти</button>
             </div>

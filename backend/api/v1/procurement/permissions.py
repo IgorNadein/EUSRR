@@ -199,9 +199,13 @@ class CanManageProcurementRequest(permissions.BasePermission):
 
         dept_id = obj.department_id
 
-        # Submit (отправка на согласование) - только владелец
+        # Submit дополнительно валидируется resolver-ом: только сотрудник
+        # отдела-исполнителя, не автор заявки.
         if action == "submit":
-            return obj.requestor == user
+            return ProcurementApprovalResolver.user_can_submit_for_approval(
+                user,
+                obj,
+            )
 
         # Cancel (отмена заявки) - только владелец
         if action == "cancel":

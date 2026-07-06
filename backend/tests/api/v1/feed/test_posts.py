@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
 from employees.models import DepartmentPermission
 from employees.models import (
@@ -10,6 +11,13 @@ from employees.models import (
 )
 from feed.models import Post
 from rest_framework import status
+from tasks.models import (
+    Task,
+    TaskBoard,
+    TaskColumn,
+    TaskLinkedObject,
+    TaskLinkedObjectKind,
+)
 
 from tests.test_config import API_POSTS_URL
 
@@ -334,6 +342,91 @@ def test_list_department_posts_filtered_by_department(
     payload = response.data["results"] if isinstance(response.data, dict) else response.data
     assert len(payload) == 1
     assert payload[0]["department_id"] == department_a.id
+
+
+def test_post_list_includes_visible_linked_tasks_only(
+    auth_client_factory,
+    make_user,
+):
+    viewer = make_user("post-linked-task-viewer@example.com")
+    hidden_member = make_user("post-linked-task-hidden@example.com")
+    post = Post.objects.create(
+        author=viewer,
+        type="company",
+        title="Новость со связью",
+        body="body",
+    )
+    visible_board = TaskBoard.objects.create(
+        name="Доступная доска новости",
+        created_by=viewer,
+    )
+    visible_column = TaskColumn.objects.create(
+        board=visible_board,
+        name="Новые",
+        position=1000,
+        color="#38bdf8",
+    )
+    visible_task = Task.objects.create(
+        board=visible_board,
+        column=visible_column,
+        title="Видимая задача новости",
+        created_by=viewer,
+        priority="high",
+    )
+    hidden_board = TaskBoard.objects.create(
+        name="Скрытая доска новости",
+        created_by=hidden_member,
+    )
+    hidden_board.members.add(hidden_member)
+    hidden_column = TaskColumn.objects.create(
+        board=hidden_board,
+        name="Скрытые",
+        position=1000,
+        color="#ef4444",
+    )
+    hidden_task = Task.objects.create(
+        board=hidden_board,
+        column=hidden_column,
+        title="Скрытая задача новости",
+        created_by=hidden_member,
+        priority="critical",
+    )
+    content_type = ContentType.objects.get_for_model(Post)
+    visible_link = TaskLinkedObject.objects.create(
+        task=visible_task,
+        kind=TaskLinkedObjectKind.POST,
+        content_type=content_type,
+        object_id=post.id,
+        created_by=viewer,
+    )
+    TaskLinkedObject.objects.create(
+        task=hidden_task,
+        kind=TaskLinkedObjectKind.POST,
+        content_type=content_type,
+        object_id=post.id,
+        created_by=hidden_member,
+    )
+
+    client = auth_client_factory(viewer)
+    response = client.get(API_POSTS_URL)
+
+    assert response.status_code == status.HTTP_200_OK
+    payload = response.data["results"] if isinstance(response.data, dict) else response.data
+    post_payload = next(item for item in payload if item["id"] == post.id)
+    assert post_payload["linked_tasks"] == [
+        {
+            "link_id": visible_link.id,
+            "id": visible_task.id,
+            "title": "Видимая задача новости",
+            "board_id": visible_board.id,
+            "board_name": "Доступная доска новости",
+            "column_id": visible_column.id,
+            "column_name": "Новые",
+            "column_color": "#38bdf8",
+            "priority": "high",
+            "priority_display": "Высокий",
+        }
+    ]
 
 
 def test_department_pin_scope_is_separate_from_global_feed(
