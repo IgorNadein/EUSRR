@@ -183,6 +183,7 @@ export interface TaskCard {
   linked_events_count?: number;
   linked_documents_count?: number;
   linked_requests_count?: number;
+  linked_procurement_requests_count?: number;
   linked_objects_count?: number;
   comments_count?: number;
   created_at: string;
@@ -265,12 +266,43 @@ export interface TaskLinkedRequest {
   created_at: string;
 }
 
+export interface TaskLinkedProcurementRequest {
+  id: number;
+  kind: "procurement_request";
+  procurement_request_id: number;
+  procurement_request: {
+    id: number;
+    title?: string;
+    description?: string;
+    status?: ProcurementStatus | string;
+    status_display?: string;
+    urgency?: UrgencyLevel | string;
+    urgency_display?: string;
+    fulfillment_status?: ProcurementFulfillmentStatus | string;
+    fulfillment_status_display?: string;
+    department_id?: number | null;
+    department_name?: string | null;
+    processing_department_id?: number | null;
+    processing_department_name?: string | null;
+    requestor?: User | null;
+    executor?: User | null;
+    total_cost?: string | number;
+    items_count?: number;
+    created_at?: string;
+    updated_at?: string;
+  } | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
 export interface TaskActivity {
   id: number;
   action: "created" | "updated" | "moved" | "linked" | "unlinked";
   action_display?: string;
   actor?: User | null;
-  object_kind?: "message" | "calendar_event" | "document" | "request" | "";
+  object_kind?: "message" | "calendar_event" | "document" | "request" | "procurement_request" | "";
   object_id?: number | null;
   metadata?: Record<string, unknown>;
   created_at: string;
@@ -925,6 +957,7 @@ export interface ProcurementRequest {
   can_current_user_submit_for_approval?: boolean;
   can_current_user_start_work?: boolean;
   can_current_user_process_items?: boolean;
+  linked_tasks?: MessageLinkedTask[];
   created_at: string;
   updated_at: string;
   submitted_at?: string | null;

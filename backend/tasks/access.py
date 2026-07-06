@@ -107,3 +107,40 @@ def user_can_access_employee_request(
     if request_obj.recipients.filter(id=user.id).exists():
         return True
     return request_obj.cc_users.filter(id=user.id).exists()
+
+
+def user_can_access_procurement_request(user, procurement_request) -> bool:
+    if not user or not user.is_authenticated or procurement_request is None:
+        return False
+
+    from procurement.constants import ProcurementStatus
+    from procurement.services import ProcurementApprovalResolver
+
+    if user.is_staff or user.is_superuser:
+        return True
+    if (
+        user.has_perm("procurement.view_procurementrequest")
+        or user.has_perm("procurement.change_procurementrequest")
+        or user.has_perm("procurement.delete_procurementrequest")
+        or user.has_perm("procurement.execute_procurement")
+    ):
+        return True
+    if procurement_request.requestor_id == user.id:
+        return True
+    if procurement_request.executor_id == user.id:
+        return True
+    if procurement_request.approvals.filter(approver=user).exists():
+        return True
+
+    participant_department_ids = (
+        ProcurementApprovalResolver.get_user_department_participant_ids(user)
+    )
+    if procurement_request.department_id in participant_department_ids:
+        return True
+    if procurement_request.processing_department_id in participant_department_ids:
+        return True
+
+    return (
+        procurement_request.status == ProcurementStatus.APPROVED
+        and procurement_request.processing_department_id is None
+    )

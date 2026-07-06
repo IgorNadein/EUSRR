@@ -42,6 +42,13 @@ from procurement.models import (
     ProcurementSettings,
 )
 from procurement.notifications.handlers import notify_new_request
+from tasks.models import (
+    Task,
+    TaskBoard,
+    TaskColumn,
+    TaskLinkedObject,
+    TaskLinkedObjectKind,
+)
 from notifications.models import Notification, UserChannelPreferences
 
 
@@ -277,6 +284,97 @@ class TestProcurementRequestList:
         assert len(results) == 1
         assert results[0]['id'] == procurement_request.id
         assert results[0]['title'] == "Закупка ноутбуков"
+
+    def test_list_includes_visible_linked_tasks_only(
+        self,
+        api_client,
+        user,
+        procurement_request,
+    ):
+        """Список заявок отдаёт бейджи только доступных пользователю задач."""
+        hidden_member = Employee.objects.create_user(
+            email="hidden-board-member@example.com",
+            password="testpass123",
+            phone_number="+79998880003",
+            first_name="Скрытый",
+            last_name="Участник",
+            is_active=True,
+            email_verified=True,
+            send_activation_email=False,
+        )
+        visible_board = TaskBoard.objects.create(
+            name="Видимая доска закупок",
+            created_by=user,
+        )
+        visible_column = TaskColumn.objects.create(
+            board=visible_board,
+            name="Новые",
+            position=1000,
+            color="#38bdf8",
+        )
+        visible_task = Task.objects.create(
+            board=visible_board,
+            column=visible_column,
+            title="Видимая задача закупки",
+            created_by=user,
+            priority="high",
+        )
+        hidden_board = TaskBoard.objects.create(
+            name="Скрытая доска закупок",
+            created_by=hidden_member,
+        )
+        hidden_board.members.add(hidden_member)
+        hidden_column = TaskColumn.objects.create(
+            board=hidden_board,
+            name="Новые",
+            position=1000,
+            color="#ef4444",
+        )
+        hidden_task = Task.objects.create(
+            board=hidden_board,
+            column=hidden_column,
+            title="Скрытая задача закупки",
+            created_by=hidden_member,
+            priority="critical",
+        )
+        request_ct = ContentType.objects.get_for_model(ProcurementRequest)
+        TaskLinkedObject.objects.create(
+            task=visible_task,
+            kind=TaskLinkedObjectKind.PROCUREMENT_REQUEST,
+            content_type=request_ct,
+            object_id=procurement_request.id,
+            created_by=user,
+        )
+        TaskLinkedObject.objects.create(
+            task=hidden_task,
+            kind=TaskLinkedObjectKind.PROCUREMENT_REQUEST,
+            content_type=request_ct,
+            object_id=procurement_request.id,
+            created_by=hidden_member,
+        )
+
+        api_client.force_authenticate(user=user)
+        response = api_client.get(
+            reverse('api:v1:procurement:procurementrequest-list')
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        result = response.data['results'][0]
+        assert result['id'] == procurement_request.id
+        assert result['linked_tasks'] == [
+            {
+                'link_id': visible_task.linked_objects.get().id,
+                'id': visible_task.id,
+                'title': 'Видимая задача закупки',
+                'board_id': visible_board.id,
+                'board_name': 'Видимая доска закупок',
+                'column_id': visible_column.id,
+                'column_name': 'Новые',
+                'column_color': '#38bdf8',
+                'priority': 'high',
+                'priority_display': 'Высокий',
+            }
+        ]
 
     def test_list_department_requests(
         self, api_client, department_head, procurement_request

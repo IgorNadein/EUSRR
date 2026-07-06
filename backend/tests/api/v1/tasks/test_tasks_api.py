@@ -12,6 +12,8 @@ from rest_framework.test import APIClient
 from communications.models import Chat, ChatMembership, Message
 from documents.models import Document
 from employees.models import Department, EmployeeDepartment, RoleAssignment
+from procurement.constants import ProcurementStatus, UrgencyLevel
+from procurement.models import ProcurementRequest
 from requests_app.models import Request as EmployeeRequest
 from schedule.models import Calendar, CalendarRelation, Event
 from tasks.models import Task, TaskBoard, TaskColumn
@@ -586,6 +588,97 @@ def test_task_linked_request_respects_request_access(api_client):
     assert (
         reverse_linked_response.data[0]["linked_requests_count"] == 1
     )
+
+
+def test_task_linked_procurement_request_respects_procurement_access(api_client):
+    owner = make_user("task-proc-owner@example.com", "+79994440030")
+    board_member = make_user("task-proc-member@example.com", "+79994440031")
+    department = Department.objects.create(name="Закупочный отдел тест")
+    board = TaskBoard.objects.create(
+        name="Доска с закупками",
+        created_by=owner,
+    )
+    board.members.add(board_member)
+    column = TaskColumn.objects.create(
+        board=board,
+        name="Новые",
+        position=1000,
+        color="#38bdf8",
+    )
+    task = Task.objects.create(
+        board=board,
+        column=column,
+        title="Проверить закупку",
+        created_by=owner,
+    )
+    procurement_request = ProcurementRequest.objects.create(
+        title="Закупка мониторов",
+        description="Закупка к задаче",
+        department=department,
+        requestor=owner,
+        status=ProcurementStatus.DRAFT,
+        urgency=UrgencyLevel.HIGH,
+    )
+
+    api_client.force_authenticate(user=board_member)
+    denied_response = api_client.post(
+        reverse(
+            "api:v1:tasks:task-linked-procurement-requests",
+            kwargs={"pk": task.id},
+        ),
+        {"procurement_request_id": procurement_request.id},
+        format="json",
+    )
+    assert denied_response.status_code == status.HTTP_403_FORBIDDEN
+
+    api_client.force_authenticate(user=owner)
+    link_response = api_client.post(
+        reverse(
+            "api:v1:tasks:task-linked-procurement-requests",
+            kwargs={"pk": task.id},
+        ),
+        {"procurement_request_id": procurement_request.id},
+        format="json",
+    )
+    assert link_response.status_code == status.HTTP_201_CREATED
+    assert link_response.data["procurement_request"]["title"] == "Закупка мониторов"
+    assert link_response.data["procurement_request"]["status"] == ProcurementStatus.DRAFT
+    assert link_response.data["procurement_request"]["urgency"] == UrgencyLevel.HIGH
+    assert link_response.data["can_open"] is True
+    assert link_response.data["object_url"] == (
+        f"/procurement?request={procurement_request.id}"
+    )
+
+    api_client.force_authenticate(user=board_member)
+    linked_response = api_client.get(
+        reverse(
+            "api:v1:tasks:task-linked-procurement-requests",
+            kwargs={"pk": task.id},
+        )
+    )
+    assert linked_response.status_code == status.HTTP_200_OK
+    assert linked_response.data[0]["procurement_request_id"] == procurement_request.id
+    assert linked_response.data[0]["procurement_request"]["title"] == (
+        "Закупка мониторов"
+    )
+    assert linked_response.data[0]["can_open"] is False
+    assert linked_response.data[0]["object_url"] is None
+
+    reverse_linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-procurement-request-tasks"),
+        {"procurement_request_id": procurement_request.id},
+    )
+    assert reverse_linked_response.status_code == status.HTTP_403_FORBIDDEN
+
+    api_client.force_authenticate(user=owner)
+    reverse_linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-procurement-request-tasks"),
+        {"procurement_request_id": procurement_request.id},
+    )
+    assert reverse_linked_response.status_code == status.HTTP_200_OK
+    assert reverse_linked_response.data[0]["id"] == task.id
+    assert reverse_linked_response.data[0]["title"] == "Проверить закупку"
+    assert reverse_linked_response.data[0]["linked_procurement_requests_count"] == 1
 
 
 def test_task_activity_records_core_actions(api_client, user):

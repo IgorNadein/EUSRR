@@ -178,6 +178,7 @@ class TaskLinkedObjectKind(models.TextChoices):
     CALENDAR_EVENT = "calendar_event", "Календарное событие"
     DOCUMENT = "document", "Документ"
     REQUEST = "request", "Заявление"
+    PROCUREMENT_REQUEST = "procurement_request", "Заявка на закупку"
 
 
 class TaskActivityAction(models.TextChoices):

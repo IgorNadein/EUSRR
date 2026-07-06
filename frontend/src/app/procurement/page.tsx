@@ -6,8 +6,10 @@ import { AppShell } from "../../components/AppShell";
 import { useUser } from "@/contexts/UserContext";
 import Link from "next/link";
 import { ProcurementRequestDetailContent } from "@/components/procurement/ProcurementRequestDetailContent";
+import { ProcurementTaskLinks } from "@/components/procurement/ProcurementTaskLinks";
 import ProcurementStatsPanel from "@/components/procurement/ProcurementStatsPanel";
 import ProcurementSuppliersPanel from "@/components/procurement/ProcurementSuppliersPanel";
+import TaskLinkPill from "@/components/tasks/TaskLinkPill";
 import type {
   ProcurementApprovalOptions,
   ProcurementApprovalRouteOption,
@@ -28,6 +30,7 @@ import {
   Eye,
   EyeOff,
   Filter,
+  Link2,
   Loader2,
   MessageSquare,
   Package,
@@ -503,6 +506,7 @@ export default function ProcurementPage() {
   const statusFilterRef = useRef<HTMLDivElement | null>(null);
   const [procurementMenuOpenId, setProcurementMenuOpenId] = useState<number | null>(null);
   const [statusFilterOpen, setStatusFilterOpen] = useState(false);
+  const [taskLinkRequest, setTaskLinkRequest] = useState<ProcurementRequest | null>(null);
   const [requestActionDialog, setRequestActionDialog] = useState<{ kind: RequestActionDialogKind; requestId: number } | null>(null);
   const [requestActionComment, setRequestActionComment] = useState("");
   const [submitApprovalRequestId, setSubmitApprovalRequestId] = useState<number | null>(null);
@@ -577,6 +581,13 @@ export default function ProcurementPage() {
     setManualApprovalPriorities([]);
     setManualApproverByPriority({});
   }, []);
+
+  const handleTaskLinked = useCallback(async (requestId: number) => {
+    await Promise.all([
+      loadPage1(),
+      ensureRequestDetail(requestId),
+    ]);
+  }, [ensureRequestDetail, loadPage1]);
 
   const openSubmitApprovalDialog = useCallback(async (requestId: number) => {
     const requestForSubmit = detailsCache[requestId] || requests.find((request) => request.id === requestId);
@@ -1133,7 +1144,6 @@ export default function ProcurementPage() {
                 (resolvedDetail.can_current_user_start_work ?? req.can_current_user_start_work) ||
                 (st === "in_progress" && isExecutor)
               );
-              const hasSecondaryActions = canEditThis || canDeleteThis || canCancelThis;
               const expanded = expandedIds.has(req.id);
               const comments = commentsMap[req.id] || [];
               const commentsOpen = Boolean(expandedComments[req.id]);
@@ -1143,8 +1153,8 @@ export default function ProcurementPage() {
               const rowExpanded = !isViewed && expanded;
               const rowCommentsOpen = !isViewed && commentsOpen;
               const showInlineRequestActions = !isViewed && hasInlineRequestActions;
-              const showSecondaryActions = !isViewed && hasSecondaryActions;
-              const requestMenuOpen = showSecondaryActions && procurementMenuOpenId === req.id;
+              const showRequestMenu = true;
+              const requestMenuOpen = showRequestMenu && procurementMenuOpenId === req.id;
               const requestorName = displayUserName(req.requestor, req.requestor_name, req.requestor_email);
               const executorName = req.executor || req.executor_name ? displayUserName(req.executor, req.executor_name || undefined) : "";
               const requestorLink = userLink(req.requestor);
@@ -1169,6 +1179,7 @@ export default function ProcurementPage() {
               const lastArrivalNoticeAt = resolvedDetail.last_arrival_notice_at ?? req.last_arrival_notice_at ?? null;
               const approvalsCount = resolvedDetail.approvals?.length ?? 0;
               const requestDateLabel = getRequestListDateLabel(resolvedDetail, st);
+              const linkedTasks = resolvedDetail.linked_tasks ?? req.linked_tasks ?? [];
 
               return (
                 <article key={req.id} className={`app-surface-muted rounded-xl transition hover:border-[var(--border-strong)] ${requestMenuOpen ? "relative z-20 overflow-visible" : "overflow-hidden"}`}>
@@ -1238,6 +1249,22 @@ export default function ProcurementPage() {
                               <span>{requestDateLabel}</span>
                               {getRequestAmount(req) && <span className="font-medium text-[var(--foreground)]">{money(getRequestAmount(req))}</span>}
                             </div>
+                            {linkedTasks.length > 0 ? (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {linkedTasks.slice(0, 3).map((task) => (
+                                  <TaskLinkPill
+                                    key={task.link_id || task.id}
+                                    task={task}
+                                    maxTitleClassName="max-w-40"
+                                  />
+                                ))}
+                                {linkedTasks.length > 3 ? (
+                                  <span className="app-badge inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium">
+                                    +{linkedTasks.length - 3}
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : null}
                           </div>
 
                           <div
@@ -1246,7 +1273,7 @@ export default function ProcurementPage() {
                           >
                             <div className="flex items-center gap-2">
                               <span className={`app-status-pill shrink-0 ${sMeta.cls}`}>{sMeta.label}</span>
-                              {showSecondaryActions ? (
+                              {showRequestMenu ? (
                                 <div className="relative">
                                   <button
                                     type="button"
@@ -1263,7 +1290,18 @@ export default function ProcurementPage() {
                                     />
                                   </button>
                                   {requestMenuOpen ? (
-                                    <div className="app-menu absolute right-0 top-full z-20 mt-2 w-44 rounded-xl py-1.5">
+                                    <div className="app-menu absolute right-0 top-full z-20 mt-2 w-52 rounded-xl py-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setProcurementMenuOpenId(null);
+                                          setTaskLinkRequest(resolvedDetail);
+                                        }}
+                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                                      >
+                                        <Link2 size={14} className="app-text-muted" />
+                                        Связать с задачей
+                                      </button>
                                       {canCancelThis ? (
                                         <button
                                           type="button"
@@ -1606,6 +1644,28 @@ export default function ProcurementPage() {
                     </span>
                   </div>
                 </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {(selectedRequest.linked_tasks || []).slice(0, 4).map((task) => (
+                    <TaskLinkPill
+                      key={task.link_id || task.id}
+                      task={task}
+                      maxTitleClassName="max-w-48"
+                    />
+                  ))}
+                  {(selectedRequest.linked_tasks || []).length > 4 ? (
+                    <span className="app-badge inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium">
+                      +{(selectedRequest.linked_tasks || []).length - 4}
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setTaskLinkRequest(selectedRequest)}
+                    className="app-action-secondary inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
+                  >
+                    <Link2 size={12} />
+                    Связать с задачей
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1680,6 +1740,16 @@ export default function ProcurementPage() {
           </div>
         )}
       </Modal>
+
+      {taskLinkRequest ? (
+        <ProcurementTaskLinks
+          request={taskLinkRequest}
+          variant="dialog"
+          open
+          onClose={() => setTaskLinkRequest(null)}
+          onLinked={() => void handleTaskLinked(taskLinkRequest.id)}
+        />
+      ) : null}
 
       <Modal
         isOpen={submitApprovalRequestId !== null}

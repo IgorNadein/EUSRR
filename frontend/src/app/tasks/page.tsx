@@ -32,6 +32,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  ShoppingCart,
   Tag,
   Trash2,
   UserRound,
@@ -44,7 +45,7 @@ import { CommentComposer, CommentDeleteButton } from "@/components/shared/Commen
 import { Modal } from "@/components/ui";
 import { useUser } from "@/contexts/UserContext";
 import { apiClient } from "@/lib/api";
-import { displayUserName, formatDate, formatDateTime } from "@/lib/shared";
+import { displayUserName, formatDate, formatDateTime, formatMoney } from "@/lib/shared";
 import { resolveMediaUrl } from "@/lib/url";
 import wsManager from "@/lib/websocketManager";
 import type {
@@ -58,6 +59,7 @@ import type {
   TaskLinkedDocument,
   TaskLinkedCalendarEvent,
   TaskLinkedMessage,
+  TaskLinkedProcurementRequest,
   TaskLinkedRequest,
   TaskPriority,
   User,
@@ -928,6 +930,124 @@ function LinkedRequestCard({
   );
 }
 
+function LinkedProcurementRequestCard({
+  link,
+  onUnlink,
+  disabled,
+}: {
+  link: TaskLinkedProcurementRequest;
+  onUnlink: (linkId: number) => void;
+  disabled?: boolean;
+}) {
+  const request = link.procurement_request;
+  const canOpen = Boolean(link.can_open && link.object_url);
+  const amountLabel = request?.total_cost ? formatMoney(request.total_cost) : "";
+  const mainContent = (
+    <>
+      <div className="mb-2 min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="app-pill inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium">
+            <ShoppingCart size={12} />
+            Закупка
+          </span>
+          {request?.status_display ? (
+            <span className="app-badge rounded-full px-2 py-1 text-[11px]">
+              {request.status_display}
+            </span>
+          ) : null}
+          {request?.urgency_display ? (
+            <span className="app-badge rounded-full px-2 py-1 text-[11px]">
+              {request.urgency_display} срочность
+            </span>
+          ) : null}
+          {canOpen ? (
+            <span className="app-badge rounded-full px-2 py-1 text-[11px]">
+              Открыть
+            </span>
+          ) : null}
+        </div>
+        <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">
+          {request?.title || "Заявка на закупку не найдена"}
+        </p>
+        {request?.created_at ? (
+          <p className="app-text-muted mt-0.5 text-xs">
+            {formatDate(request.created_at)}
+          </p>
+        ) : null}
+      </div>
+
+      {request?.description ? (
+        <p className="app-text-wrap whitespace-pre-wrap text-sm leading-5 text-[var(--foreground)]">
+          {request.description}
+        </p>
+      ) : null}
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {request?.department_name ? (
+          <span className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+            <span className="truncate">{request.department_name}</span>
+          </span>
+        ) : null}
+        {request?.processing_department_name ? (
+          <span className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+            <span className="truncate">{request.processing_department_name}</span>
+          </span>
+        ) : null}
+        {amountLabel ? (
+          <span className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+            {amountLabel}
+          </span>
+        ) : null}
+        {request?.items_count ? (
+          <span className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+            {request.items_count} поз.
+          </span>
+        ) : null}
+        {request?.requestor ? (
+          <span className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+            <UserRound size={11} />
+            <span className="truncate">{displayUserName(request.requestor)}</span>
+          </span>
+        ) : null}
+        <span className="app-text-muted text-[11px]">
+          Связал: {link.created_by ? displayUserName(link.created_by) : "не указано"}
+        </span>
+      </div>
+    </>
+  );
+
+  return (
+    <article className="app-surface-muted rounded-xl border border-[var(--border-subtle)] p-3">
+      <div className="relative">
+        {canOpen && link.object_url ? (
+          <Link
+            href={link.object_url}
+            className="block rounded-lg pr-10 transition hover:bg-[var(--surface-elevated)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
+            title="Открыть связанную закупку"
+          >
+            {mainContent}
+          </Link>
+        ) : (
+          <div className="pr-10">
+            {mainContent}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => onUnlink(link.id)}
+          disabled={disabled}
+          className="app-icon-button absolute right-0 top-0 z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
+          title="Убрать связь"
+          aria-label="Убрать связь с закупкой"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </article>
+  );
+}
+
 const activityFieldLabels: Record<string, string> = {
   title: "название",
   description: "описание",
@@ -1030,6 +1150,7 @@ export default function TasksPage() {
   const [linkedEvents, setLinkedEvents] = useState<TaskLinkedCalendarEvent[]>([]);
   const [linkedDocuments, setLinkedDocuments] = useState<TaskLinkedDocument[]>([]);
   const [linkedRequests, setLinkedRequests] = useState<TaskLinkedRequest[]>([]);
+  const [linkedProcurementRequests, setLinkedProcurementRequests] = useState<TaskLinkedProcurementRequest[]>([]);
   const [linkedObjectsLoading, setLinkedObjectsLoading] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [taskComments, setTaskComments] = useState<TaskComment[]>([]);
@@ -1074,16 +1195,18 @@ export default function TasksPage() {
   const loadTaskLinkedObjects = useCallback(async (taskId: number) => {
     setLinkedObjectsLoading(true);
     try {
-      const [messages, events, documents, requests] = await Promise.all([
+      const [messages, events, documents, requests, procurementRequests] = await Promise.all([
         apiClient.getTaskLinkedMessages(taskId),
         apiClient.getTaskLinkedEvents(taskId),
         apiClient.getTaskLinkedDocuments(taskId),
         apiClient.getTaskLinkedRequests(taskId),
+        apiClient.getTaskLinkedProcurementRequests(taskId),
       ]);
       setLinkedMessages(messages);
       setLinkedEvents(events);
       setLinkedDocuments(documents);
       setLinkedRequests(requests);
+      setLinkedProcurementRequests(procurementRequests);
     } catch (linksError) {
       setError(getTaskError(linksError, "Не удалось загрузить связанные объекты"));
     } finally {
@@ -1416,7 +1539,7 @@ export default function TasksPage() {
     () => activeColumns.find((column) => column.id === viewTask?.column) || null,
     [activeColumns, viewTask?.column],
   );
-  const linkedObjectsCount = linkedMessages.length + linkedEvents.length + linkedDocuments.length + linkedRequests.length;
+  const linkedObjectsCount = linkedMessages.length + linkedEvents.length + linkedDocuments.length + linkedRequests.length + linkedProcurementRequests.length;
   const linkedObjectsBadgeCount = viewTask?.linked_objects_count ?? linkedObjectsCount;
   const commentsBadgeCount = viewTask?.comments_count ?? taskComments.length;
 
@@ -1435,6 +1558,7 @@ export default function TasksPage() {
       setLinkedEvents([]);
       setLinkedDocuments([]);
       setLinkedRequests([]);
+      setLinkedProcurementRequests([]);
       setTaskActivities([]);
       setTaskComments([]);
       setCommentDraft("");
@@ -1481,6 +1605,7 @@ export default function TasksPage() {
     setLinkedEvents([]);
     setLinkedDocuments([]);
     setLinkedRequests([]);
+    setLinkedProcurementRequests([]);
     setTaskComments([]);
     setTaskActivities([]);
     setCommentDraft("");
@@ -1500,6 +1625,7 @@ export default function TasksPage() {
     setLinkedEvents([]);
     setLinkedDocuments([]);
     setLinkedRequests([]);
+    setLinkedProcurementRequests([]);
     setTaskComments([]);
     setTaskActivities([]);
     setLinkedObjectsOpen(false);
@@ -1893,6 +2019,23 @@ export default function TasksPage() {
       if (activityOpen) await loadTaskActivity(viewTask.id);
     } catch (unlinkError) {
       setError(getTaskError(unlinkError, "Не удалось убрать связь с заявлением"));
+    } finally {
+      setSaving(false);
+    }
+  }, [activityOpen, board, loadBoard, loadTaskActivity, loadTaskLinkedObjects, saving, viewTask]);
+
+  const unlinkProcurementRequestFromViewedTask = useCallback(async (linkId: number) => {
+    if (!board || !viewTask || saving) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      await apiClient.unlinkTaskProcurementRequest(viewTask.id, linkId);
+      await loadTaskLinkedObjects(viewTask.id);
+      await loadBoard(board.id);
+      if (activityOpen) await loadTaskActivity(viewTask.id);
+    } catch (unlinkError) {
+      setError(getTaskError(unlinkError, "Не удалось убрать связь с закупкой"));
     } finally {
       setSaving(false);
     }
@@ -2708,6 +2851,14 @@ export default function TasksPage() {
                           key={link.id}
                           link={link}
                           onUnlink={unlinkRequestFromViewedTask}
+                          disabled={saving}
+                        />
+                      ))}
+                      {linkedProcurementRequests.map((link) => (
+                        <LinkedProcurementRequestCard
+                          key={link.id}
+                          link={link}
+                          onUnlink={unlinkProcurementRequestFromViewedTask}
                           disabled={saving}
                         />
                       ))}

@@ -13,6 +13,7 @@ from communications import comments_helpers
 from communications.models import Message
 from communications.utils import user_can_access_chat
 from documents.models import Document
+from procurement.models import ProcurementRequest
 from requests_app.models import Request as EmployeeRequest
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
@@ -25,6 +26,7 @@ from tasks.access import (
     user_can_access_calendar_event,
     user_can_access_document,
     user_can_access_employee_request,
+    user_can_access_procurement_request,
 )
 from tasks.models import (
     Task,
@@ -50,12 +52,14 @@ from .serializers import (
     TaskLinkedCalendarEventSerializer,
     TaskLinkedDocumentSerializer,
     TaskLinkedMessageSerializer,
+    TaskLinkedProcurementRequestSerializer,
     TaskLinkedRequestSerializer,
     TaskSerializer,
     create_default_columns,
     get_calendar_event_content_type,
     get_document_content_type,
     get_message_content_type,
+    get_procurement_request_content_type,
     get_request_content_type,
 )
 
@@ -283,6 +287,15 @@ class TaskViewSet(viewsets.ModelViewSet):
                     "linked_objects",
                     filter=Q(
                         linked_objects__kind=TaskLinkedObjectKind.REQUEST,
+                    ),
+                    distinct=True,
+                ),
+                linked_procurement_requests_count=Count(
+                    "linked_objects",
+                    filter=Q(
+                        linked_objects__kind=(
+                            TaskLinkedObjectKind.PROCUREMENT_REQUEST
+                        ),
                     ),
                     distinct=True,
                 ),
@@ -656,6 +669,52 @@ class TaskViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=["get"], url_path="linked-procurement-request-tasks")
+    def linked_procurement_request_tasks(self, request):
+        procurement_request_id = request.query_params.get("procurement_request_id")
+        try:
+            procurement_request_id = int(procurement_request_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"procurement_request_id": ["Укажите ID заявки на закупку."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            procurement_request = (
+                ProcurementRequest.objects.select_related(
+                    "department",
+                    "processing_department",
+                    "requestor",
+                    "executor",
+                )
+                .prefetch_related("approvals", "items")
+                .get(id=procurement_request_id)
+            )
+        except ProcurementRequest.DoesNotExist:
+            return Response(
+                {"procurement_request_id": ["Заявка на закупку не найдена."]},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not user_can_access_procurement_request(request.user, procurement_request):
+            return Response(
+                {"detail": "Нет доступа к этой заявке на закупку."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        queryset = (
+            self.get_queryset()
+            .filter(
+                linked_objects__kind=TaskLinkedObjectKind.PROCUREMENT_REQUEST,
+                linked_objects__content_type=get_procurement_request_content_type(),
+                linked_objects__object_id=procurement_request.id,
+            )
+            .distinct()
+        )
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     def _message_links_queryset(self, task):
         return (
             TaskLinkedObject.objects.filter(
@@ -691,6 +750,16 @@ class TaskViewSet(viewsets.ModelViewSet):
             TaskLinkedObject.objects.filter(
                 task=task,
                 kind=TaskLinkedObjectKind.REQUEST,
+            )
+            .select_related("created_by", "content_type")
+            .order_by("-created_at", "-id")
+        )
+
+    def _procurement_request_links_queryset(self, task):
+        return (
+            TaskLinkedObject.objects.filter(
+                task=task,
+                kind=TaskLinkedObjectKind.PROCUREMENT_REQUEST,
             )
             .select_related("created_by", "content_type")
             .order_by("-created_at", "-id")
@@ -1034,6 +1103,118 @@ class TaskViewSet(viewsets.ModelViewSet):
             "unlinked",
             "request",
             request_id,
+            extra={"task_id": task.id, "link_id": int(link_id)},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get", "post"], url_path="linked-procurement-requests")
+    def linked_procurement_requests(self, request, pk=None):
+        task = self.get_object()
+        if request.method == "GET":
+            serializer = TaskLinkedProcurementRequestSerializer(
+                self._procurement_request_links_queryset(task),
+                many=True,
+                context={"request": request},
+            )
+            return Response(serializer.data)
+
+        procurement_request_id = request.data.get("procurement_request_id")
+        try:
+            procurement_request_id = int(procurement_request_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"procurement_request_id": ["Укажите ID заявки на закупку."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            procurement_request = (
+                ProcurementRequest.objects.select_related(
+                    "department",
+                    "processing_department",
+                    "requestor",
+                    "executor",
+                )
+                .prefetch_related("approvals", "items")
+                .get(id=procurement_request_id)
+            )
+        except ProcurementRequest.DoesNotExist:
+            return Response(
+                {"procurement_request_id": ["Заявка на закупку не найдена."]},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not user_can_access_procurement_request(request.user, procurement_request):
+            return Response(
+                {"detail": "Нет доступа к этой заявке на закупку."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        link, created = TaskLinkedObject.objects.get_or_create(
+            task=task,
+            kind=TaskLinkedObjectKind.PROCUREMENT_REQUEST,
+            content_type=get_procurement_request_content_type(),
+            object_id=procurement_request.id,
+            defaults={"created_by": request.user},
+        )
+        serializer = TaskLinkedProcurementRequestSerializer(
+            link,
+            context={"request": request},
+        )
+        if created:
+            create_task_activity(
+                task,
+                request.user,
+                TaskActivityAction.LINKED,
+                object_kind=TaskLinkedObjectKind.PROCUREMENT_REQUEST,
+                object_id=procurement_request.id,
+                metadata={
+                    "object_label": procurement_request.title,
+                    "object_type": "Заявка на закупку",
+                },
+            )
+        send_task_board_update(
+            task.board,
+            "linked",
+            "procurement_request",
+            procurement_request.id,
+            extra={"task_id": task.id, "link_id": link.id},
+        )
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"linked-procurement-requests/(?P<link_id>\d+)",
+    )
+    def unlink_procurement_request(self, request, pk=None, link_id=None):
+        task = self.get_object()
+        try:
+            link = self._procurement_request_links_queryset(task).get(id=link_id)
+        except TaskLinkedObject.DoesNotExist:
+            return Response(
+                {"detail": "Связь не найдена."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        procurement_request_id = link.object_id
+        link.delete()
+        create_task_activity(
+            task,
+            request.user,
+            TaskActivityAction.UNLINKED,
+            object_kind=TaskLinkedObjectKind.PROCUREMENT_REQUEST,
+            object_id=procurement_request_id,
+            metadata={"object_type": "Заявка на закупку"},
+        )
+        send_task_board_update(
+            task.board,
+            "unlinked",
+            "procurement_request",
+            procurement_request_id,
             extra={"task_id": task.id, "link_id": int(link_id)},
         )
         return Response(status=status.HTTP_204_NO_CONTENT)

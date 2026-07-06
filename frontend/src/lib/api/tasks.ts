@@ -9,6 +9,7 @@ import type {
     TaskLinkedCalendarEvent,
     TaskLinkedDocument,
     TaskLinkedMessage,
+    TaskLinkedProcurementRequest,
     TaskLinkedRequest,
 } from "@/types/api";
 import { buildQuery, type RequestFn } from "./utils";
@@ -80,6 +81,8 @@ export function createTasksApi(request: RequestFn) {
             request(`/api/v1/tasks/linked-document-tasks/?document_id=${documentId}`),
         getRequestLinkedTasks: (requestId: number): Promise<TaskCard[]> =>
             request(`/api/v1/tasks/linked-request-tasks/?request_id=${requestId}`),
+        getProcurementRequestLinkedTasks: (requestId: number): Promise<TaskCard[]> =>
+            request(`/api/v1/tasks/linked-procurement-request-tasks/?procurement_request_id=${requestId}`),
         getTaskLinkedMessages: (id: number): Promise<TaskLinkedMessage[]> =>
             request(`/api/v1/tasks/${id}/linked-messages/`),
         linkTaskMessage: (id: number, messageId: number): Promise<TaskLinkedMessage> =>
@@ -111,6 +114,17 @@ export function createTasksApi(request: RequestFn) {
             }),
         unlinkTaskRequest: (id: number, linkId: number): Promise<void> =>
             request(`/api/v1/tasks/${id}/linked-requests/${linkId}/`, {
+                method: "DELETE",
+            }),
+        getTaskLinkedProcurementRequests: (id: number): Promise<TaskLinkedProcurementRequest[]> =>
+            request(`/api/v1/tasks/${id}/linked-procurement-requests/`),
+        linkTaskProcurementRequest: (id: number, requestId: number): Promise<TaskLinkedProcurementRequest> =>
+            request(`/api/v1/tasks/${id}/linked-procurement-requests/`, {
+                method: "POST",
+                body: JSON.stringify({ procurement_request_id: requestId }),
+            }),
+        unlinkTaskProcurementRequest: (id: number, linkId: number): Promise<void> =>
+            request(`/api/v1/tasks/${id}/linked-procurement-requests/${linkId}/`, {
                 method: "DELETE",
             }),
         getTaskLinkedEvents: (id: number): Promise<TaskLinkedCalendarEvent[]> =>

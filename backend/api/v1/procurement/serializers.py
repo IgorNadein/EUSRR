@@ -168,6 +168,7 @@ class ProcurementRequestSummaryMixin(serializers.Serializer):
     total_ordered_quantity = serializers.SerializerMethodField()
     total_received_quantity = serializers.SerializerMethodField()
     quantity_unit_label = serializers.SerializerMethodField()
+    linked_tasks = serializers.SerializerMethodField()
 
     @extend_schema_field(serializers.BooleanField())
     def get_is_viewed(self, obj):
@@ -259,6 +260,60 @@ class ProcurementRequestSummaryMixin(serializers.Serializer):
         if len(units) == 1:
             return _unit_display_label(next(iter(units)))
         return "единиц"
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_linked_tasks(self, obj: ProcurementRequest) -> list[dict]:
+        prefetched = getattr(obj, "_linked_task_payloads", None)
+        if prefetched is not None:
+            return prefetched
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not getattr(user, "is_authenticated", False):
+            return []
+
+        try:
+            from django.contrib.contenttypes.models import ContentType
+            from tasks.access import task_board_access_q
+            from tasks.models import (
+                TaskBoard,
+                TaskLinkedObject,
+                TaskLinkedObjectKind,
+            )
+        except Exception:
+            return []
+
+        content_type = ContentType.objects.get_for_model(ProcurementRequest)
+        accessible_boards = TaskBoard.objects.filter(
+            is_archived=False,
+        ).filter(task_board_access_q(user))
+
+        links = (
+            TaskLinkedObject.objects.filter(
+                kind=TaskLinkedObjectKind.PROCUREMENT_REQUEST,
+                content_type=content_type,
+                object_id=obj.id,
+                task__board__in=accessible_boards,
+            )
+            .select_related("task", "task__board", "task__column")
+            .order_by("task__title", "task_id")
+        )
+
+        return [
+            {
+                "link_id": link.id,
+                "id": link.task_id,
+                "title": link.task.title,
+                "board_id": link.task.board_id,
+                "board_name": link.task.board.name,
+                "column_id": link.task.column_id,
+                "column_name": link.task.column.name,
+                "column_color": link.task.column.color,
+                "priority": link.task.priority,
+                "priority_display": link.task.get_priority_display(),
+            }
+            for link in links
+        ]
 
 
 class ProcurementItemSerializer(serializers.ModelSerializer):
@@ -637,6 +692,7 @@ class ProcurementRequestListSerializer(
             "total_received_quantity",
             "quantity_unit_label",
             "comments_count",
+            "linked_tasks",
             "can_current_user_approve",
             "can_current_user_submit_for_approval",
             "can_current_user_start_work",
@@ -675,6 +731,7 @@ class ProcurementRequestListSerializer(
             "total_received_quantity",
             "quantity_unit_label",
             "comments_count",
+            "linked_tasks",
             "can_current_user_approve",
             "can_current_user_submit_for_approval",
             "can_current_user_start_work",
@@ -887,6 +944,7 @@ class ProcurementRequestDetailSerializer(
             "required_approval_priorities",
             "is_editable",
             "comments_count",
+            "linked_tasks",
             "can_current_user_approve",
             "can_current_user_submit_for_approval",
             "can_current_user_start_work",
@@ -922,6 +980,7 @@ class ProcurementRequestDetailSerializer(
             "processing_department_name",
             "fulfillment_status_display",
             "comments_count",
+            "linked_tasks",
             "can_current_user_approve",
             "can_current_user_submit_for_approval",
             "can_current_user_start_work",

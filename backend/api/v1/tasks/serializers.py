@@ -13,6 +13,7 @@ from communications.serialization import serialize_message
 from communications.utils import user_can_access_chat
 from documents.models import Document
 from employees.models import Department
+from procurement.models import ProcurementRequest
 from requests_app.models import Request as EmployeeRequest
 from schedule.models import Event
 from api.v1.schedule.serializers import EventSerializer
@@ -20,6 +21,7 @@ from tasks.access import (
     user_can_access_calendar_event,
     user_can_access_document,
     user_can_access_employee_request,
+    user_can_access_procurement_request,
     user_can_access_task_board,
 )
 from tasks.models import (
@@ -142,6 +144,7 @@ class TaskSerializer(serializers.ModelSerializer):
     linked_events_count = serializers.SerializerMethodField()
     linked_documents_count = serializers.SerializerMethodField()
     linked_requests_count = serializers.SerializerMethodField()
+    linked_procurement_requests_count = serializers.SerializerMethodField()
     linked_objects_count = serializers.SerializerMethodField()
     comments_count = serializers.SerializerMethodField()
 
@@ -170,6 +173,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "linked_events_count",
             "linked_documents_count",
             "linked_requests_count",
+            "linked_procurement_requests_count",
             "linked_objects_count",
             "comments_count",
             "created_at",
@@ -187,6 +191,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "linked_events_count",
             "linked_documents_count",
             "linked_requests_count",
+            "linked_procurement_requests_count",
             "linked_objects_count",
             "comments_count",
             "created_at",
@@ -223,6 +228,14 @@ class TaskSerializer(serializers.ModelSerializer):
             return obj.linked_requests_count
         return obj.linked_objects.filter(
             kind=TaskLinkedObjectKind.REQUEST,
+        ).count()
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_linked_procurement_requests_count(self, obj):
+        if hasattr(obj, "linked_procurement_requests_count"):
+            return obj.linked_procurement_requests_count
+        return obj.linked_objects.filter(
+            kind=TaskLinkedObjectKind.PROCUREMENT_REQUEST,
         ).count()
 
     @extend_schema_field(serializers.IntegerField())
@@ -606,3 +619,92 @@ class TaskLinkedRequestSerializer(serializers.ModelSerializer):
 
 def get_request_content_type():
     return ContentType.objects.get_for_model(EmployeeRequest)
+
+
+class TaskLinkedProcurementRequestSerializer(serializers.ModelSerializer):
+    created_by = EmployeeBriefSerializer(read_only=True)
+    procurement_request = serializers.SerializerMethodField()
+    procurement_request_id = serializers.IntegerField(source="object_id", read_only=True)
+    can_open = serializers.SerializerMethodField()
+    object_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskLinkedObject
+        fields = [
+            "id",
+            "kind",
+            "procurement_request_id",
+            "procurement_request",
+            "can_open",
+            "object_url",
+            "created_by",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.JSONField(allow_null=True))
+    def get_procurement_request(self, obj):
+        if obj.kind != TaskLinkedObjectKind.PROCUREMENT_REQUEST:
+            return None
+
+        procurement_request = getattr(obj, "content_object", None)
+        if procurement_request is None:
+            return None
+
+        return {
+            "id": procurement_request.id,
+            "title": procurement_request.title,
+            "description": procurement_request.description,
+            "status": procurement_request.status,
+            "status_display": procurement_request.get_status_display(),
+            "urgency": procurement_request.urgency,
+            "urgency_display": procurement_request.get_urgency_display(),
+            "fulfillment_status": procurement_request.fulfillment_status,
+            "fulfillment_status_display": procurement_request.get_fulfillment_status_display(),
+            "department_id": procurement_request.department_id,
+            "department_name": (
+                procurement_request.department.name
+                if procurement_request.department_id
+                else None
+            ),
+            "processing_department_id": procurement_request.processing_department_id,
+            "processing_department_name": (
+                procurement_request.processing_department.name
+                if procurement_request.processing_department_id
+                else None
+            ),
+            "requestor": EmployeeBriefSerializer(procurement_request.requestor).data,
+            "executor": (
+                EmployeeBriefSerializer(procurement_request.executor).data
+                if procurement_request.executor_id
+                else None
+            ),
+            "total_cost": procurement_request.total_cost,
+            "items_count": procurement_request.items_count,
+            "created_at": procurement_request.created_at,
+            "updated_at": procurement_request.updated_at,
+        }
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_open(self, obj):
+        procurement_request = getattr(obj, "content_object", None)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if (
+            obj.kind != TaskLinkedObjectKind.PROCUREMENT_REQUEST
+            or procurement_request is None
+            or not user
+        ):
+            return False
+        return user_can_access_procurement_request(user, procurement_request)
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_object_url(self, obj):
+        procurement_request = getattr(obj, "content_object", None)
+        if procurement_request is None or not self.get_can_open(obj):
+            return None
+        return f"/procurement?request={procurement_request.id}"
+
+
+def get_procurement_request_content_type():
+    return ContentType.objects.get_for_model(ProcurementRequest)
