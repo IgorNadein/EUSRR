@@ -103,6 +103,12 @@ class Document(models.Model):
         ),
     )
 
+    is_regulation = models.BooleanField(
+        _("Регламент"),
+        default=False,
+        help_text=_("Если включено — документ отображается в разделе регламентов"),
+    )
+
     departments = models.ManyToManyField(
         "employees.Department",
         verbose_name=_("Отделы-получатели"),

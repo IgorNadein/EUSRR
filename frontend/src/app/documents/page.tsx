@@ -6,6 +6,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Document } from "@/types/api";
+import { toast } from "sonner";
 import {
   Search,
   FileText,
@@ -26,6 +27,8 @@ import {
   ChevronRight,
   Pencil,
   Trash2,
+  ScrollText,
+  Loader2,
 } from "lucide-react";
 import { DocumentAcknowledgementsReport } from "@/components/documents/DocumentAcknowledgementsReport";
 import { DocumentMetadataEditor } from "@/components/documents/DocumentMetadataEditor";
@@ -164,6 +167,7 @@ function formatFileSize(value?: number): string {
 
 type DocumentTagOption = { id: number; name: string };
 type PaginatedResponse<T> = { results: T[]; next?: string | null };
+type DocumentSection = "folders" | "regulations";
 const DOCUMENTS_PAGE_SIZE = 10000;
 
 function isPaginatedResponse<T>(value: unknown): value is PaginatedResponse<T> {
@@ -225,6 +229,7 @@ function DocumentsPageContent() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [folders, setFolders] = useState<FolderNode[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
+  const [activeSection, setActiveSection] = useState<DocumentSection>("regulations");
   const [search, setSearch] = useState("");
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [availableTags, setAvailableTags] = useState<DocumentTagOption[]>([]);
@@ -259,6 +264,7 @@ function DocumentsPageContent() {
   const [createFolderParentId, setCreateFolderParentId] = useState<number | null>(null);
   const [editingFolder, setEditingFolder] = useState<FolderNode | null>(null);
   const [downloadingFolderId, setDownloadingFolderId] = useState<number | null>(null);
+  const [acknowledgingDocumentId, setAcknowledgingDocumentId] = useState<number | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   
   // Bulk selection
@@ -280,8 +286,10 @@ function DocumentsPageContent() {
     try {
       setLoading(true);
       setError(null);
-      const params: { folder_id?: number } = {};
-      if (selectedFolderId !== null) {
+      const params: { folder_id?: number; is_regulation?: boolean } = {};
+      if (activeSection === "regulations") {
+        params.is_regulation = true;
+      } else if (selectedFolderId !== null) {
         params.folder_id = selectedFolderId;
       }
       console.log("📁 Загрузка документов с параметрами:", params);
@@ -300,7 +308,7 @@ function DocumentsPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [selectedFolderId]);
+  }, [activeSection, selectedFolderId]);
 
   const loadFolders = async () => {
     try {
@@ -443,10 +451,10 @@ function DocumentsPageContent() {
 
   // Find selected folder and build breadcrumb path
   const selectedFolder = useMemo(() => {
-    if (!selectedFolderId) return null;
+    if (activeSection !== "folders" || !selectedFolderId) return null;
 
     return folders.find((folder) => folder.id === selectedFolderId) || null;
-  }, [selectedFolderId, folders]);
+  }, [activeSection, selectedFolderId, folders]);
 
   const breadcrumbs = useMemo(() => {
     if (!selectedFolder) return [];
@@ -480,6 +488,8 @@ function DocumentsPageContent() {
   }, [folders]);
 
   const visibleFolders = useMemo(() => {
+    if (activeSection === "regulations") return [];
+
     const q = search.trim().toLowerCase();
 
     return folders
@@ -492,7 +502,7 @@ function DocumentsPageContent() {
         );
       })
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-  }, [folders, search, selectedFolderId]);
+  }, [activeSection, folders, search, selectedFolderId]);
 
   const createFolderParent = useMemo(() => {
     if (createFolderParentId === null) return null;
@@ -685,6 +695,30 @@ function DocumentsPageContent() {
     }
   };
 
+  const handleAcknowledgeDocument = async (documentItem: Document) => {
+    setAcknowledgingDocumentId(documentItem.id);
+    setDocumentMenuOpenId(null);
+
+    try {
+      await apiClient.acknowledgeDocument(documentItem.id);
+      setDocuments((currentDocuments) =>
+        currentDocuments.map((doc) =>
+          doc.id === documentItem.id ? { ...doc, is_acknowledged: true } : doc
+        )
+      );
+      if (selectedDocument?.id === documentItem.id) {
+        setSelectedDocument({ ...selectedDocument, is_acknowledged: true });
+      }
+      toast.success("Ознакомление подтверждено");
+      loadDocuments();
+    } catch (err) {
+      console.error("Ошибка подтверждения ознакомления:", err);
+      toast.error("Не удалось подтвердить ознакомление");
+    } finally {
+      setAcknowledgingDocumentId(null);
+    }
+  };
+
   const downloadFolderArchive = async (folder: FolderNode) => {
     setDownloadingFolderId(folder.id);
 
@@ -775,42 +809,59 @@ function DocumentsPageContent() {
 
           <div className="mb-4 flex flex-wrap gap-2">
             <div className="relative">
-              <button
-                onClick={() => setShowFolderDropdown(!showFolderDropdown)}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                  selectedFolderId
+              <div
+                className={`inline-flex items-center overflow-hidden rounded-full text-xs font-medium transition ${
+                  activeSection === "folders" && selectedFolderId
                     ? 'app-pill-active'
                     : 'app-pill'
                 }`}
               >
-                <FolderOpen size={14} />
-                <span className="max-w-[220px] truncate">
-                  {selectedFolder ? selectedFolder.name : 'Все папки'}
-                </span>
-                {selectedFolderId ? (
-                  <span
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveSection("folders");
+                    setShowFolderDropdown(false);
+                  }}
+                  className="inline-flex min-w-0 items-center gap-1.5 py-1.5 pl-3 pr-1.5 transition hover:opacity-85"
+                >
+                  <FolderOpen size={14} className="shrink-0" />
+                  <span className="max-w-[220px] truncate">
+                    {selectedFolder ? selectedFolder.name : 'Все папки'}
+                  </span>
+                </button>
+                {activeSection === "folders" && selectedFolderId ? (
+                  <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelectedFolderId(null);
+                      setActiveSection("folders");
                     }}
-                    className={`rounded-full p-0.5 ${selectedFolderId ? 'hover:bg-sky-500' : 'hover:bg-gray-300'}`}
+                    className="flex h-7 w-6 shrink-0 items-center justify-center transition hover:bg-sky-500"
                     title="Сбросить фильтр"
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setSelectedFolderId(null);
-                      }
-                    }}
+                    aria-label="Сбросить фильтр папки"
                   >
                     <X size={12} />
-                  </span>
-                ) : (
-                  <ChevronDown size={12} className="opacity-70" />
-                )}
-              </button>
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveSection("folders");
+                    setShowFolderDropdown((prev) => !prev);
+                  }}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center transition hover:bg-[var(--surface-tertiary)]"
+                  title="Показать папки"
+                  aria-label="Показать список папок"
+                  aria-expanded={showFolderDropdown}
+                  aria-haspopup="menu"
+                >
+                  <ChevronDown
+                    size={12}
+                    className={`opacity-70 transition-transform ${showFolderDropdown ? "rotate-180" : ""}`}
+                  />
+                </button>
+              </div>
               {showFolderDropdown && (
                 <div className="app-menu absolute left-0 top-full z-10 mt-2 w-72 rounded-lg">
                   <div className="app-divider border-b p-2">
@@ -831,6 +882,7 @@ function DocumentsPageContent() {
                       selectedFolderId={selectedFolderId}
                       onSelectFolder={(id) => {
                         console.log("🗂️ Выбрана папка:", id);
+                        setActiveSection("folders");
                         setSelectedFolderId(id);
                         setShowFolderDropdown(false);
                       }}
@@ -839,6 +891,20 @@ function DocumentsPageContent() {
                 </div>
               )}
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSection("regulations");
+                setSelectedFolderId(null);
+                setShowFolderDropdown(false);
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                activeSection === "regulations" ? "app-pill-active" : "app-pill"
+              }`}
+            >
+              <ScrollText size={14} />
+              Регламенты
+            </button>
           </div>
 
           {/* Active Filters Tags */}
@@ -1050,7 +1116,10 @@ function DocumentsPageContent() {
                     <FolderOpen size={14} className="app-text-muted" />
                     <nav className="flex items-center gap-1">
                       <button
-                        onClick={() => setSelectedFolderId(null)}
+                        onClick={() => {
+                          setActiveSection("folders");
+                          setSelectedFolderId(null);
+                        }}
                         className="app-link-accent"
                       >
                         Все документы
@@ -1068,7 +1137,10 @@ function DocumentsPageContent() {
                             ) : (
                               <button
                                 type="button"
-                                onClick={() => setSelectedFolderId(crumb.id)}
+                                onClick={() => {
+                                  setActiveSection("folders");
+                                  setSelectedFolderId(crumb.id);
+                                }}
                                 className="app-link-accent"
                               >
                                 {crumb.name}
@@ -1086,16 +1158,28 @@ function DocumentsPageContent() {
                   <div className="space-y-3">
                     {visibleFolders.length === 0 && filteredDocuments.length === 0 ? (
                       <div className="app-surface-muted rounded-xl p-8 text-center">
-                        <FileText size={22} className="app-text-muted mx-auto mb-2" />
-                        <p className="app-text-muted text-sm">Документы не найдены</p>
+                        {activeSection === "regulations" ? (
+                          <ScrollText size={22} className="app-text-muted mx-auto mb-2" />
+                        ) : (
+                          <FileText size={22} className="app-text-muted mx-auto mb-2" />
+                        )}
+                        <p className="app-text-muted text-sm">
+                          {activeSection === "regulations" ? "Регламенты не найдены" : "Документы не найдены"}
+                        </p>
                       </div>
                     ) : (
                       <>
                         <div className="flex items-center justify-between gap-2">
                           <p className="app-text-muted text-xs">
-                            {visibleFolders.length > 0 ? `${visibleFolders.length} пап.` : ""}
-                            {visibleFolders.length > 0 && filteredDocuments.length > 0 ? " · " : ""}
-                            {filteredDocuments.length > 0 ? `${filteredDocuments.length} док.` : ""}
+                            {activeSection === "regulations"
+                              ? `${filteredDocuments.length} регл.`
+                              : (
+                                  <>
+                                    {visibleFolders.length > 0 ? `${visibleFolders.length} пап.` : ""}
+                                    {visibleFolders.length > 0 && filteredDocuments.length > 0 ? " · " : ""}
+                                    {filteredDocuments.length > 0 ? `${filteredDocuments.length} док.` : ""}
+                                  </>
+                                )}
                           </p>
                         </div>
 
@@ -1228,6 +1312,7 @@ function DocumentsPageContent() {
                           const recipientsCount = doc.recipients?.length || 0;
                           const departmentsCount = doc.departments?.length || 0;
                           const hasPreview = Boolean(doc.file_url && canPreviewDocument(doc.file_name || doc.title));
+                          const isAcknowledging = acknowledgingDocumentId === doc.id;
 
                           // DEBUG: Проверка данных документа
                           if (!authorName || !createdDate) {
@@ -1266,6 +1351,12 @@ function DocumentsPageContent() {
                                     <div className="flex items-start justify-between gap-3">
                                       <div className="min-w-0 flex-1">
                                         <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                                          {doc.is_regulation && (
+                                            <span className="app-selected app-accent-text inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium">
+                                              <ScrollText size={12} className="shrink-0" />
+                                              Регламент
+                                            </span>
+                                          )}
                                           {doc.folder_path && (
                                             <span className="app-badge inline-flex max-w-full items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium">
                                               <FolderOpen size={12} className="shrink-0" />
@@ -1347,7 +1438,7 @@ function DocumentsPageContent() {
                                             )
                                           ) : (
                                             <span className="app-badge px-2.5 py-1 text-xs font-medium">
-                                              Документ
+                                              {doc.is_regulation ? "Регламент" : "Документ"}
                                             </span>
                                           )}
                                         </div>
@@ -1441,11 +1532,12 @@ function DocumentsPageContent() {
                                               {doc.acknowledgement_required && !doc.is_acknowledged && (
                                                 <button
                                                   type="button"
-                                                  onClick={() => openDocumentDetailsFromMenu(doc)}
+                                                  onClick={() => void handleAcknowledgeDocument(doc)}
+                                                  disabled={isAcknowledging}
                                                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
                                                 >
-                                                  <CheckCircle size={14} />
-                                                  Ознакомиться
+                                                  {isAcknowledging ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                                                  {isAcknowledging ? "Подтверждение..." : "Ознакомиться"}
                                                 </button>
                                               )}
 
@@ -1512,6 +1604,79 @@ function DocumentsPageContent() {
                                         {doc.description}
                                       </p>
                                     )}
+
+                                    <div className="mt-3 flex flex-wrap items-center justify-end gap-1.5">
+                                      {doc.acknowledgement_required && !doc.is_acknowledged ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleAcknowledgeDocument(doc)}
+                                          disabled={isAcknowledging}
+                                          title="Подтвердить ознакомление"
+                                          className="app-action-approve inline-flex h-9 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                          {isAcknowledging ? (
+                                            <Loader2 size={14} className="animate-spin" />
+                                          ) : (
+                                            <CheckCircle size={14} />
+                                          )}
+                                          <span>{isAcknowledging ? "Подтверждение..." : "Ознакомиться"}</span>
+                                        </button>
+                                      ) : null}
+
+                                      {hasPreview ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => openDocumentPreviewFromMenu(doc)}
+                                          title="Предпросмотр"
+                                          className="app-action-secondary inline-flex h-9 w-9 items-center justify-center rounded-lg"
+                                        >
+                                          <Eye size={15} />
+                                        </button>
+                                      ) : null}
+
+                                      {doc.file_url ? (
+                                        <a
+                                          href={doc.file_url}
+                                          download={doc.file_name || doc.title}
+                                          title="Скачать"
+                                          className="app-action-secondary inline-flex h-9 w-9 items-center justify-center rounded-lg"
+                                        >
+                                          <Download size={15} />
+                                        </a>
+                                      ) : null}
+
+                                      {doc.acknowledgement_required ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => openDocumentReportFromMenu(doc)}
+                                          title="Ведомость ознакомления"
+                                          className="app-action-secondary inline-flex h-9 w-9 items-center justify-center rounded-lg"
+                                        >
+                                          <Users size={15} />
+                                        </button>
+                                      ) : null}
+
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedDocument(doc)}
+                                        title="Детали"
+                                        className="app-action-secondary inline-flex h-9 w-9 items-center justify-center rounded-lg"
+                                      >
+                                        <FileText size={15} />
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setMetadataDocument(doc);
+                                          setShowMetadataEditor(true);
+                                        }}
+                                        title="Редактировать"
+                                        className="app-action-secondary inline-flex h-9 w-9 items-center justify-center rounded-lg"
+                                      >
+                                        <Pencil size={15} />
+                                      </button>
+                                    </div>
                                   </div>
                                 </div>
                               </div>

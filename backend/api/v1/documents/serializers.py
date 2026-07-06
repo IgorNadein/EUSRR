@@ -8,6 +8,7 @@ from typing import Any, Dict, Sequence, Iterable
 from drf_spectacular.utils import extend_schema_field
 from django.http import QueryDict
 from django.contrib.auth import get_user_model
+from django.utils.text import slugify
 from documents.models import Document, DocumentAcknowledgement
 from rest_framework import serializers
 
@@ -153,7 +154,7 @@ class DocumentTagSerializer(serializers.Serializer):
 
     id = serializers.IntegerField(read_only=True)
     name = serializers.CharField(max_length=100)
-    slug = serializers.SlugField(required=False, max_length=100)
+    slug = serializers.SlugField(required=False, allow_blank=True, max_length=100)
     color = serializers.CharField(required=False)
     description = serializers.CharField(required=False, allow_blank=True)
     document_count = serializers.SerializerMethodField()
@@ -166,6 +167,9 @@ class DocumentTagSerializer(serializers.Serializer):
         """Проверяет уникальность slug."""
         from documents.models import DocumentTag
 
+        if not value:
+            return value
+
         # Проверяем дубликаты (исключая текущий объект при обновлении)
         qs = DocumentTag.objects.filter(slug=value)
         if self.instance:
@@ -176,10 +180,44 @@ class DocumentTagSerializer(serializers.Serializer):
             )
         return value
 
+    def validate_name(self, value):
+        """Проверяет уникальность названия тега."""
+        from documents.models import DocumentTag
+
+        name = value.strip()
+        qs = DocumentTag.objects.filter(name__iexact=name)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                "Тег с таким названием уже существует."
+            )
+        return name
+
+    def _get_unique_slug(self, name: str) -> str:
+        """Генерирует уникальный slug из названия."""
+        from documents.models import DocumentTag
+
+        base_slug = slugify(name, allow_unicode=True) or "tag"
+        base_slug = base_slug[:90].strip("-") or "tag"
+        slug = base_slug
+        index = 2
+
+        while DocumentTag.objects.filter(slug=slug).exists():
+            suffix = f"-{index}"
+            slug = f"{base_slug[:100 - len(suffix)]}{suffix}"
+            index += 1
+
+        return slug
+
     def create(self, validated_data):
         """Создаёт новый тег документа."""
         from documents.models import DocumentTag
 
+        if not validated_data.get("slug"):
+            validated_data["slug"] = self._get_unique_slug(
+                validated_data["name"]
+            )
         return DocumentTag.objects.create(**validated_data)
 
     def update(self, instance, validated_data):
@@ -273,6 +311,7 @@ class DocumentReadSerializer(serializers.ModelSerializer):
             "modified_by",
             "modified_at",
             "sent_to_all",
+            "is_regulation",
             "acknowledgement_required",  # Требуется ли ознакомление
             "departments",
             "recipients",
@@ -320,6 +359,7 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
         max_length=255,
         help_text="Название документа. Если пусто, будет взято из имени файла.",
     )
+    extracted_text = serializers.CharField(required=False, allow_blank=True)
 
     recipient_ids = RecipientIDsField(
         write_only=True,
@@ -358,6 +398,7 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             "folder",
             "extracted_text",
             "sent_to_all",
+            "is_regulation",
             "acknowledgement_required",
             "department_ids",
             "recipient_ids",
@@ -379,9 +420,6 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
         """
         file_obj = attrs.get("file")
 
-        if self.instance is None and not file_obj:
-            raise serializers.ValidationError({"file": "Обязательное поле."})
-
         if not str(attrs.get("title") or "").strip():
             if file_obj:
                 file_name = (
@@ -392,6 +430,8 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
                     0
                 ].strip()
                 attrs["title"] = default_title or file_name or "Документ"
+            elif self.instance is None:
+                attrs["title"] = "Документ"
             elif self.instance is not None:
                 attrs.pop("title", None)
 
@@ -584,7 +624,16 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
         department_ids = validated_data.pop("department_ids", None)
         tag_ids = validated_data.pop("tag_ids", None)
 
-        for f in ("title", "description", "sent_to_all", "file", "folder"):
+        for f in (
+            "title",
+            "description",
+            "extracted_text",
+            "sent_to_all",
+            "is_regulation",
+            "acknowledgement_required",
+            "file",
+            "folder",
+        ):
             if f in validated_data:
                 setattr(instance, f, validated_data[f])
         instance.save()

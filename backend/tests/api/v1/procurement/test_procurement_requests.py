@@ -2,6 +2,7 @@
 Тесты API для заявок на закупку (ProcurementRequest).
 """
 
+from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -38,6 +39,7 @@ from procurement.models import (
     Budget,
     ProcurementItem,
     ProcurementRequest,
+    ProcurementSettings,
 )
 from procurement.notifications.handlers import notify_new_request
 from notifications.models import Notification, UserChannelPreferences
@@ -274,6 +276,112 @@ class TestProcurementRequestList:
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data['results']) == 1
 
+    def test_filter_by_requestor_executor_and_processing_department(
+        self, api_client, staff_user, user, department
+    ):
+        """Фильтрация по заказчику, исполнителю и отделу-исполнителю."""
+        processing_department = Department.objects.create(name="Снабжение")
+        other_requestor = Employee.objects.create_user(
+            email="other-requestor@example.com",
+            password="testpass123",
+            phone_number="+79998880001",
+            first_name="Другой",
+            last_name="Заказчик",
+            is_active=True,
+            email_verified=True,
+            send_activation_email=False,
+        )
+        executor = Employee.objects.create_user(
+            email="executor-filter@example.com",
+            password="testpass123",
+            phone_number="+79998880002",
+            first_name="Исполнитель",
+            last_name="Фильтр",
+            is_active=True,
+            email_verified=True,
+            send_activation_email=False,
+        )
+        matched = ProcurementRequest.objects.create(
+            title="Нужная заявка",
+            description="Описание",
+            department=department,
+            processing_department=processing_department,
+            requestor=user,
+            executor=executor,
+            status=ProcurementStatus.IN_PROGRESS,
+        )
+        other = ProcurementRequest.objects.create(
+            title="Другая заявка",
+            description="Описание",
+            department=department,
+            requestor=other_requestor,
+            status=ProcurementStatus.DRAFT,
+        )
+
+        api_client.force_authenticate(user=staff_user)
+        url = reverse('api:v1:procurement:procurementrequest-list')
+
+        for params in (
+            {'requestor': user.id},
+            {'executor': executor.id},
+            {'processing_department': processing_department.id},
+        ):
+            response = api_client.get(url, params)
+            assert response.status_code == status.HTTP_200_OK
+            ids = {item['id'] for item in response.data['results']}
+            assert matched.id in ids
+            assert other.id not in ids
+
+    def test_filter_by_created_date_range(
+        self, api_client, staff_user, user, department
+    ):
+        """Фильтрация по диапазону дат создания."""
+        now = timezone.now()
+        old_request = ProcurementRequest.objects.create(
+            title="Старая заявка",
+            description="Описание",
+            department=department,
+            requestor=user,
+            status=ProcurementStatus.DRAFT,
+        )
+        fresh_request = ProcurementRequest.objects.create(
+            title="Новая заявка",
+            description="Описание",
+            department=department,
+            requestor=user,
+            status=ProcurementStatus.DRAFT,
+        )
+        ProcurementRequest.objects.filter(pk=old_request.pk).update(
+            created_at=now - timedelta(days=10)
+        )
+        ProcurementRequest.objects.filter(pk=fresh_request.pk).update(
+            created_at=now
+        )
+
+        api_client.force_authenticate(user=staff_user)
+        url = reverse('api:v1:procurement:procurementrequest-list')
+
+        response = api_client.get(
+            url,
+            {'date_from': (now - timedelta(days=1)).date().isoformat()},
+        )
+        assert response.status_code == status.HTTP_200_OK
+        ids = {item['id'] for item in response.data['results']}
+        assert fresh_request.id in ids
+        assert old_request.id not in ids
+
+        response = api_client.get(
+            url,
+            {'date_to': (now - timedelta(days=5)).date().isoformat()},
+        )
+        assert response.status_code == status.HTTP_200_OK
+        ids = {item['id'] for item in response.data['results']}
+        assert old_request.id in ids
+        assert fresh_request.id not in ids
+
+        response = api_client.get(url, {'date_from': 'not-a-date'})
+        assert response.status_code == status.HTTP_200_OK
+
 
 # ==============================================================================
 # ТЕСТЫ СОЗДАНИЯ ЗАЯВОК
@@ -282,6 +390,41 @@ class TestProcurementRequestList:
 
 class TestProcurementRequestCreate:
     """Тесты создания заявок."""
+
+    def test_create_options_use_configured_processing_departments(
+        self, api_client, user
+    ):
+        """Опции формы берутся из настроек закупок."""
+        supply_department = Department.objects.create(name="Снабжение")
+        warehouse_department = Department.objects.create(name="Склад")
+        hidden_department = Department.objects.create(name="Бухгалтерия")
+        settings = ProcurementSettings.get_solo()
+        settings.default_processing_department = supply_department
+        settings.save()
+        settings.available_processing_departments.set(
+            [supply_department, warehouse_department]
+        )
+
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-create-options'
+        )
+
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['default_processing_department'] == (
+            supply_department.id
+        )
+        department_ids = {
+            department['id']
+            for department in response.data['processing_departments']
+        }
+        assert department_ids == {
+            supply_department.id,
+            warehouse_department.id,
+        }
+        assert hidden_department.id not in department_ids
 
     def test_create_request_with_items(
         self, api_client, user, department
@@ -392,6 +535,42 @@ class TestProcurementRequestCreate:
         assert procurement_request.description == ""
         assert procurement_request.processing_department == supply_department
         assert procurement_request.approvals.count() == 0
+
+    def test_create_rejects_processing_department_outside_settings(
+        self, api_client, user, department
+    ):
+        """Нельзя выбрать отдел-исполнитель вне настроек закупок."""
+        allowed_department = Department.objects.create(name="Снабжение")
+        blocked_department = Department.objects.create(name="Маркетинг")
+        settings = ProcurementSettings.get_solo()
+        settings.default_processing_department = allowed_department
+        settings.save()
+        settings.available_processing_departments.set([allowed_department])
+
+        api_client.force_authenticate(user=user)
+        url = reverse('api:v1:procurement:procurementrequest-list')
+
+        response = api_client.post(
+            url,
+            {
+                'title': 'Расходники для офиса',
+                'department': department.id,
+                'processing_department': blocked_department.id,
+                'urgency': UrgencyLevel.MEDIUM,
+                'items': [
+                    {
+                        'name': 'Бумага',
+                        'quantity': 10,
+                        'unit': 'пачка',
+                        'estimated_unit_price': '450.00',
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'processing_department' in response.data
 
 
 # ==============================================================================
@@ -3508,6 +3687,77 @@ class TestProcurementRequestWorkflow:
         assert response.status_code == status.HTTP_200_OK
         approval = procurement_request.approvals.get(priority=HEAD_PRIORITY)
         assert approval.approver_id == role_approver.id
+
+    def test_approval_options_include_manual_routes_outside_amount(
+        self, api_client, user, procurement_request
+    ):
+        """Предпросмотр показывает автоэтапы и ручные этапы вне суммы."""
+        ProcurementItem.objects.create(
+            request=procurement_request,
+            name="Недорогая позиция",
+            quantity=1,
+            unit="шт",
+            estimated_unit_price=Decimal("100.00"),
+        )
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-approval-options',
+            kwargs={'pk': procurement_request.id},
+        )
+
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert [
+            item["priority"] for item in response.data["auto_steps"]
+        ] == [HEAD_PRIORITY]
+        available_by_priority = {
+            item["priority"]: item
+            for item in response.data["available_steps"]
+        }
+        assert available_by_priority[HEAD_PRIORITY]["is_amount_applicable"] is True
+        assert available_by_priority[FINANCE_PRIORITY]["is_amount_applicable"] is False
+        assert available_by_priority[DIRECTOR_PRIORITY]["is_amount_applicable"] is False
+        assert available_by_priority[DIRECTOR_PRIORITY]["is_available"] is True
+
+    def test_submit_with_manual_approver_bypasses_amount_auto_routes(
+        self, api_client, user, procurement_request
+    ):
+        """Ручной список используется вместо автоподбора по сумме."""
+        ProcurementItem.objects.create(
+            request=procurement_request,
+            name="Недорогая позиция",
+            quantity=1,
+            unit="шт",
+            estimated_unit_price=Decimal("100.00"),
+        )
+        director = Employee.objects.get(email="director@example.com")
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': procurement_request.id},
+        )
+
+        response = api_client.post(
+            url,
+            {
+                "approval_steps": [
+                    {
+                        "priority": DIRECTOR_PRIORITY,
+                        "approver": director.id,
+                    }
+                ]
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        procurement_request.refresh_from_db()
+        assert procurement_request.status == ProcurementStatus.PENDING
+        approvals = list(procurement_request.approvals.order_by("priority"))
+        assert len(approvals) == 1
+        assert approvals[0].priority == DIRECTOR_PRIORITY
+        assert approvals[0].approver_id == director.id
 
     def test_approve_notifies_only_next_stage_approver(
         self, api_client, department_head, procurement_request, procurement_item, monkeypatch

@@ -8,7 +8,15 @@ import Link from "next/link";
 import { ProcurementRequestDetailContent } from "@/components/procurement/ProcurementRequestDetailContent";
 import ProcurementStatsPanel from "@/components/procurement/ProcurementStatsPanel";
 import ProcurementSuppliersPanel from "@/components/procurement/ProcurementSuppliersPanel";
-import type { ProcurementFulfillmentStatus, ProcurementRequest, ProcurementStatus, UrgencyLevel } from "@/types/api";
+import type {
+  ProcurementApprovalOptions,
+  ProcurementApprovalRouteOption,
+  ProcurementApprovalStepSelection,
+  ProcurementFulfillmentStatus,
+  ProcurementRequest,
+  ProcurementStatus,
+  UrgencyLevel,
+} from "@/types/api";
 import {
   AlertTriangle,
   ArrowUpDown,
@@ -37,6 +45,7 @@ import {
 } from "lucide-react";
 import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
 import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
+import { apiClient } from "@/lib/api";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/shared";
 import { useProcurementPage } from "@/hooks/useProcurementPage";
 import { Modal } from "@/components/ui";
@@ -74,6 +83,14 @@ const fulfillmentStatusClasses: Record<ProcurementFulfillmentStatus, string> = {
 const getFulfillmentStatusClass = (status?: string | null) => (
   fulfillmentStatusClasses[String(status || "").toLowerCase() as ProcurementFulfillmentStatus] ?? "app-badge"
 );
+const fulfillmentStatusOptions: { value: ProcurementFulfillmentStatus; label: string }[] = [
+  { value: "pending", label: "Не обработано" },
+  { value: "partially_ordered", label: "Частично заказано" },
+  { value: "ordered", label: "Заказано" },
+  { value: "partially_received", label: "Частично получено" },
+  { value: "completed", label: "Получено" },
+  { value: "issues", label: "Есть проблемы" },
+];
 
 const getOrderedProgressClass = (ordered: number, total: number) => (
   total > 0 && ordered >= total ? "app-feedback-success" : total > 0 && ordered > 0 ? "app-selected" : "app-badge"
@@ -121,6 +138,14 @@ const fmt = formatDate;
 const fmtDateTime = formatDateTime;
 const money = formatMoney;
 type RequestActionDialogKind = "approve" | "reject" | "cancel" | "delete";
+type SubmitApprovalMode = "auto" | "manual";
+
+const getApprovalRouteAmountLabel = (option: ProcurementApprovalRouteOption) => {
+  if (option.min_amount === null || option.min_amount === undefined || option.min_amount === "") {
+    return "для любой суммы";
+  }
+  return `от ${money(option.min_amount)}`;
+};
 
 const getRequestListDateLabel = (request: ProcurementRequest, status: string) => {
   const createdAt = fmt(request.created_at);
@@ -339,7 +364,8 @@ export default function ProcurementPage() {
     closeModal,
     departmentFilter,
     departments,
-    defaultProcessingDepartmentId,
+    employees,
+    processingDepartments,
     detailsCache,
     displayUserName,
     ensureRequestDetail,
@@ -387,15 +413,27 @@ export default function ProcurementPage() {
     openEdit,
     ordering,
     periodFilter,
+    processingDepartmentFilter,
+    requestorFilter,
+    executorFilter,
+    fulfillmentFilter,
+    dateFromFilter,
+    dateToFilter,
     removeItemRow,
     resolveUserId,
     requests,
     searchQuery,
     setDepartmentFilter,
+    setProcessingDepartmentFilter,
+    setRequestorFilter,
+    setExecutorFilter,
+    setFulfillmentFilter,
     setFiltersOpen,
     setForm,
     setOrdering,
     setPeriodFilter,
+    setDateFromFilter,
+    setDateToFilter,
     setScope,
     setSearchQuery,
     setStatusFilter,
@@ -416,6 +454,9 @@ export default function ProcurementPage() {
     markRequestNotificationsRead,
     toggleItemComments,
   } = useProcurementPage(user);
+  const processingDepartmentOptions = processingDepartments.length > 0
+    ? processingDepartments
+    : departments;
 
   const toggleStatusFilter = useCallback((status: ProcurementStatus) => {
     setStatusFilter((current) => (
@@ -434,6 +475,13 @@ export default function ProcurementPage() {
   const [statusFilterOpen, setStatusFilterOpen] = useState(false);
   const [requestActionDialog, setRequestActionDialog] = useState<{ kind: RequestActionDialogKind; requestId: number } | null>(null);
   const [requestActionComment, setRequestActionComment] = useState("");
+  const [submitApprovalRequestId, setSubmitApprovalRequestId] = useState<number | null>(null);
+  const [submitApprovalOptions, setSubmitApprovalOptions] = useState<ProcurementApprovalOptions | null>(null);
+  const [submitApprovalLoading, setSubmitApprovalLoading] = useState(false);
+  const [submitApprovalError, setSubmitApprovalError] = useState<string | null>(null);
+  const [submitApprovalMode, setSubmitApprovalMode] = useState<SubmitApprovalMode>("auto");
+  const [manualApprovalPriorities, setManualApprovalPriorities] = useState<number[]>([]);
+  const [manualApproverByPriority, setManualApproverByPriority] = useState<Record<number, number | null>>({});
 
   const statusFilterSummary = useMemo(() => {
     if (statusFilter.length === 0) return "Все статусы";
@@ -469,6 +517,11 @@ export default function ProcurementPage() {
     return detailsCache[requestActionDialog.requestId] || requests.find((request) => request.id === requestActionDialog.requestId) || null;
   }, [detailsCache, requestActionDialog, requests]);
 
+  const selectedSubmitRequest = useMemo(() => {
+    if (!submitApprovalRequestId) return null;
+    return detailsCache[submitApprovalRequestId] || requests.find((request) => request.id === submitApprovalRequestId) || null;
+  }, [detailsCache, requests, submitApprovalRequestId]);
+
   const closeDetailModal = useCallback(() => {
     setDetailModalId(null);
     setDetailModalError(null);
@@ -484,6 +537,102 @@ export default function ProcurementPage() {
     setRequestActionDialog(null);
     setRequestActionComment("");
   }, []);
+
+  const closeSubmitApprovalDialog = useCallback(() => {
+    setSubmitApprovalRequestId(null);
+    setSubmitApprovalOptions(null);
+    setSubmitApprovalError(null);
+    setSubmitApprovalLoading(false);
+    setSubmitApprovalMode("auto");
+    setManualApprovalPriorities([]);
+    setManualApproverByPriority({});
+  }, []);
+
+  const openSubmitApprovalDialog = useCallback(async (requestId: number) => {
+    setSubmitApprovalRequestId(requestId);
+    setSubmitApprovalOptions(null);
+    setSubmitApprovalError(null);
+    setSubmitApprovalMode("auto");
+    setManualApprovalPriorities([]);
+    setManualApproverByPriority({});
+    setSubmitApprovalLoading(true);
+
+    try {
+      const options = await apiClient.getProcurementApprovalOptions(requestId);
+      const approverMap = Object.fromEntries(
+        options.available_steps.map((option) => [
+          option.priority,
+          option.approver?.id ?? null,
+        ]),
+      ) as Record<number, number | null>;
+      setSubmitApprovalOptions(options);
+      setManualApprovalPriorities(options.auto_steps.map((option) => option.priority));
+      setManualApproverByPriority(approverMap);
+    } catch (approvalError) {
+      setSubmitApprovalError(getReadableError(approvalError, "Не удалось загрузить согласующих"));
+    } finally {
+      setSubmitApprovalLoading(false);
+    }
+  }, []);
+
+  const toggleManualApprovalPriority = useCallback((priority: number) => {
+    setSubmitApprovalMode("manual");
+    setManualApprovalPriorities((current) => (
+      current.includes(priority)
+        ? current.filter((item) => item !== priority)
+        : [...current, priority].sort((left, right) => left - right)
+    ));
+  }, []);
+
+  const submitApprovalDialog = useCallback(async () => {
+    if (!submitApprovalRequestId) return;
+
+    let approvalSteps: ProcurementApprovalStepSelection[] | undefined;
+    if (submitApprovalMode === "manual") {
+      if (manualApprovalPriorities.length === 0) {
+        setSubmitApprovalError("Выберите хотя бы одного согласующего.");
+        return;
+      }
+      if (!submitApprovalOptions) {
+        setSubmitApprovalError("Не удалось определить список этапов согласования.");
+        return;
+      }
+
+      const optionsByPriority = new Map(
+        submitApprovalOptions.available_steps.map((option) => [option.priority, option]),
+      );
+      approvalSteps = manualApprovalPriorities.map((priority) => {
+        const option = optionsByPriority.get(priority);
+        const approver = manualApproverByPriority[priority];
+        return {
+          priority,
+          approver: approver || 0,
+          step_name: option?.step_name,
+        };
+      });
+
+      const missingStep = approvalSteps.find((step) => !step.approver);
+      if (missingStep) {
+        const option = optionsByPriority.get(missingStep.priority);
+        setSubmitApprovalError(`Выберите согласующего для этапа «${option?.step_name || `Этап ${missingStep.priority}`}».`);
+        return;
+      }
+    }
+
+    setSubmitApprovalError(null);
+    const success = await handleSubmit(submitApprovalRequestId, approvalSteps);
+    if (success) {
+      closeSubmitApprovalDialog();
+    }
+  }, [
+    closeSubmitApprovalDialog,
+    handleSubmit,
+    manualApprovalPriorities,
+    manualApproverByPriority,
+    submitApprovalMode,
+    submitApprovalOptions,
+    submitApprovalRequestId,
+  ]);
 
   const submitRequestActionDialog = useCallback(async () => {
     if (!requestActionDialog) return;
@@ -788,19 +937,123 @@ export default function ProcurementPage() {
                   </div>
                 ) : null}
               </div>
-              <select value={urgencyFilter} onChange={(e) => setUrgencyFilter(e.target.value)} className="app-select rounded-lg px-3 py-2 text-sm">
-                <option value="">Все уровни срочности</option>
-                {Object.entries(urgencyMeta).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
-              <select value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)} className="app-select rounded-lg px-3 py-2 text-sm">
-                <option value="">Все отделы</option>
-                {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-              <select value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value)} className="app-select rounded-lg px-3 py-2 text-sm">
-                {periodOptions.map((option) => <option key={option.value || "all"} value={option.value}>{option.label}</option>)}
-              </select>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <label className="min-w-0">
+                  <span className="app-text-muted mb-1 block text-xs font-medium">Срочность</span>
+                  <select value={urgencyFilter} onChange={(e) => setUrgencyFilter(e.target.value)} className="app-select w-full rounded-lg px-3 py-2 text-sm">
+                    <option value="">Все уровни срочности</option>
+                    {Object.entries(urgencyMeta).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                  </select>
+                </label>
+
+                <label className="min-w-0">
+                  <span className="app-text-muted mb-1 block text-xs font-medium">Статус исполнения</span>
+                  <select value={fulfillmentFilter} onChange={(e) => setFulfillmentFilter(e.target.value)} className="app-select w-full rounded-lg px-3 py-2 text-sm">
+                    <option value="">Все статусы исполнения</option>
+                    {fulfillmentStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+
+                <label className="min-w-0">
+                  <span className="app-text-muted mb-1 block text-xs font-medium">Отдел-заказчик</span>
+                  <select value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)} className="app-select w-full rounded-lg px-3 py-2 text-sm">
+                    <option value="">Все отделы-заказчики</option>
+                    {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </label>
+
+                <label className="min-w-0">
+                  <span className="app-text-muted mb-1 block text-xs font-medium">Отдел-исполнитель</span>
+                  <select value={processingDepartmentFilter} onChange={(e) => setProcessingDepartmentFilter(e.target.value)} className="app-select w-full rounded-lg px-3 py-2 text-sm">
+                    <option value="">Все отделы-исполнители</option>
+                    {processingDepartmentOptions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </label>
+
+                <label className="min-w-0">
+                  <span className="app-text-muted mb-1 block text-xs font-medium">Заказчик</span>
+                  <select value={requestorFilter} onChange={(e) => setRequestorFilter(e.target.value)} className="app-select w-full rounded-lg px-3 py-2 text-sm">
+                    <option value="">Все заказчики</option>
+                    {employees.map((employee) => (
+                      <option key={employee.id} value={employee.id}>
+                        {displayUserName(employee)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="min-w-0">
+                  <span className="app-text-muted mb-1 block text-xs font-medium">Исполнитель</span>
+                  <select value={executorFilter} onChange={(e) => setExecutorFilter(e.target.value)} className="app-select w-full rounded-lg px-3 py-2 text-sm">
+                    <option value="">Все исполнители</option>
+                    {employees.map((employee) => (
+                      <option key={employee.id} value={employee.id}>
+                        {displayUserName(employee)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="min-w-0">
+                  <span className="app-text-muted mb-1 block text-xs font-medium">Быстрый период</span>
+                  <select
+                    value={periodFilter}
+                    onChange={(e) => {
+                      setPeriodFilter(e.target.value);
+                      if (e.target.value) {
+                        setDateFromFilter("");
+                        setDateToFilter("");
+                      }
+                    }}
+                    className="app-select w-full rounded-lg px-3 py-2 text-sm"
+                  >
+                    {periodOptions.map((option) => <option key={option.value || "all"} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+
+                <label className="min-w-0">
+                  <span className="app-text-muted mb-1 block text-xs font-medium">Создано с</span>
+                  <input
+                    type="date"
+                    value={dateFromFilter}
+                    onChange={(e) => {
+                      setDateFromFilter(e.target.value);
+                      if (e.target.value) setPeriodFilter("");
+                    }}
+                    className="app-input w-full rounded-lg px-3 py-2 text-sm"
+                  />
+                </label>
+
+                <label className="min-w-0">
+                  <span className="app-text-muted mb-1 block text-xs font-medium">Создано по</span>
+                  <input
+                    type="date"
+                    value={dateToFilter}
+                    onChange={(e) => {
+                      setDateToFilter(e.target.value);
+                      if (e.target.value) setPeriodFilter("");
+                    }}
+                    className="app-input w-full rounded-lg px-3 py-2 text-sm"
+                  />
+                </label>
+              </div>
               {activeFilterCount > 0 && (
-                <button type="button" onClick={() => { setStatusFilter([]); setUrgencyFilter(""); setDepartmentFilter(""); setPeriodFilter(""); }} className="app-action-secondary rounded-lg px-3 py-2 text-sm font-medium transition">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatusFilter([]);
+                    setUrgencyFilter("");
+                    setFulfillmentFilter("");
+                    setDepartmentFilter("");
+                    setProcessingDepartmentFilter("");
+                    setRequestorFilter("");
+                    setExecutorFilter("");
+                    setPeriodFilter("");
+                    setDateFromFilter("");
+                    setDateToFilter("");
+                  }}
+                  className="app-action-secondary rounded-lg px-3 py-2 text-sm font-medium transition"
+                >
                   Очистить фильтры
                 </button>
               )}
@@ -1101,7 +1354,7 @@ export default function ProcurementPage() {
                               isExecutor={isExecutor}
                               isFinal={isFinal}
                               showSecondaryActions={false}
-                              onSubmit={handleSubmit}
+                              onSubmit={(id) => void openSubmitApprovalDialog(id)}
                               onEdit={openEdit}
                               onDelete={handleDelete}
                               onApprove={(id) => openRequestActionDialog("approve", id)}
@@ -1189,7 +1442,7 @@ export default function ProcurementPage() {
                               isFinal={isFinal}
                               showSecondaryActions={false}
                               showLabels
-                              onSubmit={handleSubmit}
+                              onSubmit={(id) => void openSubmitApprovalDialog(id)}
                               onEdit={openEdit}
                               onDelete={handleDelete}
                               onApprove={handleApprove}
@@ -1238,7 +1491,7 @@ export default function ProcurementPage() {
               isExecutor={Boolean(resolveUserId(selectedRequest.executor) && user?.id && resolveUserId(selectedRequest.executor) === user.id)}
               isFinal={isFinal}
               showLabels
-              onSubmit={handleSubmit}
+              onSubmit={(id) => void openSubmitApprovalDialog(id)}
               onEdit={openEdit}
               onDelete={(id) => openRequestActionDialog("delete", id)}
               onApprove={(id) => openRequestActionDialog("approve", id)}
@@ -1376,6 +1629,180 @@ export default function ProcurementPage() {
             <p className="app-text-muted text-sm">Заявка не найдена.</p>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={submitApprovalRequestId !== null}
+        onClose={closeSubmitApprovalDialog}
+        title="Отправить на согласование"
+        size="lg"
+        closeOnClickOutside
+      >
+        <div className="space-y-4 pb-1">
+          {selectedSubmitRequest ? (
+            <div className="app-surface-muted rounded-xl px-4 py-3">
+              <p className="text-sm font-semibold text-[var(--foreground)]">{selectedSubmitRequest.title || "Без названия"}</p>
+              <p className="app-text-muted mt-1 text-xs">
+                {getDeptName(selectedSubmitRequest)}{getRequestAmount(selectedSubmitRequest) ? ` • ${money(getRequestAmount(selectedSubmitRequest))}` : ""}
+              </p>
+            </div>
+          ) : null}
+
+          {submitApprovalError || actionError ? (
+            <div className="app-feedback-danger rounded-xl px-4 py-3 text-sm">
+              {submitApprovalError || actionError}
+            </div>
+          ) : null}
+
+          {submitApprovalLoading ? (
+            <div className="app-surface-muted rounded-xl px-4 py-8 text-center">
+              <Loader2 size={22} className="mx-auto mb-2 animate-spin text-sky-500" />
+              <p className="app-text-muted text-sm">Загрузка согласующих...</p>
+            </div>
+          ) : submitApprovalOptions ? (
+            <>
+              <div className="app-surface-muted inline-flex rounded-xl p-1">
+                <button
+                  type="button"
+                  onClick={() => setSubmitApprovalMode("auto")}
+                  className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                    submitApprovalMode === "auto" ? "app-pill-active" : "app-text-muted hover:bg-[var(--surface-tertiary)]"
+                  }`}
+                >
+                  По сумме
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSubmitApprovalMode("manual")}
+                  className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                    submitApprovalMode === "manual" ? "app-pill-active" : "app-text-muted hover:bg-[var(--surface-tertiary)]"
+                  }`}
+                >
+                  Ручной выбор
+                </button>
+              </div>
+
+              {submitApprovalMode === "auto" ? (
+                <div className="space-y-3">
+                  <div className="app-surface-muted rounded-xl px-4 py-3">
+                    <p className="app-card-caption">Автоматический маршрут</p>
+                    <p className="app-text-muted mt-1 text-xs">
+                      Этапы рассчитаны по текущей сумме заявки: {money(submitApprovalOptions.total_cost)}
+                    </p>
+                  </div>
+                  {submitApprovalOptions.auto_steps.length > 0 ? (
+                    <div className="space-y-2">
+                      {submitApprovalOptions.auto_steps.map((option) => (
+                        <div key={option.priority} className="app-surface rounded-xl px-4 py-3">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-[var(--foreground)]">{option.step_name}</p>
+                              <p className="app-text-muted mt-1 text-xs">
+                                Приоритет {option.priority} • {getApprovalRouteAmountLabel(option)}
+                              </p>
+                            </div>
+                            <span className="app-pill-active rounded-full px-2 py-1 text-[11px] font-medium">
+                              По сумме
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm text-[var(--foreground)]">
+                            {displayUserName(option.approver)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="app-feedback-warning rounded-xl px-4 py-3 text-sm">
+                      Для текущей суммы не найден автоматический маршрут.
+                    </div>
+                  )}
+                  {submitApprovalOptions.missing_auto_steps.length > 0 ? (
+                    <div className="app-feedback-warning rounded-xl px-4 py-3 text-sm">
+                      Не все автоматические этапы можно заполнить. Проверьте настройки маршрутов или используйте ручной выбор.
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="app-surface-muted rounded-xl px-4 py-3">
+                    <p className="app-card-caption">Ручной маршрут</p>
+                    <p className="app-text-muted mt-1 text-xs">
+                      Выберите нужные этапы и сотрудников. Этот список будет использован вместо автоматического расчёта по сумме.
+                    </p>
+                  </div>
+                  <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-1">
+                    {submitApprovalOptions.available_steps.map((option) => {
+                      const selected = manualApprovalPriorities.includes(option.priority);
+                      return (
+                        <div key={option.priority} className={`rounded-xl border px-4 py-3 transition ${
+                          selected ? "border-[var(--accent-primary)] bg-[var(--surface-secondary)]" : "border-[var(--border)] bg-[var(--surface-primary)]"
+                        }`}>
+                          <label className="flex cursor-pointer items-start gap-3">
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={() => toggleManualApprovalPriority(option.priority)}
+                              className="mt-1 h-4 w-4 rounded border-[var(--border-strong)] accent-[var(--accent-primary)]"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-semibold text-[var(--foreground)]">{option.step_name}</span>
+                                <span className="app-badge rounded-full px-2 py-0.5 text-[11px]">
+                                  Приоритет {option.priority}
+                                </span>
+                                {option.is_amount_applicable ? (
+                                  <span className="app-pill-active rounded-full px-2 py-0.5 text-[11px]">
+                                    По сумме
+                                  </span>
+                                ) : null}
+                              </span>
+                              <span className="app-text-muted mt-1 block text-xs">
+                                {getApprovalRouteAmountLabel(option)}
+                                {option.approver ? ` • по умолчанию: ${displayUserName(option.approver)}` : ""}
+                              </span>
+                            </span>
+                          </label>
+                          {selected ? (
+                            <div className="mt-3">
+                              <SearchableSelectSingle
+                                label="Согласующий"
+                                placeholder="Выберите сотрудника..."
+                                items={employees.map((employee) => ({ id: employee.id, name: displayUserName(employee) }))}
+                                selectedId={manualApproverByPriority[option.priority] ?? null}
+                                onSelect={(id) => setManualApproverByPriority((current) => ({
+                                  ...current,
+                                  [option.priority]: id,
+                                }))}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="app-surface-muted rounded-xl px-4 py-6 text-center">
+              <p className="app-text-muted text-sm">Согласующие не загружены.</p>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={closeSubmitApprovalDialog} className="app-action-secondary rounded-xl px-4 py-2.5 text-sm font-medium">
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={() => void submitApprovalDialog()}
+              disabled={submitApprovalLoading || !submitApprovalOptions || (submitApprovalRequestId !== null && busyKey === `submit-${submitApprovalRequestId}`)}
+              className="app-action-primary rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-60"
+            >
+              Отправить
+            </button>
+          </div>
+        </div>
       </Modal>
 
       <Modal
@@ -1538,10 +1965,9 @@ export default function ProcurementPage() {
               <SearchableSelectSingle
                 label="Отдел-исполнитель *"
                 placeholder="Выберите отдел, который обработает заявку..."
-                items={departments.map((d) => ({ id: d.id, name: d.name }))}
+                items={processingDepartmentOptions.map((d) => ({ id: d.id, name: d.name }))}
                 selectedId={form.processing_department}
                 onSelect={(id) => setForm((f) => ({ ...f, processing_department: id }))}
-                disabled={Boolean(defaultProcessingDepartmentId)}
               />
 
               {/* ── Items ── */}

@@ -43,10 +43,15 @@ def has_document_access(user, document):
     if document.sent_to_all and user.is_active:
         return True
 
-    # Проверка через отделы
-    if hasattr(user, "department") and user.department:
-        if document.departments.filter(id=user.department.id).exists():
-            return True
+    if document.uploaded_by_id == getattr(user, "pk", None):
+        return True
+
+    # Проверка через активные связи с отделами
+    if document.departments.filter(
+        employeedepartment__employee=user,
+        employeedepartment__is_active=True,
+    ).exists():
+        return True
 
     # Прямой доступ через recipients
     if document.recipients.filter(id=user.id).exists():
@@ -130,10 +135,10 @@ rules.add_rule(
 # Отметка об ознакомлении (только те, у кого есть доступ)
 rules.add_rule("documents.acknowledge_document", has_document_access)
 
-# Просмотр списка ознакомившихся (загрузивший + менеджеры)
+# Просмотр списка ознакомившихся (все, у кого есть доступ к документу)
 rules.add_rule(
     "documents.view_acknowledgements_document",
-    is_superuser | is_document_uploader | can_manage_documents,
+    is_superuser | is_document_uploader | has_document_access,
 )
 
 # Выдача доступа другим пользователям (только загрузивший и менеджеры)

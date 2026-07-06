@@ -73,6 +73,7 @@ class DocumentViewSet(ModelViewSet):
         доступных текущему пользователю.
 
         Поддерживает параметр ?folder_id для фильтрации по папке.
+        Поддерживает параметр ?is_regulation=true для раздела регламентов.
 
         Returns:
             QuerySet[Document]: оптимизированный для списка без N+1.
@@ -93,6 +94,16 @@ class DocumentViewSet(ModelViewSet):
                     qs = qs.filter(folder_id=int(folder_id))
                 except (ValueError, TypeError):
                     pass  # Игнорируем некорректное значение
+
+            is_regulation = request.query_params.get("is_regulation")
+            if is_regulation is None:
+                is_regulation = request.query_params.get("regulation")
+            if is_regulation is not None:
+                normalized = is_regulation.strip().lower()
+                if normalized in {"1", "true", "yes", "on"}:
+                    qs = qs.filter(is_regulation=True)
+                elif normalized in {"0", "false", "no", "off"}:
+                    qs = qs.filter(is_regulation=False)
 
         # Если scope=mine - показываем только доступные пользователю
         if scope == "mine" and user and user.is_authenticated:
@@ -322,11 +333,11 @@ class DocumentViewSet(ModelViewSet):
         )
         return Response({"ok": True, "already": not created})
 
-    @action(detail=True, methods=["get"], permission_classes=[IsAuthenticated])
+    @action(detail=True, methods=["get"])
     def acknowledgements(self, request, pk=None):
-        """Ведомость ознакомлений: доступна всем авторизованным пользователям.
-        Поддерживает ?search= для фильтра и отдаёт непагинированно
-        (или подключите пагинацию).
+        """Ведомость ознакомлений: доступна пользователям с доступом к документу.
+
+        Поддерживает ?search= для фильтра и отдаёт непагинированно.
         """
         doc = self.get_object()
         q = (request.query_params.get("search") or "").strip()

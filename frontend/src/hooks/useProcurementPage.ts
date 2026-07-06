@@ -9,6 +9,7 @@ import { displayUserName, extractNextPage, loadAllPages } from "@/lib/shared";
 import { toast } from "sonner";
 import type {
   Department,
+  ProcurementApprovalStepSelection,
   ProcurementComment,
   ProcurementItem,
   ProcurementItemComment,
@@ -144,6 +145,9 @@ export function useProcurementPage(user: User | null) {
 
   const [requests, setRequests] = useState<ProcurementRequest[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [processingDepartments, setProcessingDepartments] = useState<Department[]>([]);
+  const [defaultProcessingDepartmentId, setDefaultProcessingDepartmentId] = useState<number | null>(null);
+  const [employees, setEmployees] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -166,7 +170,13 @@ export function useProcurementPage(user: User | null) {
   const [statusFilter, setStatusFilter] = useState<ProcurementStatus[]>([]);
   const [urgencyFilter, setUrgencyFilter] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("");
+  const [processingDepartmentFilter, setProcessingDepartmentFilter] = useState("");
+  const [requestorFilter, setRequestorFilter] = useState("");
+  const [executorFilter, setExecutorFilter] = useState("");
+  const [fulfillmentFilter, setFulfillmentFilter] = useState("");
   const [periodFilter, setPeriodFilter] = useState("");
+  const [dateFromFilter, setDateFromFilter] = useState("");
+  const [dateToFilter, setDateToFilter] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [ordering, setOrdering] = useState("-created_at");
   const [activeSection, setActiveSection] = useState<ProcurementSection>("requests");
@@ -238,11 +248,30 @@ export function useProcurementPage(user: User | null) {
       else if (statusFilter.length > 1) params.status__in = statusFilter.join(",");
       if (urgencyFilter) params.urgency = urgencyFilter;
       if (departmentFilter) params.department = departmentFilter;
+      if (processingDepartmentFilter) params.processing_department = processingDepartmentFilter;
+      if (requestorFilter) params.requestor = requestorFilter;
+      if (executorFilter) params.executor = executorFilter;
+      if (fulfillmentFilter) params.fulfillment_status = fulfillmentFilter;
       if (periodFilter) params.period = periodFilter;
+      if (dateFromFilter) params.date_from = dateFromFilter;
+      if (dateToFilter) params.date_to = dateToFilter;
       if (deferredSearchQuery.trim()) params.search = deferredSearchQuery.trim();
       return params;
     },
-    [deferredSearchQuery, departmentFilter, periodFilter, scope, statusFilter, urgencyFilter],
+    [
+      dateFromFilter,
+      dateToFilter,
+      deferredSearchQuery,
+      departmentFilter,
+      executorFilter,
+      fulfillmentFilter,
+      periodFilter,
+      processingDepartmentFilter,
+      requestorFilter,
+      scope,
+      statusFilter,
+      urgencyFilter,
+    ],
   );
 
   const buildScopeCountParams = useCallback(
@@ -257,11 +286,29 @@ export function useProcurementPage(user: User | null) {
       else if (statusFilter.length > 1) params.status__in = statusFilter.join(",");
       if (urgencyFilter) params.urgency = urgencyFilter;
       if (departmentFilter) params.department = departmentFilter;
+      if (processingDepartmentFilter) params.processing_department = processingDepartmentFilter;
+      if (requestorFilter) params.requestor = requestorFilter;
+      if (executorFilter) params.executor = executorFilter;
+      if (fulfillmentFilter) params.fulfillment_status = fulfillmentFilter;
       if (periodFilter) params.period = periodFilter;
+      if (dateFromFilter) params.date_from = dateFromFilter;
+      if (dateToFilter) params.date_to = dateToFilter;
       if (deferredSearchQuery.trim()) params.search = deferredSearchQuery.trim();
       return params;
     },
-    [deferredSearchQuery, departmentFilter, periodFilter, statusFilter, urgencyFilter],
+    [
+      dateFromFilter,
+      dateToFilter,
+      deferredSearchQuery,
+      departmentFilter,
+      executorFilter,
+      fulfillmentFilter,
+      periodFilter,
+      processingDepartmentFilter,
+      requestorFilter,
+      statusFilter,
+      urgencyFilter,
+    ],
   );
 
   const loadPage1 = useCallback(async () => {
@@ -350,12 +397,55 @@ export function useProcurementPage(user: User | null) {
     };
   }, []);
 
-  const defaultProcessingDepartmentId = useMemo(() => {
-    const procurementDepartment = departments.find(
-      (department) => department.name.trim().toLocaleLowerCase("ru-RU") === "снабжение",
-    );
-    return procurementDepartment?.id ?? null;
-  }, [departments]);
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const options = await apiClient.getProcurementRequestCreateOptions();
+        if (!cancelled) {
+          setProcessingDepartments(options.processing_departments || []);
+          setDefaultProcessingDepartmentId(options.default_processing_department ?? null);
+        }
+      } catch {
+        if (!cancelled) {
+          setProcessingDepartments([]);
+          setDefaultProcessingDepartmentId(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const allEmployees = await loadAllPages<User>((params) =>
+          apiClient.getEmployees({
+            ...params,
+            is_active: true,
+            ordering: "last_name,first_name",
+          })
+        );
+        if (!cancelled) {
+          setEmployees(allEmployees);
+        }
+      } catch {
+        if (!cancelled) {
+          setEmployees([]);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (
@@ -904,9 +994,9 @@ export function useProcurementPage(user: User | null) {
     }
   }, [markRequestNotificationsRead, updateCachedItem]);
 
-  const handleSubmit = useCallback((id: number) => doAction(
+  const handleSubmit = useCallback((id: number, approvalSteps?: ProcurementApprovalStepSelection[]) => doAction(
     `submit-${id}`,
-    () => apiClient.submitProcurementRequest(id),
+    () => apiClient.submitProcurementRequest(id, approvalSteps),
     id,
     "Заявка отправлена на согласование.",
   ), [doAction]);
@@ -1119,7 +1209,13 @@ export function useProcurementPage(user: User | null) {
     statusFilter.length > 0,
     urgencyFilter,
     departmentFilter,
+    processingDepartmentFilter,
+    requestorFilter,
+    executorFilter,
+    fulfillmentFilter,
     periodFilter,
+    dateFromFilter,
+    dateToFilter,
   ].filter(Boolean).length;
   const isFinal = useCallback((status?: string) => ["completed", "rejected", "cancelled"].includes(String(status || "").toLowerCase()), []);
 
@@ -1128,6 +1224,8 @@ export function useProcurementPage(user: User | null) {
     canSupplierManage,
     requests,
     departments,
+    processingDepartments,
+    employees,
     defaultProcessingDepartmentId,
     loading,
     loadingMore,
@@ -1147,8 +1245,20 @@ export function useProcurementPage(user: User | null) {
     setUrgencyFilter,
     departmentFilter,
     setDepartmentFilter,
+    processingDepartmentFilter,
+    setProcessingDepartmentFilter,
+    requestorFilter,
+    setRequestorFilter,
+    executorFilter,
+    setExecutorFilter,
+    fulfillmentFilter,
+    setFulfillmentFilter,
     periodFilter,
     setPeriodFilter,
+    dateFromFilter,
+    setDateFromFilter,
+    dateToFilter,
+    setDateToFilter,
     filtersOpen,
     setFiltersOpen,
     ordering,

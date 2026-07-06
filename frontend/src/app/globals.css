@@ -868,3 +868,27 @@ html[data-bs-theme="dark"] .shadow-xl {
 *::-webkit-scrollbar {
   display: none; /* Chrome/Safari/Opera */
 }
+
+.app-tabs-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent-primary) 45%, var(--surface-tertiary)) transparent;
+  -ms-overflow-style: auto;
+}
+
+.app-tabs-scroll::-webkit-scrollbar {
+  display: block;
+  height: 6px;
+}
+
+.app-tabs-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-tabs-scroll::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--accent-primary) 42%, var(--surface-tertiary));
+}
+
+.app-tabs-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-primary);
+}

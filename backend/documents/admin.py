@@ -70,9 +70,10 @@ class DocumentAdmin(admin.ModelAdmin):
         "file_info",
         "uploaded_at",
         "sent_to_all",
+        "is_regulation",
         "acknowledgement_status",
     )
-    list_filter = ("sent_to_all", "uploaded_at", "departments")
+    list_filter = ("sent_to_all", "is_regulation", "uploaded_at", "departments")
     search_fields = ("title", "description", "file__name", "file__description")
     filter_horizontal = ("recipients", "departments")
     actions = ["send_document"]
@@ -89,6 +90,7 @@ class DocumentAdmin(admin.ModelAdmin):
                     "file",  # FilerFileField с drag & drop
                     "file_preview",  # Превью файла
                     "description",
+                    "is_regulation",
                     "sent_to_all",
                     "departments",
                     "recipients",

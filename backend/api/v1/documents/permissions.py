@@ -23,6 +23,23 @@ def _has_any_model_perm(
     return False
 
 
+def _user_has_document_access(user, obj) -> bool:
+    """Проверяет пользовательский доступ к конкретному документу."""
+    if getattr(obj, "sent_to_all", False) and getattr(user, "is_active", False):
+        return True
+
+    if getattr(obj, "uploaded_by_id", None) == getattr(user, "pk", None):
+        return True
+
+    if obj.recipients.filter(pk=user.pk, is_active=True).exists():
+        return True
+
+    return obj.departments.filter(
+        employeedepartment__employee=user,
+        employeedepartment__is_active=True,
+    ).exists()
+
+
 class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
     """Чтение/скачивание/ознакомление: любой аутентифицированный,
     но доступ только к 'своим' документам (или если есть модельные права/админ).
@@ -99,16 +116,14 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
         if request.method == "DELETE":
             return user.has_perm("documents.delete_document", obj)
 
-        # SAFE/ack/download без модельных прав → только получатели или
-        # sent_to_all
+        # SAFE/ack/download без модельных прав → только пользователи,
+        # которым документ доступен.
         if request.method in SAFE_METHODS or action in (
             "acknowledge",
             "download",
             "archive",
         ):
-            if getattr(obj, "sent_to_all", False):
-                return True
-            return obj.recipients.filter(pk=user.pk, is_active=True).exists()
+            return _user_has_document_access(user, obj)
 
         # Небезопасные без прав — нельзя (POST custom actions)
         return False

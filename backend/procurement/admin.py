@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.contrib import admin
+from django import forms
 from django.utils.html import format_html
 
 from .models import (
@@ -13,6 +14,7 @@ from .models import (
     ProcurementItem,
     ProcurementRequest,
     ProcurementRequestView,
+    ProcurementSettings,
     Supplier,
 )
 
@@ -72,6 +74,70 @@ class ProcurementRequestViewAdmin(admin.ModelAdmin):
         "user__last_name",
     ]
     readonly_fields = ["updated_at"]
+
+
+class ProcurementSettingsAdminForm(forms.ModelForm):
+    class Meta:
+        model = ProcurementSettings
+        fields = "__all__"
+
+    def clean(self):
+        cleaned_data = super().clean()
+        default_department = cleaned_data.get("default_processing_department")
+        available_departments = cleaned_data.get("available_processing_departments")
+
+        if (
+            default_department
+            and available_departments is not None
+            and available_departments.exists()
+            and default_department not in available_departments
+        ):
+            self.add_error(
+                "default_processing_department",
+                (
+                    "Отдел по умолчанию должен входить в список доступных "
+                    "отделов-исполнителей."
+                ),
+            )
+
+        return cleaned_data
+
+
+@admin.register(ProcurementSettings)
+class ProcurementSettingsAdmin(admin.ModelAdmin):
+    """Админка настроек закупок."""
+
+    form = ProcurementSettingsAdminForm
+    list_display = [
+        "name",
+        "default_processing_department",
+        "available_processing_departments_count",
+        "updated_at",
+    ]
+    fields = [
+        "name",
+        "default_processing_department",
+        "available_processing_departments",
+        "updated_at",
+    ]
+    readonly_fields = ["updated_at"]
+    filter_horizontal = ["available_processing_departments"]
+
+    def has_add_permission(self, request):
+        if ProcurementSettings.objects.exists():
+            return False
+        return super().has_add_permission(request)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def available_processing_departments_count(self, obj):
+        count = obj.available_processing_departments.count()
+        return count or "Все отделы"
+
+    available_processing_departments_count.short_description = (
+        "Доступные отделы"
+    )
 
 
 @admin.register(ProcurementRequest)

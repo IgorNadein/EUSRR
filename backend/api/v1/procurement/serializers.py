@@ -6,6 +6,7 @@ import re
 from datetime import date
 
 from drf_spectacular.utils import extend_schema_field
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
 
@@ -22,12 +23,16 @@ from procurement.models import (
     Equipment,
     EquipmentCategory,
     MaintenanceRecord,
+    ApprovalRoute,
     ProcurementItem,
     ProcurementRequest,
     ProcurementRequestView,
+    ProcurementSettings,
     Supplier,
 )
-from ..employees.serializers import EmployeeBriefSerializer
+from ..employees.serializers import DepartmentBriefSerializer, EmployeeBriefSerializer
+
+User = get_user_model()
 
 
 PROBLEM_ITEM_STATUSES = {
@@ -115,6 +120,25 @@ def _validate_item_quantities(attrs, instance=None):
                 {field: "Не может быть больше количества позиции"}
             )
     return attrs
+
+
+def _validate_processing_department_available(processing_department):
+    if not processing_department:
+        return
+
+    settings = ProcurementSettings.get_solo()
+    available_departments = settings.available_processing_departments.all()
+    if (
+        available_departments.exists()
+        and not available_departments.filter(pk=processing_department.pk).exists()
+    ):
+        raise serializers.ValidationError(
+            {
+                "processing_department": (
+                    "Выберите отдел-исполнитель из доступных для закупок."
+                )
+            }
+        )
 
 
 def _request_items(obj):
@@ -415,6 +439,57 @@ class ProcurementItemEditSerializer(ProcurementItemCreateSerializer):
         ]
 
 
+class ProcurementRequestCreateOptionsSerializer(serializers.Serializer):
+    """Опции формы создания заявки на закупку."""
+
+    processing_departments = DepartmentBriefSerializer(many=True)
+    default_processing_department = serializers.IntegerField(allow_null=True)
+
+
+class ProcurementManualApprovalStepSerializer(serializers.Serializer):
+    """Ручной этап согласования при отправке заявки."""
+
+    priority = serializers.IntegerField(min_value=1)
+    approver = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(is_active=True),
+    )
+    step_name = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=150,
+    )
+
+    def validate_priority(self, value):
+        if not ApprovalRoute.objects.filter(priority=value).exists():
+            raise serializers.ValidationError(
+                "Выберите настроенный этап согласования."
+            )
+        return value
+
+
+class ProcurementManualApprovalStepsSerializer(serializers.Serializer):
+    """Список ручных этапов согласования."""
+
+    approval_steps = ProcurementManualApprovalStepSerializer(
+        many=True,
+        required=False,
+        allow_empty=True,
+    )
+
+    def validate_approval_steps(self, value):
+        priorities = [item["priority"] for item in value]
+        duplicate_priorities = {
+            priority
+            for priority in priorities
+            if priorities.count(priority) > 1
+        }
+        if duplicate_priorities:
+            raise serializers.ValidationError(
+                "Каждый этап согласования можно выбрать только один раз."
+            )
+        return value
+
+
 class ApprovalSerializer(serializers.ModelSerializer):
     """Сериализатор для согласований."""
 
@@ -665,6 +740,10 @@ class ProcurementRequestListSerializer(
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        if "processing_department" in attrs:
+            _validate_processing_department_available(
+                attrs.get("processing_department")
+            )
         items_data = attrs.get("items")
         if items_data is None:
             return attrs
@@ -876,6 +955,9 @@ class ProcurementRequestCreateSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "requestor", "status", "created_at"]
 
     def validate(self, attrs):
+        _validate_processing_department_available(
+            attrs.get("processing_department")
+        )
         if (
             not attrs.get("processing_department")
             and not attrs.get("description", "").strip()

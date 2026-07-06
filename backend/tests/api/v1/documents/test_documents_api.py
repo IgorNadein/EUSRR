@@ -28,7 +28,8 @@ from django.contrib.auth.models import Permission
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from django.utils import timezone
-from documents.models import Document, DocumentAcknowledgement
+from documents.models import Document, DocumentAcknowledgement, DocumentTag
+from employees.models import Department, EmployeeDepartment
 from filer.models import File as FilerFile, Folder
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -162,6 +163,9 @@ def api_urls():
     def _ack(pk: int) -> str:
         return reverse("api:v1:documents-acknowledge", args=[pk])
 
+    def _acknowledgements(pk: int) -> str:
+        return reverse("api:v1:documents-acknowledgements", args=[pk])
+
     def _folder_detail(pk: int) -> str:
         return reverse("api:v1:folders-detail", args=[pk])
 
@@ -173,6 +177,7 @@ def api_urls():
         "archive": reverse("api:v1:documents-archive"),
         "detail": _detail,
         "ack": _ack,
+        "acknowledgements": _acknowledgements,
         "folder_detail": _folder_detail,
         "folder_archive": _folder_archive,
     }
@@ -474,9 +479,11 @@ class TestCreate:
         assert r.status_code in (200, 201), r.content
         assert r.json()["title"] == "derived-title"
 
-        # нет file
+        # file необязателен
         r = client.post(url, {"title": "T", "sent_to_all": True}, format="multipart")
-        assert r.status_code == 400
+        assert r.status_code in (200, 201), r.content
+        assert r.json()["title"] == "T"
+        assert r.json()["file_url"] is None
 
         # sent_to_all=false и пустые recipient_ids → 400
         r = client.post(url, {"title": "T", "sent_to_all": False}, format="multipart")
@@ -638,6 +645,33 @@ class TestUpdate:
         d = Document.objects.get(pk=doc_id)
         assert d.title == "New"
         assert d.description == "new"
+
+    def test_update_search_text_and_acknowledgement_required(
+        self, auth_client, make_user, api_urls
+    ):
+        """PATCH обновляет текст поиска и требование ознакомления."""
+        author = make_user("author-search@example.com")
+        editor = make_user("editor-search@example.com")
+        grant_perms(editor, "change_document")
+        client = auth_client(editor)
+        document = make_document(
+            uploaded_by=author,
+            acknowledgement_required=False,
+        )
+
+        response = client.patch(
+            api_urls["detail"](document.pk),
+            {
+                "extracted_text": "обновленный текст для поиска",
+                "acknowledgement_required": True,
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        document = Document.objects.get(pk=document.pk)
+        assert document.extracted_text == "обновленный текст для поиска"
+        assert document.acknowledgement_required is True
 
     def test_replace_file_multipart_patch(self, auth_client, make_user, api_urls):
         """Заменить file (multipart PATCH) → file_url изменился."""
@@ -1083,6 +1117,86 @@ class TestAcknowledge:
             user=viewer,
         ).exists()
 
+
+class TestAcknowledgementsReport:
+    """Ведомость ознакомлений доступна всем, кому доступен документ."""
+
+    def test_department_recipient_can_view_acknowledgements_report(
+        self, auth_client, make_user, api_urls
+    ):
+        """Сотрудник отдела-получателя видит ведомость документа."""
+        author = make_user("report-author@example.com")
+        viewer = make_user("report-viewer@example.com")
+        department = Department.objects.create(name="Report Department")
+        EmployeeDepartment.objects.create(
+            employee=viewer,
+            department=department,
+            is_active=True,
+        )
+        document = make_document(
+            uploaded_by=author,
+            sent_to_all=False,
+            acknowledgement_required=True,
+        )
+        document.departments.add(department)
+        DocumentAcknowledgement.objects.create(document=document, user=viewer)
+
+        response = auth_client(viewer).get(api_urls["acknowledgements"](document.pk))
+
+        assert response.status_code == status.HTTP_200_OK, response.content
+        body = response.json()
+        assert body["counts"] == {
+            "acknowledged": 1,
+            "unacknowledged": 0,
+            "total": 1,
+        }
+        assert body["acknowledged"][0]["id"] == viewer.id
+
+    def test_unrelated_user_cannot_view_acknowledgements_report(
+        self, auth_client, make_user, api_urls
+    ):
+        """Посторонний сотрудник без доступа к документу не видит ведомость."""
+        author = make_user("report-author-2@example.com")
+        unrelated = make_user("report-unrelated@example.com")
+        recipient = make_user("report-recipient@example.com")
+        document = make_document(
+            uploaded_by=author,
+            sent_to_all=False,
+            acknowledgement_required=True,
+            recipients=[recipient],
+        )
+
+        response = auth_client(unrelated).get(
+            api_urls["acknowledgements"](document.pk)
+        )
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+class TestDocumentTags:
+    """CRUD тегов документов."""
+
+    def test_create_tag_without_slug_generates_unique_slug(
+        self, auth_client, make_user
+    ):
+        """Создание тега из формы работает без передачи slug."""
+        user = make_user("tag-author@example.com")
+        client = auth_client(user)
+        url = reverse("api:v1:document-tags-list")
+
+        response = client.post(
+            url,
+            {"name": "Регламент охраны труда", "color": "#3B82F6"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED, response.content
+        body = response.json()
+        tag = DocumentTag.objects.get(pk=body["id"])
+        assert tag.name == "Регламент охраны труда"
+        assert tag.slug
+        assert tag.color == "#3B82F6"
+
 # -------------------- G. Сериализация и данные --------------------
 
 class TestSerialization:
@@ -1131,14 +1245,16 @@ class TestSerialization:
 class TestErrorsAndEdgeCases:
     """H. Неудачные Content-Type, perms и размер файла."""
 
-    def test_wrong_content_type_on_create(self, auth_client, make_user, api_urls):
-        """Неверный Content-Type (JSON без файла) → 400 или 415 (фиксируем фактическое поведение)."""
+    def test_json_create_without_file(self, auth_client, make_user, api_urls):
+        """JSON без файла создаёт документ: файл в документах необязателен."""
         uploader = make_user("uploader@example.com", staff=True)
         client = auth_client(uploader)
         r = client.post(
             api_urls["list"], {"title": "X", "sent_to_all": True}, format="json"
         )
-        assert r.status_code in (400, 415)
+        assert r.status_code in (200, 201), r.content
+        assert r.json()["title"] == "X"
+        assert r.json()["file_url"] is None
 
     def test_put_patch_delete_without_perms(self, auth_client, make_user, api_urls):
         """Попытка PUT/PATCH/DELETE без прав → 403."""

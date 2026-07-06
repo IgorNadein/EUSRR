@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { X, Search, CheckCircle, AlertCircle, Users, Download } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { toast } from "sonner";
@@ -46,11 +46,7 @@ export function DocumentAcknowledgementsReport({
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<"all" | "acknowledged" | "unacknowledged">("all");
 
-  useEffect(() => {
-    loadData();
-  }, [documentId, search]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const result = await apiClient.getDocumentAcknowledgements(documentId, search || undefined);
@@ -61,7 +57,11 @@ export function DocumentAcknowledgementsReport({
     } finally {
       setLoading(false);
     }
-  };
+  }, [documentId, search]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const exportToCSV = () => {
     if (!data) return;

@@ -38,6 +38,71 @@ from .constants import (
 User = get_user_model()
 
 
+class ProcurementSettings(models.Model):
+    """Настройки модуля закупок."""
+
+    name = models.CharField("Название", max_length=100, default="Основные настройки")
+    available_processing_departments = models.ManyToManyField(
+        Department,
+        blank=True,
+        related_name="procurement_processing_settings",
+        verbose_name="Доступные отделы-исполнители",
+        help_text=(
+            "Если список пуст, в форме заявки доступны все отделы. "
+            "Заполните список, чтобы ограничить выбор."
+        ),
+    )
+    default_processing_department = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="default_procurement_processing_settings",
+        verbose_name="Отдел-исполнитель по умолчанию",
+        help_text="Этот отдел будет автоматически выбран в новой заявке.",
+    )
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+
+    class Meta:
+        verbose_name = "Настройки закупок"
+        verbose_name_plural = "Настройки закупок"
+
+    def __str__(self):
+        return self.name
+
+    @classmethod
+    def get_solo(cls):
+        settings = cls.objects.first()
+        if settings:
+            return settings
+        return cls.objects.create()
+
+    def clean(self):
+        super().clean()
+        if (
+            self.pk
+            and self.default_processing_department_id
+            and self.available_processing_departments.exists()
+            and not self.available_processing_departments.filter(
+                pk=self.default_processing_department_id
+            ).exists()
+        ):
+            raise ValidationError(
+                {
+                    "default_processing_department": (
+                        "Отдел по умолчанию должен входить в список "
+                        "доступных отделов-исполнителей."
+                    )
+                }
+            )
+
+    def get_processing_departments_queryset(self):
+        departments = self.available_processing_departments.all()
+        if departments.exists():
+            return departments
+        return Department.objects.all()
+
+
 class ProcurementRequest(models.Model):
     """Заявка на закупку.
 

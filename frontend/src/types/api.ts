@@ -179,6 +179,11 @@ export interface Department {
   role_only_count?: number;
 }
 
+export interface ProcurementCreateOptions {
+  processing_departments: Pick<Department, "id" | "name">[];
+  default_processing_department: number | null;
+}
+
 export interface DepartmentMemberRole {
   id: number;
   name: string;
@@ -283,6 +288,7 @@ export interface Document {
   id: number;
   title: string;
   description?: string;
+  extracted_text?: string;
   file?: string;
   file_url?: string;
   file_name?: string;
@@ -305,6 +311,7 @@ export interface Document {
   modified_by?: User;
   modified_at?: string;
   sent_to_all?: boolean;
+  is_regulation?: boolean;
   recipients?: User[];
   departments?: { id: number; name: string }[];
   acknowledgements?: DocumentAcknowledgement[];
@@ -687,6 +694,32 @@ export interface ProcurementApproval {
   status_display?: string;
   decided_at?: string | null;
   created_at: string;
+}
+
+export interface ProcurementApprovalStepSelection {
+  priority: number;
+  approver: number;
+  step_name?: string;
+}
+
+export interface ProcurementApprovalRouteOption {
+  route_id: number;
+  priority: number;
+  step_name: string;
+  resolver_type: "department_head" | "fixed_employee" | string;
+  min_amount?: string | number | null;
+  is_amount_applicable: boolean;
+  is_available: boolean;
+  missing_reason?: string | null;
+  approver?: User | null;
+}
+
+export interface ProcurementApprovalOptions {
+  request_id: number;
+  total_cost: string | number;
+  auto_steps: ProcurementApprovalRouteOption[];
+  available_steps: ProcurementApprovalRouteOption[];
+  missing_auto_steps: ProcurementApprovalRouteOption[];
 }
 
 export interface ProcurementRequest {

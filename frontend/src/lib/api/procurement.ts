@@ -1,14 +1,22 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import type { ProcurementApprovalOptions, ProcurementApprovalStepSelection, ProcurementCreateOptions } from '@/types/api';
 import { buildQuery, type RequestFn } from './utils';
 
 export function createProcurementApi(request: RequestFn) {
     return {
         getProcurementRequests: (params?: Record<string, string | number>) => request(`/api/v1/procurement/requests/${buildQuery(params)}`),
         getProcurementRequest: (id: number) => request(`/api/v1/procurement/requests/${id}/`),
+        getProcurementRequestCreateOptions: (): Promise<ProcurementCreateOptions> => request('/api/v1/procurement/requests/create-options/'),
         createProcurementRequest: (data: Record<string, any>) => request('/api/v1/procurement/requests/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
         updateProcurementRequest: (id: number, data: Record<string, any>) => request(`/api/v1/procurement/requests/${id}/`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
         deleteProcurementRequest: (id: number): Promise<void> => request(`/api/v1/procurement/requests/${id}/`, { method: 'DELETE' }),
-        submitProcurementRequest: (id: number) => request(`/api/v1/procurement/requests/${id}/submit/`, { method: 'POST' }),
+        getProcurementApprovalOptions: (id: number): Promise<ProcurementApprovalOptions> => request(`/api/v1/procurement/requests/${id}/approval-options/`),
+        submitProcurementRequest: (id: number, approvalSteps?: ProcurementApprovalStepSelection[]) =>
+            request(`/api/v1/procurement/requests/${id}/submit/`, {
+                method: 'POST',
+                headers: approvalSteps ? { 'Content-Type': 'application/json' } : undefined,
+                body: approvalSteps ? JSON.stringify({ approval_steps: approvalSteps }) : undefined,
+            }),
         approveProcurementRequest: (id: number, comment?: string) =>
             request(`/api/v1/procurement/requests/${id}/approve/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ comment: comment || '' }) }),
         rejectProcurementRequest: (id: number, comment?: string) =>
