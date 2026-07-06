@@ -84,7 +84,7 @@ export default function TaskLinkPill({
   return (
     <Link
       href={href}
-      className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/45 ${className}`}
+      className={`inline-flex max-w-full items-center gap-1 rounded-full border-3 px-2 py-0.5 text-[11px] font-medium shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/45 ${className}`}
       style={style}
       title={title}
     >
