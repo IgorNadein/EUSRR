@@ -12,6 +12,7 @@ from rest_framework.test import APIClient
 from communications.models import Chat, ChatMembership, Message
 from documents.models import Document
 from employees.models import Department, EmployeeDepartment, RoleAssignment
+from guests.models import Guest, GuestVisit
 from procurement.constants import ProcurementStatus, UrgencyLevel
 from procurement.models import ProcurementRequest
 from requests_app.models import Request as EmployeeRequest
@@ -747,6 +748,148 @@ def test_task_linked_employee_respects_task_board_access(api_client):
     )
     assert reverse_linked_response.status_code == status.HTTP_200_OK
     assert reverse_linked_response.data == []
+
+
+def test_task_linked_guest_respects_task_board_access(api_client):
+    owner = make_user("task-guest-owner@example.com", "+79994440036")
+    board_member = make_user("task-guest-member@example.com", "+79994440037")
+    outsider = make_user("task-guest-outsider@example.com", "+79994440038")
+    guest = Guest.objects.create(
+        first_name="Иван",
+        last_name="Гость",
+        organization="Vendor",
+        email="guest@example.com",
+        created_by=owner,
+    )
+    board = TaskBoard.objects.create(
+        name="Доска с гостями",
+        created_by=owner,
+    )
+    board.members.add(board_member)
+    column = TaskColumn.objects.create(
+        board=board,
+        name="Новые",
+        position=1000,
+        color="#38bdf8",
+    )
+    task = Task.objects.create(
+        board=board,
+        column=column,
+        title="Проверить гостя",
+        created_by=owner,
+    )
+
+    api_client.force_authenticate(user=board_member)
+    link_response = api_client.post(
+        reverse("api:v1:tasks:task-linked-guests", kwargs={"pk": task.id}),
+        {"guest_id": guest.id},
+        format="json",
+    )
+    assert link_response.status_code == status.HTTP_201_CREATED
+    assert link_response.data["guest_id"] == guest.id
+    assert link_response.data["guest"]["full_name"] == "Гость Иван"
+    assert link_response.data["can_open"] is True
+    assert link_response.data["object_url"] == f"/guests?guest={guest.id}"
+
+    linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-guests", kwargs={"pk": task.id})
+    )
+    assert linked_response.status_code == status.HTTP_200_OK
+    assert linked_response.data[0]["guest"]["email"] == guest.email
+
+    reverse_linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-guest-tasks"),
+        {"guest_id": guest.id},
+    )
+    assert reverse_linked_response.status_code == status.HTTP_200_OK
+    assert reverse_linked_response.data[0]["id"] == task.id
+    assert reverse_linked_response.data[0]["linked_guests_count"] == 1
+
+    api_client.force_authenticate(user=outsider)
+    task_detail_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-guests", kwargs={"pk": task.id})
+    )
+    assert task_detail_response.status_code == status.HTTP_404_NOT_FOUND
+
+    reverse_linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-guest-tasks"),
+        {"guest_id": guest.id},
+    )
+    assert reverse_linked_response.status_code == status.HTTP_200_OK
+    assert reverse_linked_response.data == []
+
+
+def test_task_linked_guest_visit_respects_visit_access(api_client):
+    owner = make_user("task-guest-visit-owner@example.com", "+79994440039")
+    inviter = make_user("task-guest-visit-inviter@example.com", "+79994440040")
+    outsider = make_user("task-guest-visit-outsider@example.com", "+79994440041")
+    guest = Guest.objects.create(
+        first_name="Анна",
+        last_name="Визит",
+        created_by=owner,
+    )
+    visit = GuestVisit.objects.create(
+        guest=guest,
+        inviter=inviter,
+        purpose="Встреча с подрядчиком",
+        access_starts_at=timezone.now(),
+        access_expires_at=timezone.now() + timedelta(days=1),
+    )
+    board = TaskBoard.objects.create(
+        name="Доска с визитами",
+        created_by=owner,
+    )
+    board.members.add(inviter)
+    column = TaskColumn.objects.create(
+        board=board,
+        name="Новые",
+        position=1000,
+        color="#38bdf8",
+    )
+    task = Task.objects.create(
+        board=board,
+        column=column,
+        title="Проверить гостевой визит",
+        created_by=owner,
+    )
+
+    api_client.force_authenticate(user=inviter)
+    link_response = api_client.post(
+        reverse("api:v1:tasks:task-linked-guest-visits", kwargs={"pk": task.id}),
+        {"guest_visit_id": visit.id},
+        format="json",
+    )
+    assert link_response.status_code == status.HTTP_201_CREATED
+    assert link_response.data["guest_visit_id"] == visit.id
+    assert link_response.data["guest_visit"]["guest"]["full_name"] == "Визит Анна"
+    assert link_response.data["can_open"] is True
+    assert link_response.data["object_url"] == f"/guests?visit={visit.id}"
+
+    linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-guest-visits", kwargs={"pk": task.id})
+    )
+    assert linked_response.status_code == status.HTTP_200_OK
+    assert linked_response.data[0]["guest_visit"]["purpose"] == "Встреча с подрядчиком"
+
+    reverse_linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-guest-visit-tasks"),
+        {"guest_visit_id": visit.id},
+    )
+    assert reverse_linked_response.status_code == status.HTTP_200_OK
+    assert reverse_linked_response.data[0]["id"] == task.id
+    assert reverse_linked_response.data[0]["linked_guest_visits_count"] == 1
+
+    api_client.force_authenticate(user=outsider)
+    task_detail_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-guest-visits", kwargs={"pk": task.id})
+    )
+    assert task_detail_response.status_code == status.HTTP_404_NOT_FOUND
+
+    reverse_linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-guest-visit-tasks"),
+        {"guest_visit_id": visit.id},
+    )
+    assert reverse_linked_response.status_code == status.HTTP_403_FORBIDDEN
 
 
 def test_task_activity_records_core_actions(api_client, user):

@@ -180,6 +180,8 @@ class TaskLinkedObjectKind(models.TextChoices):
     REQUEST = "request", "Заявление"
     PROCUREMENT_REQUEST = "procurement_request", "Заявка на закупку"
     EMPLOYEE = "employee", "Сотрудник"
+    GUEST = "guest", "Гость"
+    GUEST_VISIT = "guest_visit", "Заявка на гостевой визит"
 
 
 class TaskActivityAction(models.TextChoices):

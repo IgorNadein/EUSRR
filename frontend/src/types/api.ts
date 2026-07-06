@@ -186,6 +186,8 @@ export interface TaskCard {
   linked_requests_count?: number;
   linked_procurement_requests_count?: number;
   linked_employees_count?: number;
+  linked_guests_count?: number;
+  linked_guest_visits_count?: number;
   linked_objects_count?: number;
   comments_count?: number;
   created_at: string;
@@ -324,12 +326,53 @@ export interface TaskLinkedEmployee {
   created_at: string;
 }
 
+export interface TaskLinkedGuest {
+  id: number;
+  kind: "guest";
+  guest_id: number;
+  guest: Guest | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
+export interface TaskLinkedGuestVisit {
+  id: number;
+  kind: "guest_visit";
+  guest_visit_id: number;
+  guest_visit: {
+    id: number;
+    guest: Guest;
+    inviter?: User | null;
+    inviter_snapshot_name?: string;
+    inviter_snapshot_email?: string;
+    purpose?: string;
+    visit_comment?: string;
+    status?: GuestVisitStatus;
+    status_display?: string;
+    access_starts_at?: string | null;
+    access_expires_at?: string | null;
+    all_day?: boolean;
+    unlimited?: boolean;
+    submitted_at?: string | null;
+    is_active_now?: boolean;
+    is_expired?: boolean;
+    created_at?: string;
+    updated_at?: string;
+  } | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
 export interface TaskActivity {
   id: number;
   action: "created" | "updated" | "moved" | "linked" | "unlinked";
   action_display?: string;
   actor?: User | null;
-  object_kind?: "message" | "calendar_event" | "document" | "request" | "procurement_request" | "employee" | "";
+  object_kind?: "message" | "calendar_event" | "document" | "request" | "procurement_request" | "employee" | "guest" | "guest_visit" | "";
   object_id?: number | null;
   metadata?: Record<string, unknown>;
   created_at: string;
@@ -561,6 +604,7 @@ export interface Guest {
   position?: string;
   comments_count?: number;
   visits_count?: number;
+  linked_tasks?: MessageLinkedTask[];
   document_folder?: {
     id: number;
     name: string;
@@ -631,6 +675,7 @@ export interface GuestVisit {
   can_delete: boolean;
   comments_count: number;
   has_unread_info_response: boolean;
+  linked_tasks?: MessageLinkedTask[];
   events: GuestVisitEvent[];
 }
 

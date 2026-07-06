@@ -14,6 +14,7 @@ from communications import comments_helpers
 from communications.models import Message
 from communications.utils import user_can_access_chat
 from documents.models import Document
+from guests.models import Guest, GuestVisit
 from procurement.models import ProcurementRequest
 from requests_app.models import Request as EmployeeRequest
 from rest_framework import filters, status, viewsets
@@ -28,6 +29,8 @@ from tasks.access import (
     user_can_access_document,
     user_can_access_employee,
     user_can_access_employee_request,
+    user_can_access_guest,
+    user_can_access_guest_visit,
     user_can_access_procurement_request,
 )
 from tasks.models import (
@@ -54,6 +57,8 @@ from .serializers import (
     TaskLinkedCalendarEventSerializer,
     TaskLinkedDocumentSerializer,
     TaskLinkedEmployeeSerializer,
+    TaskLinkedGuestSerializer,
+    TaskLinkedGuestVisitSerializer,
     TaskLinkedMessageSerializer,
     TaskLinkedProcurementRequestSerializer,
     TaskLinkedRequestSerializer,
@@ -62,6 +67,8 @@ from .serializers import (
     get_calendar_event_content_type,
     get_document_content_type,
     get_employee_content_type,
+    get_guest_content_type,
+    get_guest_visit_content_type,
     get_message_content_type,
     get_procurement_request_content_type,
     get_request_content_type,
@@ -309,6 +316,20 @@ class TaskViewSet(viewsets.ModelViewSet):
                     "linked_objects",
                     filter=Q(
                         linked_objects__kind=TaskLinkedObjectKind.EMPLOYEE,
+                    ),
+                    distinct=True,
+                ),
+                linked_guests_count=Count(
+                    "linked_objects",
+                    filter=Q(
+                        linked_objects__kind=TaskLinkedObjectKind.GUEST,
+                    ),
+                    distinct=True,
+                ),
+                linked_guest_visits_count=Count(
+                    "linked_objects",
+                    filter=Q(
+                        linked_objects__kind=TaskLinkedObjectKind.GUEST_VISIT,
                     ),
                     distinct=True,
                 ),
@@ -765,6 +786,82 @@ class TaskViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=["get"], url_path="linked-guest-tasks")
+    def linked_guest_tasks(self, request):
+        guest_id = request.query_params.get("guest_id")
+        try:
+            guest_id = int(guest_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"guest_id": ["Укажите ID гостя."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            guest = Guest.objects.get(id=guest_id)
+        except Guest.DoesNotExist:
+            return Response(
+                {"guest_id": ["Гость не найден."]},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not user_can_access_guest(request.user, guest):
+            return Response(
+                {"detail": "Нет доступа к этому гостю."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        queryset = (
+            self.get_queryset()
+            .filter(
+                linked_objects__kind=TaskLinkedObjectKind.GUEST,
+                linked_objects__content_type=get_guest_content_type(),
+                linked_objects__object_id=guest.id,
+            )
+            .distinct()
+        )
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="linked-guest-visit-tasks")
+    def linked_guest_visit_tasks(self, request):
+        guest_visit_id = request.query_params.get("guest_visit_id")
+        try:
+            guest_visit_id = int(guest_visit_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"guest_visit_id": ["Укажите ID заявки на гостевой визит."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            visit = GuestVisit.objects.select_related("guest", "inviter").get(
+                id=guest_visit_id,
+            )
+        except GuestVisit.DoesNotExist:
+            return Response(
+                {"guest_visit_id": ["Заявка на гостевой визит не найдена."]},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not user_can_access_guest_visit(request.user, visit):
+            return Response(
+                {"detail": "Нет доступа к этой заявке на гостевой визит."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        queryset = (
+            self.get_queryset()
+            .filter(
+                linked_objects__kind=TaskLinkedObjectKind.GUEST_VISIT,
+                linked_objects__content_type=get_guest_visit_content_type(),
+                linked_objects__object_id=visit.id,
+            )
+            .distinct()
+        )
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     def _message_links_queryset(self, task):
         return (
             TaskLinkedObject.objects.filter(
@@ -820,6 +917,26 @@ class TaskViewSet(viewsets.ModelViewSet):
             TaskLinkedObject.objects.filter(
                 task=task,
                 kind=TaskLinkedObjectKind.EMPLOYEE,
+            )
+            .select_related("created_by", "content_type")
+            .order_by("-created_at", "-id")
+        )
+
+    def _guest_links_queryset(self, task):
+        return (
+            TaskLinkedObject.objects.filter(
+                task=task,
+                kind=TaskLinkedObjectKind.GUEST,
+            )
+            .select_related("created_by", "content_type")
+            .order_by("-created_at", "-id")
+        )
+
+    def _guest_visit_links_queryset(self, task):
+        return (
+            TaskLinkedObject.objects.filter(
+                task=task,
+                kind=TaskLinkedObjectKind.GUEST_VISIT,
             )
             .select_related("created_by", "content_type")
             .order_by("-created_at", "-id")
@@ -1378,6 +1495,214 @@ class TaskViewSet(viewsets.ModelViewSet):
             "unlinked",
             "employee",
             employee_id,
+            extra={"task_id": task.id, "link_id": int(link_id)},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get", "post"], url_path="linked-guests")
+    def linked_guests(self, request, pk=None):
+        task = self.get_object()
+        if request.method == "GET":
+            serializer = TaskLinkedGuestSerializer(
+                self._guest_links_queryset(task),
+                many=True,
+                context={"request": request},
+            )
+            return Response(serializer.data)
+
+        guest_id = request.data.get("guest_id")
+        try:
+            guest_id = int(guest_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"guest_id": ["Укажите ID гостя."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            guest = Guest.objects.get(id=guest_id)
+        except Guest.DoesNotExist:
+            return Response(
+                {"guest_id": ["Гость не найден."]},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not user_can_access_guest(request.user, guest):
+            return Response(
+                {"detail": "Нет доступа к этому гостю."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        link, created = TaskLinkedObject.objects.get_or_create(
+            task=task,
+            kind=TaskLinkedObjectKind.GUEST,
+            content_type=get_guest_content_type(),
+            object_id=guest.id,
+            defaults={"created_by": request.user},
+        )
+        serializer = TaskLinkedGuestSerializer(
+            link,
+            context={"request": request},
+        )
+        if created:
+            create_task_activity(
+                task,
+                request.user,
+                TaskActivityAction.LINKED,
+                object_kind=TaskLinkedObjectKind.GUEST,
+                object_id=guest.id,
+                metadata={
+                    "object_label": guest.full_name,
+                    "object_type": "Гость",
+                },
+            )
+        send_task_board_update(
+            task.board,
+            "linked",
+            "guest",
+            guest.id,
+            extra={"task_id": task.id, "link_id": link.id},
+        )
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"linked-guests/(?P<link_id>\d+)",
+    )
+    def unlink_guest(self, request, pk=None, link_id=None):
+        task = self.get_object()
+        try:
+            link = self._guest_links_queryset(task).get(id=link_id)
+        except TaskLinkedObject.DoesNotExist:
+            return Response(
+                {"detail": "Связь не найдена."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        guest_id = link.object_id
+        link.delete()
+        create_task_activity(
+            task,
+            request.user,
+            TaskActivityAction.UNLINKED,
+            object_kind=TaskLinkedObjectKind.GUEST,
+            object_id=guest_id,
+            metadata={"object_type": "Гость"},
+        )
+        send_task_board_update(
+            task.board,
+            "unlinked",
+            "guest",
+            guest_id,
+            extra={"task_id": task.id, "link_id": int(link_id)},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get", "post"], url_path="linked-guest-visits")
+    def linked_guest_visits(self, request, pk=None):
+        task = self.get_object()
+        if request.method == "GET":
+            serializer = TaskLinkedGuestVisitSerializer(
+                self._guest_visit_links_queryset(task),
+                many=True,
+                context={"request": request},
+            )
+            return Response(serializer.data)
+
+        guest_visit_id = request.data.get("guest_visit_id")
+        try:
+            guest_visit_id = int(guest_visit_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"guest_visit_id": ["Укажите ID заявки на гостевой визит."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            visit = GuestVisit.objects.select_related("guest", "inviter").get(
+                id=guest_visit_id,
+            )
+        except GuestVisit.DoesNotExist:
+            return Response(
+                {"guest_visit_id": ["Заявка на гостевой визит не найдена."]},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not user_can_access_guest_visit(request.user, visit):
+            return Response(
+                {"detail": "Нет доступа к этой заявке на гостевой визит."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        link, created = TaskLinkedObject.objects.get_or_create(
+            task=task,
+            kind=TaskLinkedObjectKind.GUEST_VISIT,
+            content_type=get_guest_visit_content_type(),
+            object_id=visit.id,
+            defaults={"created_by": request.user},
+        )
+        serializer = TaskLinkedGuestVisitSerializer(
+            link,
+            context={"request": request},
+        )
+        if created:
+            create_task_activity(
+                task,
+                request.user,
+                TaskActivityAction.LINKED,
+                object_kind=TaskLinkedObjectKind.GUEST_VISIT,
+                object_id=visit.id,
+                metadata={
+                    "object_label": visit.guest.full_name,
+                    "object_type": "Заявка на гостевой визит",
+                },
+            )
+        send_task_board_update(
+            task.board,
+            "linked",
+            "guest_visit",
+            visit.id,
+            extra={"task_id": task.id, "link_id": link.id},
+        )
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"linked-guest-visits/(?P<link_id>\d+)",
+    )
+    def unlink_guest_visit(self, request, pk=None, link_id=None):
+        task = self.get_object()
+        try:
+            link = self._guest_visit_links_queryset(task).get(id=link_id)
+        except TaskLinkedObject.DoesNotExist:
+            return Response(
+                {"detail": "Связь не найдена."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        guest_visit_id = link.object_id
+        link.delete()
+        create_task_activity(
+            task,
+            request.user,
+            TaskActivityAction.UNLINKED,
+            object_kind=TaskLinkedObjectKind.GUEST_VISIT,
+            object_id=guest_visit_id,
+            metadata={"object_type": "Заявка на гостевой визит"},
+        )
+        send_task_board_update(
+            task.board,
+            "unlinked",
+            "guest_visit",
+            guest_visit_id,
             extra={"task_id": task.id, "link_id": int(link_id)},
         )
         return Response(status=status.HTTP_204_NO_CONTENT)

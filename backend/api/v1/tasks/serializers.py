@@ -15,6 +15,7 @@ from communications.utils import user_can_access_chat
 from documents.models import Document
 from employees.models import Department, EmployeeDepartment
 from employees.services.personnel_state import resolve_employee_personnel_state
+from guests.models import Guest, GuestVisit
 from procurement.models import ProcurementRequest
 from requests_app.models import Request as EmployeeRequest
 from schedule.models import Event
@@ -24,6 +25,8 @@ from tasks.access import (
     user_can_access_document,
     user_can_access_employee,
     user_can_access_employee_request,
+    user_can_access_guest,
+    user_can_access_guest_visit,
     user_can_access_procurement_request,
     user_can_access_task_board,
 )
@@ -149,6 +152,8 @@ class TaskSerializer(serializers.ModelSerializer):
     linked_requests_count = serializers.SerializerMethodField()
     linked_procurement_requests_count = serializers.SerializerMethodField()
     linked_employees_count = serializers.SerializerMethodField()
+    linked_guests_count = serializers.SerializerMethodField()
+    linked_guest_visits_count = serializers.SerializerMethodField()
     linked_objects_count = serializers.SerializerMethodField()
     comments_count = serializers.SerializerMethodField()
 
@@ -179,6 +184,8 @@ class TaskSerializer(serializers.ModelSerializer):
             "linked_requests_count",
             "linked_procurement_requests_count",
             "linked_employees_count",
+            "linked_guests_count",
+            "linked_guest_visits_count",
             "linked_objects_count",
             "comments_count",
             "created_at",
@@ -198,6 +205,8 @@ class TaskSerializer(serializers.ModelSerializer):
             "linked_requests_count",
             "linked_procurement_requests_count",
             "linked_employees_count",
+            "linked_guests_count",
+            "linked_guest_visits_count",
             "linked_objects_count",
             "comments_count",
             "created_at",
@@ -250,6 +259,22 @@ class TaskSerializer(serializers.ModelSerializer):
             return obj.linked_employees_count
         return obj.linked_objects.filter(
             kind=TaskLinkedObjectKind.EMPLOYEE,
+        ).count()
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_linked_guests_count(self, obj):
+        if hasattr(obj, "linked_guests_count"):
+            return obj.linked_guests_count
+        return obj.linked_objects.filter(
+            kind=TaskLinkedObjectKind.GUEST,
+        ).count()
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_linked_guest_visits_count(self, obj):
+        if hasattr(obj, "linked_guest_visits_count"):
+            return obj.linked_guest_visits_count
+        return obj.linked_objects.filter(
+            kind=TaskLinkedObjectKind.GUEST_VISIT,
         ).count()
 
     @extend_schema_field(serializers.IntegerField())
@@ -821,3 +846,149 @@ class TaskLinkedEmployeeSerializer(serializers.ModelSerializer):
 
 def get_employee_content_type():
     return ContentType.objects.get_for_model(User)
+
+
+def _guest_payload(guest):
+    return {
+        "id": guest.id,
+        "full_name": guest.full_name,
+        "last_name": guest.last_name,
+        "first_name": guest.first_name,
+        "patronymic": guest.patronymic,
+        "birth_date": guest.birth_date,
+        "phone": guest.phone,
+        "email": guest.email,
+        "avatar": guest.avatar.url if getattr(guest, "avatar", None) else None,
+        "organization": guest.organization,
+        "position": guest.position,
+        "is_active": guest.is_active,
+        "is_blacklisted": guest.is_blacklisted,
+        "ldap_username": guest.ldap_username,
+        "ldap_upn": guest.ldap_upn,
+        "created_at": guest.created_at,
+        "updated_at": guest.updated_at,
+    }
+
+
+class TaskLinkedGuestSerializer(serializers.ModelSerializer):
+    created_by = EmployeeBriefSerializer(read_only=True)
+    guest = serializers.SerializerMethodField()
+    guest_id = serializers.IntegerField(source="object_id", read_only=True)
+    can_open = serializers.SerializerMethodField()
+    object_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskLinkedObject
+        fields = [
+            "id",
+            "kind",
+            "guest_id",
+            "guest",
+            "can_open",
+            "object_url",
+            "created_by",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.JSONField(allow_null=True))
+    def get_guest(self, obj):
+        if obj.kind != TaskLinkedObjectKind.GUEST:
+            return None
+
+        guest = getattr(obj, "content_object", None)
+        if guest is None:
+            return None
+        return _guest_payload(guest)
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_open(self, obj):
+        guest = getattr(obj, "content_object", None)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if obj.kind != TaskLinkedObjectKind.GUEST or guest is None or not user:
+            return False
+        return user_can_access_guest(user, guest)
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_object_url(self, obj):
+        guest = getattr(obj, "content_object", None)
+        if guest is None or not self.get_can_open(obj):
+            return None
+        return f"/guests?guest={guest.id}"
+
+
+def get_guest_content_type():
+    return ContentType.objects.get_for_model(Guest)
+
+
+class TaskLinkedGuestVisitSerializer(serializers.ModelSerializer):
+    created_by = EmployeeBriefSerializer(read_only=True)
+    guest_visit = serializers.SerializerMethodField()
+    guest_visit_id = serializers.IntegerField(source="object_id", read_only=True)
+    can_open = serializers.SerializerMethodField()
+    object_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskLinkedObject
+        fields = [
+            "id",
+            "kind",
+            "guest_visit_id",
+            "guest_visit",
+            "can_open",
+            "object_url",
+            "created_by",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.JSONField(allow_null=True))
+    def get_guest_visit(self, obj):
+        if obj.kind != TaskLinkedObjectKind.GUEST_VISIT:
+            return None
+
+        visit = getattr(obj, "content_object", None)
+        if visit is None:
+            return None
+
+        return {
+            "id": visit.id,
+            "guest": _guest_payload(visit.guest),
+            "inviter": EmployeeBriefSerializer(visit.inviter).data,
+            "inviter_snapshot_name": visit.inviter_snapshot_name,
+            "inviter_snapshot_email": visit.inviter_snapshot_email,
+            "purpose": visit.purpose,
+            "visit_comment": visit.visit_comment,
+            "status": visit.status,
+            "status_display": visit.get_status_display(),
+            "access_starts_at": visit.access_starts_at,
+            "access_expires_at": visit.access_expires_at,
+            "all_day": visit.all_day,
+            "unlimited": visit.unlimited,
+            "submitted_at": visit.submitted_at,
+            "is_active_now": visit.is_active_now,
+            "is_expired": visit.is_expired,
+            "created_at": visit.created_at,
+            "updated_at": visit.updated_at,
+        }
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_open(self, obj):
+        visit = getattr(obj, "content_object", None)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if obj.kind != TaskLinkedObjectKind.GUEST_VISIT or visit is None or not user:
+            return False
+        return user_can_access_guest_visit(user, visit)
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_object_url(self, obj):
+        visit = getattr(obj, "content_object", None)
+        if visit is None or not self.get_can_open(obj):
+            return None
+        return f"/guests?visit={visit.id}"
+
+
+def get_guest_visit_content_type():
+    return ContentType.objects.get_for_model(GuestVisit)

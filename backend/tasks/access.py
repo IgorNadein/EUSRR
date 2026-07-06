@@ -148,3 +148,16 @@ def user_can_access_procurement_request(user, procurement_request) -> bool:
 
 def user_can_access_employee(user, employee) -> bool:
     return bool(user and user.is_authenticated and employee is not None)
+
+
+def user_can_access_guest(user, guest) -> bool:
+    return bool(user and user.is_authenticated and guest is not None)
+
+
+def user_can_access_guest_visit(user, visit) -> bool:
+    if not user or not user.is_authenticated or visit is None:
+        return False
+
+    from guests.permissions import is_guest_admin
+
+    return is_guest_admin(user) or visit.inviter_id == user.id

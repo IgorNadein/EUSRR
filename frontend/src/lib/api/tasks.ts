@@ -9,6 +9,8 @@ import type {
     TaskLinkedCalendarEvent,
     TaskLinkedDocument,
     TaskLinkedEmployee,
+    TaskLinkedGuest,
+    TaskLinkedGuestVisit,
     TaskLinkedMessage,
     TaskLinkedProcurementRequest,
     TaskLinkedRequest,
@@ -86,6 +88,10 @@ export function createTasksApi(request: RequestFn) {
             request(`/api/v1/tasks/linked-procurement-request-tasks/?procurement_request_id=${requestId}`),
         getEmployeeLinkedTasks: (employeeId: number): Promise<TaskCard[]> =>
             request(`/api/v1/tasks/linked-employee-tasks/?employee_id=${employeeId}`),
+        getGuestLinkedTasks: (guestId: number): Promise<TaskCard[]> =>
+            request(`/api/v1/tasks/linked-guest-tasks/?guest_id=${guestId}`),
+        getGuestVisitLinkedTasks: (guestVisitId: number): Promise<TaskCard[]> =>
+            request(`/api/v1/tasks/linked-guest-visit-tasks/?guest_visit_id=${guestVisitId}`),
         getTaskLinkedMessages: (id: number): Promise<TaskLinkedMessage[]> =>
             request(`/api/v1/tasks/${id}/linked-messages/`),
         linkTaskMessage: (id: number, messageId: number): Promise<TaskLinkedMessage> =>
@@ -139,6 +145,28 @@ export function createTasksApi(request: RequestFn) {
             }),
         unlinkTaskEmployee: (id: number, linkId: number): Promise<void> =>
             request(`/api/v1/tasks/${id}/linked-employees/${linkId}/`, {
+                method: "DELETE",
+            }),
+        getTaskLinkedGuests: (id: number): Promise<TaskLinkedGuest[]> =>
+            request(`/api/v1/tasks/${id}/linked-guests/`),
+        linkTaskGuest: (id: number, guestId: number): Promise<TaskLinkedGuest> =>
+            request(`/api/v1/tasks/${id}/linked-guests/`, {
+                method: "POST",
+                body: JSON.stringify({ guest_id: guestId }),
+            }),
+        unlinkTaskGuest: (id: number, linkId: number): Promise<void> =>
+            request(`/api/v1/tasks/${id}/linked-guests/${linkId}/`, {
+                method: "DELETE",
+            }),
+        getTaskLinkedGuestVisits: (id: number): Promise<TaskLinkedGuestVisit[]> =>
+            request(`/api/v1/tasks/${id}/linked-guest-visits/`),
+        linkTaskGuestVisit: (id: number, guestVisitId: number): Promise<TaskLinkedGuestVisit> =>
+            request(`/api/v1/tasks/${id}/linked-guest-visits/`, {
+                method: "POST",
+                body: JSON.stringify({ guest_visit_id: guestVisitId }),
+            }),
+        unlinkTaskGuestVisit: (id: number, linkId: number): Promise<void> =>
+            request(`/api/v1/tasks/${id}/linked-guest-visits/${linkId}/`, {
                 method: "DELETE",
             }),
         getTaskLinkedEvents: (id: number): Promise<TaskLinkedCalendarEvent[]> =>
