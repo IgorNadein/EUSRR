@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Clock,
   Edit3,
+  Link2,
   Loader2,
   LogIn,
   LogOut,
@@ -21,6 +22,8 @@ import {
   type AttendanceDayEventsPreview,
 } from "@/components/attendance/AttendanceDayEventsModal";
 import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
+import TaskLinkPill from "@/components/tasks/TaskLinkPill";
+import { RelatedTaskLinks } from "@/components/tasks/RelatedTaskLinks";
 import { Modal } from "@/components/ui";
 import { useUser } from "@/contexts/UserContext";
 import { apiClient } from "@/lib/api";
@@ -32,7 +35,7 @@ import type {
   AttendanceRecordUpdatePayload,
   PaginatedAttendanceRecords,
 } from "@/lib/api/attendance";
-import type { EmployeeAction } from "@/types/api";
+import type { EmployeeAction, TaskCard } from "@/types/api";
 import { getPersonnelDayMeta } from "./personnel-day-meta.js";
 
 type EmployeeAttendanceCardProps = {
@@ -444,6 +447,7 @@ type AttendanceCardApiClient = typeof apiClient & {
   addAttendanceRecordComment?: unknown;
   analyzeAttendance?: unknown;
   deleteAttendanceRecordComment?: unknown;
+  getAttendanceRecord?: unknown;
   getAttendanceRecordComments?: unknown;
   getAttendanceRecords?: unknown;
   updateAttendanceRecord?: unknown;
@@ -494,6 +498,14 @@ function getAttendanceRecords(params: {
   return client.request<PaginatedAttendanceRecords>(
     `/api/v1/attendance/records/${buildAttendanceQuery(params)}`,
   );
+}
+
+function getAttendanceRecord(recordId: number) {
+  const client = attendanceApiClient();
+  if (typeof client.getAttendanceRecord === "function") {
+    return client.getAttendanceRecord(recordId) as Promise<AttendanceRecord>;
+  }
+  return client.request<AttendanceRecord>(`/api/v1/attendance/records/${recordId}/`);
 }
 
 function getAttendanceRecordComments(recordId: number) {
@@ -577,6 +589,7 @@ export default function EmployeeAttendanceCard({
   const [aliasError, setAliasError] = useState<string | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState<AttendanceRecordEditForm | null>(null);
+  const [taskLinkRecord, setTaskLinkRecord] = useState<AttendanceRecord | null>(null);
 
   const canManageAttendance = Boolean(
     currentUser?.auth?.is_staff || currentUser?.auth?.is_superuser,
@@ -742,6 +755,23 @@ export default function EmployeeAttendanceCard({
         ),
       };
     });
+  }
+
+  async function refreshRecord(recordId: number) {
+    const updated = await getAttendanceRecord(recordId);
+    setResult((current) => {
+      if (!current?.records) return current;
+      return {
+        ...current,
+        records: current.records.map((record) =>
+          getRecordId(record) === recordId ? { ...record, ...updated } : record,
+        ),
+      };
+    });
+    setTaskLinkRecord((current) => (
+      current && getRecordId(current) === recordId ? updated : current
+    ));
+    return updated;
   }
 
   async function ensureCommentsLoaded(recordId: number) {
@@ -942,6 +972,23 @@ export default function EmployeeAttendanceCard({
     }
   }
 
+  const taskLinkRecordId = taskLinkRecord ? getRecordId(taskLinkRecord) : 0;
+  const taskLinkEmployeeName = taskLinkRecord?.display_name
+    || displayUserName(currentUser)
+    || `Сотрудник ${employeeId}`;
+  const taskLinkDate = taskLinkRecord?.date || "Дата не указана";
+  const taskLinkDescription = taskLinkRecord
+    ? [
+        `Сотрудник: ${taskLinkEmployeeName}`,
+        `Дата: ${taskLinkDate}`,
+        `Приход: ${formatTime(taskLinkRecord.arrival_time)}`,
+        `Уход: ${formatTime(taskLinkRecord.departure_time)}`,
+        `Часы: ${formatHours(taskLinkRecord.work_hours)} / ${formatHours(taskLinkRecord.expected_hours)}`,
+        ...issueLabels(taskLinkRecord, getPersonnelDayMeta(employeeActions, taskLinkRecord.date, taskLinkRecord))
+          .map((label) => `Замечание: ${formatAttendanceIssueLabel(label)}`),
+      ].join("\n")
+    : "";
+
   return (
     <>
       <section className="app-surface rounded-2xl p-4 sm:p-5">
@@ -1116,6 +1163,7 @@ export default function EmployeeAttendanceCard({
               const commentsCount = comments.length || Number(record.comments_count || 0);
               const commentsLoading = recordId ? Boolean(commentsLoadingMap[recordId]) : false;
               const commentDraft = recordId ? (commentDrafts[recordId] || "") : "";
+              const linkedTasks = record.linked_tasks || [];
 
               return (
                 <article key={key} className="app-surface-muted overflow-hidden rounded-xl transition hover:border-[var(--border-strong)]">
@@ -1146,6 +1194,16 @@ export default function EmployeeAttendanceCard({
                             {commentsCount}
                           </span>
                         ) : null}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => recordId ? setTaskLinkRecord(record) : undefined}
+                        disabled={!recordId}
+                        className="app-action-secondary inline-flex h-8 w-8 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-50"
+                        title="Связать с задачей"
+                        aria-label="Связать запись посещаемости с задачей"
+                      >
+                        <Link2 size={15} />
                       </button>
                     </div>
 
@@ -1206,6 +1264,22 @@ export default function EmployeeAttendanceCard({
                       </div>
                     </button>
                   </div>
+                  {linkedTasks.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 px-3 pb-3 sm:px-4">
+                      {linkedTasks.slice(0, 3).map((task) => (
+                        <TaskLinkPill
+                          key={task.link_id || task.id}
+                          task={task}
+                          maxTitleClassName="max-w-44"
+                        />
+                      ))}
+                      {linkedTasks.length > 3 ? (
+                        <span className="app-badge inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium">
+                          +{linkedTasks.length - 3}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   {(expanded || commentsOpen) ? (
                     <div className="border-t border-[var(--border-subtle)] px-3 pb-3 sm:px-4 sm:pb-4">
@@ -1333,6 +1407,24 @@ export default function EmployeeAttendanceCard({
         onOpenComments={(record) => void openCommentsFromDayEvents(record)}
         record={dayEventsRecordPreview}
       />
+
+      {taskLinkRecord && taskLinkRecordId ? (
+        <RelatedTaskLinks
+          key={`attendance-record-task-link-${taskLinkRecordId}`}
+          entityLabel="Запись посещаемости"
+          entityTitle={`${taskLinkEmployeeName} · ${taskLinkDate}`}
+          entitySubtitle={`Приход ${formatTime(taskLinkRecord.arrival_time)} · уход ${formatTime(taskLinkRecord.departure_time)} · ${formatHours(taskLinkRecord.work_hours)} ч.`}
+          defaultTaskTitle={`Задача по посещаемости: ${taskLinkEmployeeName}, ${taskLinkDate}`}
+          defaultTaskDescription={taskLinkDescription}
+          successMessage="Запись посещаемости связана с задачей"
+          variant="dialog"
+          open
+          loadLinkedTasks={() => apiClient.getAttendanceRecordLinkedTasks(taskLinkRecordId) as Promise<TaskCard[]>}
+          linkTask={(taskId) => apiClient.linkTaskAttendanceRecord(taskId, taskLinkRecordId)}
+          onClose={() => setTaskLinkRecord(null)}
+          onLinked={() => void refreshRecord(taskLinkRecordId)}
+        />
+      ) : null}
 
       <Modal
         isOpen={aliasModalOpen}

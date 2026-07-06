@@ -188,6 +188,7 @@ export interface TaskCard {
   linked_employees_count?: number;
   linked_guests_count?: number;
   linked_guest_visits_count?: number;
+  linked_attendance_records_count?: number;
   linked_objects_count?: number;
   comments_count?: number;
   created_at: string;
@@ -367,12 +368,51 @@ export interface TaskLinkedGuestVisit {
   created_at: string;
 }
 
+export interface TaskLinkedAttendanceRecord {
+  id: number;
+  kind: "attendance_record";
+  attendance_record_id: number;
+  attendance_record: {
+    id: number;
+    employee_id?: number;
+    employee?: User | null;
+    date?: string;
+    display_name?: string;
+    arrival_time?: string | null;
+    departure_time?: string | null;
+    work_hours?: number | string | null;
+    expected_hours?: number | string | null;
+    is_workday?: boolean;
+    effective_is_workday?: boolean;
+    is_late?: boolean;
+    late_minutes?: number | null;
+    is_early_leave?: boolean;
+    early_leave_minutes?: number | null;
+    is_underwork?: boolean;
+    underwork_hours?: number | string | null;
+    is_overtime?: boolean;
+    overtime_hours?: number | string | null;
+    is_absent?: boolean;
+    statuses?: string[];
+    employee_issues?: string[];
+    technical_issues?: string[];
+    personnel_status?: string;
+    personnel_status_label?: string;
+    comments_count?: number;
+    updated_at?: string;
+  } | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
 export interface TaskActivity {
   id: number;
   action: "created" | "updated" | "moved" | "linked" | "unlinked";
   action_display?: string;
   actor?: User | null;
-  object_kind?: "message" | "calendar_event" | "document" | "request" | "procurement_request" | "employee" | "guest" | "guest_visit" | "";
+  object_kind?: "message" | "calendar_event" | "document" | "request" | "procurement_request" | "employee" | "guest" | "guest_visit" | "attendance_record" | "";
   object_id?: number | null;
   metadata?: Record<string, unknown>;
   created_at: string;

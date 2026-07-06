@@ -1,5 +1,5 @@
 import { buildQuery, type GetTokenFn, type RequestFn } from './utils';
-import type { User } from '@/types/api';
+import type { MessageLinkedTask, User } from '@/types/api';
 
 export type AttendanceDateOverridePayload = {
     date: string;
@@ -85,6 +85,7 @@ export type AttendanceRecord = {
     employee_issues?: string[];
     technical_issues?: string[];
     statuses?: string[];
+    linked_tasks?: MessageLinkedTask[];
     comments_count?: number;
     personnel_status?: string;
     personnel_status_label?: string;

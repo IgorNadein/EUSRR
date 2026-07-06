@@ -5,6 +5,7 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from attendance.models import AttendanceRecord
 from api.v1.documents.serializers import DocumentReadSerializer
 from api.v1.employees.serializers import EmployeeBriefSerializer
 from api.v1.employees.serializers.department import DepartmentBriefSerializer
@@ -27,6 +28,7 @@ from tasks.access import (
     user_can_access_employee_request,
     user_can_access_guest,
     user_can_access_guest_visit,
+    user_can_access_attendance_record,
     user_can_access_procurement_request,
     user_can_access_task_board,
 )
@@ -154,6 +156,7 @@ class TaskSerializer(serializers.ModelSerializer):
     linked_employees_count = serializers.SerializerMethodField()
     linked_guests_count = serializers.SerializerMethodField()
     linked_guest_visits_count = serializers.SerializerMethodField()
+    linked_attendance_records_count = serializers.SerializerMethodField()
     linked_objects_count = serializers.SerializerMethodField()
     comments_count = serializers.SerializerMethodField()
 
@@ -186,6 +189,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "linked_employees_count",
             "linked_guests_count",
             "linked_guest_visits_count",
+            "linked_attendance_records_count",
             "linked_objects_count",
             "comments_count",
             "created_at",
@@ -207,6 +211,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "linked_employees_count",
             "linked_guests_count",
             "linked_guest_visits_count",
+            "linked_attendance_records_count",
             "linked_objects_count",
             "comments_count",
             "created_at",
@@ -275,6 +280,14 @@ class TaskSerializer(serializers.ModelSerializer):
             return obj.linked_guest_visits_count
         return obj.linked_objects.filter(
             kind=TaskLinkedObjectKind.GUEST_VISIT,
+        ).count()
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_linked_attendance_records_count(self, obj):
+        if hasattr(obj, "linked_attendance_records_count"):
+            return obj.linked_attendance_records_count
+        return obj.linked_objects.filter(
+            kind=TaskLinkedObjectKind.ATTENDANCE_RECORD,
         ).count()
 
     @extend_schema_field(serializers.IntegerField())
@@ -992,3 +1005,88 @@ class TaskLinkedGuestVisitSerializer(serializers.ModelSerializer):
 
 def get_guest_visit_content_type():
     return ContentType.objects.get_for_model(GuestVisit)
+
+
+class TaskLinkedAttendanceRecordSerializer(serializers.ModelSerializer):
+    created_by = EmployeeBriefSerializer(read_only=True)
+    attendance_record = serializers.SerializerMethodField()
+    attendance_record_id = serializers.IntegerField(source="object_id", read_only=True)
+    can_open = serializers.SerializerMethodField()
+    object_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskLinkedObject
+        fields = [
+            "id",
+            "kind",
+            "attendance_record_id",
+            "attendance_record",
+            "can_open",
+            "object_url",
+            "created_by",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.JSONField(allow_null=True))
+    def get_attendance_record(self, obj):
+        if obj.kind != TaskLinkedObjectKind.ATTENDANCE_RECORD:
+            return None
+
+        record = getattr(obj, "content_object", None)
+        if record is None:
+            return None
+
+        return {
+            "id": record.id,
+            "employee_id": record.employee_id,
+            "employee": EmployeeBriefSerializer(record.employee).data,
+            "date": record.date,
+            "display_name": record.display_name,
+            "arrival_time": record.arrival_time,
+            "departure_time": record.departure_time,
+            "work_hours": record.work_hours,
+            "expected_hours": record.expected_hours,
+            "is_workday": record.is_workday,
+            "effective_is_workday": record.effective_is_workday,
+            "is_late": record.is_late,
+            "late_minutes": record.late_minutes,
+            "is_early_leave": record.is_early_leave,
+            "early_leave_minutes": record.early_leave_minutes,
+            "is_underwork": record.is_underwork,
+            "underwork_hours": record.underwork_hours,
+            "is_overtime": record.is_overtime,
+            "overtime_hours": record.overtime_hours,
+            "is_absent": record.is_absent,
+            "statuses": record.statuses,
+            "employee_issues": record.employee_issues,
+            "technical_issues": record.technical_issues,
+            "personnel_status": record.personnel_status,
+            "personnel_status_label": record.personnel_status_label,
+            "comments_count": get_comment_count(record),
+            "updated_at": record.updated_at,
+        }
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_can_open(self, obj):
+        record = getattr(obj, "content_object", None)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if (
+            obj.kind != TaskLinkedObjectKind.ATTENDANCE_RECORD
+            or record is None
+            or not user
+        ):
+            return False
+        return user_can_access_attendance_record(user, record)
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_object_url(self, obj):
+        record = getattr(obj, "content_object", None)
+        if record is None or not self.get_can_open(obj):
+            return None
+        return f"/attendance?record={record.id}"
+
+
+def get_attendance_record_content_type():
+    return ContentType.objects.get_for_model(AttendanceRecord)

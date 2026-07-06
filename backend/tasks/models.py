@@ -182,6 +182,7 @@ class TaskLinkedObjectKind(models.TextChoices):
     EMPLOYEE = "employee", "Сотрудник"
     GUEST = "guest", "Гость"
     GUEST_VISIT = "guest_visit", "Заявка на гостевой визит"
+    ATTENDANCE_RECORD = "attendance_record", "Запись посещаемости"
 
 
 class TaskActivityAction(models.TextChoices):

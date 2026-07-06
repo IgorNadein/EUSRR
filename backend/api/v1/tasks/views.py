@@ -10,6 +10,7 @@ from django.db.models import (
     Value,
 )
 from django.db.models.functions import Coalesce
+from attendance.models import AttendanceRecord
 from communications import comments_helpers
 from communications.models import Message
 from communications.utils import user_can_access_chat
@@ -31,6 +32,7 @@ from tasks.access import (
     user_can_access_employee_request,
     user_can_access_guest,
     user_can_access_guest_visit,
+    user_can_access_attendance_record,
     user_can_access_procurement_request,
 )
 from tasks.models import (
@@ -55,6 +57,7 @@ from .serializers import (
     TaskColumnSerializer,
     TaskLabelSerializer,
     TaskLinkedCalendarEventSerializer,
+    TaskLinkedAttendanceRecordSerializer,
     TaskLinkedDocumentSerializer,
     TaskLinkedEmployeeSerializer,
     TaskLinkedGuestSerializer,
@@ -64,6 +67,7 @@ from .serializers import (
     TaskLinkedRequestSerializer,
     TaskSerializer,
     create_default_columns,
+    get_attendance_record_content_type,
     get_calendar_event_content_type,
     get_document_content_type,
     get_employee_content_type,
@@ -330,6 +334,15 @@ class TaskViewSet(viewsets.ModelViewSet):
                     "linked_objects",
                     filter=Q(
                         linked_objects__kind=TaskLinkedObjectKind.GUEST_VISIT,
+                    ),
+                    distinct=True,
+                ),
+                linked_attendance_records_count=Count(
+                    "linked_objects",
+                    filter=Q(
+                        linked_objects__kind=(
+                            TaskLinkedObjectKind.ATTENDANCE_RECORD
+                        ),
                     ),
                     distinct=True,
                 ),
@@ -862,6 +875,45 @@ class TaskViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=["get"], url_path="linked-attendance-record-tasks")
+    def linked_attendance_record_tasks(self, request):
+        attendance_record_id = request.query_params.get("attendance_record_id")
+        try:
+            attendance_record_id = int(attendance_record_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"attendance_record_id": ["Укажите ID записи посещаемости."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            record = AttendanceRecord.objects.select_related("employee").get(
+                id=attendance_record_id,
+            )
+        except AttendanceRecord.DoesNotExist:
+            return Response(
+                {"attendance_record_id": ["Запись посещаемости не найдена."]},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not user_can_access_attendance_record(request.user, record):
+            return Response(
+                {"detail": "Нет доступа к этой записи посещаемости."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        queryset = (
+            self.get_queryset()
+            .filter(
+                linked_objects__kind=TaskLinkedObjectKind.ATTENDANCE_RECORD,
+                linked_objects__content_type=get_attendance_record_content_type(),
+                linked_objects__object_id=record.id,
+            )
+            .distinct()
+        )
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     def _message_links_queryset(self, task):
         return (
             TaskLinkedObject.objects.filter(
@@ -937,6 +989,16 @@ class TaskViewSet(viewsets.ModelViewSet):
             TaskLinkedObject.objects.filter(
                 task=task,
                 kind=TaskLinkedObjectKind.GUEST_VISIT,
+            )
+            .select_related("created_by", "content_type")
+            .order_by("-created_at", "-id")
+        )
+
+    def _attendance_record_links_queryset(self, task):
+        return (
+            TaskLinkedObject.objects.filter(
+                task=task,
+                kind=TaskLinkedObjectKind.ATTENDANCE_RECORD,
             )
             .select_related("created_by", "content_type")
             .order_by("-created_at", "-id")
@@ -1703,6 +1765,112 @@ class TaskViewSet(viewsets.ModelViewSet):
             "unlinked",
             "guest_visit",
             guest_visit_id,
+            extra={"task_id": task.id, "link_id": int(link_id)},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get", "post"], url_path="linked-attendance-records")
+    def linked_attendance_records(self, request, pk=None):
+        task = self.get_object()
+        if request.method == "GET":
+            serializer = TaskLinkedAttendanceRecordSerializer(
+                self._attendance_record_links_queryset(task),
+                many=True,
+                context={"request": request},
+            )
+            return Response(serializer.data)
+
+        attendance_record_id = request.data.get("attendance_record_id")
+        try:
+            attendance_record_id = int(attendance_record_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"attendance_record_id": ["Укажите ID записи посещаемости."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            record = AttendanceRecord.objects.select_related("employee").get(
+                id=attendance_record_id,
+            )
+        except AttendanceRecord.DoesNotExist:
+            return Response(
+                {"attendance_record_id": ["Запись посещаемости не найдена."]},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not user_can_access_attendance_record(request.user, record):
+            return Response(
+                {"detail": "Нет доступа к этой записи посещаемости."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        link, created = TaskLinkedObject.objects.get_or_create(
+            task=task,
+            kind=TaskLinkedObjectKind.ATTENDANCE_RECORD,
+            content_type=get_attendance_record_content_type(),
+            object_id=record.id,
+            defaults={"created_by": request.user},
+        )
+        serializer = TaskLinkedAttendanceRecordSerializer(
+            link,
+            context={"request": request},
+        )
+        if created:
+            employee_name = str(record.employee) if record.employee_id else ""
+            create_task_activity(
+                task,
+                request.user,
+                TaskActivityAction.LINKED,
+                object_kind=TaskLinkedObjectKind.ATTENDANCE_RECORD,
+                object_id=record.id,
+                metadata={
+                    "object_label": f"{employee_name} {record.date}".strip(),
+                    "object_type": "Запись посещаемости",
+                },
+            )
+        send_task_board_update(
+            task.board,
+            "linked",
+            "attendance_record",
+            record.id,
+            extra={"task_id": task.id, "link_id": link.id},
+        )
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"linked-attendance-records/(?P<link_id>\d+)",
+    )
+    def unlink_attendance_record(self, request, pk=None, link_id=None):
+        task = self.get_object()
+        try:
+            link = self._attendance_record_links_queryset(task).get(id=link_id)
+        except TaskLinkedObject.DoesNotExist:
+            return Response(
+                {"detail": "Связь не найдена."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        attendance_record_id = link.object_id
+        link.delete()
+        create_task_activity(
+            task,
+            request.user,
+            TaskActivityAction.UNLINKED,
+            object_kind=TaskLinkedObjectKind.ATTENDANCE_RECORD,
+            object_id=attendance_record_id,
+            metadata={"object_type": "Запись посещаемости"},
+        )
+        send_task_board_update(
+            task.board,
+            "unlinked",
+            "attendance_record",
+            attendance_record_id,
             extra={"task_id": task.id, "link_id": int(link_id)},
         )
         return Response(status=status.HTTP_204_NO_CONTENT)

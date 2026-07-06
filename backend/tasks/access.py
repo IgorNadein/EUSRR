@@ -1,4 +1,5 @@
 from django.db.models import Q
+from attendance.models import AttendanceRecord
 from documents.models import Document
 from employees.models import Department, EmployeeDepartment, RoleAssignment
 from requests_app.enums import RequestStatus
@@ -161,3 +162,16 @@ def user_can_access_guest_visit(user, visit) -> bool:
     from guests.permissions import is_guest_admin
 
     return is_guest_admin(user) or visit.inviter_id == user.id
+
+
+def user_can_access_attendance_record(
+    user,
+    record: AttendanceRecord | None,
+) -> bool:
+    if not user or not user.is_authenticated or record is None:
+        return False
+    return bool(
+        user.is_staff
+        or user.is_superuser
+        or record.employee_id == user.id
+    )

@@ -6,6 +6,7 @@ import type {
     TaskActivity,
     TaskComment,
     TaskLabel,
+    TaskLinkedAttendanceRecord,
     TaskLinkedCalendarEvent,
     TaskLinkedDocument,
     TaskLinkedEmployee,
@@ -92,6 +93,8 @@ export function createTasksApi(request: RequestFn) {
             request(`/api/v1/tasks/linked-guest-tasks/?guest_id=${guestId}`),
         getGuestVisitLinkedTasks: (guestVisitId: number): Promise<TaskCard[]> =>
             request(`/api/v1/tasks/linked-guest-visit-tasks/?guest_visit_id=${guestVisitId}`),
+        getAttendanceRecordLinkedTasks: (attendanceRecordId: number): Promise<TaskCard[]> =>
+            request(`/api/v1/tasks/linked-attendance-record-tasks/?attendance_record_id=${attendanceRecordId}`),
         getTaskLinkedMessages: (id: number): Promise<TaskLinkedMessage[]> =>
             request(`/api/v1/tasks/${id}/linked-messages/`),
         linkTaskMessage: (id: number, messageId: number): Promise<TaskLinkedMessage> =>
@@ -167,6 +170,17 @@ export function createTasksApi(request: RequestFn) {
             }),
         unlinkTaskGuestVisit: (id: number, linkId: number): Promise<void> =>
             request(`/api/v1/tasks/${id}/linked-guest-visits/${linkId}/`, {
+                method: "DELETE",
+            }),
+        getTaskLinkedAttendanceRecords: (id: number): Promise<TaskLinkedAttendanceRecord[]> =>
+            request(`/api/v1/tasks/${id}/linked-attendance-records/`),
+        linkTaskAttendanceRecord: (id: number, attendanceRecordId: number): Promise<TaskLinkedAttendanceRecord> =>
+            request(`/api/v1/tasks/${id}/linked-attendance-records/`, {
+                method: "POST",
+                body: JSON.stringify({ attendance_record_id: attendanceRecordId }),
+            }),
+        unlinkTaskAttendanceRecord: (id: number, linkId: number): Promise<void> =>
+            request(`/api/v1/tasks/${id}/linked-attendance-records/${linkId}/`, {
                 method: "DELETE",
             }),
         getTaskLinkedEvents: (id: number): Promise<TaskLinkedCalendarEvent[]> =>

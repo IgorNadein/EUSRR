@@ -1,5 +1,5 @@
 from unittest.mock import patch
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -9,6 +9,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from attendance.models import AttendanceAnalysisRun, AttendanceRecord
 from communications.models import Chat, ChatMembership, Message
 from documents.models import Document
 from employees.models import Department, EmployeeDepartment, RoleAssignment
@@ -888,6 +889,92 @@ def test_task_linked_guest_visit_respects_visit_access(api_client):
     reverse_linked_response = api_client.get(
         reverse("api:v1:tasks:task-linked-guest-visit-tasks"),
         {"guest_visit_id": visit.id},
+    )
+    assert reverse_linked_response.status_code == status.HTTP_403_FORBIDDEN
+
+
+def test_task_linked_attendance_record_respects_record_access(api_client):
+    owner = make_user("task-attendance-owner@example.com", "+79994440042")
+    employee = make_user(
+        "task-attendance-employee@example.com",
+        "+79994440043",
+        first_name="Петр",
+        last_name="Посещаемый",
+    )
+    outsider = make_user("task-attendance-outsider@example.com", "+79994440044")
+    run = AttendanceAnalysisRun.objects.create(
+        employee=employee,
+        period_start=date(2026, 4, 20),
+        period_end=date(2026, 4, 20),
+        triggered_by=owner,
+    )
+    record = AttendanceRecord.objects.create(
+        analysis_run=run,
+        employee=employee,
+        date=date(2026, 4, 20),
+        display_name="Посещаемый Петр",
+        arrival_time="09:10",
+        departure_time="18:05",
+        work_hours=8.9,
+        expected_hours=9,
+        is_late=True,
+        late_minutes=10,
+    )
+    board = TaskBoard.objects.create(
+        name="Доска с посещаемостью",
+        created_by=owner,
+    )
+    board.members.add(employee)
+    column = TaskColumn.objects.create(
+        board=board,
+        name="Новые",
+        position=1000,
+        color="#38bdf8",
+    )
+    task = Task.objects.create(
+        board=board,
+        column=column,
+        title="Проверить посещаемость",
+        created_by=owner,
+    )
+
+    api_client.force_authenticate(user=employee)
+    link_response = api_client.post(
+        reverse(
+            "api:v1:tasks:task-linked-attendance-records",
+            kwargs={"pk": task.id},
+        ),
+        {"attendance_record_id": record.id},
+        format="json",
+    )
+    assert link_response.status_code == status.HTTP_201_CREATED
+    assert link_response.data["attendance_record_id"] == record.id
+    assert link_response.data["attendance_record"]["employee"]["id"] == employee.id
+    assert str(link_response.data["attendance_record"]["date"]) == "2026-04-20"
+    assert link_response.data["can_open"] is True
+    assert link_response.data["object_url"] == f"/attendance?record={record.id}"
+
+    linked_response = api_client.get(
+        reverse(
+            "api:v1:tasks:task-linked-attendance-records",
+            kwargs={"pk": task.id},
+        )
+    )
+    assert linked_response.status_code == status.HTTP_200_OK
+    assert linked_response.data[0]["attendance_record"]["arrival_time"] == "09:10"
+
+    reverse_linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-attendance-record-tasks"),
+        {"attendance_record_id": record.id},
+    )
+    assert reverse_linked_response.status_code == status.HTTP_200_OK
+    assert reverse_linked_response.data[0]["id"] == task.id
+    assert reverse_linked_response.data[0]["linked_attendance_records_count"] == 1
+
+    api_client.force_authenticate(user=outsider)
+    reverse_linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-attendance-record-tasks"),
+        {"attendance_record_id": record.id},
     )
     assert reverse_linked_response.status_code == status.HTTP_403_FORBIDDEN
 

@@ -1,3 +1,4 @@
+from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 
 from attendance.models import (
@@ -10,6 +11,53 @@ from attendance.models import (
 from attendance.services import get_standard_work_schedule_payload
 from api.v1.employees.serializers import EmployeeBriefSerializer
 from employees.constants import ACTION_REMOTE
+
+
+def _linked_task_payloads(record: AttendanceRecord, user) -> list[dict]:
+    if not user or not getattr(user, "is_authenticated", False):
+        return []
+
+    try:
+        from tasks.access import task_board_access_q
+        from tasks.models import (
+            TaskBoard,
+            TaskLinkedObject,
+            TaskLinkedObjectKind,
+        )
+    except Exception:
+        return []
+
+    content_type = ContentType.objects.get_for_model(AttendanceRecord)
+    accessible_boards = TaskBoard.objects.filter(
+        is_archived=False,
+    ).filter(task_board_access_q(user))
+
+    links = (
+        TaskLinkedObject.objects.filter(
+            kind=TaskLinkedObjectKind.ATTENDANCE_RECORD,
+            content_type=content_type,
+            object_id=record.id,
+            task__board__in=accessible_boards,
+        )
+        .select_related("task", "task__board", "task__column")
+        .order_by("task__title", "task_id")
+    )
+
+    return [
+        {
+            "link_id": link.id,
+            "id": link.task_id,
+            "title": link.task.title,
+            "board_id": link.task.board_id,
+            "board_name": link.task.board.name,
+            "column_id": link.task.column_id,
+            "column_name": link.task.column.name,
+            "column_color": link.task.column.color,
+            "priority": link.task.priority,
+            "priority_display": link.task.get_priority_display(),
+        }
+        for link in links
+    ]
 
 
 class DateOverrideSerializer(serializers.Serializer):
@@ -310,6 +358,7 @@ class AttendanceRecordSerializer(serializers.ModelSerializer):
     analysis_run_id = serializers.IntegerField(read_only=True)
     comments_count = serializers.IntegerField(read_only=True, default=0)
     non_working_reason = serializers.SerializerMethodField()
+    linked_tasks = serializers.SerializerMethodField()
 
     class Meta:
         model = AttendanceRecord
@@ -347,6 +396,7 @@ class AttendanceRecordSerializer(serializers.ModelSerializer):
             "manual_edited_at",
             "raw_data",
             "comments_count",
+            "linked_tasks",
             "updated_at",
         )
         read_only_fields = fields
@@ -359,6 +409,11 @@ class AttendanceRecordSerializer(serializers.ModelSerializer):
         if not obj.is_workday:
             return "Выходной по графику/календарю"
         return "Нерабочий день"
+
+    def get_linked_tasks(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return _linked_task_payloads(obj, user)
 
 
 class AttendanceRecordUpdateSerializer(serializers.ModelSerializer):

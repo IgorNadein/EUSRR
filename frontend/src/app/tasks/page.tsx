@@ -56,6 +56,7 @@ import type {
   TaskCard,
   TaskColumn,
   TaskComment,
+  TaskLinkedAttendanceRecord,
   TaskLinkedDocument,
   TaskLinkedEmployee,
   TaskLinkedCalendarEvent,
@@ -1353,6 +1354,123 @@ function LinkedGuestVisitCard({
   );
 }
 
+function formatAttendanceHours(value: unknown) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return "0";
+  return Number.isInteger(numeric) ? String(numeric) : numeric.toFixed(1);
+}
+
+function LinkedAttendanceRecordCard({
+  link,
+  onUnlink,
+  disabled,
+}: {
+  link: TaskLinkedAttendanceRecord;
+  onUnlink: (linkId: number) => void;
+  disabled?: boolean;
+}) {
+  const record = link.attendance_record;
+  const canOpen = Boolean(link.can_open && link.object_url);
+  const employeeName = record?.display_name
+    || (record?.employee ? displayUserName(record.employee) : "")
+    || "Сотрудник не указан";
+  const issueLabels = [
+    record?.is_late ? "Опоздание" : "",
+    record?.is_early_leave ? "Ранний уход" : "",
+    record?.is_underwork ? "Недоработка" : "",
+    record?.is_overtime ? "Переработка" : "",
+    record?.is_absent ? "Отсутствие" : "",
+  ].filter(Boolean);
+  const mainContent = (
+    <>
+      <div className="mb-2 min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="app-pill inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium">
+            <CalendarDays size={12} />
+            Посещаемость
+          </span>
+          {record?.personnel_status_label ? (
+            <span className="app-badge rounded-full px-2 py-1 text-[11px]">
+              {record.personnel_status_label}
+            </span>
+          ) : null}
+          {canOpen ? (
+            <span className="app-badge rounded-full px-2 py-1 text-[11px]">
+              Открыть
+            </span>
+          ) : null}
+        </div>
+        <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">
+          {employeeName}
+        </p>
+        {record?.date ? (
+          <p className="app-text-muted mt-0.5 text-xs">
+            {formatDate(record.date)}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="app-text-muted mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+        <span className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+          Приход: {record?.arrival_time || "Нет"}
+        </span>
+        <span className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+          Уход: {record?.departure_time || "Нет"}
+        </span>
+        <span className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+          Часы: {formatAttendanceHours(record?.work_hours)}
+          {record?.expected_hours !== undefined ? ` / ${formatAttendanceHours(record.expected_hours)}` : ""}
+        </span>
+      </div>
+
+      {issueLabels.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {issueLabels.map((label) => (
+            <span key={label} className="app-feedback-warning rounded-full px-2 py-1 text-[11px]">
+              {label}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      <p className="app-text-muted mt-2 text-[11px]">
+        Связал: {link.created_by ? displayUserName(link.created_by) : "не указано"}
+      </p>
+    </>
+  );
+
+  return (
+    <article className="app-surface-muted rounded-xl border border-[var(--border-subtle)] p-3">
+      <div className="relative">
+        {canOpen && link.object_url ? (
+          <Link
+            href={link.object_url}
+            className="block rounded-lg pr-10 transition hover:bg-[var(--surface-elevated)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
+            title="Открыть запись посещаемости"
+          >
+            {mainContent}
+          </Link>
+        ) : (
+          <div className="pr-10">
+            {mainContent}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => onUnlink(link.id)}
+          disabled={disabled}
+          className="app-icon-button absolute right-0 top-0 z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
+          title="Убрать связь"
+          aria-label="Убрать связь с записью посещаемости"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </article>
+  );
+}
+
 const activityFieldLabels: Record<string, string> = {
   title: "название",
   description: "описание",
@@ -1459,6 +1577,7 @@ export default function TasksPage() {
   const [linkedEmployees, setLinkedEmployees] = useState<TaskLinkedEmployee[]>([]);
   const [linkedGuests, setLinkedGuests] = useState<TaskLinkedGuest[]>([]);
   const [linkedGuestVisits, setLinkedGuestVisits] = useState<TaskLinkedGuestVisit[]>([]);
+  const [linkedAttendanceRecords, setLinkedAttendanceRecords] = useState<TaskLinkedAttendanceRecord[]>([]);
   const [linkedObjectsLoading, setLinkedObjectsLoading] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [taskComments, setTaskComments] = useState<TaskComment[]>([]);
@@ -1512,6 +1631,7 @@ export default function TasksPage() {
         employees,
         guests,
         guestVisits,
+        attendanceRecords,
       ] = await Promise.all([
         apiClient.getTaskLinkedMessages(taskId),
         apiClient.getTaskLinkedEvents(taskId),
@@ -1521,6 +1641,7 @@ export default function TasksPage() {
         apiClient.getTaskLinkedEmployees(taskId),
         apiClient.getTaskLinkedGuests(taskId),
         apiClient.getTaskLinkedGuestVisits(taskId),
+        apiClient.getTaskLinkedAttendanceRecords(taskId),
       ]);
       setLinkedMessages(messages);
       setLinkedEvents(events);
@@ -1530,6 +1651,7 @@ export default function TasksPage() {
       setLinkedEmployees(employees);
       setLinkedGuests(guests);
       setLinkedGuestVisits(guestVisits);
+      setLinkedAttendanceRecords(attendanceRecords);
     } catch (linksError) {
       setError(getTaskError(linksError, "Не удалось загрузить связанные объекты"));
     } finally {
@@ -1862,7 +1984,7 @@ export default function TasksPage() {
     () => activeColumns.find((column) => column.id === viewTask?.column) || null,
     [activeColumns, viewTask?.column],
   );
-  const linkedObjectsCount = linkedMessages.length + linkedEvents.length + linkedDocuments.length + linkedRequests.length + linkedProcurementRequests.length + linkedEmployees.length + linkedGuests.length + linkedGuestVisits.length;
+  const linkedObjectsCount = linkedMessages.length + linkedEvents.length + linkedDocuments.length + linkedRequests.length + linkedProcurementRequests.length + linkedEmployees.length + linkedGuests.length + linkedGuestVisits.length + linkedAttendanceRecords.length;
   const linkedObjectsBadgeCount = viewTask?.linked_objects_count ?? linkedObjectsCount;
   const commentsBadgeCount = viewTask?.comments_count ?? taskComments.length;
 
@@ -1885,6 +2007,7 @@ export default function TasksPage() {
       setLinkedEmployees([]);
       setLinkedGuests([]);
       setLinkedGuestVisits([]);
+      setLinkedAttendanceRecords([]);
       setTaskActivities([]);
       setTaskComments([]);
       setCommentDraft("");
@@ -1935,6 +2058,7 @@ export default function TasksPage() {
     setLinkedEmployees([]);
     setLinkedGuests([]);
     setLinkedGuestVisits([]);
+    setLinkedAttendanceRecords([]);
     setTaskComments([]);
     setTaskActivities([]);
     setCommentDraft("");
@@ -1958,6 +2082,7 @@ export default function TasksPage() {
     setLinkedEmployees([]);
     setLinkedGuests([]);
     setLinkedGuestVisits([]);
+    setLinkedAttendanceRecords([]);
     setTaskComments([]);
     setTaskActivities([]);
     setLinkedObjectsOpen(false);
@@ -2419,6 +2544,23 @@ export default function TasksPage() {
       if (activityOpen) await loadTaskActivity(viewTask.id);
     } catch (unlinkError) {
       setError(getTaskError(unlinkError, "Не удалось убрать связь с гостевым визитом"));
+    } finally {
+      setSaving(false);
+    }
+  }, [activityOpen, board, loadBoard, loadTaskActivity, loadTaskLinkedObjects, saving, viewTask]);
+
+  const unlinkAttendanceRecordFromViewedTask = useCallback(async (linkId: number) => {
+    if (!board || !viewTask || saving) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      await apiClient.unlinkTaskAttendanceRecord(viewTask.id, linkId);
+      await loadTaskLinkedObjects(viewTask.id);
+      await loadBoard(board.id);
+      if (activityOpen) await loadTaskActivity(viewTask.id);
+    } catch (unlinkError) {
+      setError(getTaskError(unlinkError, "Не удалось убрать связь с записью посещаемости"));
     } finally {
       setSaving(false);
     }
@@ -3271,6 +3413,14 @@ export default function TasksPage() {
                           key={link.id}
                           link={link}
                           onUnlink={unlinkGuestVisitFromViewedTask}
+                          disabled={saving}
+                        />
+                      ))}
+                      {linkedAttendanceRecords.map((link) => (
+                        <LinkedAttendanceRecordCard
+                          key={link.id}
+                          link={link}
+                          onUnlink={unlinkAttendanceRecordFromViewedTask}
                           disabled={saving}
                         />
                       ))}
