@@ -17,6 +17,7 @@ import {
 import { apiClient } from "@/lib/api";
 import type { EmployeeWorkSchedule } from "@/lib/api/attendance";
 import type {
+  EmployeeAttendanceStatus,
   EmployeeDepartment,
   EmployeePersonnelState,
   Skill,
@@ -185,6 +186,32 @@ export function ProfileHeroCard({
         {bottomPanel}
       </div>
     </section>
+  );
+}
+
+function getAttendanceStatusBadgeClass(status?: EmployeeAttendanceStatus | null) {
+  if (status?.event === "arrival") return "app-feedback-success";
+  if (status?.event === "departure") return "app-selected";
+  return "app-badge";
+}
+
+export function ProfileAttendanceStatusPill({
+  status,
+}: {
+  status?: EmployeeAttendanceStatus | null;
+}) {
+  if (!status) return null;
+
+  return (
+    <span
+      className={`app-status-pill inline-flex max-w-full items-center gap-1.5 ${getAttendanceStatusBadgeClass(status)}`}
+      title="Последняя посещаемость"
+    >
+      <Clock3 size={13} className="shrink-0" />
+      <span className="truncate">
+        {status.display || status.label || "Последняя посещаемость"}
+      </span>
+    </span>
   );
 }
 

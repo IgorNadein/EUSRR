@@ -341,15 +341,20 @@ class RequestViewSet(viewsets.ModelViewSet):
         if created_to:
             qs = qs.filter(created_at__date__lte=created_to)
 
-        # Фильтры по периоду заявления (date_from/date_to в самой заявке)
+        # Фильтры по периоду заявления (date_from/date_to в самой заявке).
+        # Пустой date_to означает однодневное заявление на date_from.
+        # Заявления без date_from не имеют периода и не участвуют в period-фильтре.
+        if date_from or date_to:
+            qs = qs.filter(date_from__isnull=False)
         if date_from:
-            # Заявки, у которых период не закончился до указанной даты
-            qs = qs.filter(Q(date_to__isnull=True) | Q(date_to__gte=date_from))
-        if date_to:
-            # Заявки, у которых период не начался после указанной даты
+            # effective_date_to >= date_from, где date_to=NULL считается date_from.
             qs = qs.filter(
-                Q(date_from__isnull=True) | Q(date_from__lte=date_to)
+                Q(date_to__gte=date_from)
+                | Q(date_to__isnull=True, date_from__gte=date_from)
             )
+        if date_to:
+            # effective_date_from <= date_to.
+            qs = qs.filter(date_from__lte=date_to)
 
         # Аннотируем счётчик комментариев через communications.Chat
         from communications.models import Message

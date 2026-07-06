@@ -3,6 +3,7 @@ import itertools
 import datetime as dt
 
 import pytest
+from attendance.models import AttendanceAnalysisRun, AttendanceRecord
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse
@@ -187,6 +188,75 @@ def test_retrieve_ok(api_client: APIClient):
     data = resp.json()
     assert data["id"] == e.id
     assert data["email"] == e.email
+
+
+def test_retrieve_exposes_last_attendance_status_to_authenticated_users(
+    api_client: APIClient,
+):
+    viewer = make_user("attendance-viewer@example.com")
+    target = make_user("attendance-target@example.com")
+    run = AttendanceAnalysisRun.objects.create(
+        employee=target,
+        period_start=dt.date(2026, 4, 1),
+        period_end=dt.date(2026, 4, 30),
+    )
+    AttendanceRecord.objects.create(
+        analysis_run=run,
+        employee=target,
+        date=dt.date(2026, 4, 10),
+        arrival_time="08:35",
+    )
+    latest = AttendanceRecord.objects.create(
+        analysis_run=run,
+        employee=target,
+        date=dt.date(2026, 4, 11),
+        arrival_time="08:20",
+        departure_time="17:45",
+    )
+
+    api_client.force_authenticate(user=viewer)
+    response = api_client.get(reverse("api:v1:employees-detail", args=[target.pk]))
+
+    assert response.status_code == status.HTTP_200_OK
+    payload = response.json()["attendance_status"]
+    assert payload == {
+        "record_id": latest.id,
+        "date": "2026-04-11",
+        "time": "17:45",
+        "event": "departure",
+        "label": "Уход",
+        "display": "Уход · 11.04.2026, 17:45",
+    }
+
+
+def test_retrieve_last_attendance_status_uses_arrival_when_no_departure(
+    api_client: APIClient,
+):
+    viewer = make_user("attendance-arrival-viewer@example.com")
+    target = make_user("attendance-arrival-target@example.com")
+    run = AttendanceAnalysisRun.objects.create(
+        employee=target,
+        period_start=dt.date(2026, 4, 1),
+        period_end=dt.date(2026, 4, 30),
+    )
+    record = AttendanceRecord.objects.create(
+        analysis_run=run,
+        employee=target,
+        date=dt.date(2026, 4, 12),
+        arrival_time="09:05",
+        departure_time=None,
+    )
+
+    api_client.force_authenticate(user=viewer)
+    response = api_client.get(reverse("api:v1:employees-detail", args=[target.pk]))
+
+    assert response.status_code == status.HTTP_200_OK
+    payload = response.json()["attendance_status"]
+    assert payload["record_id"] == record.id
+    assert payload["date"] == "2026-04-12"
+    assert payload["time"] == "09:05"
+    assert payload["event"] == "arrival"
+    assert payload["label"] == "Приход"
 
 
 def test_update_attendance_aliases_normalizes_values(api_client: APIClient):

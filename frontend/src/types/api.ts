@@ -28,6 +28,15 @@ export interface EmployeePersonnelState {
   expects_attendance: boolean;
 }
 
+export interface EmployeeAttendanceStatus {
+  record_id: number;
+  date: string;
+  time: string | null;
+  event: "arrival" | "departure" | "none" | string;
+  label: string;
+  display: string;
+}
+
 export interface EmployeeDepartment {
   id: number;
   name: string;
@@ -58,6 +67,7 @@ export interface User {
   skills?: Skill[];
   actions?: EmployeeAction[];
   personnel_state?: EmployeePersonnelState;
+  attendance_status?: EmployeeAttendanceStatus | null;
   email_verified?: boolean;
   is_ldap_managed?: boolean;
   created_at?: string;
@@ -333,6 +343,7 @@ export interface TaskLinkedEmployee {
     departments?: EmployeeDepartment[];
     is_active?: boolean;
     personnel_state?: EmployeePersonnelState | null;
+    attendance_status?: EmployeeAttendanceStatus | null;
   } | null;
   can_open?: boolean;
   object_url?: string | null;

@@ -25,6 +25,7 @@ import EmployeeActionModal from "@/components/users/EmployeeActionModal";
 import EmployeeActionsTimeline from "@/components/users/EmployeeActionsTimeline";
 import {
   ProfileContactsPanel,
+  ProfileAttendanceStatusPill,
   ProfileDepartmentBadge,
   ProfileDepartmentsCard,
   ProfileHeroCard,
@@ -367,10 +368,10 @@ export default function UserDetailPage() {
             <ProfileHeroCard
               caption="Профиль сотрудника"
               statusBadge={
-                (person.personnel_state || latestAction || currentUser) ? (
+                (person.personnel_state || person.attendance_status || latestAction || currentUser) ? (
                   <div
                     ref={profileMenuOpen ? profileMenuRef : null}
-                    className="relative flex items-center gap-2"
+                    className="relative flex max-w-full flex-wrap items-center justify-end gap-2"
                   >
                     {person.personnel_state ? (
                       <span
@@ -379,6 +380,7 @@ export default function UserDetailPage() {
                         {person.personnel_state.label || person.personnel_state.status}
                       </span>
                     ) : null}
+                    <ProfileAttendanceStatusPill status={person.attendance_status} />
                     {currentUser ? (
                       <>
                         <button

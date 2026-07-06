@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 import pytest
@@ -34,6 +34,10 @@ def _results(payload: Any) -> list[dict[str, Any]]:
     if isinstance(payload, dict) and "results" in payload:
         return payload["results"] or []
     return []
+
+
+def _result_ids(payload: Any) -> set[int]:
+    return {item["id"] for item in _results(payload)}
 
 
 def test_list_unauth_401(api_client: APIClient) -> None:
@@ -220,6 +224,117 @@ def test_list_addressed_to_me_shows_only_recipient_and_cc_requests(
     assert own_request.id not in ids
     assert recipient_request.id in ids
     assert cc_request.id in ids
+
+
+def test_list_period_filter_matches_overlap_and_excludes_missing_period(
+    auth_client, regular_user: models.Model, make_request
+) -> None:
+    """Фильтр периода ищет пересечение интервалов и не подтягивает заявки без дат."""
+    no_period = make_request(employee=regular_user, type_=RequestType.OTHER)
+
+    single_day = make_request(employee=regular_user, type_=RequestType.OTHER)
+    single_day.date_from = date(2026, 4, 10)
+    single_day.date_to = None
+    single_day.save(update_fields=["date_from", "date_to"])
+
+    spanning = make_request(employee=regular_user, type_=RequestType.OTHER)
+    spanning.date_from = date(2026, 4, 5)
+    spanning.date_to = date(2026, 4, 12)
+    spanning.save(update_fields=["date_from", "date_to"])
+
+    before = make_request(employee=regular_user, type_=RequestType.OTHER)
+    before.date_from = date(2026, 4, 1)
+    before.date_to = date(2026, 4, 3)
+    before.save(update_fields=["date_from", "date_to"])
+
+    after = make_request(employee=regular_user, type_=RequestType.OTHER)
+    after.date_from = date(2026, 4, 20)
+    after.date_to = None
+    after.save(update_fields=["date_from", "date_to"])
+
+    resp = auth_client(regular_user).get(
+        f"{API_BASE}?date_from=2026-04-10&date_to=2026-04-10"
+    )
+
+    assert resp.status_code == 200
+    ids = _result_ids(resp.json())
+    assert single_day.id in ids
+    assert spanning.id in ids
+    assert no_period.id not in ids
+    assert before.id not in ids
+    assert after.id not in ids
+
+
+def test_list_period_filter_with_single_boundary_handles_single_day_requests(
+    auth_client, regular_user: models.Model, make_request
+) -> None:
+    """Одна граница периода корректно работает для date_from без date_to."""
+    no_period = make_request(employee=regular_user, type_=RequestType.OTHER)
+
+    old_single_day = make_request(employee=regular_user, type_=RequestType.OTHER)
+    old_single_day.date_from = date(2026, 4, 1)
+    old_single_day.date_to = None
+    old_single_day.save(update_fields=["date_from", "date_to"])
+
+    target_single_day = make_request(employee=regular_user, type_=RequestType.OTHER)
+    target_single_day.date_from = date(2026, 4, 10)
+    target_single_day.date_to = None
+    target_single_day.save(update_fields=["date_from", "date_to"])
+
+    future_single_day = make_request(employee=regular_user, type_=RequestType.OTHER)
+    future_single_day.date_from = date(2026, 4, 20)
+    future_single_day.date_to = None
+    future_single_day.save(update_fields=["date_from", "date_to"])
+
+    from_resp = auth_client(regular_user).get(f"{API_BASE}?date_from=2026-04-10")
+    to_resp = auth_client(regular_user).get(f"{API_BASE}?date_to=2026-04-10")
+
+    assert from_resp.status_code == 200
+    from_ids = _result_ids(from_resp.json())
+    assert target_single_day.id in from_ids
+    assert future_single_day.id in from_ids
+    assert old_single_day.id not in from_ids
+    assert no_period.id not in from_ids
+
+    assert to_resp.status_code == 200
+    to_ids = _result_ids(to_resp.json())
+    assert old_single_day.id in to_ids
+    assert target_single_day.id in to_ids
+    assert future_single_day.id not in to_ids
+    assert no_period.id not in to_ids
+
+
+def test_list_created_date_filter_includes_same_day_boundaries(
+    auth_client, regular_user: models.Model, make_request
+) -> None:
+    """Одинаковые created_from/created_to выбирают весь календарный день."""
+    tz = timezone.get_current_timezone()
+    previous = make_request(employee=regular_user, type_=RequestType.OTHER)
+    previous.created_at = datetime(2026, 4, 9, 23, 59, tzinfo=tz)
+    previous.save(update_fields=["created_at"])
+
+    morning = make_request(employee=regular_user, type_=RequestType.OTHER)
+    morning.created_at = datetime(2026, 4, 10, 0, 1, tzinfo=tz)
+    morning.save(update_fields=["created_at"])
+
+    evening = make_request(employee=regular_user, type_=RequestType.OTHER)
+    evening.created_at = datetime(2026, 4, 10, 23, 59, tzinfo=tz)
+    evening.save(update_fields=["created_at"])
+
+    next_day = make_request(employee=regular_user, type_=RequestType.OTHER)
+    next_day.created_at = datetime(2026, 4, 11, 0, 1, tzinfo=tz)
+    next_day.save(update_fields=["created_at"])
+
+    resp = auth_client(regular_user).get(
+        f"{API_BASE}?created_from=2026-04-10&created_to=2026-04-10"
+    )
+
+    assert resp.status_code == 200
+    ids = _result_ids(resp.json())
+    assert morning.id in ids
+    assert evening.id in ids
+    assert previous.id not in ids
+    assert next_day.id not in ids
 
 
 def test_list_includes_accessible_linked_tasks(

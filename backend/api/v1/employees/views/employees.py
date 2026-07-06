@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 
 from common.emails import send_templated_mail
+from attendance.models import AttendanceRecord
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Exists, Max, OuterRef, Prefetch, Q, Subquery
 from django.utils.crypto import get_random_string
@@ -76,6 +77,26 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             )
         )
 
+    @staticmethod
+    def _with_last_attendance_status(queryset):
+        latest_attendance = AttendanceRecord.objects.filter(
+            employee_id=OuterRef("pk")
+        ).order_by("-date", "-id")
+        return queryset.annotate(
+            latest_attendance_record_id=Subquery(
+                latest_attendance.values("id")[:1]
+            ),
+            latest_attendance_date=Subquery(
+                latest_attendance.values("date")[:1]
+            ),
+            latest_attendance_arrival_time=Subquery(
+                latest_attendance.values("arrival_time")[:1]
+            ),
+            latest_attendance_departure_time=Subquery(
+                latest_attendance.values("departure_time")[:1]
+            ),
+        )
+
     def get_permissions(self):
         if self.action == "create":
             return [IsAuthenticated(), AdminOrActionOrModelPerms()]
@@ -112,11 +133,13 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             ),
         ]
 
-        qs = self._with_last_activity(
-            Employee.objects.select_related("position")
-            .prefetch_related(*prefetches)
-            .annotate(last_action_code=last_action_code_sq)
-            .order_by(*self.ordering)
+        qs = self._with_last_attendance_status(
+            self._with_last_activity(
+                Employee.objects.select_related("position")
+                .prefetch_related(*prefetches)
+                .annotate(last_action_code=last_action_code_sq)
+                .order_by(*self.ordering)
+            )
         )
 
         qp = self.request.query_params

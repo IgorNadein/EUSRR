@@ -8,6 +8,7 @@ import EmployeeAttendanceCard from "@/components/attendance/EmployeeAttendanceCa
 import EmployeeActionsTimeline from "@/components/users/EmployeeActionsTimeline";
 import {
   ProfileContactsPanel,
+  ProfileAttendanceStatusPill,
   ProfileDepartmentBadge,
   ProfileDepartmentsCard,
   ProfileHeroCard,
@@ -116,12 +117,17 @@ export default function ProfilePage() {
         <ProfileHeroCard
           caption="Мой профиль"
           statusBadge={
-            user.personnel_state ? (
-              <span
-                className={`app-status-pill ${getEmployeeActionTone(user.personnel_state.status).badgeClass}`}
-              >
-                {user.personnel_state.label || user.personnel_state.status}
-              </span>
+            user.personnel_state || user.attendance_status ? (
+              <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
+                {user.personnel_state ? (
+                  <span
+                    className={`app-status-pill ${getEmployeeActionTone(user.personnel_state.status).badgeClass}`}
+                  >
+                    {user.personnel_state.label || user.personnel_state.status}
+                  </span>
+                ) : null}
+                <ProfileAttendanceStatusPill status={user.attendance_status} />
+              </div>
             ) : null
           }
           avatar={
