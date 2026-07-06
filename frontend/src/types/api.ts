@@ -140,6 +140,114 @@ export interface LoginResponse {
   refresh: string;
 }
 
+export type TaskPriority = "low" | "medium" | "high" | "critical";
+
+export interface TaskColumn {
+  id: number;
+  board: number;
+  name: string;
+  position: number;
+  color?: string;
+  is_done: boolean;
+  is_archived: boolean;
+  tasks_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskLabel {
+  id: number;
+  board: number;
+  name: string;
+  color: string;
+}
+
+export interface TaskCard {
+  id: number;
+  board: number;
+  column: number;
+  column_name?: string;
+  title: string;
+  description?: string;
+  created_by?: User;
+  assignee?: User | null;
+  labels?: TaskLabel[];
+  priority: TaskPriority;
+  priority_display?: string;
+  due_date?: string | null;
+  position: number;
+  completed_at?: string | null;
+  linked_messages_count?: number;
+  linked_events_count?: number;
+  linked_objects_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskBoard {
+  id: number;
+  name: string;
+  description?: string;
+  created_by?: User;
+  members?: number[];
+  member_details?: User[];
+  departments?: number[];
+  department_details?: Department[];
+  is_archived: boolean;
+  columns: TaskColumn[];
+  labels: TaskLabel[];
+  tasks: TaskCard[];
+  tasks_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskLinkedMessage {
+  id: number;
+  kind: "message";
+  message_id: number;
+  message: Message | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
+export interface TaskLinkedCalendarEvent {
+  id: number;
+  kind: "calendar_event";
+  event_id: number;
+  event: CalendarEvent | null;
+  can_open?: boolean;
+  object_url?: string | null;
+  created_by?: User;
+  created_at: string;
+}
+
+export interface TaskActivity {
+  id: number;
+  action: "created" | "updated" | "moved" | "linked" | "unlinked";
+  action_display?: string;
+  actor?: User | null;
+  object_kind?: "message" | "calendar_event" | "";
+  object_id?: number | null;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface MessageLinkedTask {
+  link_id: number;
+  id: number;
+  title: string;
+  board_id: number;
+  board_name: string;
+  column_id?: number;
+  column_name?: string;
+  column_color?: string;
+  priority?: TaskPriority;
+  priority_display?: string;
+}
+
 export interface ChangePasswordPayload {
   current_password: string;
   new_password: string;
@@ -916,6 +1024,7 @@ export interface Message {
       avatar?: string | null;
     }>;
   }>;
+  linked_tasks?: MessageLinkedTask[];
 }
 
 export interface MessageReplyPreview {

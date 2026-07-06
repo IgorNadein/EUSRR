@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     "search.apps.SearchConfig",
     "finance.apps.FinanceConfig",
     "procurement.apps.ProcurementConfig",
+    "tasks.apps.TasksConfig",
     "guests.apps.GuestsConfig",
     "push_notifications",  # django-push-notifications для Web Push
 ]

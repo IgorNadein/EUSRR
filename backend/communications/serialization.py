@@ -142,7 +142,55 @@ def _get_message_read_by(m) -> list[dict]:
     return readers
 
 
-def serialize_message(m) -> dict:
+def _get_message_linked_tasks(m, user) -> list[dict]:
+    if not user or not getattr(user, "is_authenticated", False):
+        return []
+
+    try:
+        from django.contrib.contenttypes.models import ContentType
+        from tasks.access import task_board_access_q
+        from tasks.models import (
+            TaskBoard,
+            TaskLinkedObject,
+            TaskLinkedObjectKind,
+        )
+    except Exception:
+        return []
+
+    content_type = ContentType.objects.get_for_model(m.__class__)
+    accessible_boards = TaskBoard.objects.filter(
+        is_archived=False,
+    ).filter(task_board_access_q(user))
+
+    links = (
+        TaskLinkedObject.objects.filter(
+            kind=TaskLinkedObjectKind.MESSAGE,
+            content_type=content_type,
+            object_id=m.id,
+            task__board__in=accessible_boards,
+        )
+        .select_related("task", "task__board", "task__column")
+        .order_by("task__title", "task_id")
+    )
+
+    return [
+        {
+            "link_id": link.id,
+            "id": link.task_id,
+            "title": link.task.title,
+            "board_id": link.task.board_id,
+            "board_name": link.task.board.name,
+            "column_id": link.task.column_id,
+            "column_name": link.task.column.name,
+            "column_color": link.task.column.color,
+            "priority": link.task.priority,
+            "priority_display": link.task.get_priority_display(),
+        }
+        for link in links
+    ]
+
+
+def serialize_message(m, user=None, include_linked_tasks=False) -> dict:
     """
     Сериализация сообщения с поддержкой всех полей.
 
@@ -181,6 +229,8 @@ def serialize_message(m) -> dict:
         "has_attachments": m.has_attachments,
     }
     data["read_count"] = len(data["read_by"])
+    if include_linked_tasks:
+        data["linked_tasks"] = _get_message_linked_tasks(m, user)
 
     # Информация о пересылке (используем forward_metadata)
     if m.is_forwarded:

@@ -749,7 +749,14 @@ class ChatViewSet(viewsets.ModelViewSet):
             self._auto_mark_read(chat, request.user, messages)
 
         return Response({
-            'messages': [serialize_message(m) for m in messages],
+            'messages': [
+                serialize_message(
+                    m,
+                    user=request.user,
+                    include_linked_tasks=True,
+                )
+                for m in messages
+            ],
             'has_more': has_more
         })
 
@@ -831,7 +838,14 @@ class ChatViewSet(viewsets.ModelViewSet):
                 self._auto_mark_read(chat, request.user, messages)
 
             return Response({
-                'messages': [serialize_message(m) for m in messages],
+                'messages': [
+                    serialize_message(
+                        m,
+                        user=request.user,
+                        include_linked_tasks=True,
+                    )
+                    for m in messages
+                ],
                 'messages_count': len(messages),
                 'anchor_id': None,
                 'anchor_index': 0,
@@ -893,7 +907,14 @@ class ChatViewSet(viewsets.ModelViewSet):
                 self._auto_mark_read(chat, request.user, messages)
 
             return Response({
-                'messages': [serialize_message(m) for m in messages],
+                'messages': [
+                    serialize_message(
+                        m,
+                        user=request.user,
+                        include_linked_tasks=True,
+                    )
+                    for m in messages
+                ],
                 'messages_count': len(messages),
                 'anchor_id': None,
                 'anchor_index': 0,
@@ -921,7 +942,14 @@ class ChatViewSet(viewsets.ModelViewSet):
             self._auto_mark_read(chat, request.user, messages)
 
         return Response({
-            'messages': [serialize_message(m) for m in messages],
+            'messages': [
+                serialize_message(
+                    m,
+                    user=request.user,
+                    include_linked_tasks=True,
+                )
+                for m in messages
+            ],
             'messages_count': len(messages),
             'anchor_id': anchor_msg.id,
             'anchor_index': anchor_index,
@@ -1253,6 +1281,11 @@ class MessageViewSet(viewsets.ModelViewSet):
         # Отправляем через WebSocket
         channel_layer = get_channel_layer()
         payload = serialize_message(message)
+        response_payload = serialize_message(
+            message,
+            user=request.user,
+            include_linked_tasks=True,
+        )
 
         async_to_sync(channel_layer.group_send)(
             f'chat_{chat.id}',
@@ -1265,7 +1298,7 @@ class MessageViewSet(viewsets.ModelViewSet):
 
         return Response({
             'ok': True,
-            'message': payload
+            'message': response_payload
         }, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['post'], url_path='upload-temp')
@@ -1417,6 +1450,11 @@ class MessageViewSet(viewsets.ModelViewSet):
         # WebSocket уведомление
         channel_layer = get_channel_layer()
         payload = serialize_message(instance)
+        response_payload = serialize_message(
+            instance,
+            user=request.user,
+            include_linked_tasks=True,
+        )
 
         group_name = f'chat_{instance.chat_id}'
 
@@ -1429,7 +1467,7 @@ class MessageViewSet(viewsets.ModelViewSet):
             }
         )
 
-        return Response(payload)
+        return Response(response_payload)
 
     def destroy(self, request, *args, **kwargs):
         """Мягкое удаление сообщения"""
