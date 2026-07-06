@@ -365,6 +365,7 @@ function BoardColumn({
   openMenuTaskId,
   menuRef,
   onToggleTaskMenu,
+  onColumnMount,
 }: {
   column: TaskColumn;
   tasks: TaskCard[];
@@ -375,15 +376,20 @@ function BoardColumn({
   openMenuTaskId: number | null;
   menuRef: RefObject<HTMLDivElement | null>;
   onToggleTaskMenu: (taskId: number) => void;
+  onColumnMount: (columnId: number, node: HTMLElement | null) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `column-${column.id}`,
     data: { columnId: column.id },
   });
+  const setColumnNodeRef = useCallback((node: HTMLElement | null) => {
+    setNodeRef(node);
+    onColumnMount(column.id, node);
+  }, [column.id, onColumnMount, setNodeRef]);
 
   return (
     <section
-      ref={setNodeRef}
+      ref={setColumnNodeRef}
       className={`flex max-h-[calc(100vh-14rem)] min-h-[28rem] min-w-[18rem] flex-col rounded-xl border bg-[var(--surface-muted)] transition ${
         isOver ? "border-[var(--accent-primary)]" : "border-[var(--border-subtle)]"
       }`}
@@ -730,7 +736,7 @@ export default function TasksPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [onlyMine, setOnlyMine] = useState(false);
-  const [columnFilter, setColumnFilter] = useState<number | "all">("all");
+  const [selectedColumnTarget, setSelectedColumnTarget] = useState<number | "all">("all");
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
   const [viewTaskId, setViewTaskId] = useState<number | null>(null);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
@@ -760,6 +766,8 @@ export default function TasksPage() {
   const cardMenuRef = useRef<HTMLDivElement | null>(null);
   const selectedBoardIdRef = useRef<number | null>(null);
   const taskBoardSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const boardScrollRef = useRef<HTMLDivElement | null>(null);
+  const columnNodeRefs = useRef<Map<number, HTMLElement>>(new Map());
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -816,6 +824,43 @@ export default function TasksPage() {
     selectedBoardIdRef.current = selectedBoardId;
   }, [selectedBoardId]);
 
+  const registerColumnNode = useCallback((columnId: number, node: HTMLElement | null) => {
+    if (node) {
+      columnNodeRefs.current.set(columnId, node);
+    } else {
+      columnNodeRefs.current.delete(columnId);
+    }
+  }, []);
+
+  const scrollBoardToStart = useCallback(() => {
+    boardScrollRef.current?.scrollTo({ left: 0, behavior: "smooth" });
+  }, []);
+
+  const scrollToColumn = useCallback((columnId: number) => {
+    const container = boardScrollRef.current;
+    const node = columnNodeRefs.current.get(columnId);
+    if (!container || !node) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    const targetLeft = container.scrollLeft + nodeRect.left - containerRect.left - 12;
+
+    container.scrollTo({
+      left: Math.max(0, targetLeft),
+      behavior: "smooth",
+    });
+  }, []);
+
+  const focusAllColumns = useCallback(() => {
+    setSelectedColumnTarget("all");
+    scrollBoardToStart();
+  }, [scrollBoardToStart]);
+
+  const focusColumn = useCallback((columnId: number) => {
+    setSelectedColumnTarget(columnId);
+    window.requestAnimationFrame(() => scrollToColumn(columnId));
+  }, [scrollToColumn]);
+
   const syncTaskBoardState = useCallback(async (eventBoardId?: number | null) => {
     const currentBoardId = selectedBoardIdRef.current;
     try {
@@ -846,7 +891,7 @@ export default function TasksPage() {
         }
         setSearch("");
         setOnlyMine(false);
-        setColumnFilter("all");
+        setSelectedColumnTarget("all");
         return;
       }
 
@@ -911,7 +956,7 @@ export default function TasksPage() {
           (boardData.tasks || []).some((task: TaskCard) => task.id === requestedTaskId)
         ) {
           setViewTaskId(requestedTaskId);
-          setColumnFilter("all");
+          setSelectedColumnTarget("all");
           setOnlyMine(false);
           setSearch("");
         }
@@ -1048,11 +1093,6 @@ export default function TasksPage() {
     [board?.columns],
   );
 
-  const visibleColumns = useMemo(
-    () => activeColumns.filter((column) => columnFilter === "all" || column.id === columnFilter),
-    [activeColumns, columnFilter],
-  );
-
   const columnCounts = useMemo(() => {
     const counts = new Map<number, number>();
     for (const column of activeColumns) counts.set(column.id, 0);
@@ -1083,6 +1123,15 @@ export default function TasksPage() {
   );
   const linkedObjectsCount = linkedMessages.length + linkedEvents.length;
   const linkedObjectsBadgeCount = viewTask?.linked_objects_count ?? linkedObjectsCount;
+
+  useEffect(() => {
+    if (
+      selectedColumnTarget !== "all" &&
+      !activeColumns.some((column) => column.id === selectedColumnTarget)
+    ) {
+      setSelectedColumnTarget("all");
+    }
+  }, [activeColumns, selectedColumnTarget]);
 
   useEffect(() => {
     if (!viewTaskId) {
@@ -1235,7 +1284,7 @@ export default function TasksPage() {
       await loadBoard(boardId);
       setSearch("");
       setOnlyMine(false);
-      setColumnFilter("all");
+      setSelectedColumnTarget("all");
       setBoardMenuOpen(false);
     } catch (loadError) {
       setError(getTaskError(loadError, "Не удалось загрузить доску"));
@@ -1273,7 +1322,7 @@ export default function TasksPage() {
       await loadBoards();
       setSearch("");
       setOnlyMine(false);
-      setColumnFilter("all");
+      setSelectedColumnTarget("all");
     } catch (deleteError) {
       setError(getTaskError(deleteError, "Не удалось удалить доску"));
     } finally {
@@ -1301,7 +1350,7 @@ export default function TasksPage() {
       setBoardForm(emptyBoardForm);
       setSearch("");
       setOnlyMine(false);
-      setColumnFilter("all");
+      setSelectedColumnTarget("all");
     } catch (saveError) {
       setError(getTaskError(saveError, "Не удалось создать доску"));
     } finally {
@@ -1663,25 +1712,25 @@ export default function TasksPage() {
 
             <button
               type="button"
-              onClick={() => setColumnFilter("all")}
+              onClick={focusAllColumns}
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                columnFilter === "all" ? "app-pill-active" : "app-pill"
+                selectedColumnTarget === "all" ? "app-pill-active" : "app-pill"
               }`}
             >
               <span>Все</span>
               <span className={`app-badge px-1.5 py-0.5 text-[10px] font-bold ${
-                columnFilter === "all" ? "app-pill-count-active" : "app-pill-count"
+                selectedColumnTarget === "all" ? "app-pill-count-active" : "app-pill-count"
               }`}>
                 {filteredTasks.length}
               </span>
             </button>
             {activeColumns.map((column) => {
-              const active = columnFilter === column.id;
+              const active = selectedColumnTarget === column.id;
               return (
                 <button
                   key={column.id}
                   type="button"
-                  onClick={() => setColumnFilter(column.id)}
+                  onClick={() => focusColumn(column.id)}
                   className={`inline-flex max-w-48 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
                     active ? "app-pill-active" : "app-pill"
                   }`}
@@ -1741,9 +1790,9 @@ export default function TasksPage() {
           onDragCancel={handleDragCancel}
           onDragEnd={handleDragEnd}
         >
-          <div className="tasks-board-scroll overflow-x-auto pb-3">
+          <div ref={boardScrollRef} className="tasks-board-scroll overflow-x-auto pb-3">
             <div className="flex min-w-max gap-3">
-              {visibleColumns.map((column) => (
+              {activeColumns.map((column) => (
                 <BoardColumn
                   key={column.id}
                   column={column}
@@ -1755,6 +1804,7 @@ export default function TasksPage() {
                   openMenuTaskId={cardMenuTaskId}
                   menuRef={cardMenuRef}
                   onToggleTaskMenu={toggleCardTaskMenu}
+                  onColumnMount={registerColumnNode}
                 />
               ))}
               <AddColumnCard onClick={openCreateColumn} />

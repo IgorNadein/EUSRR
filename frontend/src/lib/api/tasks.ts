@@ -60,6 +60,8 @@ export function createTasksApi(request: RequestFn) {
             }),
         getTaskActivity: (id: number): Promise<TaskActivity[]> =>
             request(`/api/v1/tasks/${id}/activity/`),
+        getCalendarEventLinkedTasks: (eventId: number): Promise<TaskCard[]> =>
+            request(`/api/v1/tasks/linked-event-tasks/?event_id=${eventId}`),
         getTaskLinkedMessages: (id: number): Promise<TaskLinkedMessage[]> =>
             request(`/api/v1/tasks/${id}/linked-messages/`),
         linkTaskMessage: (id: number, messageId: number): Promise<TaskLinkedMessage> =>

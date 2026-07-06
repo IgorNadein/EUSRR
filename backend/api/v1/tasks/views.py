@@ -378,6 +378,49 @@ class TaskViewSet(viewsets.ModelViewSet):
         serializer = TaskActivitySerializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=["get"], url_path="linked-event-tasks")
+    def linked_event_tasks(self, request):
+        event_id = request.query_params.get("event_id")
+        try:
+            event_id = int(event_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"event_id": ["Укажите ID события."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            event = Event.objects.select_related(
+                "calendar",
+                "calendar__binding",
+                "calendar__binding__context_content_type",
+                "rule",
+                "creator",
+            ).get(id=event_id)
+        except Event.DoesNotExist:
+            return Response(
+                {"event_id": ["Событие не найдено."]},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not user_can_access_calendar_event(request.user, event):
+            return Response(
+                {"detail": "Нет доступа к этому событию."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        queryset = (
+            self.get_queryset()
+            .filter(
+                linked_objects__kind=TaskLinkedObjectKind.CALENDAR_EVENT,
+                linked_objects__content_type=get_calendar_event_content_type(),
+                linked_objects__object_id=event.id,
+            )
+            .distinct()
+        )
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     def _message_links_queryset(self, task):
         return (
             TaskLinkedObject.objects.filter(

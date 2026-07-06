@@ -165,8 +165,10 @@ export interface TaskLabel {
 export interface TaskCard {
   id: number;
   board: number;
+  board_name?: string;
   column: number;
   column_name?: string;
+  column_color?: string;
   title: string;
   description?: string;
   created_by?: User;

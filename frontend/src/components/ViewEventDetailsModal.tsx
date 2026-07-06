@@ -1,13 +1,25 @@
 "use client";
 
-import { Edit2, Trash2, Clock, Calendar, FileText, Users, Link2, Loader2 } from "lucide-react";
+import {
+  Calendar,
+  ChevronRight,
+  Clock,
+  Edit2,
+  FileText,
+  Kanban,
+  Link2,
+  Loader2,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { Modal } from "@/components/ui";
 import { resolveEventColor } from "@/lib/calendar-event-colors";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { useState, useEffect, useCallback } from "react";
 import { apiClient } from "@/lib/api";
-import type { TaskBoard, TaskCard } from "@/types/api";
+import { displayUserName } from "@/lib/shared";
+import type { TaskBoard, TaskCard, TaskPriority, User } from "@/types/api";
 
 type EventRuleData = {
   frequency?: string;
@@ -37,6 +49,13 @@ type EventParticipant = {
   user_name?: string;
   distinction?: string;
 };
+
+const taskPriorityOptions: { value: TaskPriority; label: string }[] = [
+  { value: "low", label: "Низкая" },
+  { value: "medium", label: "Средняя" },
+  { value: "high", label: "Высокая" },
+  { value: "critical", label: "Критическая" },
+];
 
 interface ViewEventDetailsModalProps {
   isOpen: boolean;
@@ -94,13 +113,23 @@ export function ViewEventDetailsModal({
 }: ViewEventDetailsModalProps) {
   const [participants, setParticipants] = useState<EventParticipant[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
+  const [linkedTasks, setLinkedTasks] = useState<TaskCard[]>([]);
+  const [linkedTasksLoading, setLinkedTasksLoading] = useState(false);
+  const [linkedTasksError, setLinkedTasksError] = useState<string | null>(null);
   const [taskLinkOpen, setTaskLinkOpen] = useState(false);
   const [taskLinkBoards, setTaskLinkBoards] = useState<TaskBoard[]>([]);
+  const [taskLinkEmployees, setTaskLinkEmployees] = useState<User[]>([]);
   const [taskLinkBoardId, setTaskLinkBoardId] = useState<number | "">("");
   const [taskLinkTaskId, setTaskLinkTaskId] = useState<number | "">("");
   const [taskLinkMode, setTaskLinkMode] = useState<"existing" | "create">("existing");
   const [taskLinkTitle, setTaskLinkTitle] = useState("");
   const [taskLinkDescription, setTaskLinkDescription] = useState("");
+  const [taskLinkDetailsOpen, setTaskLinkDetailsOpen] = useState(false);
+  const [taskLinkColumnId, setTaskLinkColumnId] = useState<number | "">("");
+  const [taskLinkAssigneeId, setTaskLinkAssigneeId] = useState<number | "">("");
+  const [taskLinkPriority, setTaskLinkPriority] = useState<TaskPriority>("medium");
+  const [taskLinkDueDate, setTaskLinkDueDate] = useState("");
+  const [taskLinkLabelIds, setTaskLinkLabelIds] = useState<number[]>([]);
   const [taskLinkLoading, setTaskLinkLoading] = useState(false);
   const [taskLinkError, setTaskLinkError] = useState<string | null>(null);
 
@@ -119,6 +148,21 @@ export function ViewEventDetailsModal({
     }
   }, [event?.id]);
 
+  const loadLinkedTasks = useCallback(async () => {
+    if (!event?.id) return;
+
+    try {
+      setLinkedTasksLoading(true);
+      setLinkedTasksError(null);
+      const tasks = await apiClient.getCalendarEventLinkedTasks(event.id);
+      setLinkedTasks(tasks);
+    } catch (error) {
+      setLinkedTasksError(error instanceof Error ? error.message : "Не удалось загрузить связанные объекты");
+    } finally {
+      setLinkedTasksLoading(false);
+    }
+  }, [event?.id]);
+
   useEffect(() => {
     if (isOpen && event?.id && showParticipants) {
       void loadParticipants();
@@ -126,6 +170,15 @@ export function ViewEventDetailsModal({
       setParticipants([]);
     }
   }, [isOpen, event?.id, showParticipants, loadParticipants]);
+
+  useEffect(() => {
+    if (isOpen && event?.id) {
+      void loadLinkedTasks();
+    } else {
+      setLinkedTasks([]);
+      setLinkedTasksError(null);
+    }
+  }, [isOpen, event?.id, loadLinkedTasks]);
 
   if (!isOpen || !event) return null;
 
@@ -156,7 +209,11 @@ export function ViewEventDetailsModal({
   const ruleParams = event.rule_data?.params;
   const selectedTaskLinkBoard = taskLinkBoards.find((board) => board.id === taskLinkBoardId) || null;
   const selectedTaskLinkTask = (selectedTaskLinkBoard?.tasks || []).find((task) => task.id === taskLinkTaskId) || null;
-  const selectedTaskLinkColumn = (selectedTaskLinkBoard?.columns || []).find((column) => !column.is_archived) || null;
+  const selectedTaskLinkColumn = (
+    (selectedTaskLinkBoard?.columns || []).find((column) => column.id === taskLinkColumnId) ||
+    (selectedTaskLinkBoard?.columns || []).find((column) => !column.is_archived) ||
+    null
+  );
 
   const openTaskLinkModal = async () => {
     if (!event?.id) return;
@@ -166,13 +223,25 @@ export function ViewEventDetailsModal({
     setTaskLinkTitle(event.title || "Задача по событию");
     setTaskLinkDescription(event.description || "");
     try {
-      const response = await apiClient.getTaskBoards();
+      const [response, employeesResponse] = await Promise.all([
+        apiClient.getTaskBoards(),
+        apiClient.getEmployees({ limit: 200, is_active: true, ordering: "last_name" }),
+      ]);
       const boards = (response.results || response || []) as TaskBoard[];
+      const employees = (employeesResponse.results || employeesResponse || []) as User[];
       setTaskLinkBoards(boards);
+      setTaskLinkEmployees(employees);
       const firstBoardWithTasks = boards.find((board) => (board.tasks || []).length > 0) || boards[0] || null;
+      const firstColumn = firstBoardWithTasks?.columns?.find((column) => !column.is_archived) || null;
       setTaskLinkBoardId(firstBoardWithTasks?.id || "");
       setTaskLinkTaskId(firstBoardWithTasks?.tasks?.[0]?.id || "");
+      setTaskLinkColumnId(firstColumn?.id || "");
       setTaskLinkMode(firstBoardWithTasks?.tasks?.length ? "existing" : "create");
+      setTaskLinkDetailsOpen(false);
+      setTaskLinkAssigneeId("");
+      setTaskLinkPriority("medium");
+      setTaskLinkDueDate("");
+      setTaskLinkLabelIds([]);
     } catch (error) {
       setTaskLinkError(error instanceof Error ? error.message : "Не удалось загрузить задачи");
     } finally {
@@ -189,15 +258,31 @@ export function ViewEventDetailsModal({
     setTaskLinkMode("existing");
     setTaskLinkTitle("");
     setTaskLinkDescription("");
+    setTaskLinkDetailsOpen(false);
+    setTaskLinkColumnId("");
+    setTaskLinkAssigneeId("");
+    setTaskLinkPriority("medium");
+    setTaskLinkDueDate("");
+    setTaskLinkLabelIds([]);
   };
 
   const handleTaskLinkBoardChange = (boardId: number | "") => {
     setTaskLinkBoardId(boardId);
     const nextBoard = taskLinkBoards.find((board) => board.id === boardId) || null;
     setTaskLinkTaskId(nextBoard?.tasks?.[0]?.id || "");
+    setTaskLinkColumnId(nextBoard?.columns?.find((column) => !column.is_archived)?.id || "");
+    setTaskLinkLabelIds([]);
     if (!nextBoard?.tasks?.length) {
       setTaskLinkMode("create");
     }
+  };
+
+  const toggleTaskLinkLabel = (labelId: number) => {
+    setTaskLinkLabelIds((current) => (
+      current.includes(labelId)
+        ? current.filter((id) => id !== labelId)
+        : [...current, labelId]
+    ));
   };
 
   const saveTaskLink = async () => {
@@ -219,12 +304,16 @@ export function ViewEventDetailsModal({
           column: selectedTaskLinkColumn.id,
           title: taskLinkTitle.trim(),
           description: taskLinkDescription.trim(),
-          priority: "medium",
+          assignee_id: taskLinkAssigneeId || null,
+          priority: taskLinkPriority,
+          due_date: taskLinkDueDate || null,
+          label_ids: taskLinkLabelIds,
         });
       }
 
       if (!taskToLink) return;
       await apiClient.linkTaskCalendarEvent(taskToLink.id, event.id);
+      await loadLinkedTasks();
       closeTaskLinkModal();
     } catch (error) {
       setTaskLinkError(error instanceof Error ? error.message : "Не удалось связать событие с задачей");
@@ -347,6 +436,79 @@ export function ViewEventDetailsModal({
               </div>
             </div>
           )}
+
+          {event.id ? (
+            <div className="flex items-start gap-2.5">
+              <Link2 size={18} className="app-text-muted mt-0.5 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="text-sm font-medium text-[var(--foreground)]">
+                      Связанные объекты
+                    </p>
+                    <span className="app-pill-count rounded-full px-2 py-0.5 text-[10px] font-bold">
+                      {linkedTasks.length}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void openTaskLinkModal()}
+                    className="app-action-ghost shrink-0 rounded-lg px-2 py-1 text-xs font-medium"
+                  >
+                    Добавить
+                  </button>
+                </div>
+
+                {linkedTasksLoading ? (
+                  <div className="app-surface-muted flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-3 py-2">
+                    <Loader2 size={14} className="app-text-muted animate-spin" />
+                    <span className="app-text-muted text-xs">Загрузка связанных объектов...</span>
+                  </div>
+                ) : linkedTasksError ? (
+                  <div className="app-feedback-danger rounded-lg px-3 py-2 text-xs">
+                    {linkedTasksError}
+                  </div>
+                ) : linkedTasks.length > 0 ? (
+                  <div className="space-y-2">
+                    {linkedTasks.map((task) => (
+                      <a
+                        key={task.id}
+                        href={`/tasks?board=${task.board}&task=${task.id}`}
+                        className="app-surface-muted group flex min-w-0 items-center gap-3 rounded-lg border border-[var(--border-subtle)] px-3 py-2 transition hover:border-[var(--accent-primary)] hover:bg-[var(--surface-elevated)]"
+                      >
+                        <span className="app-selected flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
+                          <Kanban size={15} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="app-card-caption block">Задача</span>
+                          <span className="app-text-wrap block truncate text-sm font-medium text-[var(--foreground)]">
+                            {task.title}
+                          </span>
+                          <span className="app-text-muted mt-0.5 block truncate text-xs">
+                            {task.board_name || `Доска #${task.board}`}
+                            {task.column_name ? ` · ${task.column_name}` : ""}
+                          </span>
+                        </span>
+                        <ChevronRight
+                          size={15}
+                          className="app-text-muted shrink-0 transition-transform group-hover:translate-x-0.5"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="app-surface-muted rounded-lg border border-dashed border-[var(--border-subtle)] px-3 py-3">
+                    <p className="text-xs font-medium text-[var(--foreground)]">
+                      Связанных объектов пока нет
+                    </p>
+                    <p className="app-text-muted mt-1 text-xs">
+                      Можно связать событие с существующей задачей или создать новую.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
 
           {/* Participants */}
           {showParticipants && (
@@ -515,6 +677,124 @@ export function ViewEventDetailsModal({
                   rows={3}
                 />
               </label>
+
+              <div className="rounded-xl border border-[var(--border-subtle)]">
+                <button
+                  type="button"
+                  onClick={() => setTaskLinkDetailsOpen((current) => !current)}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+                  disabled={taskLinkLoading}
+                  aria-expanded={taskLinkDetailsOpen}
+                >
+                  <span>
+                    <span className="block text-sm font-medium text-[var(--foreground)]">
+                      Дополнительная информация
+                    </span>
+                    <span className="app-text-muted mt-0.5 block text-xs">
+                      Исполнитель, срочность, срок, колонка и метки
+                    </span>
+                  </span>
+                  <ChevronRight
+                    size={16}
+                    className={`app-text-muted shrink-0 transition-transform ${taskLinkDetailsOpen ? "rotate-90" : ""}`}
+                  />
+                </button>
+
+                {taskLinkDetailsOpen ? (
+                  <div className="space-y-3 border-t border-[var(--border-subtle)] px-3 py-3">
+                    <label className="block">
+                      <span className="app-text-muted mb-1 block text-xs font-medium">Колонка</span>
+                      <select
+                        value={taskLinkColumnId}
+                        onChange={(selectEvent) => setTaskLinkColumnId(Number(selectEvent.target.value) || "")}
+                        className="app-select w-full rounded-xl px-3 py-2 text-sm"
+                        disabled={taskLinkLoading || !selectedTaskLinkBoard}
+                      >
+                        <option value="">Выберите колонку</option>
+                        {(selectedTaskLinkBoard?.columns || [])
+                          .filter((column) => !column.is_archived)
+                          .map((column) => (
+                            <option key={column.id} value={column.id}>
+                              {column.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+
+                    <label className="block">
+                      <span className="app-text-muted mb-1 block text-xs font-medium">Исполнитель</span>
+                      <select
+                        value={taskLinkAssigneeId}
+                        onChange={(selectEvent) => setTaskLinkAssigneeId(Number(selectEvent.target.value) || "")}
+                        className="app-select w-full rounded-xl px-3 py-2 text-sm"
+                        disabled={taskLinkLoading}
+                      >
+                        <option value="">Не назначен</option>
+                        {taskLinkEmployees.map((employee) => (
+                          <option key={employee.id} value={employee.id}>
+                            {displayUserName(employee)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block">
+                        <span className="app-text-muted mb-1 block text-xs font-medium">Срочность</span>
+                        <select
+                          value={taskLinkPriority}
+                          onChange={(selectEvent) => setTaskLinkPriority(selectEvent.target.value as TaskPriority)}
+                          className="app-select w-full rounded-xl px-3 py-2 text-sm"
+                          disabled={taskLinkLoading}
+                        >
+                          {taskPriorityOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="app-text-muted mb-1 block text-xs font-medium">Срок</span>
+                        <input
+                          type="date"
+                          value={taskLinkDueDate}
+                          onChange={(inputEvent) => setTaskLinkDueDate(inputEvent.target.value)}
+                          className="app-input w-full rounded-xl px-3 py-2 text-sm"
+                          disabled={taskLinkLoading}
+                        />
+                      </label>
+                    </div>
+
+                    <div>
+                      <span className="app-text-muted mb-2 block text-xs font-medium">Метки</span>
+                      {(selectedTaskLinkBoard?.labels || []).length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {(selectedTaskLinkBoard?.labels || []).map((label) => {
+                            const selected = taskLinkLabelIds.includes(label.id);
+                            return (
+                              <button
+                                key={label.id}
+                                type="button"
+                                onClick={() => toggleTaskLinkLabel(label.id)}
+                                className={`inline-flex max-w-full items-center rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                                  selected ? "border-transparent text-white" : "border-[var(--border-subtle)] text-[var(--muted-foreground)]"
+                                }`}
+                                style={selected ? { backgroundColor: label.color || "#38bdf8" } : undefined}
+                                disabled={taskLinkLoading}
+                              >
+                                <span className="truncate">{label.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="app-text-muted text-xs">На этой доске меток нет</p>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
           )}
 

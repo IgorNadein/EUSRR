@@ -129,7 +129,9 @@ class TaskSerializer(serializers.ModelSerializer):
         source="get_priority_display",
         read_only=True,
     )
+    board_name = serializers.CharField(source="board.name", read_only=True)
     column_name = serializers.CharField(source="column.name", read_only=True)
+    column_color = serializers.CharField(source="column.color", read_only=True)
     linked_messages_count = serializers.SerializerMethodField()
     linked_events_count = serializers.SerializerMethodField()
     linked_objects_count = serializers.SerializerMethodField()
@@ -139,8 +141,10 @@ class TaskSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "board",
+            "board_name",
             "column",
             "column_name",
+            "column_color",
             "title",
             "description",
             "created_by",
@@ -162,7 +166,9 @@ class TaskSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "created_by",
+            "board_name",
             "column_name",
+            "column_color",
             "priority_display",
             "completed_at",
             "linked_messages_count",

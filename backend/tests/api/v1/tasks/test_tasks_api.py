@@ -414,6 +414,22 @@ def test_task_linked_calendar_event_respects_event_access(api_client):
     assert linked_response.data[0]["can_open"] is False
     assert linked_response.data[0]["object_url"] is None
 
+    reverse_linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-event-tasks"),
+        {"event_id": event.id},
+    )
+    assert reverse_linked_response.status_code == status.HTTP_403_FORBIDDEN
+
+    api_client.force_authenticate(user=owner)
+    reverse_linked_response = api_client.get(
+        reverse("api:v1:tasks:task-linked-event-tasks"),
+        {"event_id": event.id},
+    )
+    assert reverse_linked_response.status_code == status.HTTP_200_OK
+    assert reverse_linked_response.data[0]["id"] == task.id
+    assert reverse_linked_response.data[0]["title"] == "Подготовить встречу"
+    assert reverse_linked_response.data[0]["board_name"] == "Доска с событиями"
+
 
 def test_task_activity_records_core_actions(api_client, user):
     api_client.force_authenticate(user=user)
