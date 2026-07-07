@@ -1657,8 +1657,8 @@ function GuestVisitControls({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1">
           <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             value={search}
@@ -1678,7 +1678,7 @@ function GuestVisitControls({
             <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-bold text-white">{activeFiltersCount}</span>
           ) : null}
         </button>
-        <div className="relative w-[148px] shrink-0">
+        <div className="relative w-full shrink-0 sm:w-[148px]">
           <ArrowUpDown size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
           <select
             value={ordering}
@@ -1729,8 +1729,8 @@ function GuestVisitControls({
       ) : null}
 
       {filtersOpen ? (
-        <div className="app-surface-muted grid gap-3 rounded-xl p-3 md:grid-cols-2 xl:grid-cols-6">
-          <label className="block">
+        <div className="app-surface-muted grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-3 rounded-xl border border-[var(--border-subtle)] p-3">
+          <label className="block min-w-0">
             <span className="app-text-muted mb-1 block text-xs font-medium">Статус</span>
             <select
               value={status}
@@ -1742,7 +1742,7 @@ function GuestVisitControls({
               ))}
             </select>
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="app-text-muted mb-1 block text-xs font-medium">Доступ с</span>
             <input
               type="date"
@@ -1751,7 +1751,7 @@ function GuestVisitControls({
               className="app-input h-10 w-full rounded-lg px-3 text-sm"
             />
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="app-text-muted mb-1 block text-xs font-medium">Доступ до</span>
             <input
               type="date"
@@ -1760,7 +1760,7 @@ function GuestVisitControls({
               className="app-input h-10 w-full rounded-lg px-3 text-sm"
             />
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="app-text-muted mb-1 block text-xs font-medium">Бессрочный</span>
             <select
               value={unlimitedFilter}
@@ -1772,7 +1772,7 @@ function GuestVisitControls({
               <option value="false">Нет</option>
             </select>
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="app-text-muted mb-1 block text-xs font-medium">Статус гостя</span>
             <select
               value={placementFilter}
@@ -1784,7 +1784,7 @@ function GuestVisitControls({
               <option value="false">Нет доступа</option>
             </select>
           </label>
-          <div className="flex items-end">
+          <div className="flex min-w-0 items-end">
             <button
               type="button"
               onClick={onClearFilters}
@@ -3551,8 +3551,8 @@ function GuestRegistryPanel({
 
   return (
     <section className="app-surface rounded-2xl p-4">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1">
           <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             value={guestSearch}
@@ -3572,7 +3572,7 @@ function GuestRegistryPanel({
             <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-bold text-white">{activeFiltersCount}</span>
           ) : null}
         </button>
-        <div className="relative w-[172px] shrink-0">
+        <div className="relative w-full shrink-0 sm:w-[172px]">
           <ArrowUpDown size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
           <select
             value={ordering}
@@ -3589,8 +3589,8 @@ function GuestRegistryPanel({
       </div>
 
       {filtersOpen ? (
-        <div className="app-surface-muted mt-3 grid gap-3 rounded-xl p-3 md:grid-cols-3">
-          <label className="block">
+        <div className="app-surface-muted mt-3 grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-3 rounded-xl border border-[var(--border-subtle)] p-3">
+          <label className="block min-w-0">
             <span className="app-text-muted mb-1 block text-xs font-medium">Черный список</span>
             <select
               value={blacklistFilter}
@@ -3602,7 +3602,7 @@ function GuestRegistryPanel({
               <option value="true">В черном списке</option>
             </select>
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="app-text-muted mb-1 block text-xs font-medium">Доступ</span>
             <select
               value={placementFilter}
@@ -3614,7 +3614,7 @@ function GuestRegistryPanel({
               <option value="false">Нет доступа</option>
             </select>
           </label>
-          <div className="flex items-end">
+          <div className="flex min-w-0 items-end">
             <button
               type="button"
               onClick={onClearFilters}
