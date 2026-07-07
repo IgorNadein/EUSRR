@@ -40,7 +40,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
@@ -1652,6 +1652,14 @@ function TaskActivityCard({ activity }: { activity: TaskActivity }) {
 }
 
 export default function TasksPage() {
+  return (
+    <Suspense fallback={<AppShell><div className="app-surface rounded-2xl p-8 text-center"><p className="app-text-muted text-sm">Загрузка задач...</p></div></AppShell>}>
+      <TasksPageContent />
+    </Suspense>
+  );
+}
+
+function TasksPageContent() {
   const { user } = useUser();
   const searchParams = useSearchParams();
   const requestedBoardId = Number(searchParams.get("board") || "");
