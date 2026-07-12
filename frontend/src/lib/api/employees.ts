@@ -13,6 +13,7 @@ export function createEmployeesApi(request: RequestFn) {
             request('/api/v1/directory/me/login/'),
         refreshDirectoryLogin: () =>
             request('/api/v1/directory/me/login/refresh/', { method: 'POST' }),
+        getEmployeeStats: () => request('/api/v1/employees/stats/'),
         getEmployees: (params?: { search?: string; department?: string; page?: number; page_size?: number; limit?: number; is_active?: boolean; ordering?: string }) => {
             const qp = new URLSearchParams();
             if (params?.search) qp.append('search', params.search);

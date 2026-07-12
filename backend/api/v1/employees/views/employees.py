@@ -12,6 +12,7 @@ from attendance.models import AttendanceRecord
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Exists, Max, OuterRef, Prefetch, Q, Subquery
 from django.utils.crypto import get_random_string
+from django.utils import timezone
 from employees.constants import (
     ACTION_DISMISSED,
     ACTIVATING_MARKER_ACTIONS,
@@ -24,6 +25,7 @@ from employees.models import (
     RoleAssignment,
     Skill,
 )
+from employees.services.personnel_state import calculate_employee_tenure_days
 from employees.utils import _to_bool
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
@@ -96,6 +98,27 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 latest_attendance.values("departure_time")[:1]
             ),
         )
+
+    @staticmethod
+    def _years_between(start_date, end_date) -> int | None:
+        if not start_date:
+            return None
+        years = end_date.year - start_date.year
+        if (end_date.month, end_date.day) < (start_date.month, start_date.day):
+            years -= 1
+        return max(years, 0)
+
+    @staticmethod
+    def _employee_stats_person(employee, *, age_years=None, tenure_days=None):
+        if not employee:
+            return None
+        full_name = employee.get_full_name()
+        return {
+            "id": employee.id,
+            "full_name": full_name or employee.email or f"Сотрудник #{employee.id}",
+            "age_years": age_years,
+            "tenure_days": tenure_days,
+        }
 
     def get_permissions(self):
         if self.action == "create":
@@ -360,6 +383,98 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 )
             except Exception:
                 pass
+
+    @action(detail=False, methods=["get"], url_path="stats")
+    def stats(self, request):
+        """Краткая статистика по активным сотрудникам для списка сотрудников."""
+        today = timezone.localdate()
+        employees = list(
+            Employee.objects.filter(is_active=True)
+            .only(
+                "id",
+                "email",
+                "first_name",
+                "last_name",
+                "patronymic",
+                "gender",
+                "birth_date",
+            )
+            .prefetch_related(
+                Prefetch(
+                    "actions",
+                    queryset=EmployeeAction.objects.only(
+                        "id",
+                        "employee_id",
+                        "action",
+                        "date",
+                    ).order_by("date", "id"),
+                    to_attr="stats_actions",
+                )
+            )
+        )
+
+        total = len(employees)
+        male_count = sum(1 for employee in employees if employee.gender == 1)
+        female_count = sum(1 for employee in employees if employee.gender == 2)
+        unknown_gender_count = total - male_count - female_count
+
+        ages: list[tuple[Employee, int]] = []
+        tenure_values: list[tuple[Employee, int]] = []
+
+        for employee in employees:
+            age_years = self._years_between(employee.birth_date, today)
+            if age_years is not None:
+                ages.append((employee, age_years))
+
+            tenure_days = calculate_employee_tenure_days(
+                employee,
+                today,
+                actions=getattr(employee, "stats_actions", []),
+            )
+            if tenure_days is not None:
+                tenure_values.append((employee, tenure_days))
+
+        youngest = min(ages, key=lambda item: (item[1], item[0].id), default=None)
+        most_experienced = max(
+            tenure_values,
+            key=lambda item: (item[1], -item[0].id),
+            default=None,
+        )
+        average_age_years = (
+            round(sum(age for _, age in ages) / len(ages), 1) if ages else None
+        )
+        average_tenure_days = (
+            round(sum(days for _, days in tenure_values) / len(tenure_values))
+            if tenure_values
+            else None
+        )
+
+        return Response(
+            {
+                "as_of": today,
+                "total": total,
+                "male_count": male_count,
+                "female_count": female_count,
+                "unknown_gender_count": unknown_gender_count,
+                "average_age_years": average_age_years,
+                "youngest_employee": self._employee_stats_person(
+                    youngest[0],
+                    age_years=youngest[1],
+                )
+                if youngest
+                else None,
+                "most_experienced_employee": self._employee_stats_person(
+                    most_experienced[0],
+                    tenure_days=most_experienced[1],
+                )
+                if most_experienced
+                else None,
+                "longest_tenure_days": most_experienced[1]
+                if most_experienced
+                else None,
+                "average_tenure_days": average_tenure_days,
+            }
+        )
 
     @action(detail=False, methods=["get", "patch"])
     def me(self, request):

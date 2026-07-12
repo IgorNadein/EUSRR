@@ -4,8 +4,11 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Iterable
 
+from django.utils import timezone
+
 from employees.constants import (
     ACTION_DISMISSED,
+    ACTION_REMOTE,
     ACTION_WORKING,
     ACTION_LABELS,
     ACTIVATING_MARKER_ACTIONS,
@@ -18,6 +21,10 @@ from employees.constants import (
 from employees.models import Employee, EmployeeAction
 
 PERSONNEL_STATUS_NORMAL = "normal"
+EMPLOYMENT_START_ACTIONS = ACTIVATING_MARKER_ACTIONS | {
+    ACTION_WORKING,
+    ACTION_REMOTE,
+}
 
 
 @dataclass(frozen=True)
@@ -107,6 +114,58 @@ def _sorted_actions(actions: Iterable[EmployeeAction]) -> list[EmployeeAction]:
             action.id or 0,
         ),
     )
+
+
+def calculate_employee_tenure_days(
+    employee: Employee,
+    target_date: date,
+    *,
+    actions: Iterable[EmployeeAction] | None = None,
+) -> int | None:
+    """Считает фактический стаж по кадровым событиям.
+
+    Период работы открывается приемом/восстановлением или рабочим постоянным
+    статусом и закрывается увольнением. Разрывы между увольнением и повторным
+    приемом в стаж не входят.
+    """
+    employee_actions = _sorted_actions(
+        actions
+        if actions is not None
+        else employee.actions.select_related("source_request").all()
+    )
+    total_days = 0
+    current_start: date | None = None
+    has_employment_period = False
+
+    for action in employee_actions:
+        action_date = _action_date(action)
+        if action_date is None or action_date > target_date:
+            continue
+
+        if action.action in EMPLOYMENT_START_ACTIONS:
+            if current_start is None:
+                current_start = action_date
+                has_employment_period = True
+            continue
+
+        if action.action == ACTION_DISMISSED and current_start is not None:
+            total_days += max((action_date - current_start).days, 0)
+            current_start = None
+
+    if current_start is not None:
+        total_days += max((target_date - current_start).days, 0)
+
+    return total_days if has_employment_period else None
+
+
+def _action_date(action: EmployeeAction) -> date | None:
+    if not action.date:
+        return None
+    if isinstance(action.date, datetime):
+        if timezone.is_aware(action.date):
+            return timezone.localtime(action.date).date()
+        return action.date.date()
+    return action.date
 
 
 def _resolve_permanent_action(
