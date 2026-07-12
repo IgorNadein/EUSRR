@@ -17,6 +17,7 @@ from employees.constants import (
 from employees.models import EmployeeAction
 from employees.services.personnel_state import (
     PERSONNEL_STATUS_NORMAL,
+    calculate_employee_tenure_days,
     resolve_employee_personnel_state,
 )
 
@@ -154,6 +155,37 @@ def test_rehire_restores_previous_permanent_state_after_dismissal(user_factory):
     assert rehire_state.expects_attendance is True
     assert restored_state.status == ACTION_REMOTE
     assert restored_state.action_id == remote.id
+
+
+def test_tenure_sums_employee_action_periods(user_factory):
+    employee = user_factory()
+    EmployeeAction.objects.create(
+        employee=employee,
+        action=ACTION_HIRED,
+        date=_aware_datetime(2020, 1, 1),
+    )
+    EmployeeAction.objects.create(
+        employee=employee,
+        action=ACTION_DISMISSED,
+        date=_aware_datetime(2022, 1, 1),
+    )
+    EmployeeAction.objects.create(
+        employee=employee,
+        action=ACTION_REHIRED,
+        date=_aware_datetime(2024, 1, 1),
+    )
+    EmployeeAction.objects.create(
+        employee=employee,
+        action=ACTION_REMOTE,
+        date=_aware_datetime(2025, 1, 1),
+    )
+
+    tenure_days = calculate_employee_tenure_days(employee, date(2026, 7, 12))
+
+    assert tenure_days == (
+        (date(2022, 1, 1) - date(2020, 1, 1)).days
+        + (date(2026, 7, 12) - date(2024, 1, 1)).days
+    )
 
 
 def test_overlapping_temporary_intervals_use_priority(user_factory):

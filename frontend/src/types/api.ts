@@ -37,6 +37,26 @@ export interface EmployeeAttendanceStatus {
   display: string;
 }
 
+export interface EmployeeStatsPerson {
+  id: number;
+  full_name: string;
+  age_years?: number | null;
+  tenure_days?: number | null;
+}
+
+export interface EmployeeStats {
+  as_of: string;
+  total: number;
+  male_count: number;
+  female_count: number;
+  unknown_gender_count: number;
+  average_age_years: number | null;
+  youngest_employee: EmployeeStatsPerson | null;
+  most_experienced_employee: EmployeeStatsPerson | null;
+  longest_tenure_days: number | null;
+  average_tenure_days: number | null;
+}
+
 export interface EmployeeDepartment {
   id: number;
   name: string;

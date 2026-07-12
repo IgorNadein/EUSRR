@@ -18,7 +18,7 @@ from employees.models import (
     Position,
     Skill,
 )
-from employees.constants import ACTION_DISMISSED  # для фильтра actually_active
+from employees.constants import ACTION_DISMISSED, ACTION_HIRED, ACTION_REHIRED
 from tasks.models import (
     Task,
     TaskBoard,
@@ -93,6 +93,136 @@ def test_list_ok_for_authenticated(api_client: APIClient):
     items = extract_results(resp.json())
     ids = {it["id"] for it in items}
     assert e1.id in ids and e2.id in ids
+
+
+def test_stats_requires_auth(api_client: APIClient):
+    response = api_client.get(reverse("api:v1:employees-stats"))
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+def test_stats_returns_active_employee_demographics(api_client: APIClient, monkeypatch):
+    monkeypatch.setattr(
+        "api.v1.employees.views.employees.timezone.localdate",
+        lambda: dt.date(2026, 7, 12),
+    )
+    viewer = make_user("stats-viewer@example.com")
+    experienced = make_user(
+        "stats-experienced@example.com",
+        first_name="Стаж",
+        last_name="Большой",
+        gender=1,
+        birth_date=dt.date(1980, 1, 1),
+    )
+    youngest = make_user(
+        "stats-youngest@example.com",
+        first_name="Молодой",
+        last_name="Сотрудник",
+        gender=1,
+        birth_date=dt.date(2004, 7, 13),
+    )
+    female = make_user(
+        "stats-female@example.com",
+        first_name="Анна",
+        last_name="Статистика",
+        gender=2,
+        birth_date=dt.date(1990, 7, 12),
+    )
+    unknown = make_user(
+        "stats-unknown@example.com",
+        first_name="Без",
+        last_name="Пола",
+        gender=0,
+    )
+    inactive = make_user(
+        "stats-inactive@example.com",
+        active=False,
+        gender=2,
+        birth_date=dt.date(1970, 1, 1),
+    )
+
+    experienced.date_joined = dt.datetime(
+        2026, 1, 1, tzinfo=dt.timezone.utc
+    )
+    experienced.save(update_fields=["date_joined"])
+
+    def action_date(year: int, month: int, day: int) -> dt.datetime:
+        return dt.datetime(year, month, day, 12, tzinfo=dt.timezone.utc)
+
+    EmployeeAction.objects.bulk_create(
+        [
+            EmployeeAction(
+                employee=viewer,
+                action=ACTION_HIRED,
+                date=action_date(2024, 1, 1),
+            ),
+            EmployeeAction(
+                employee=experienced,
+                action=ACTION_HIRED,
+                date=action_date(2020, 1, 1),
+            ),
+            EmployeeAction(
+                employee=experienced,
+                action=ACTION_DISMISSED,
+                date=action_date(2022, 1, 1),
+            ),
+            EmployeeAction(
+                employee=experienced,
+                action=ACTION_REHIRED,
+                date=action_date(2024, 1, 1),
+            ),
+            EmployeeAction(
+                employee=youngest,
+                action=ACTION_HIRED,
+                date=action_date(2025, 1, 1),
+            ),
+            EmployeeAction(
+                employee=female,
+                action=ACTION_HIRED,
+                date=action_date(2022, 6, 1),
+            ),
+            EmployeeAction(
+                employee=unknown,
+                action=ACTION_HIRED,
+                date=action_date(2024, 6, 1),
+            ),
+            EmployeeAction(
+                employee=inactive,
+                action=ACTION_HIRED,
+                date=action_date(2010, 1, 1),
+            ),
+        ]
+    )
+
+    today = dt.date(2026, 7, 12)
+    tenure_by_employee = {
+        viewer: (today - dt.date(2024, 1, 1)).days,
+        experienced: (
+            (dt.date(2022, 1, 1) - dt.date(2020, 1, 1)).days
+            + (today - dt.date(2024, 1, 1)).days
+        ),
+        youngest: (today - dt.date(2025, 1, 1)).days,
+        female: (today - dt.date(2022, 6, 1)).days,
+        unknown: (today - dt.date(2024, 6, 1)).days,
+    }
+
+    api_client.force_authenticate(user=viewer)
+    response = api_client.get(reverse("api:v1:employees-stats"))
+
+    assert response.status_code == status.HTTP_200_OK
+    payload = response.json()
+    assert payload["as_of"] == "2026-07-12"
+    assert payload["total"] == 5
+    assert payload["male_count"] == 2
+    assert payload["female_count"] == 1
+    assert payload["unknown_gender_count"] == 2
+    assert payload["average_age_years"] == 34.3
+    assert payload["youngest_employee"]["id"] == youngest.id
+    assert payload["youngest_employee"]["age_years"] == 21
+    assert payload["most_experienced_employee"]["id"] == experienced.id
+    assert payload["longest_tenure_days"] == tenure_by_employee[experienced]
+    assert payload["average_tenure_days"] == round(
+        sum(tenure_by_employee.values()) / len(tenure_by_employee)
+    )
 
 
 def test_list_includes_visible_linked_tasks_only(api_client: APIClient):

@@ -128,6 +128,20 @@ const emptyBoardForm: BoardFormState = {
   department_ids: [],
 };
 
+const taskDescriptionPreviewClass =
+  "app-text-muted mt-1 block max-h-8 w-full max-w-[13rem] overflow-hidden whitespace-normal break-all text-xs leading-4";
+
+function TaskDescriptionPreview({ description }: { description: string }) {
+  return (
+    <p
+      className={taskDescriptionPreviewClass}
+      style={{ overflowWrap: "anywhere", wordBreak: "break-all" }}
+    >
+      {description}
+    </p>
+  );
+}
+
 const emptyColumnForm: ColumnFormState = {
   name: "",
   color: "#38bdf8",
@@ -273,7 +287,7 @@ function TaskCardView({
         <button
           type="button"
           onClick={() => onOpen(task)}
-          className="min-w-0 flex-1 text-left"
+          className="min-w-0 flex-1 overflow-hidden whitespace-normal text-left"
         >
           <div className="flex min-w-0 items-center gap-2">
             <span className="app-badge shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
@@ -283,11 +297,7 @@ function TaskCardView({
               {task.title}
             </h3>
           </div>
-          {task.description ? (
-            <p className="app-text-muted mt-1 line-clamp-2 text-xs">
-              {task.description}
-            </p>
-          ) : null}
+          {task.description ? <TaskDescriptionPreview description={task.description} /> : null}
         </button>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <div ref={menuOpen ? menuRef : null} className="relative">
@@ -386,7 +396,7 @@ function TaskDragOverlayCard({ task }: { task: TaskCard }) {
         <div className="app-action-ghost mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md">
           <GripVertical size={14} />
         </div>
-        <div className="min-w-0 flex-1 text-left">
+        <div className="min-w-0 flex-1 overflow-hidden whitespace-normal text-left">
           <div className="flex min-w-0 items-center gap-2">
             <span className="app-badge shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
               #{task.id}
@@ -395,11 +405,7 @@ function TaskDragOverlayCard({ task }: { task: TaskCard }) {
               {task.title}
             </h3>
           </div>
-          {task.description ? (
-            <p className="app-text-muted mt-1 line-clamp-2 text-xs">
-              {task.description}
-            </p>
-          ) : null}
+          {task.description ? <TaskDescriptionPreview description={task.description} /> : null}
         </div>
         <span className={`shrink-0 whitespace-nowrap text-right text-[11px] font-medium ${priority.textClassName}`}>
           {priority.urgencyLabel} срочность
