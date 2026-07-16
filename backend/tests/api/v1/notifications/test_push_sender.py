@@ -196,3 +196,51 @@ class TestPushNotificationSenderPayload:
 
         assert len(payload["body"]) == 300
         assert payload["body"] == ("а" * 297) + "..."
+
+    def test_permanent_push_error_deactivates_device(self, user_factory):
+        recipient = user_factory(email="stale-device-recipient@example.com")
+        device = _make_push_device(recipient)
+        notification = _make_notification(
+            recipient,
+            verb="document_ready",
+            description="Документ готов",
+            action_url="/documents",
+            data={"title": "Документ"},
+        )
+
+        sender = PushNotificationSender()
+        with patch.object(
+            WebPushDevice,
+            "send_message",
+            autospec=True,
+            side_effect=Exception("Push failed: 400 Bad Request"),
+        ):
+            result = sender.send(notification)
+
+        assert result is False
+        device.refresh_from_db()
+        assert device.active is False
+
+    def test_transient_push_error_keeps_device_active(self, user_factory):
+        recipient = user_factory(email="transient-device-recipient@example.com")
+        device = _make_push_device(recipient)
+        notification = _make_notification(
+            recipient,
+            verb="document_ready",
+            description="Документ готов",
+            action_url="/documents",
+            data={"title": "Документ"},
+        )
+
+        sender = PushNotificationSender()
+        with patch.object(
+            WebPushDevice,
+            "send_message",
+            autospec=True,
+            side_effect=TimeoutError("temporary timeout"),
+        ):
+            result = sender.send(notification)
+
+        assert result is False
+        device.refresh_from_db()
+        assert device.active is True

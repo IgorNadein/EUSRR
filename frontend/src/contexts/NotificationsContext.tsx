@@ -239,6 +239,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       if (['unread_count', 'notification_count_update'].includes(data.type) && typeof data.count === 'number') {
         setUnreadCount(data.count);
         void syncUnreadSummary();
+        void syncUnreadNotifications(false);
       }
     });
 
@@ -250,7 +251,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       unsubscribeMessages();
       unsubscribeStatus();
     };
-  }, [syncUnreadSummary]);
+  }, [syncUnreadNotifications, syncUnreadSummary]);
 
   // Регулярная сверка с API нужна даже при живом WebSocket: часть событий может не дойти по сокету.
   useEffect(() => {
@@ -260,6 +261,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
     const sync = () => {
       void syncUnreadSummary();
+      void syncUnreadNotifications(false);
     };
 
     sync();
@@ -280,7 +282,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [syncUnreadSummary]);
+  }, [syncUnreadNotifications, syncUnreadSummary]);
 
   useEffect(() => {
     if (!isWsConnected) {
@@ -288,7 +290,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     }
 
     void syncUnreadSummary();
-  }, [isWsConnected, syncUnreadSummary]);
+    void syncUnreadNotifications(false);
+  }, [isWsConnected, syncUnreadNotifications, syncUnreadSummary]);
 
   const markAsRead = useCallback(async (id: number) => {
     await apiClient.markNotificationAsRead(id);

@@ -14,6 +14,7 @@ from django.core.mail import send_mail
 
 from .base import BaseNotificationSender
 from notifications import config
+from notifications.models import Notification
 
 
 class EmailNotificationSender(BaseNotificationSender):
@@ -127,9 +128,7 @@ class EmailNotificationSender(BaseNotificationSender):
             self.log_error(notification, e, recipient_email)
             return False
 
-    def send_digest(
-        self, user, notifications: list, frequency: str = "daily"
-    ) -> bool:
+    def send_digest(self, user, notifications, frequency: str = "daily") -> bool:
         """
         Отправляет email дайджест уведомлений.
 
@@ -142,6 +141,7 @@ class EmailNotificationSender(BaseNotificationSender):
             True если отправлено успешно, False иначе
         """
         try:
+            notifications = list(notifications)
             if not notifications:
                 return False
 
@@ -198,8 +198,13 @@ class EmailNotificationSender(BaseNotificationSender):
                 fail_silently=False,
             )
 
-            # Отмечаем как отправленные
-            notifications.update(emailed=True)
+            # Отмечаем как отправленные. На вход может прийти как QuerySet,
+            # так и список из Celery-задачи, поэтому обновляем по id.
+            notification_ids = [item.id for item in notifications if item.id]
+            if notification_ids:
+                Notification.objects.filter(id__in=notification_ids).update(
+                    emailed=True
+                )
 
             self.logger.info(
                 f"✅ Email дайджест отправлен: "

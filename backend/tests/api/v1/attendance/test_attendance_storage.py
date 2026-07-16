@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 
 import pytest
 from django.contrib.contenttypes.models import ContentType
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from openpyxl import load_workbook
@@ -731,6 +732,7 @@ def test_auto_sync_skips_parallel_running_state(user_factory):
     AttendanceAutoSyncSettings.objects.create(
         enabled=True,
         last_status=AttendanceAutoSyncSettings.STATUS_RUNNING,
+        last_started_at=timezone.now(),
         next_run_at=timezone.now() - timedelta(minutes=1),
     )
 
@@ -739,6 +741,59 @@ def test_auto_sync_skips_parallel_running_state(user_factory):
 
     analyze.assert_not_called()
     assert settings.last_status == "running"
+
+
+@override_settings(ATTENDANCE_AUTO_SYNC_STALE_AFTER_SECONDS=1800)
+def test_auto_sync_recovers_stale_running_state_and_runs(user_factory):
+    from attendance.services import run_attendance_auto_sync
+
+    employee = user_factory(first_name="Recovered", last_name="Employee")
+    today = timezone.localdate()
+    AttendanceAutoSyncSettings.objects.create(
+        enabled=True,
+        frequency_minutes=60,
+        lookback_days=1,
+        last_status=AttendanceAutoSyncSettings.STATUS_RUNNING,
+        last_started_at=timezone.now() - timedelta(minutes=40),
+        next_run_at=timezone.now() + timedelta(hours=6),
+    )
+
+    with patch(
+        "common.logstorm_attendance.analyze_employee_attendance",
+        return_value=_auto_sync_result(employee, today),
+    ) as analyze:
+        settings = run_attendance_auto_sync(force=False)
+
+    analyze.assert_called_once()
+    assert settings.last_status == "success"
+    assert settings.last_success_count == 1
+    assert settings.last_error_count == 0
+    assert settings.next_run_at > settings.last_finished_at
+    assert AttendanceRecord.objects.filter(employee=employee, date=today).exists()
+
+
+@override_settings(ATTENDANCE_AUTO_SYNC_STALE_AFTER_SECONDS=1800)
+def test_auto_sync_recovers_stale_running_state_when_disabled(user_factory):
+    from attendance.services import run_attendance_auto_sync
+
+    user_factory()
+    started_at = timezone.now() - timedelta(minutes=40)
+    AttendanceAutoSyncSettings.objects.create(
+        enabled=False,
+        last_status=AttendanceAutoSyncSettings.STATUS_RUNNING,
+        last_started_at=started_at,
+        next_run_at=timezone.now() + timedelta(hours=6),
+    )
+
+    with patch("common.logstorm_attendance.analyze_employee_attendance") as analyze:
+        settings = run_attendance_auto_sync(force=False)
+
+    analyze.assert_not_called()
+    assert settings.last_status == "failed"
+    assert settings.last_finished_at is not None
+    assert settings.last_error_count == 1
+    assert "Recovered stale running attendance auto-sync" in settings.last_error
+    assert settings.next_run_at is None
 
 
 def test_staff_can_run_auto_sync_now(auth_client_factory, user_factory):

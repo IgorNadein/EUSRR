@@ -5,6 +5,7 @@
 """
 
 import logging
+from datetime import timedelta
 
 from celery import shared_task
 from django.conf import settings
@@ -432,6 +433,25 @@ def process_ldap_queue():
         return
 
     now = timezone.now()
+    task_time_limit = getattr(settings, "CELERY_TASK_TIME_LIMIT", 30 * 60)
+    stale_cutoff = now - timedelta(seconds=task_time_limit + 300)
+    stale_count = LdapSyncQueue.objects.filter(
+        status=LdapSyncQueue.Status.IN_PROGRESS,
+        updated_at__lt=stale_cutoff,
+    ).update(
+        status=LdapSyncQueue.Status.PENDING,
+        next_retry_at=now,
+        last_error=(
+            "Recovered stale in-progress LDAP sync item after worker interruption"
+        ),
+        updated_at=now,
+    )
+    if stale_count:
+        logger.warning(
+            "Recovered %d stale LDAP queue items from in_progress to pending",
+            stale_count,
+        )
+
     pending = LdapSyncQueue.objects.filter(
         status=LdapSyncQueue.Status.PENDING,
         next_retry_at__lte=now,

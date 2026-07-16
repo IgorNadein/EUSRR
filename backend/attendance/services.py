@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import logging
 from io import BytesIO
 from datetime import date, timedelta
 from calendar import monthrange
 from typing import Any
 
-from django.conf import settings
+from django.conf import settings as django_settings
 from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -84,6 +85,8 @@ MATRIX_STATUS_SHORT_LABELS = {
     "non_working": "Нер",
     "normal": "OK",
 }
+
+logger = logging.getLogger(__name__)
 
 PERSONNEL_STATUS_SHORT_LABELS = {
     ACTION_ON_LEAVE: "ОТП",
@@ -258,6 +261,34 @@ def get_attendance_auto_sync_employees():
     return Employee.objects.prefetch_related("actions").order_by("-id")
 
 
+def get_attendance_auto_sync_stale_after() -> timedelta:
+    configured_seconds = getattr(
+        django_settings,
+        "ATTENDANCE_AUTO_SYNC_STALE_AFTER_SECONDS",
+        None,
+    )
+    if configured_seconds is None:
+        configured_seconds = (
+            getattr(django_settings, "CELERY_TASK_TIME_LIMIT", 30 * 60) + 300
+        )
+    try:
+        seconds = int(configured_seconds)
+    except (TypeError, ValueError):
+        seconds = 30 * 60 + 300
+    return timedelta(seconds=max(seconds, 60))
+
+
+def is_attendance_auto_sync_stale(
+    settings_obj: AttendanceAutoSyncSettings,
+    now,
+) -> bool:
+    if settings_obj.last_status != AttendanceAutoSyncSettings.STATUS_RUNNING:
+        return False
+    if not settings_obj.last_started_at:
+        return True
+    return now - settings_obj.last_started_at > get_attendance_auto_sync_stale_after()
+
+
 def run_attendance_auto_sync(*, force: bool = False) -> AttendanceAutoSyncSettings:
     from common.logstorm_attendance import (
         analyze_employee_attendance,
@@ -265,6 +296,7 @@ def run_attendance_auto_sync(*, force: bool = False) -> AttendanceAutoSyncSettin
     )
     now = timezone.now()
     with transaction.atomic():
+        recovered_stale_running = False
         settings = (
             AttendanceAutoSyncSettings.objects.select_for_update()
             .filter(singleton=True)
@@ -274,11 +306,42 @@ def run_attendance_auto_sync(*, force: bool = False) -> AttendanceAutoSyncSettin
             settings = AttendanceAutoSyncSettings.objects.create(singleton=True)
 
         if settings.last_status == AttendanceAutoSyncSettings.STATUS_RUNNING:
-            return settings
+            if not is_attendance_auto_sync_stale(settings, now):
+                return settings
+
+            recovered_stale_running = True
+            stale_started_at = settings.last_started_at
+            stale_message = (
+                "Recovered stale running attendance auto-sync"
+                f" started at {stale_started_at.isoformat()}"
+                if stale_started_at
+                else "Recovered stale running attendance auto-sync without start time"
+            )
+            logger.warning(stale_message)
+            settings.last_status = AttendanceAutoSyncSettings.STATUS_FAILED
+            settings.last_finished_at = now
+            settings.last_error = stale_message
+            settings.last_error_count = 1
+            settings.next_run_at = now if settings.enabled else None
+            settings.save(
+                update_fields=[
+                    "last_status",
+                    "last_finished_at",
+                    "last_error",
+                    "last_error_count",
+                    "next_run_at",
+                    "updated_at",
+                ]
+            )
+
         if not force:
             if not settings.enabled:
                 return settings
-            if settings.next_run_at and settings.next_run_at > now:
+            if (
+                not recovered_stale_running
+                and settings.next_run_at
+                and settings.next_run_at > now
+            ):
                 return settings
 
         settings.last_status = AttendanceAutoSyncSettings.STATUS_RUNNING
@@ -632,7 +695,11 @@ def _append_attendance_matrix_legend_sheet(workbook: Workbook) -> None:
 
 
 def _attendance_record_day_events_url(record_id: int) -> str:
-    site_url = getattr(settings, "SITE_URL", "https://corp.robotail.pro").rstrip("/")
+    site_url = getattr(
+        django_settings,
+        "SITE_URL",
+        "https://corp.robotail.pro",
+    ).rstrip("/")
     return f"{site_url}/attendance?record={record_id}&events=1"
 
 

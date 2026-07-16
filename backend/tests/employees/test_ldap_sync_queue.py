@@ -239,6 +239,31 @@ class TestProcessQueue:
         # Не подхватывает — retry ещё не наступил
         mock_task.delay.assert_not_called()
 
+    @override_settings(LDAP_ENABLED=True, CELERY_TASK_TIME_LIMIT=1800)
+    def test_recovers_stale_in_progress_items(self, db):
+        from employees.models import LdapSyncQueue
+        from employees.tasks import process_ldap_queue
+
+        item = LdapSyncQueue.objects.create(
+            operation="employee_save",
+            model_name="employee",
+            object_pk="1",
+            payload={"object_pk": "1", "changes": {}},
+            status=LdapSyncQueue.Status.IN_PROGRESS,
+        )
+        LdapSyncQueue.objects.filter(pk=item.pk).update(
+            updated_at=timezone.now() - timedelta(minutes=40),
+        )
+
+        with patch("employees.tasks.process_ldap_queue_item") as mock_task:
+            mock_task.delay = MagicMock()
+            process_ldap_queue()
+
+        item.refresh_from_db()
+        assert item.status == LdapSyncQueue.Status.PENDING
+        assert "Recovered stale" in item.last_error
+        mock_task.delay.assert_called_once_with(item.pk)
+
 
 class TestDepartmentQueueExecutors:
 
