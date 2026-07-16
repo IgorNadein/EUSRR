@@ -20,6 +20,8 @@ import type { GuestVisit, GuestVisitComment } from "@/types/api";
 
 type AppShellProps = {
   children: ReactNode;
+  desktopWideMode?: boolean;
+  onDesktopWideModeChange?: (enabled: boolean) => void;
 };
 
 type PageHeaderProps = {
@@ -38,6 +40,7 @@ type HeaderProps = {
 
 type LeftNavContentProps = {
   onNavigate?: () => void;
+  compact?: boolean;
 };
 
 type PaginatedResponse<T> = {
@@ -325,7 +328,7 @@ function Header({ mobileNavPlacement, suppressMobileChrome = false, onOpenLeftNa
   );
 }
 
-function LeftNavContent({ onNavigate }: LeftNavContentProps) {
+function LeftNavContent({ onNavigate, compact = false }: LeftNavContentProps) {
   const pathname = usePathname();
   const { user } = useUser();
   const { unreadCategoryCounts, markCategoryAsRead } = useNotifications();
@@ -348,13 +351,13 @@ function LeftNavContent({ onNavigate }: LeftNavContentProps) {
   };
 
   const navLinkClass = (href: string) =>
-    `flex items-center gap-3 rounded-lg px-3 py-2 transition ${pathname === href ? "app-selected" : "text-[var(--foreground)] hover:bg-[var(--surface-secondary)]"
+    `relative flex items-center rounded-lg transition ${compact ? "h-10 w-10 justify-center p-0" : "gap-3 px-3 py-2"} ${pathname === href ? "app-selected" : "text-[var(--foreground)] hover:bg-[var(--surface-secondary)]"
     }`;
 
   const navIconClass = (href: string) => (pathname === href ? "app-accent-text" : "app-text-muted");
 
   return (
-    <div className="app-surface rounded-2xl p-5">
+    <div className={`app-surface rounded-2xl ${compact ? "p-2" : "p-5"}`}>
       <div className="space-y-2 text-sm">
         {visibleNavItems.map(({ href, label, icon: Icon, category, autoReadOnNavigate }) => {
           const count = category ? unreadCategoryCounts[category] || 0 : 0;
@@ -365,11 +368,13 @@ function LeftNavContent({ onNavigate }: LeftNavContentProps) {
               href={href} 
               className={navLinkClass(href)} 
               onClick={() => handleNavClick(category, autoReadOnNavigate)}
+              title={compact ? label : undefined}
+              aria-label={compact ? label : undefined}
             >
               <Icon size={18} className={navIconClass(href)} />
-              <span className="flex-1">{label}</span>
+              <span className={compact ? "sr-only" : "flex-1"}>{label}</span>
               {count > 0 && (
-                <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-sky-500 px-1.5 text-[10px] font-bold text-white">
+                <span className={`flex items-center justify-center rounded-full bg-sky-500 text-[10px] font-bold text-white ${compact ? "absolute -right-1 -top-1 h-4 min-w-4 px-1" : "h-5 min-w-[20px] px-1.5"}`}>
                   {count > 99 ? '99+' : count}
                 </span>
               )}
@@ -381,17 +386,17 @@ function LeftNavContent({ onNavigate }: LeftNavContentProps) {
   );
 }
 
-function LeftNav({ fixedDesktop = false }: { fixedDesktop?: boolean }) {
+function LeftNav({ fixedDesktop = false, compact = false }: { fixedDesktop?: boolean; compact?: boolean }) {
   return (
-    <aside className="hidden w-64 flex-shrink-0 lg:block">
+    <aside className={`hidden flex-shrink-0 transition-[width] duration-200 lg:block ${compact ? "w-14" : "w-64"}`}>
       <div
         className={`space-y-4 lg:overflow-y-auto ${
           fixedDesktop
-            ? "lg:fixed lg:top-0 lg:bottom-0 lg:w-64 lg:pt-[4.5rem] lg:pb-8"
+            ? `lg:fixed lg:top-0 lg:bottom-0 lg:pt-[4.5rem] lg:pb-8 ${compact ? "lg:w-14" : "lg:w-64"}`
             : "lg:sticky lg:top-8 lg:max-h-[calc(100dvh-7.5rem)] lg:pb-2"
         }`}
       >
-        <LeftNavContent />
+        <LeftNavContent compact={compact} />
       </div>
     </aside>
   );
@@ -559,7 +564,7 @@ function GuestInfoRequestPrompt({ userId }: { userId?: number | null }) {
   );
 }
 
-export function AppShell({ children }: AppShellProps) {
+export function AppShell({ children, desktopWideMode = false, onDesktopWideModeChange }: AppShellProps) {
   const { user, loading } = useUser();
   const { mobileNavPlacement } = useMobileNavPlacement();
   const router = useRouter();
@@ -640,16 +645,16 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <div className={`${isMessageDialogPage ? 'h-[100dvh] overflow-hidden lg:pt-14' : 'min-h-screen pt-10 lg:pt-14'} app-shell flex flex-col ${mobileNavPlacement === "bottom" && !isMessageDialogPage ? "pb-[calc(env(safe-area-inset-bottom)+3.75rem)] lg:pb-0" : ""}`}>
+    <div className={`${isMessageDialogPage ? 'h-[100dvh] overflow-hidden lg:pt-14' : 'min-h-screen pt-10 lg:pt-14'} ${desktopWideMode ? "lg:h-[100dvh] lg:overflow-hidden" : ""} app-shell flex flex-col ${mobileNavPlacement === "bottom" && !isMessageDialogPage ? "pb-[calc(env(safe-area-inset-bottom)+3.75rem)] lg:pb-0" : ""}`}>
         <Header
           mobileNavPlacement={mobileNavPlacement}
           suppressMobileChrome={isMessageDialogPage}
           onOpenLeftNav={() => setIsMobileLeftNavOpen(true)}
           onOpenCalendar={() => setIsMobileCalendarOpen(true)}
         />
-        <div className={`mx-auto flex w-full flex-1 min-h-0 max-w-6xl ${isMessageDialogPage ? 'gap-0 px-0 py-0 lg:gap-6 lg:px-8 lg:py-4' : 'gap-6 px-4 py-4 sm:px-8 lg:py-4'}`}>
-          <LeftNav fixedDesktop />
-          <main className={`flex-1 min-w-0 min-h-0 space-y-6 ${isMessageDialogPage ? 'overflow-visible' : ''}`}>
+        <div className={`mx-auto flex w-full flex-1 min-h-0 max-w-6xl ${desktopWideMode ? "lg:max-w-none" : ""} ${isMessageDialogPage ? 'gap-0 px-0 py-0 lg:gap-6 lg:px-8 lg:py-4' : `gap-6 px-4 py-4 sm:px-8 lg:py-4 ${desktopWideMode ? "lg:gap-3 lg:px-3" : ""}`}`}>
+          <LeftNav fixedDesktop compact={desktopWideMode} />
+          <main className={`flex-1 min-w-0 min-h-0 space-y-6 ${isMessageDialogPage ? 'overflow-visible' : ''} ${desktopWideMode ? "lg:flex lg:flex-col lg:gap-4 lg:space-y-0 lg:overflow-hidden" : ""}`}>
             {!isMessageDialogPage ? <PushOnboardingPrompt /> : null}
             {children}
           </main>
@@ -662,6 +667,8 @@ export function AppShell({ children }: AppShellProps) {
             setSidebarEvents={cal.handleSetSidebarEvents}
             onCalendarChange={cal.handleCalendarChange}
             fixedDesktop
+            compact={desktopWideMode}
+            onExpand={() => onDesktopWideModeChange?.(false)}
           />
         </div>
 

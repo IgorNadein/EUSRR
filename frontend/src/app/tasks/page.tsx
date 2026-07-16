@@ -26,7 +26,9 @@ import {
   Kanban,
   Link2,
   Loader2,
+  Maximize2,
   MessageSquare,
+  Minimize2,
   Newspaper,
   Paperclip,
   Pencil,
@@ -107,6 +109,8 @@ type TaskBoardSocketEvent = {
     object_id?: number | null;
   };
 };
+
+const DESKTOP_WIDE_MODE_STORAGE_PREFIX = "tasks.desktop-wide-mode";
 
 const emptyForm: TaskFormState = {
   id: null,
@@ -467,6 +471,7 @@ function BoardColumn({
   menuRef,
   onToggleTaskMenu,
   onColumnMount,
+  fillAvailableHeight = false,
 }: {
   column: TaskColumn;
   tasks: TaskCard[];
@@ -478,6 +483,7 @@ function BoardColumn({
   menuRef: RefObject<HTMLDivElement | null>;
   onToggleTaskMenu: (taskId: number) => void;
   onColumnMount: (columnId: number, node: HTMLElement | null) => void;
+  fillAvailableHeight?: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `column-${column.id}`,
@@ -491,7 +497,7 @@ function BoardColumn({
   return (
     <section
       ref={setColumnNodeRef}
-      className={`flex max-h-[calc(100vh-14rem)] min-h-[28rem] min-w-[18rem] flex-col rounded-xl border bg-[var(--surface-muted)] transition ${
+      className={`flex max-h-[calc(100vh-14rem)] min-h-[28rem] min-w-[18rem] flex-col rounded-xl border bg-[var(--surface-muted)] transition ${fillAvailableHeight ? "lg:h-full lg:min-h-0 lg:max-h-none" : ""} ${
         isOver ? "border-[var(--accent-primary)]" : "border-[var(--border-subtle)]"
       }`}
     >
@@ -542,12 +548,18 @@ function BoardColumn({
   );
 }
 
-function AddColumnCard({ onClick }: { onClick: () => void }) {
+function AddColumnCard({
+  onClick,
+  fillAvailableHeight = false,
+}: {
+  onClick: () => void;
+  fillAvailableHeight?: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group flex max-h-[calc(100vh-14rem)] min-h-[28rem] min-w-[18rem] flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--surface-muted)] p-4 text-center transition hover:border-[var(--accent-primary)] hover:bg-[var(--surface-elevated)]"
+      className={`group flex max-h-[calc(100vh-14rem)] min-h-[28rem] min-w-[18rem] flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--surface-muted)] p-4 text-center transition hover:border-[var(--accent-primary)] hover:bg-[var(--surface-elevated)] ${fillAvailableHeight ? "lg:h-full lg:min-h-0 lg:max-h-none" : ""}`}
     >
       <span className="app-selected mb-3 flex h-10 w-10 items-center justify-center rounded-xl transition group-hover:scale-105">
         <Plus size={18} />
@@ -1680,6 +1692,7 @@ function TasksPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [onlyMine, setOnlyMine] = useState(false);
+  const [desktopWideMode, setDesktopWideMode] = useState(false);
   const [selectedColumnTarget, setSelectedColumnTarget] = useState<number | "all">("all");
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
   const [viewTaskId, setViewTaskId] = useState<number | null>(null);
@@ -1730,6 +1743,23 @@ function TasksPageContent() {
       activationConstraint: { distance: 8 },
     }),
   );
+
+  useEffect(() => {
+    if (!user?.id) return;
+    setDesktopWideMode(
+      window.localStorage.getItem(`${DESKTOP_WIDE_MODE_STORAGE_PREFIX}.${user.id}`) === "1",
+    );
+  }, [user?.id]);
+
+  const changeDesktopWideMode = useCallback((enabled: boolean) => {
+    setDesktopWideMode(enabled);
+    if (user?.id) {
+      window.localStorage.setItem(
+        `${DESKTOP_WIDE_MODE_STORAGE_PREFIX}.${user.id}`,
+        enabled ? "1" : "0",
+      );
+    }
+  }, [user?.id]);
 
   const loadBoards = useCallback(async () => {
     const response = await apiClient.getTaskBoards();
@@ -2793,7 +2823,10 @@ function TasksPageContent() {
 
   if (loading) {
     return (
-      <AppShell>
+      <AppShell
+        desktopWideMode={desktopWideMode}
+        onDesktopWideModeChange={changeDesktopWideMode}
+      >
         <section className="app-surface rounded-2xl p-8 text-center">
           <Loader2 size={28} className="mx-auto mb-3 animate-spin text-sky-500" />
           <p className="app-text-muted text-sm">Загрузка задач...</p>
@@ -2803,8 +2836,11 @@ function TasksPageContent() {
   }
 
   return (
-    <AppShell>
-      <div className="mx-auto max-w-[1600px] space-y-4">
+    <AppShell
+      desktopWideMode={desktopWideMode}
+      onDesktopWideModeChange={changeDesktopWideMode}
+    >
+      <div className={`${desktopWideMode ? "w-full lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:gap-4 lg:space-y-0" : "mx-auto max-w-[1600px]"} space-y-4`}>
         <section className="app-surface rounded-2xl p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
@@ -2814,6 +2850,16 @@ function TasksPageContent() {
               </h1>
             </div>
             <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => changeDesktopWideMode(!desktopWideMode)}
+                className="app-action-secondary hidden h-10 w-10 items-center justify-center rounded-lg lg:inline-flex"
+                title={desktopWideMode ? "Вернуть обычный вид" : "Развернуть доску"}
+                aria-label={desktopWideMode ? "Вернуть обычный вид" : "Развернуть доску"}
+                aria-pressed={desktopWideMode}
+              >
+                {desktopWideMode ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+              </button>
               <button
                 type="button"
                 onClick={openCreateBoard}
@@ -3045,8 +3091,11 @@ function TasksPageContent() {
           onDragCancel={handleDragCancel}
           onDragEnd={handleDragEnd}
         >
-          <div ref={boardScrollRef} className="tasks-board-scroll overflow-x-auto pb-3">
-            <div className="flex min-w-max gap-3">
+          <div
+            ref={boardScrollRef}
+            className={`tasks-board-scroll overflow-x-auto pb-3 ${desktopWideMode ? "lg:min-h-0 lg:flex-1" : ""}`}
+          >
+            <div className={`flex min-w-max gap-3 ${desktopWideMode ? "lg:h-full" : ""}`}>
               {activeColumns.map((column) => (
                 <BoardColumn
                   key={column.id}
@@ -3060,9 +3109,13 @@ function TasksPageContent() {
                   menuRef={cardMenuRef}
                   onToggleTaskMenu={toggleCardTaskMenu}
                   onColumnMount={registerColumnNode}
+                  fillAvailableHeight={desktopWideMode}
                 />
               ))}
-              <AddColumnCard onClick={openCreateColumn} />
+              <AddColumnCard
+                onClick={openCreateColumn}
+                fillAvailableHeight={desktopWideMode}
+              />
             </div>
           </div>
           <DragOverlay zIndex={1000} dropAnimation={null}>

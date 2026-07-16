@@ -719,6 +719,10 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(hour=9, minute=0, day_of_week="monday"),
         "args": ("weekly",),
     },
+    "tasks-due-notifications": {
+        "task": "tasks.dispatch_task_due_notifications",
+        "schedule": crontab(hour=9, minute=5),
+    },
     "process-ldap-sync-queue": {
         "task": "employees.tasks.process_ldap_queue",
         "schedule": 60.0,  # Каждую минуту проверяем очередь LDAP retry

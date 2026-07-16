@@ -48,6 +48,13 @@ from tasks.models import (
     TaskLinkedObjectKind,
     TaskUserSettings,
 )
+from tasks.notifications import (
+    notify_board_members_added,
+    notify_task_comment,
+    notify_task_created,
+    notify_task_moved,
+    notify_task_updated,
+)
 from tasks.realtime import (
     get_task_board_recipient_ids,
     send_task_board_update,
@@ -143,12 +150,27 @@ class TaskBoardViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         board = serializer.save(created_by=self.request.user)
         create_default_columns(board)
+        notify_board_members_added(
+            board,
+            self.request.user,
+            board.members.filter(is_active=True),
+        )
         send_task_board_update(board, "created", "board", board.id)
 
     def perform_update(self, serializer):
         board = self.get_object()
         previous_recipient_ids = get_task_board_recipient_ids(board)
+        previous_member_ids = set(board.members.values_list("id", flat=True))
         board = serializer.save()
+        added_member_ids = set(board.members.values_list("id", flat=True)) - (
+            previous_member_ids
+        )
+        if added_member_ids:
+            notify_board_members_added(
+                board,
+                self.request.user,
+                Employee.objects.filter(id__in=added_member_ids, is_active=True),
+            )
         recipient_ids = previous_recipient_ids | get_task_board_recipient_ids(board)
         send_task_board_update(
             board,
@@ -408,6 +430,7 @@ class TaskViewSet(viewsets.ModelViewSet):
             TaskActivityAction.CREATED,
             metadata={"column": task.column.name},
         )
+        notify_task_created(task, self.request.user)
         send_task_board_update(task.board, "created", "task", task.id)
 
     def perform_update(self, serializer):
@@ -439,6 +462,7 @@ class TaskViewSet(viewsets.ModelViewSet):
                 TaskActivityAction.UPDATED,
                 metadata={"fields": changed_fields},
             )
+            notify_task_updated(task, self.request.user, previous, current)
         send_task_board_update(task.board, "updated", "task", task.id)
 
     def perform_destroy(self, instance):
@@ -509,6 +533,7 @@ class TaskViewSet(viewsets.ModelViewSet):
                 "to_column": column.name,
             },
         )
+        notify_task_moved(task, request.user, old_column, column)
         send_task_board_update(
             task.board,
             "moved",
@@ -559,6 +584,7 @@ class TaskViewSet(viewsets.ModelViewSet):
             author=request.user,
             content=text,
         )
+        notify_task_comment(task, message)
         send_task_board_update(
             task.board,
             "commented",
