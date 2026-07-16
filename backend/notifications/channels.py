@@ -21,6 +21,20 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _enqueue_notification_task(task, *args, **kwargs) -> bool:
+    try:
+        task.delay(*args, **kwargs)
+        return True
+    except Exception as exc:
+        logger.error(
+            "Failed to enqueue notification task %s: %s",
+            getattr(task, "name", repr(task)),
+            exc,
+            exc_info=True,
+        )
+        return False
+
+
 @receiver(post_save, sender="notifications.Notification")
 def route_notification_to_channels(sender, instance, created, **kwargs):
     """
@@ -54,7 +68,9 @@ def route_notification_to_channels(sender, instance, created, **kwargs):
         # Если настроек нет - создаем с дефолтными значениями
         from .models import UserChannelPreferences
 
-        prefs = UserChannelPreferences.objects.create(user=user)
+        prefs, _created = UserChannelPreferences.objects.get_or_create(
+            user=user
+        )
 
     # Проверяем, не отключен ли этот тип уведомлений
     if not prefs.is_verb_enabled(notification.verb):
@@ -88,18 +104,26 @@ def route_notification_to_channels(sender, instance, created, **kwargs):
                 } is in DND period, only web notifications (silent)"
             )
             if prefs.web_enabled:
-                send_websocket_notification.delay(notification.id, silent=True)
+                _enqueue_notification_task(
+                    send_websocket_notification,
+                    notification.id,
+                    silent=True,
+                )
             return
 
         # Отправляем по каналам асинхронно через Celery
         if prefs.web_enabled:
-            send_websocket_notification.delay(notification.id, silent=False)
+            _enqueue_notification_task(
+                send_websocket_notification,
+                notification.id,
+                silent=False,
+            )
 
         if prefs.email_enabled and prefs.email_frequency == "instant":
-            send_email_notification.delay(notification.id)
+            _enqueue_notification_task(send_email_notification, notification.id)
 
         if prefs.push_enabled:
-            send_push_notification.delay(notification.id)
+            _enqueue_notification_task(send_push_notification, notification.id)
 
     transaction.on_commit(send_to_channels)
 

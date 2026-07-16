@@ -87,6 +87,32 @@ class PushNotificationSender(BaseNotificationSender):
 
         return self._get_data_title(notification) or self.DEFAULT_TITLE
 
+    def _is_permanent_device_error(self, error: Exception) -> bool:
+        error_text = str(error).lower()
+        permanent_markers = (
+            "expired",
+            "unregistered",
+            "invalid subscription",
+            "invalidregistration",
+            "not found",
+            "gone",
+            "404",
+            "410",
+            "400 bad request",
+        )
+        return any(marker in error_text for marker in permanent_markers)
+
+    def _deactivate_device(self, device, reason: str) -> None:
+        if not device.active:
+            return
+        device.active = False
+        device.save(update_fields=["active"])
+        self.logger.info(
+            "Push device %s deactivated after permanent delivery error: %s",
+            device.id,
+            reason,
+        )
+
     def send(self, notification, **kwargs) -> bool:
         """
         Отправляет Web Push уведомление.
@@ -172,18 +198,13 @@ class PushNotificationSender(BaseNotificationSender):
                     failed_count += 1
                     # Вычисляем размер payload для диагностики
                     message_size = len(message.encode("utf-8"))
+                    error_text = str(e)
                     self.logger.error(
                         f"Ошибка отправки push на device {device.id}: {e} "
                         f"(payload size: {message_size} bytes)"
                     )
-                    # Деактивируем устройство если ошибка
-                    if (
-                        "expired" in str(e).lower()
-                        or "unregistered" in str(e).lower()
-                    ):
-                        device.active = False
-                        device.save()
-                        self.logger.info(f"Device {device.id} деактивирован")
+                    if self._is_permanent_device_error(e):
+                        self._deactivate_device(device, error_text)
 
             if sent_count > 0:
                 self.log_success(notification, f"{sent_count} devices")

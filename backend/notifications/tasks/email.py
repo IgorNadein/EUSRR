@@ -2,6 +2,8 @@
 Celery задачи для отправки email уведомлений
 """
 
+from celery import shared_task
+
 from .base import BaseNotificationTask
 from notifications import config
 
@@ -122,3 +124,36 @@ class DigestEmailTask(BaseNotificationTask):
 # Регистрируем задачи в Celery
 send_email_notification = EmailNotificationTask.register_task()
 send_digest_email = DigestEmailTask.register_task()
+
+
+@shared_task(name="notifications.send_digest_emails")
+def send_digest_emails(frequency: str = "daily") -> int:
+    """
+    Dispatches digest email tasks for users who selected daily/weekly delivery.
+    """
+    if frequency not in {"daily", "weekly"}:
+        raise ValueError(f"Unsupported digest frequency: {frequency}")
+
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from notifications.models import UserChannelPreferences
+
+    cutoff = timezone.now() - timedelta(days=7 if frequency == "weekly" else 1)
+    preferences = UserChannelPreferences.objects.select_related("user").filter(
+        email_enabled=True,
+        email_frequency=frequency,
+        user__email__isnull=False,
+        user__notifications__unread=True,
+        user__notifications__emailed=False,
+        user__notifications__deleted=False,
+        user__notifications__timestamp__gte=cutoff,
+    ).exclude(user__email="").distinct()
+
+    dispatched = 0
+    for prefs in preferences.iterator():
+        send_digest_email.delay(prefs.user_id, frequency)
+        dispatched += 1
+
+    return dispatched

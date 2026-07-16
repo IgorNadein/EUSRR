@@ -3,6 +3,7 @@ import tempfile
 from datetime import timedelta
 from pathlib import Path
 
+from celery.schedules import crontab
 from dotenv import load_dotenv
 
 from dotenv import load_dotenv
@@ -708,9 +709,23 @@ CELERY_BEAT_SCHEDULE = {
         "task": "communications.tasks.cleanup_orphaned_attachments",
         "schedule": 3600.0,  # Каждый час
     },
+    "notifications-daily-digests": {
+        "task": "notifications.send_digest_emails",
+        "schedule": crontab(hour=9, minute=0),
+        "args": ("daily",),
+    },
+    "notifications-weekly-digests": {
+        "task": "notifications.send_digest_emails",
+        "schedule": crontab(hour=9, minute=0, day_of_week="monday"),
+        "args": ("weekly",),
+    },
     "process-ldap-sync-queue": {
         "task": "employees.tasks.process_ldap_queue",
         "schedule": 60.0,  # Каждую минуту проверяем очередь LDAP retry
+    },
+    "process-due-personnel-actions": {
+        "task": "requests_app.tasks.process_due_personnel_actions",
+        "schedule": crontab(hour=0, minute=10),  # Каждый день в 00:10
     },
     "attendance-auto-sync-dispatcher": {
         "task": "attendance.tasks.dispatch_attendance_auto_sync",
