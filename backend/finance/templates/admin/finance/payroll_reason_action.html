@@ -1,0 +1,38 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+  <form method="post">
+    {% csrf_token %}
+    <p>Операция будет применена к следующим объектам:</p>
+    <ul>
+      {% for object in queryset %}
+        <li>{{ object }}</li>
+        <input type="hidden" name="{{ action_checkbox_name }}" value="{{ object.pk }}">
+      {% endfor %}
+    </ul>
+
+    {% if error %}
+      <p class="errornote">{{ error }}</p>
+    {% endif %}
+
+    <div class="form-row">
+      <label for="id_reason"{% if reason_required %} class="required"{% endif %}>
+        Основание:
+      </label>
+      <textarea
+        id="id_reason"
+        name="reason"
+        rows="4"
+        cols="80"
+        {% if reason_required %}required{% endif %}
+      >{{ request.POST.reason|default:"" }}</textarea>
+    </div>
+
+    <input type="hidden" name="action" value="{{ action_name }}">
+    <input type="hidden" name="confirm_payroll_action" value="1">
+    <input type="hidden" name="select_across" value="0">
+    <input type="submit" value="Продолжить" class="default">
+    <a href="../" class="button cancel-link">Отмена</a>
+  </form>
+{% endblock %}

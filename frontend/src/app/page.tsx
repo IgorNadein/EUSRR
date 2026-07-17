@@ -18,6 +18,11 @@ import TaskLinkPill from "@/components/tasks/TaskLinkPill";
 import { useNotifications } from "@/contexts/NotificationsContext";
 import { apiClient } from "@/lib/api";
 import { getDocumentFileExtension } from "@/lib/document-preview";
+import {
+  getRegulationAcknowledgementDepartments,
+  isCompanyAcknowledgementRegulation,
+  regulationMatchesAcknowledgementSource,
+} from "@/lib/feed-regulation-filters";
 import { loadAllPages, userProfileLink } from "@/lib/shared";
 import { resolveMediaUrl } from "@/lib/url";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -60,13 +65,6 @@ function postMatchesSource(post: Post, source: PostSourceFilter) {
   if (source === "all") return true;
   if (source === "company") return post.type !== "department";
   return post.department_id === Number(source.split(":")[1]);
-}
-
-function regulationMatchesSource(document: Document, source: PostSourceFilter) {
-  if (source === "all") return true;
-  if (source === "company") return Boolean(document.sent_to_all);
-  const departmentId = Number(source.split(":")[1]);
-  return (document.departments || []).some((department) => department.id === departmentId);
 }
 
 export default function Home() {
@@ -381,8 +379,8 @@ function HomePageContent() {
     }
 
     for (const document of regulations) {
-      if (document.sent_to_all) companyCount += 1;
-      for (const department of document.departments || []) {
+      if (isCompanyAcknowledgementRegulation(document)) companyCount += 1;
+      for (const department of getRegulationAcknowledgementDepartments(document)) {
         const current = departmentCounts.get(department.id);
         if (current) {
           current.total += 1;
@@ -433,8 +431,8 @@ function HomePageContent() {
         const regulation = documentId !== null ? regulationsById.get(documentId) : undefined;
         if (regulation) {
           regulationsUnread += 1;
-          if (regulation.sent_to_all) companyRegulationsUnread += 1;
-          for (const department of regulation.departments || []) {
+          if (isCompanyAcknowledgementRegulation(regulation)) companyRegulationsUnread += 1;
+          for (const department of getRegulationAcknowledgementDepartments(regulation)) {
             departmentRegulationsUnread.set(
               department.id,
               (departmentRegulationsUnread.get(department.id) || 0) + 1,
@@ -488,7 +486,9 @@ function HomePageContent() {
     const departmentRegulationsUnread = new Map(
       postSourceUnreadCounts.departments.map((entry) => [entry.id, entry.regulationsUnread]),
     );
-    const scopedRegulations = regulations.filter((document) => regulationMatchesSource(document, sourceFilter));
+    const scopedRegulations = regulations.filter((document) => (
+      regulationMatchesAcknowledgementSource(document, sourceFilter)
+    ));
     const scopedRegulationsUnread = sourceFilter === "all"
       ? postSourceUnreadCounts.regulations
       : sourceFilter === "company"
@@ -529,7 +529,7 @@ function HomePageContent() {
       if (regulationsOnly && entry.kind !== "regulation") return false;
       return entry.kind === "post"
         ? postMatchesSource(entry.post, sourceFilter)
-        : regulationMatchesSource(entry.document, sourceFilter);
+        : regulationMatchesAcknowledgementSource(entry.document, sourceFilter);
     }).sort((left, right) => {
       const leftPinned = left.kind === "post" && left.post.pinned ? 1 : 0;
       const rightPinned = right.kind === "post" && right.post.pinned ? 1 : 0;

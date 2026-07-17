@@ -1,5 +1,27 @@
 import type { User } from "@/types/api";
 
+const PAYROLL_ADMIN_PERMISSIONS = [
+    "manage_payroll_inputs",
+    "approve_payroll_inputs",
+    "calculate_payroll",
+    "approve_payroll",
+    "publish_payroll",
+    "view_all_payroll",
+] as const;
+
+/** Whether the user can enter the native payroll management workspace. */
+export function canOpenPayrollAdmin(user?: User | null): boolean {
+    const auth = user?.auth;
+    if (!auth) return false;
+    if (auth.is_superuser) return true;
+
+    const permissions = auth.permissions || [];
+    const financePermissions = auth.permissions_by_app?.finance || [];
+    return PAYROLL_ADMIN_PERMISSIONS.some(
+        (code) => permissions.includes(`finance.${code}`) || financePermissions.includes(code),
+    );
+}
+
 /**
  * Проверяет, может ли пользователь обрабатывать (approve/reject) заявления.
  *
