@@ -236,7 +236,6 @@ class EmployeePayRateSerializer(serializers.ModelSerializer):
             "approved_by_id",
             "approved_by",
             "approved_at",
-            "self_approval_overridden",
             "voided_by_id",
             "voided_at",
         ]
@@ -318,7 +317,6 @@ class PayrollWorkRecordSerializer(serializers.ModelSerializer):
             "approved_by_id",
             "approved_by",
             "approved_at",
-            "self_approval_overridden",
             "voided_by_id",
             "voided_at",
         ]
@@ -431,7 +429,6 @@ class PayrollInputLineSerializer(serializers.ModelSerializer):
             "approved_by_id",
             "approved_by",
             "approved_at",
-            "self_approval_overridden",
             "voided_by_id",
             "voided_at",
         ]
@@ -546,7 +543,6 @@ class PayrollRunSerializer(serializers.ModelSerializer):
             "approved_by_id",
             "approved_by",
             "approved_at",
-            "self_approval_overridden",
             "published_by_id",
             "published_by",
             "published_at",

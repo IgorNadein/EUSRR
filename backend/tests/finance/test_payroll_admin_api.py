@@ -97,6 +97,7 @@ def test_workspace_contract_is_minimal_and_redacts_money_without_view_all(
     assert_no_store(response)
     body = response.json()
     assert set(body["permissions"]) == {
+        "full_access",
         "manage_inputs",
         "approve_inputs",
         "calculate",
@@ -107,6 +108,7 @@ def test_workspace_contract_is_minimal_and_redacts_money_without_view_all(
         "audit",
     }
     assert body["permissions"]["manage_inputs"] is True
+    assert body["permissions"]["full_access"] is False
     assert body["permissions"]["override_approval"] is False
     assert body["summary"] is None
     assert set(body["readiness"]) == {
@@ -122,6 +124,90 @@ def test_workspace_contract_is_minimal_and_redacts_money_without_view_all(
         "position": None,
         "department": None,
     }
+
+
+def test_staff_admin_gets_full_pilot_access_and_can_manage_any_draft(
+    user_factory,
+    auth_client_factory,
+):
+    administrator = user_factory(
+        email="simple.payroll.admin@example.test",
+        staff=True,
+    )
+    creator = user_factory(email="simple.payroll.creator@example.test")
+    first_employee = user_factory(email="simple.payroll.employee.one@example.test")
+    second_employee = user_factory(email="simple.payroll.employee.two@example.test")
+    client = auth_client_factory(administrator)
+
+    workspace = client.get(api_url("admin-workspace"))
+
+    assert workspace.status_code == 200
+    assert workspace.json()["permissions"] == {
+        "manage_inputs": True,
+        "approve_inputs": True,
+        "calculate": True,
+        "approve_run": True,
+        "override_approval": True,
+        "publish": True,
+        "view_all": True,
+        "audit": True,
+        "full_access": True,
+    }
+
+    foreign_rate = EmployeePayRate.objects.create(
+        employee=first_employee,
+        amount="80000",
+        effective_from="2026-01-01",
+        created_by=creator,
+    )
+    patched = client.patch(
+        api_url("admin-pay-rate-detail", pk=foreign_rate.pk),
+        {"amount": "81000.0000", "expected_lock_version": 0},
+        format="json",
+    )
+    assert patched.status_code == 200
+    assert patched.json()["amount"] == "81000.0000"
+
+    own_rate = client.post(
+        api_url("admin-pay-rate-list"),
+        {
+            "employee_id": second_employee.pk,
+            "rate_code": "BASE",
+            "amount": "90000.0000",
+            "point_rate": "0.0000",
+            "currency": "RUB",
+            "effective_from": "2026-01-01",
+            "reason": "",
+        },
+        format="json",
+    )
+    assert own_rate.status_code == 201
+    approved = client.post(
+        api_url("admin-pay-rate-approve", pk=own_rate.json()["id"]),
+        {"expected_lock_version": own_rate.json()["lock_version"]},
+        format="json",
+    )
+    assert approved.status_code == 200
+    assert approved.json()["approved_by_id"] == administrator.pk
+    assert "self_approval_overridden" not in approved.json()
+
+
+def test_staff_without_finance_permissions_is_denied_when_simple_mode_is_disabled(
+    settings,
+    user_factory,
+    auth_client_factory,
+):
+    settings.FINANCE_PAYROLL = {"SIMPLE_ADMIN_ACCESS": False}
+    administrator = user_factory(
+        email="granular.payroll.admin@example.test",
+        staff=True,
+    )
+
+    response = auth_client_factory(administrator).get(api_url("admin-workspace"))
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "PERMISSION_DENIED"
+    assert_no_store(response)
 
 
 def test_workspace_blocks_period_outside_ruleset_effective_dates(
@@ -453,7 +539,7 @@ def test_native_api_runs_complete_service_workflow_and_redacts_aggregate_money(
         )
         assert approval.status_code == 200
         assert approval.json()["status"] == "approved"
-        assert approval.json()["self_approval_overridden"] is False
+        assert "self_approval_overridden" not in approval.json()
 
     operator_client = auth_client_factory(operator)
     workspace_before = operator_client.get(
@@ -523,7 +609,7 @@ def test_native_api_runs_complete_service_workflow_and_redacts_aggregate_money(
     assert approved.status_code == 200
     assert approved.json()["status"] == "approved"
     assert approved.json()["approved_by"]["id"] == run_approver.pk
-    assert approved.json()["self_approval_overridden"] is False
+    assert "self_approval_overridden" not in approved.json()
 
     published = auth_client_factory(publisher).post(
         api_url("admin-run-publish", pk=run_id),
@@ -638,7 +724,7 @@ def test_override_holder_can_self_approve_every_serialized_payroll_object(
         )
         assert approval.status_code == 200
         assert approval.json()["approved_by_id"] == operator.pk
-        assert approval.json()["self_approval_overridden"] is True
+        assert "self_approval_overridden" not in approval.json()
         approved_objects.append(approval.json())
 
     calculation = client.post(
@@ -657,7 +743,7 @@ def test_override_holder_can_self_approve_every_serialized_payroll_object(
     run_approval = client.post(api_url("admin-run-approve", pk=run_id), {})
     assert run_approval.status_code == 200
     assert run_approval.json()["approved_by_id"] == operator.pk
-    assert run_approval.json()["self_approval_overridden"] is True
+    assert "self_approval_overridden" not in run_approval.json()
 
     records = (
         (EmployeePayRate, approved_objects[0]["id"]),

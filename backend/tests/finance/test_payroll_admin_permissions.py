@@ -16,6 +16,13 @@ from finance.models import EmployeePayRate, PayrollAuditEvent, PayrollStatement
 pytestmark = pytest.mark.django_db
 
 
+@pytest.fixture(autouse=True)
+def use_granular_policy_by_default(settings):
+    """Keep legacy permission assertions explicit while the app defaults simple."""
+
+    settings.FINANCE_PAYROLL = {"SIMPLE_ADMIN_ACCESS": False}
+
+
 def grant(user, *codenames):
     permissions = Permission.objects.filter(
         content_type__app_label="finance",
@@ -32,6 +39,28 @@ def admin_request(user):
     request = RequestFactory().get("/admin/finance/")
     request.user = user
     return request
+
+
+def test_simple_mode_staff_can_open_and_edit_any_payroll_draft(
+    settings,
+    user_factory,
+):
+    settings.FINANCE_PAYROLL = {"SIMPLE_ADMIN_ACCESS": True}
+    administrator = user_factory(email="simple.admin@example.test", staff=True)
+    creator = user_factory(email="simple.creator@example.test")
+    employee = user_factory(email="simple.employee@example.test")
+    rate = EmployeePayRate.objects.create(
+        employee=employee,
+        amount="80000",
+        effective_from="2026-01-01",
+        created_by=creator,
+    )
+    model_admin = EmployeePayRateAdmin(EmployeePayRate, admin.site)
+    request = admin_request(administrator)
+
+    assert model_admin.has_module_permission(request) is True
+    assert model_admin.has_add_permission(request) is True
+    assert "amount" not in model_admin.get_readonly_fields(request, rate)
 
 
 def test_standard_model_permission_does_not_expose_all_statements(user_factory):

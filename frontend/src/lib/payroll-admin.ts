@@ -14,7 +14,7 @@ export const PAYROLL_ADMIN_TABS: Array<{ value: PayrollAdminTab; label: string }
     { value: "rates", label: "Ставки" },
     { value: "work", label: "Выработка" },
     { value: "inputs", label: "Начисления и выплаты" },
-    { value: "approval", label: "Согласование" },
+    { value: "approval", label: "Проверка" },
 ];
 
 export const approvalStatusMeta: Record<PayrollApprovalStatus, { label: string; className: string }> = {
@@ -154,13 +154,10 @@ export function isPayrollAdminStaleConflict(error: unknown): boolean {
 
 export type PayrollRunAction = "calculate" | "submit_review" | "approve" | "publish" | "close" | null;
 
-export const PAYROLL_SELF_APPROVAL_WARNING =
-    "Вы утверждаете собственные данные. Самоутверждение будет зафиксировано в журнале аудита.";
-
-export const PAYROLL_SELF_APPROVAL_RECORDED =
-    "Объект утверждён его автором с особым правом. Самоутверждение зафиксировано в журнале аудита.";
-
-/** An override only bypasses separation of duties; it never grants approval by itself. */
+/**
+ * TODO(payroll-access-hardening): restore maker-checker UI after the finance
+ * role matrix has passed the pilot. Admins currently receive override=true.
+ */
 export function canApprovePayrollDraft(
     isAuthor: boolean,
     canApprove: boolean,

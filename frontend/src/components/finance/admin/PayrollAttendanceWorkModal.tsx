@@ -402,7 +402,7 @@ export function PayrollAttendanceWorkModal({
             <PreviewTable items={preview.items} mode={mode} />
 
             <div className="app-surface-muted rounded-xl px-3 py-2.5 text-xs leading-relaxed text-[var(--muted-foreground)]">
-              Система создаёт только черновики и не утверждает их автоматически. После импорта проверьте строки во вкладке «Выработка» и передайте их на согласование.
+              Система создаёт только черновики и не утверждает их автоматически. После импорта проверьте строки во вкладке «Выработка».
             </div>
 
             {error ? (

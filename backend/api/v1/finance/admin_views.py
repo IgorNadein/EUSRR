@@ -35,6 +35,7 @@ from finance.payroll.config import (
     ruleset_not_effective_message,
     ruleset_period_details,
 )
+from finance.payroll.access import has_payroll_permission, has_simple_admin_access
 from finance.payroll.exceptions import PayrollOperationError, PayrollPermissionDenied
 from finance.payroll.services import (
     approve_input_line,
@@ -171,15 +172,21 @@ class PayrollAdminAPIView(NoStorePayrollResponseMixin, APIView):
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
-        if not any(request.user.has_perm(code) for code in self.allowed_permissions):
+        if not any(
+            has_payroll_permission(request.user, code)
+            for code in self.allowed_permissions
+        ):
             _permission_error(self.allowed_permissions[0])
 
     def require_permission(self, request, code):
-        if not request.user.has_perm(code):
+        if not has_payroll_permission(request.user, code):
             _permission_error(code)
 
     def include_amounts(self, request):
-        return request.user.has_perm(PAYROLL_PERMISSIONS["view_all"])
+        return has_payroll_permission(
+            request.user,
+            PAYROLL_PERMISSIONS["view_all"],
+        )
 
     def run_payload(self, request, run):
         return PayrollRunSerializer(
@@ -212,9 +219,10 @@ class PayrollAdminWorkspaceView(PayrollAdminAPIView):
 
     def get(self, request):
         permissions_payload = {
-            key: request.user.has_perm(permission)
+            key: has_payroll_permission(request.user, permission)
             for key, permission in PAYROLL_PERMISSIONS.items()
         }
+        permissions_payload["full_access"] = has_simple_admin_access(request.user)
         periods = list(
             PayrollPeriod.objects.select_related("current_run").order_by(
                 "-date_from", "-id"
@@ -661,15 +669,17 @@ class DraftDetailView(PayrollAdminAPIView):
         scoped_queryset = self.get_queryset().filter(
             pk=pk,
             status=ApprovalStatus.DRAFT,
-            created_by=request.user,
         )
+        if not has_simple_admin_access(request.user):
+            scoped_queryset = scoped_queryset.filter(created_by=request.user)
         if self.period_scoped:
-            reference = get_object_or_404(
-                self.model.objects.only("period_id"),
+            reference_queryset = self.model.objects.only("period_id").filter(
                 pk=pk,
                 status=ApprovalStatus.DRAFT,
-                created_by=request.user,
             )
+            if not has_simple_admin_access(request.user):
+                reference_queryset = reference_queryset.filter(created_by=request.user)
+            reference = get_object_or_404(reference_queryset)
             period = _lock_period_accepting_draft_edits(reference.period_id)
         else:
             period = None

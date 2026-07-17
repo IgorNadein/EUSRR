@@ -13,35 +13,11 @@ import { formatPayrollWorkMetric, isAttendancePayrollWorkRecord } from "@/lib/pa
 import {
   approvalStatusMeta,
   canApprovePayrollDraft,
-  PAYROLL_SELF_APPROVAL_RECORDED,
-  PAYROLL_SELF_APPROVAL_WARNING,
 } from "@/lib/payroll-admin";
 
-function SelfApprovalLabel() {
-  return (
-    <span
-      className="app-feedback-warning inline-flex w-fit rounded-full px-2 py-1 text-[10px] font-semibold leading-none"
-      title={PAYROLL_SELF_APPROVAL_RECORDED}
-    >
-      Самоутверждение
-    </span>
-  );
-}
-
-function RecordStatus({
-  status,
-  selfApprovalOverridden,
-}: {
-  status: PayrollApprovalStatus;
-  selfApprovalOverridden: boolean;
-}) {
+function RecordStatus({ status }: { status: PayrollApprovalStatus }) {
   const meta = approvalStatusMeta[status];
-  return (
-    <div className="flex min-w-0 flex-col items-start gap-1">
-      <span className={`app-status-pill ${meta.className}`}>{meta.label}</span>
-      {selfApprovalOverridden ? <SelfApprovalLabel /> : null}
-    </div>
-  );
+  return <span className={`app-status-pill ${meta.className}`}>{meta.label}</span>;
 }
 
 function ListState({ loading, error, empty }: { loading: boolean; error: string | null; empty: boolean }) {
@@ -92,6 +68,7 @@ function RecordActions({
   canManage,
   canApprove,
   canOverrideApproval,
+  fullAccess,
   onEdit,
   onApprove,
   onRevise,
@@ -101,21 +78,17 @@ function RecordActions({
   canManage: boolean;
   canApprove: boolean;
   canOverrideApproval: boolean;
+  fullAccess: boolean;
   onEdit?: () => void;
   onApprove?: () => void;
   onRevise?: () => void;
 }) {
   if (status === "draft") {
     const approvalAllowed = canApprovePayrollDraft(isAuthor, canApprove, canOverrideApproval);
-    const approvalTooltip = isAuthor
-      ? canOverrideApproval
-        ? PAYROLL_SELF_APPROVAL_WARNING
-        : "Автор записи не может утвердить её без права на самоутверждение."
-      : "Утвердить";
     return (
       <div className="flex flex-wrap justify-end gap-1.5">
-        {canManage && isAuthor && onEdit ? <ActionButton label="Изменить" icon={<Pencil size={13} />} onClick={onEdit} /> : null}
-        {canApprove && onApprove ? <ActionButton label="Утвердить" icon={<Check size={13} />} onClick={onApprove} tone="success" disabled={!approvalAllowed} tooltip={approvalTooltip} /> : null}
+        {canManage && (isAuthor || fullAccess) && onEdit ? <ActionButton label="Изменить" icon={<Pencil size={13} />} onClick={onEdit} /> : null}
+        {canApprove && onApprove ? <ActionButton label="Утвердить" icon={<Check size={13} />} onClick={onApprove} tone="success" disabled={!approvalAllowed} tooltip={approvalAllowed ? "Утвердить" : "Недостаточно прав для утверждения этой записи."} /> : null}
       </div>
     );
   }
@@ -133,6 +106,7 @@ export function PayrollRatesTable({
   canManage,
   canApprove,
   canOverrideApproval,
+  fullAccess,
   onEdit,
   onApprove,
   onRevise,
@@ -144,6 +118,7 @@ export function PayrollRatesTable({
   canManage: boolean;
   canApprove: boolean;
   canOverrideApproval: boolean;
+  fullAccess: boolean;
   onEdit: (record: PayrollAdminPayRate) => void;
   onApprove: (record: PayrollAdminPayRate) => void;
   onRevise: (record: PayrollAdminPayRate) => void;
@@ -164,8 +139,8 @@ export function PayrollRatesTable({
             <div><span className="app-text-muted mr-2 text-xs md:hidden">Оклад</span><span className="text-sm font-medium text-[var(--foreground)]">{formatPayrollMoney(record.amount, record.currency)}</span></div>
             <div><span className="app-text-muted mr-2 text-xs md:hidden">Цена балла</span><span className="text-sm text-[var(--foreground)]">{formatPayrollMoney(record.point_rate, record.currency)}</span></div>
             <div><span className="app-text-muted mr-2 text-xs md:hidden">С</span><span className="text-sm text-[var(--foreground)]">{formatPayrollDate(record.effective_from)}</span></div>
-            <RecordStatus status={record.status} selfApprovalOverridden={record.self_approval_overridden} />
-            <RecordActions status={record.status} isAuthor={record.created_by.id === currentUserId} canManage={canManage} canApprove={canApprove} canOverrideApproval={canOverrideApproval} onEdit={() => onEdit(record)} onApprove={() => onApprove(record)} onRevise={() => onRevise(record)} />
+            <RecordStatus status={record.status} />
+            <RecordActions status={record.status} isAuthor={record.created_by.id === currentUserId} canManage={canManage} canApprove={canApprove} canOverrideApproval={canOverrideApproval} fullAccess={fullAccess} onEdit={() => onEdit(record)} onApprove={() => onApprove(record)} onRevise={() => onRevise(record)} />
           </div>
         ))}
       </div>
@@ -182,6 +157,7 @@ export function PayrollWorkRecordsTable({
   canManage,
   canApprove,
   canOverrideApproval,
+  fullAccess,
   onEdit,
   onApprove,
   onRevise,
@@ -193,6 +169,7 @@ export function PayrollWorkRecordsTable({
   canManage: boolean;
   canApprove: boolean;
   canOverrideApproval: boolean;
+  fullAccess: boolean;
   onEdit: (record: PayrollAdminWorkRecord) => void;
   onApprove: (record: PayrollAdminWorkRecord) => void;
   onRevise: (record: PayrollAdminWorkRecord) => void;
@@ -223,8 +200,8 @@ export function PayrollWorkRecordsTable({
               <div><span className="app-text-muted mr-2 text-xs md:hidden">Норма</span><span className="text-sm font-medium text-[var(--foreground)]">{formatPayrollWorkMetric(record.target_points, record.source)}</span></div>
               <div><span className="app-text-muted mr-2 text-xs md:hidden">Факт</span><span className="text-sm font-medium text-[var(--foreground)]">{formatPayrollWorkMetric(record.actual_points, record.source)}</span></div>
               <div><span className="app-text-muted mr-2 text-xs md:hidden">Контроль</span><span className="text-sm text-[var(--foreground)]">{record.expected_payable ? formatPayrollMoney(record.expected_payable) : "—"}</span></div>
-              <RecordStatus status={record.status} selfApprovalOverridden={record.self_approval_overridden} />
-              <RecordActions status={record.status} isAuthor={record.created_by.id === currentUserId} canManage={canManage} canApprove={canApprove} canOverrideApproval={canOverrideApproval} onEdit={() => onEdit(record)} onApprove={() => onApprove(record)} onRevise={() => onRevise(record)} />
+              <RecordStatus status={record.status} />
+              <RecordActions status={record.status} isAuthor={record.created_by.id === currentUserId} canManage={canManage} canApprove={canApprove} canOverrideApproval={canOverrideApproval} fullAccess={fullAccess} onEdit={() => onEdit(record)} onApprove={() => onApprove(record)} onRevise={() => onRevise(record)} />
             </div>
           );
         })}
@@ -242,6 +219,7 @@ export function PayrollInputLinesTable({
   canManage,
   canApprove,
   canOverrideApproval,
+  fullAccess,
   onEdit,
   onApprove,
 }: {
@@ -252,6 +230,7 @@ export function PayrollInputLinesTable({
   canManage: boolean;
   canApprove: boolean;
   canOverrideApproval: boolean;
+  fullAccess: boolean;
   onEdit: (record: PayrollAdminInputLine) => void;
   onApprove: (record: PayrollAdminInputLine) => void;
 }) {
@@ -270,8 +249,8 @@ export function PayrollInputLinesTable({
             <div className="min-w-0"><p className="truncate text-sm font-semibold text-[var(--foreground)]">{record.employee.display_name}</p><p className="app-text-muted mt-0.5 truncate text-xs">{record.employee.position || record.employee.department || "Сотрудник"}</p></div>
             <div className="min-w-0"><p className="truncate text-sm text-[var(--foreground)]">{record.component.name}</p>{record.reason ? <p className="app-text-muted mt-0.5 truncate text-xs" title={record.reason}>{record.reason}</p> : null}</div>
             <div><span className="app-text-muted mr-2 text-xs md:hidden">Сумма</span><span className="text-sm font-medium text-[var(--foreground)]">{formatPayrollMoney(record.amount)}</span></div>
-            <RecordStatus status={record.status} selfApprovalOverridden={record.self_approval_overridden} />
-            <RecordActions status={record.status} isAuthor={record.created_by.id === currentUserId} canManage={canManage} canApprove={canApprove} canOverrideApproval={canOverrideApproval} onEdit={() => onEdit(record)} onApprove={() => onApprove(record)} />
+            <RecordStatus status={record.status} />
+            <RecordActions status={record.status} isAuthor={record.created_by.id === currentUserId} canManage={canManage} canApprove={canApprove} canOverrideApproval={canOverrideApproval} fullAccess={fullAccess} onEdit={() => onEdit(record)} onApprove={() => onApprove(record)} />
           </div>
         ))}
       </div>
@@ -323,20 +302,10 @@ export function PayrollApprovalQueue({
       {items.map((item) => {
         const isAuthor = item.createdById === currentUserId;
         const approvalAllowed = canApprovePayrollDraft(isAuthor, canApprove, canOverrideApproval);
-        const approvalLabel = !canApprove
-          ? "Только просмотр"
-          : isAuthor && !canOverrideApproval
-            ? "Нужен другой проверяющий"
-            : isAuthor
-              ? "Утвердить самому"
-              : "Утвердить";
-        const approvalTooltip = !canApprove
-          ? "Для утверждения необходимо обычное право согласования."
-          : isAuthor
-            ? canOverrideApproval
-              ? PAYROLL_SELF_APPROVAL_WARNING
-              : "Автор записи не может утвердить её без права на самоутверждение."
-            : "Утвердить";
+        const approvalLabel = canApprove ? "Утвердить" : "Только просмотр";
+        const approvalTooltip = approvalAllowed
+          ? "Утвердить"
+          : "Недостаточно прав для утверждения этой записи.";
         const approve = () => {
           if (item.group === "rate") onApproveRate(item.raw as PayrollAdminPayRate);
           else if (item.group === "work") onApproveWork(item.raw as PayrollAdminWorkRecord);

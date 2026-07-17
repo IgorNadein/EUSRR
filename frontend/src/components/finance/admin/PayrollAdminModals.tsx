@@ -331,7 +331,7 @@ export function PayrollWorkRecordFormModal({
 
         <details className="app-surface-muted mt-4 rounded-xl p-3 sm:p-4">
           <summary className="cursor-pointer text-sm font-semibold text-[var(--foreground)]">Контрольные суммы из Excel</summary>
-          <p className="app-text-muted mt-2 text-xs leading-relaxed">Не участвуют в формуле, но остановят согласование при расхождении.</p>
+          <p className="app-text-muted mt-2 text-xs leading-relaxed">Не участвуют в формуле, но заблокируют расчёт при расхождении.</p>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label><span className="app-field-label">Выработка по баллам</span><input type="number" className={inputClass} inputMode="decimal" step="0.01" value={form.expected_point_amount} onChange={(event) => setForm({ ...form, expected_point_amount: event.target.value })} /></label>
             <label><span className="app-field-label">Итого начислено</span><input type="number" className={inputClass} inputMode="decimal" step="0.01" value={form.expected_gross} onChange={(event) => setForm({ ...form, expected_gross: event.target.value })} /></label>

@@ -20,6 +20,7 @@ from .models import (
     PayrollStatementLine,
     PayrollWorkRecord,
 )
+from .payroll.access import has_payroll_permission, has_simple_admin_access
 from .payroll.exceptions import PayrollOperationError
 from .payroll.services import (
     approve_input_line,
@@ -110,7 +111,8 @@ class PayrollSensitiveAdminMixin:
 
     def _has_payroll_access(self, request):
         return any(
-            request.user.has_perm(permission) for permission in self.view_permissions
+            has_payroll_permission(request.user, permission)
+            for permission in self.view_permissions
         )
 
     def has_module_permission(self, request):
@@ -137,9 +139,15 @@ class ImmutableApprovedAdminMixin(PayrollSensitiveAdminMixin):
         if "status" not in readonly:
             readonly.append("status")
         if obj is not None and (
-            not request.user.has_perm("finance.manage_payroll_inputs")
+            not has_payroll_permission(
+                request.user,
+                "finance.manage_payroll_inputs",
+            )
             or obj.status != ApprovalStatus.DRAFT
-            or obj.created_by_id != request.user.pk
+            or (
+                obj.created_by_id != request.user.pk
+                and not has_simple_admin_access(request.user)
+            )
         ):
             readonly.extend(
                 field.name
@@ -152,14 +160,20 @@ class ImmutableApprovedAdminMixin(PayrollSensitiveAdminMixin):
         return False
 
     def has_add_permission(self, request):
-        return request.user.has_perm("finance.manage_payroll_inputs")
+        return has_payroll_permission(
+            request.user,
+            "finance.manage_payroll_inputs",
+        )
 
     def has_change_permission(self, request, obj=None):
         return self._has_payroll_access(request)
 
     @transaction.atomic
     def save_model(self, request, obj, form, change):
-        if not request.user.has_perm("finance.manage_payroll_inputs"):
+        if not has_payroll_permission(
+            request.user,
+            "finance.manage_payroll_inputs",
+        ):
             raise PermissionDenied("Нет права изменять входные данные зарплаты.")
         if change:
             if form is None or form.cleaned_data.get("expected_lock_version") is None:
@@ -168,11 +182,11 @@ class ImmutableApprovedAdminMixin(PayrollSensitiveAdminMixin):
                 )
             expected_lock_version = form.cleaned_data["expected_lock_version"]
             current = obj.__class__.objects.select_for_update().get(pk=obj.pk)
-            if (
+            if current.status != ApprovalStatus.DRAFT or (
                 current.created_by_id != request.user.pk
-                or current.status != ApprovalStatus.DRAFT
+                and not has_simple_admin_access(request.user)
             ):
-                raise PermissionDenied("Изменять можно только собственный черновик.")
+                raise PermissionDenied("Этот черновик нельзя изменить.")
             if current.lock_version != expected_lock_version:
                 raise PermissionDenied(
                     "Черновик уже изменён другой операцией; обновите страницу."
@@ -198,12 +212,18 @@ class PayrollComponentAdmin(PayrollSensitiveAdminMixin, admin.ModelAdmin):
     ordering = ["display_order", "code"]
 
     def has_add_permission(self, request):
-        return request.user.has_perm("finance.manage_payroll_inputs")
+        return has_payroll_permission(
+            request.user,
+            "finance.manage_payroll_inputs",
+        )
 
     def has_change_permission(self, request, obj=None):
         if obj is None:
             return self._has_payroll_access(request)
-        return request.user.has_perm("finance.manage_payroll_inputs")
+        return has_payroll_permission(
+            request.user,
+            "finance.manage_payroll_inputs",
+        )
 
     def has_delete_permission(self, request, obj=None):
         return False
@@ -249,19 +269,25 @@ class PayrollPeriodAdmin(PayrollSensitiveAdminMixin, admin.ModelAdmin):
         super().save_model(request, obj, form, change)
 
     def has_add_permission(self, request):
-        return request.user.has_perm("finance.manage_payroll_inputs")
+        return has_payroll_permission(
+            request.user,
+            "finance.manage_payroll_inputs",
+        )
 
     def has_change_permission(self, request, obj=None):
         if obj is None:
             return self._has_payroll_access(request)
-        return request.user.has_perm("finance.manage_payroll_inputs")
+        return has_payroll_permission(
+            request.user,
+            "finance.manage_payroll_inputs",
+        )
 
     def has_delete_permission(self, request, obj=None):
         return False
 
     @admin.action(description="Рассчитать выбранные периоды")
     def calculate_selected(self, request, queryset):
-        if not request.user.has_perm("finance.calculate_payroll"):
+        if not has_payroll_permission(request.user, "finance.calculate_payroll"):
             self.message_user(request, "Недостаточно прав.", level=messages.ERROR)
             return
         reason_required = any(period.current_run_id for period in queryset)
@@ -311,6 +337,7 @@ class PayrollPeriodAdmin(PayrollSensitiveAdminMixin, admin.ModelAdmin):
 
 @admin.register(EmployeePayRate)
 class EmployeePayRateAdmin(ImmutableApprovedAdminMixin, admin.ModelAdmin):
+    exclude = ["self_approval_overridden"]
     list_display = [
         "employee",
         "rate_code",
@@ -319,11 +346,9 @@ class EmployeePayRateAdmin(ImmutableApprovedAdminMixin, admin.ModelAdmin):
         "effective_from",
         "revision",
         "status",
-        "self_approval_overridden",
     ]
     list_filter = [
         "status",
-        "self_approval_overridden",
         "currency",
         "source",
         "effective_from",
@@ -340,7 +365,6 @@ class EmployeePayRateAdmin(ImmutableApprovedAdminMixin, admin.ModelAdmin):
         "created_at",
         "approved_by",
         "approved_at",
-        "self_approval_overridden",
         "voided_by",
         "voided_at",
     ]
@@ -365,7 +389,10 @@ class EmployeePayRateAdmin(ImmutableApprovedAdminMixin, admin.ModelAdmin):
         action_name,
         title,
     ):
-        if not request.user.has_perm("finance.approve_payroll_inputs"):
+        if not has_payroll_permission(
+            request.user,
+            "finance.approve_payroll_inputs",
+        ):
             self.message_user(request, "Недостаточно прав.", level=messages.ERROR)
             return
         if "confirm_payroll_approval" not in request.POST:
@@ -404,6 +431,7 @@ class EmployeePayRateAdmin(ImmutableApprovedAdminMixin, admin.ModelAdmin):
 
 @admin.register(PayrollWorkRecord)
 class PayrollWorkRecordAdmin(ImmutableApprovedAdminMixin, admin.ModelAdmin):
+    exclude = ["self_approval_overridden"]
     list_display = [
         "period",
         "employee",
@@ -411,9 +439,8 @@ class PayrollWorkRecordAdmin(ImmutableApprovedAdminMixin, admin.ModelAdmin):
         "actual_points",
         "revision",
         "status",
-        "self_approval_overridden",
     ]
-    list_filter = ["period", "status", "self_approval_overridden", "source"]
+    list_filter = ["period", "status", "source"]
     search_fields = [
         "employee__last_name",
         "employee__first_name",
@@ -426,7 +453,6 @@ class PayrollWorkRecordAdmin(ImmutableApprovedAdminMixin, admin.ModelAdmin):
         "updated_at",
         "approved_by",
         "approved_at",
-        "self_approval_overridden",
         "voided_by",
         "voided_at",
     ]
@@ -446,7 +472,7 @@ class PayrollWorkRecordAdmin(ImmutableApprovedAdminMixin, admin.ModelAdmin):
 
 @admin.register(PayrollInputLine)
 class PayrollInputLineAdmin(ImmutableApprovedAdminMixin, admin.ModelAdmin):
-    exclude = ["reversal_of"]
+    exclude = ["reversal_of", "self_approval_overridden"]
     list_display = [
         "period",
         "employee",
@@ -454,12 +480,10 @@ class PayrollInputLineAdmin(ImmutableApprovedAdminMixin, admin.ModelAdmin):
         "amount",
         "relates_to_period",
         "status",
-        "self_approval_overridden",
     ]
     list_filter = [
         "period",
         "status",
-        "self_approval_overridden",
         "component",
         "source",
     ]
@@ -476,7 +500,6 @@ class PayrollInputLineAdmin(ImmutableApprovedAdminMixin, admin.ModelAdmin):
         "created_at",
         "approved_by",
         "approved_at",
-        "self_approval_overridden",
         "voided_by",
         "voided_at",
     ]
@@ -507,6 +530,7 @@ class PayrollStatementLineInline(admin.TabularInline):
 
 @admin.register(PayrollRun)
 class PayrollRunAdmin(PayrollSensitiveAdminMixin, admin.ModelAdmin):
+    exclude = ["self_approval_overridden"]
     view_permissions = (
         "finance.calculate_payroll",
         "finance.approve_payroll",
@@ -521,11 +545,14 @@ class PayrollRunAdmin(PayrollSensitiveAdminMixin, admin.ModelAdmin):
         "gross_total",
         "payable_total",
         "requested_by",
-        "self_approval_overridden",
     ]
-    list_filter = ["status", "self_approval_overridden", "period"]
+    list_filter = ["status", "period"]
     search_fields = ["period__code", "input_hash", "result_hash"]
-    readonly_fields = [field.name for field in PayrollRun._meta.concrete_fields]
+    readonly_fields = [
+        field.name
+        for field in PayrollRun._meta.concrete_fields
+        if field.name != "self_approval_overridden"
+    ]
     actions = [
         "request_review",
         "return_selected",
@@ -686,7 +713,7 @@ class PayrollAuditEventAdmin(PayrollSensitiveAdminMixin, admin.ModelAdmin):
         return False
 
     def has_change_permission(self, request, obj=None):
-        return request.user.has_perm("finance.audit_payroll")
+        return has_payroll_permission(request.user, "finance.audit_payroll")
 
     def has_delete_permission(self, request, obj=None):
         return False

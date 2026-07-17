@@ -32,6 +32,7 @@ from finance.enums import (
 )
 from finance.models import PayrollAuditEvent, PayrollPeriod, PayrollWorkRecord
 
+from .access import has_payroll_permission, has_simple_admin_access
 from .config import build_rules
 from .exceptions import PayrollOperationError, PayrollPermissionDenied
 
@@ -361,7 +362,7 @@ def _actions_for_item(
     if existing.status == ApprovalStatus.DRAFT:
         replacement = (
             "blocked"
-            if existing.created_by_id != actor.pk
+            if existing.created_by_id != actor.pk and not has_simple_admin_access(actor)
             else ("unchanged" if _same_metrics(existing, metrics) else "update")
         )
         return {"missing_only": "skip", "replace_existing": replacement}
@@ -470,6 +471,7 @@ def build_attendance_work_preview(
             existing is not None
             and existing.status == ApprovalStatus.DRAFT
             and existing.created_by_id != actor.pk
+            and not has_simple_admin_access(actor)
         ):
             metrics["warnings"].append(
                 _issue(
@@ -576,7 +578,7 @@ def apply_attendance_work_preview(
     if (
         not actor
         or not actor.is_authenticated
-        or not actor.has_perm("finance.manage_payroll_inputs")
+        or not has_payroll_permission(actor, "finance.manage_payroll_inputs")
     ):
         raise PayrollPermissionDenied("finance.manage_payroll_inputs")
     if mode not in ATTENDANCE_IMPORT_MODES:

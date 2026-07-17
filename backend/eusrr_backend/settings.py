@@ -859,4 +859,7 @@ FINANCE_PAYROLL = {
         "PAYROLL_ALLOW_NEGATIVE_PAYABLE", "false"
     ),
     "BASE_RATE_CODE": os.getenv("PAYROLL_BASE_RATE_CODE", "BASE"),
+    # Temporary pilot mode. Set to false after the granular finance roles and
+    # maker-checker workflow have been fully tested.
+    "SIMPLE_ADMIN_ACCESS": os.getenv("PAYROLL_SIMPLE_ADMIN_ACCESS", "true"),
 }

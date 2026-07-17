@@ -296,6 +296,52 @@ def test_replace_updates_only_own_draft_and_protects_foreign_draft(
     assert foreign.lock_version == 0
 
 
+def test_staff_admin_can_refresh_a_foreign_attendance_draft(
+    user_factory,
+    auth_client_factory,
+):
+    administrator = user_factory(
+        email="attendance.simple.admin@example.test",
+        staff=True,
+    )
+    creator = user_factory(email="attendance.simple.creator@example.test")
+    employee = user_factory(email="attendance.simple.employee@example.test")
+    period = make_period(administrator, suffix="simple-admin")
+    make_attendance(employee)
+    record = PayrollWorkRecord.objects.create(
+        period=period,
+        employee=employee,
+        target_points="1",
+        actual_points="1",
+        created_by=creator,
+    )
+    client = auth_client_factory(administrator)
+    preview = client.get(endpoint(period)).json()
+
+    assert preview["items"][0]["actions"]["replace_existing"] == "update"
+    assert not any(
+        issue["code"] == "FOREIGN_DRAFT_PROTECTED"
+        for issue in preview["items"][0]["warnings"]
+    )
+
+    response = client.post(
+        endpoint(period),
+        apply_payload(
+            preview,
+            period,
+            mode="replace_existing",
+            reason="Обновление администратором",
+        ),
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["summary"]["updated"] == 1
+    record.refresh_from_db()
+    assert record.target_points == Decimal("16.0000")
+    assert record.lock_version == 1
+
+
 def test_preview_blocks_technical_days_and_rejects_stale_source(
     user_factory,
     auth_client_factory,

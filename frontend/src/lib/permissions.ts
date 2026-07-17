@@ -13,7 +13,10 @@ const PAYROLL_ADMIN_PERMISSIONS = [
 export function canOpenPayrollAdmin(user?: User | null): boolean {
     const auth = user?.auth;
     if (!auth) return false;
-    if (auth.is_superuser) return true;
+    // TODO(payroll-access-hardening): when SIMPLE_ADMIN_ACCESS is disabled on
+    // the backend, remove this staff shortcut in the same deployment and use
+    // the granular Finance permissions below again.
+    if (auth.is_staff || auth.is_superuser) return true;
 
     const permissions = auth.permissions || [];
     const financePermissions = auth.permissions_by_app?.finance || [];

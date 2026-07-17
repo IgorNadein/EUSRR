@@ -3,7 +3,8 @@ from decimal import Decimal
 import pytest
 from django.core.exceptions import ImproperlyConfigured
 
-from finance.payroll.config import build_rules
+from finance.payroll.access import has_payroll_permission, has_simple_admin_access
+from finance.payroll.config import build_rules, simple_admin_access_enabled
 from payroll_core import PointPolicy, RoundingPolicy
 
 
@@ -37,6 +38,51 @@ def test_payroll_adapter_is_safe_by_default(settings):
     assert rules.point_policy is PointPolicy.DISABLED
     assert rules.money_quantum == Decimal("0.01")
     assert rules.allow_negative_payable is False
+
+
+def test_simple_admin_access_defaults_to_enabled_and_accepts_boolean_strings(settings):
+    settings.FINANCE_PAYROLL = {}
+    assert simple_admin_access_enabled() is True
+
+    settings.FINANCE_PAYROLL = {"SIMPLE_ADMIN_ACCESS": "false"}
+    assert simple_admin_access_enabled() is False
+
+
+@pytest.mark.django_db
+def test_simple_admin_access_grants_staff_operational_permissions(
+    settings,
+    user_factory,
+):
+    settings.FINANCE_PAYROLL = {"SIMPLE_ADMIN_ACCESS": True}
+    administrator = user_factory(email="payroll.admin.access@example.test", staff=True)
+    regular_user = user_factory(email="payroll.regular.access@example.test")
+
+    assert has_simple_admin_access(administrator) is True
+    assert (
+        has_payroll_permission(
+            administrator,
+            "finance.publish_payroll",
+        )
+        is True
+    )
+    assert has_simple_admin_access(regular_user) is False
+    assert (
+        has_payroll_permission(
+            regular_user,
+            "finance.publish_payroll",
+        )
+        is False
+    )
+
+    settings.FINANCE_PAYROLL = {"SIMPLE_ADMIN_ACCESS": False}
+    assert has_simple_admin_access(administrator) is False
+    assert (
+        has_payroll_permission(
+            administrator,
+            "finance.publish_payroll",
+        )
+        is False
+    )
 
 
 def test_config_accepts_enum_values(settings):

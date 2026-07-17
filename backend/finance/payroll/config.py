@@ -23,6 +23,9 @@ DEFAULT_CONFIG = {
     "ROUNDING": RoundingPolicy.HALF_UP.value,
     "ALLOW_NEGATIVE_PAYABLE": False,
     "BASE_RATE_CODE": "BASE",
+    # Temporary pilot mode: portal administrators receive every payroll
+    # operation while the granular role matrix is being tested.
+    "SIMPLE_ADMIN_ACCESS": True,
 }
 
 
@@ -182,3 +185,12 @@ def ruleset_period_details(
 
 def base_rate_code() -> str:
     return str(get_config()["BASE_RATE_CODE"])
+
+
+def simple_admin_access_enabled() -> bool:
+    """Return whether staff administrators bypass the granular payroll matrix."""
+
+    return _parse_bool(
+        get_config()["SIMPLE_ADMIN_ACCESS"],
+        "SIMPLE_ADMIN_ACCESS",
+    )

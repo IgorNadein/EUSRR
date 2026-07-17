@@ -10,6 +10,7 @@ import {
 } from "./payroll-admin.ts";
 
 const permissions = {
+  full_access: false,
   manage_inputs: true,
   approve_inputs: true,
   override_approval: false,

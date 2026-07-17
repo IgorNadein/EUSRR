@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 
 import { canOpenPayrollAdmin } from "./permissions.ts";
 
-test("payroll management requires an operational payroll permission", () => {
+test("staff administrators can open payroll management without extra roles", () => {
   assert.equal(canOpenPayrollAdmin(null), false);
-  assert.equal(canOpenPayrollAdmin({ auth: { is_staff: true, permissions: [] } }), false);
+  assert.equal(canOpenPayrollAdmin({ auth: { is_staff: true, permissions: [] } }), true);
   assert.equal(
     canOpenPayrollAdmin({
       auth: {

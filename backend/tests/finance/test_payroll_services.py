@@ -483,7 +483,7 @@ def test_mid_period_rate_change_fails_closed_until_policy_is_defined(
     assert PayrollRun.objects.count() == 0
 
 
-def test_staff_flag_alone_does_not_grant_payroll_calculation(
+def test_staff_admin_can_calculate_without_dedicated_finance_permissions(
     june_period,
     payroll_users,
     user_factory,
@@ -494,11 +494,37 @@ def test_staff_flag_alone_does_not_grant_payroll_calculation(
         staff=True,
     )
 
-    with pytest.raises(PayrollOperationError) as error:
-        calculate_period(june_period.pk, actor=unrelated_staff)
+    run = calculate_period(june_period.pk, actor=unrelated_staff)
 
-    assert error.value.code == "PERMISSION_DENIED"
-    assert PayrollRun.objects.count() == 0
+    assert run.requested_by == unrelated_staff
+    assert run.status == PayrollRunStatus.CALCULATED
+    assert PayrollRun.objects.count() == 1
+
+
+def test_staff_admin_can_approve_own_run_without_override_role(
+    june_period,
+    payroll_users,
+    user_factory,
+):
+    create_approved_excel_inputs(june_period, payroll_users)
+    administrator = user_factory(
+        email="staff.direct.approval@example.test",
+        staff=True,
+    )
+    run = calculate_period(june_period.pk, actor=administrator)
+    submit_run_for_review(run.pk, actor=administrator)
+
+    approved = approve_run(run.pk, actor=administrator)
+
+    assert approved.status == PayrollRunStatus.APPROVED
+    assert approved.approved_by == administrator
+    assert approved.self_approval_overridden is True
+    event = PayrollAuditEvent.objects.get(
+        action="payroll.approved",
+        object_id=str(run.pk),
+    )
+    assert "self_approval_overridden" not in event.metadata
+    assert "approval_mode" not in event.metadata
 
 
 def test_every_new_revision_requires_a_reason(june_period, payroll_users):

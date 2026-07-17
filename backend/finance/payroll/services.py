@@ -37,6 +37,12 @@ from finance.models import (
 )
 
 from .adapter import build_core_request, employee_snapshot
+from .access import (
+    SELF_APPROVAL_OVERRIDE_PERMISSION,
+    can_self_approve_payroll,
+    has_payroll_permission,
+    has_simple_admin_access,
+)
 from .config import (
     base_rate_code,
     build_rules,
@@ -45,16 +51,31 @@ from .config import (
 )
 from .exceptions import PayrollOperationError, PayrollPermissionDenied
 
-SELF_APPROVAL_OVERRIDE_PERMISSION = "finance.override_payroll_approval"
-
 
 def _require_permission(actor, permission: str) -> None:
     if (
         actor is None
         or not getattr(actor, "is_authenticated", False)
-        or not actor.has_perm(permission)
+        or not has_payroll_permission(actor, permission)
     ):
         raise PayrollPermissionDenied(permission)
+
+
+def _approval_audit_metadata(actor, *, self_approval: bool) -> dict[str, object]:
+    """Keep legacy separation metadata only outside the temporary admin mode."""
+
+    if has_simple_admin_access(actor):
+        return {}
+    if not self_approval:
+        return {
+            "self_approval_overridden": False,
+            "approval_mode": "maker_checker",
+        }
+    return {
+        "self_approval_overridden": True,
+        "approval_mode": "self_override",
+        "override_permission": SELF_APPROVAL_OVERRIDE_PERMISSION,
+    }
 
 
 def _hash_items(items: list[str]) -> str:
@@ -349,7 +370,7 @@ def calculate_period(
     }:
         _operation_error(
             "PERIOD_UNDER_APPROVAL",
-            "Сначала верните текущую ревизию из согласования.",
+            "Сначала верните текущую ревизию на исправление.",
             period_id=period.pk,
         )
     if previous_current is not None and not recalculation_reason.strip():
@@ -618,9 +639,7 @@ def approve_run(run_id: int, *, actor) -> PayrollRun:
         _operation_error("INVALID_RUN_STATE", "Расчёт не находится на проверке.")
     _ensure_run_is_fresh(run, period)
     self_approval_overridden = run.requested_by_id == actor.pk
-    if self_approval_overridden and not actor.has_perm(
-        SELF_APPROVAL_OVERRIDE_PERMISSION
-    ):
+    if self_approval_overridden and not can_self_approve_payroll(actor):
         _operation_error(
             "SELF_APPROVAL_FORBIDDEN",
             "Автор расчёта не может сам его утвердить.",
@@ -644,17 +663,10 @@ def approve_run(run_id: int, *, actor) -> PayrollRun:
         action="payroll.approved",
         instance=run,
         period=period,
-        metadata={
-            "self_approval_overridden": self_approval_overridden,
-            "approval_mode": (
-                "self_override" if self_approval_overridden else "maker_checker"
-            ),
-            **(
-                {"override_permission": SELF_APPROVAL_OVERRIDE_PERMISSION}
-                if self_approval_overridden
-                else {}
-            ),
-        },
+        metadata=_approval_audit_metadata(
+            actor,
+            self_approval=self_approval_overridden,
+        ),
     )
     return run
 
@@ -746,9 +758,7 @@ def _approve_record(
     if record.status != ApprovalStatus.DRAFT:
         _operation_error("INVALID_INPUT_STATE", "Утвердить можно только черновик.")
     self_approval_overridden = record.created_by_id == actor.pk
-    if self_approval_overridden and not actor.has_perm(
-        SELF_APPROVAL_OVERRIDE_PERMISSION
-    ):
+    if self_approval_overridden and not can_self_approve_payroll(actor):
         _operation_error(
             "SELF_APPROVAL_FORBIDDEN",
             "Автор входных данных не может сам их утвердить.",
@@ -814,14 +824,9 @@ def _approve_record(
         period=period,
         metadata={
             "approved_lock_version": record.lock_version,
-            "self_approval_overridden": self_approval_overridden,
-            "approval_mode": (
-                "self_override" if self_approval_overridden else "maker_checker"
-            ),
-            **(
-                {"override_permission": SELF_APPROVAL_OVERRIDE_PERMISSION}
-                if self_approval_overridden
-                else {}
+            **_approval_audit_metadata(
+                actor,
+                self_approval=self_approval_overridden,
             ),
         },
     )

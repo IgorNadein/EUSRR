@@ -57,8 +57,6 @@ import {
   getPrimaryPayrollRunAction,
   normalizePayrollAdminList,
   PAYROLL_ADMIN_TABS,
-  PAYROLL_SELF_APPROVAL_RECORDED,
-  PAYROLL_SELF_APPROVAL_WARNING,
   payrollRunActionLabels,
   periodStatusMeta,
   runStatusMeta,
@@ -155,17 +153,7 @@ function RunCard({ run, current = false }: { run: PayrollAdminRun; current?: boo
     <div className="app-surface-muted rounded-xl p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div><p className="text-sm font-semibold text-[var(--foreground)]">Ревизия {run.revision}{current ? " · текущая" : ""}</p><p className="app-text-muted mt-0.5 text-xs">{formatPayrollDateTime(run.requested_at)} · {run.requested_by.display_name}</p></div>
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
-          {run.self_approval_overridden ? (
-            <span
-              className="app-feedback-warning inline-flex rounded-full px-2 py-1 text-[10px] font-semibold leading-none"
-              title={PAYROLL_SELF_APPROVAL_RECORDED}
-            >
-              Самоутверждение
-            </span>
-          ) : null}
-          <span className={`app-status-pill ${meta.className}`}>{meta.label}</span>
-        </div>
+        <span className={`app-status-pill ${meta.className}`}>{meta.label}</span>
       </div>
       {run.payable_total != null ? (
         <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-[var(--muted-foreground)]">
@@ -313,20 +301,14 @@ export function PayrollAdminWorkspace({ actionsTargetId, embedded = false, heade
     return (!status || record.status === status) && (!needle || `${record.employee.display_name} ${record.component.name} ${record.reason}`.toLocaleLowerCase("ru-RU").includes(needle));
   }), [inputLines, search, status]);
 
-  const approvalWarning = (createdById: number, standardWarning: string) => (
-    createdById === user?.id && workspace?.permissions.override_approval
-      ? `${PAYROLL_SELF_APPROVAL_WARNING} ${standardWarning}`
-      : standardWarning
-  );
-
   const openApproveRate = (record: PayrollAdminPayRate) => setPendingAction({
-    title: "Утвердить ставку", description: `${record.employee.display_name}: ${formatPayrollMoney(record.amount, record.currency)}.`, confirmLabel: record.created_by.id === user?.id ? "Утвердить самому" : "Утвердить", warning: approvalWarning(record.created_by.id, "После утверждения ставку нельзя редактировать — только создать новую версию."), successMessage: "Ставка утверждена.", execute: () => apiClient.approvePayrollAdminPayRate(record.id, record.lock_version),
+    title: "Утвердить ставку", description: `${record.employee.display_name}: ${formatPayrollMoney(record.amount, record.currency)}.`, confirmLabel: "Утвердить", warning: "После утверждения ставку нельзя редактировать — только создать новую версию.", successMessage: "Ставка утверждена.", execute: () => apiClient.approvePayrollAdminPayRate(record.id, record.lock_version),
   });
   const openApproveWork = (record: PayrollAdminWorkRecord) => setPendingAction({
-    title: "Утвердить выработку", description: `${record.employee.display_name}: ${record.actual_points} из ${record.target_points} баллов.`, confirmLabel: record.created_by.id === user?.id ? "Утвердить самому" : "Утвердить", warning: approvalWarning(record.created_by.id, "Обычно автор записи и проверяющий должны быть разными сотрудниками."), successMessage: "Выработка утверждена.", execute: () => apiClient.approvePayrollAdminWorkRecord(record.id, record.lock_version),
+    title: "Утвердить выработку", description: `${record.employee.display_name}: ${record.actual_points} из ${record.target_points} баллов.`, confirmLabel: "Утвердить", warning: "Проверьте норму и фактическую выработку перед утверждением.", successMessage: "Выработка утверждена.", execute: () => apiClient.approvePayrollAdminWorkRecord(record.id, record.lock_version),
   });
   const openApproveInput = (record: PayrollAdminInputLine) => setPendingAction({
-    title: "Утвердить операцию", description: `${record.component.name} для ${record.employee.display_name}: ${formatPayrollMoney(record.amount, selectedPeriod?.currency)}.`, confirmLabel: record.created_by.id === user?.id ? "Утвердить самому" : "Утвердить", warning: approvalWarning(record.created_by.id, "Утверждённая операция станет входом следующего расчёта."), successMessage: "Операция утверждена.", execute: () => apiClient.approvePayrollAdminInputLine(record.id, record.lock_version),
+    title: "Утвердить операцию", description: `${record.component.name} для ${record.employee.display_name}: ${formatPayrollMoney(record.amount, selectedPeriod?.currency)}.`, confirmLabel: "Утвердить", warning: "Утверждённая операция станет входом следующего расчёта.", successMessage: "Операция утверждена.", execute: () => apiClient.approvePayrollAdminInputLine(record.id, record.lock_version),
   });
   const openReviseRate = (record: PayrollAdminPayRate) => setPendingAction({
     title: "Создать новую версию ставки", description: `Будет создан отдельный черновик ставки для ${record.employee.display_name}.`, confirmLabel: "Создать черновик", reasonLabel: "Основание изменения", reasonRequired: true, successMessage: "Новая версия ставки создана в черновиках.", execute: (reason) => apiClient.revisePayrollAdminPayRate(record.id, reason),
@@ -338,9 +320,6 @@ export function PayrollAdminWorkspace({ actionsTargetId, embedded = false, heade
   const openRunAction = (action: PayrollRunAction) => {
     if (!action || !selectedPeriod || !workspace) return;
     const run = workspace.current_run;
-    const isRunSelfApproval = action === "approve"
-      && run?.requested_by.id === user?.id
-      && workspace.permissions.override_approval;
     const configs: Record<Exclude<PayrollRunAction, null>, Omit<PendingAction, "execute"> & { execute: (reason: string) => Promise<unknown> }> = {
       calculate: {
         title: run ? "Запустить перерасчёт" : "Запустить расчёт",
@@ -353,7 +332,7 @@ export function PayrollAdminWorkspace({ actionsTargetId, embedded = false, heade
         execute: (reason) => apiClient.calculatePayrollAdminPeriod(selectedPeriod.id, { idempotency_key: globalThis.crypto.randomUUID(), recalculation_reason: reason, expected_lock_version: selectedPeriod.lock_version }),
       },
       submit_review: { title: "Передать расчёт на проверку", description: "Система повторно проверит актуальность входных данных и контрольные суммы.", confirmLabel: "Передать", successMessage: "Расчёт передан на проверку.", execute: () => apiClient.submitPayrollAdminRunForReview(run!.id) },
-      approve: { title: "Утвердить расчёт", description: "Проверьте итоговые суммы и состав сотрудников перед решением.", confirmLabel: isRunSelfApproval ? "Утвердить самому" : "Утвердить", warning: isRunSelfApproval ? PAYROLL_SELF_APPROVAL_WARNING : "Расчёт утверждает сотрудник, который не запускал эту ревизию.", successMessage: "Расчёт утверждён.", execute: () => apiClient.approvePayrollAdminRun(run!.id) },
+      approve: { title: "Утвердить расчёт", description: "Проверьте итоговые суммы и состав сотрудников перед решением.", confirmLabel: "Утвердить", successMessage: "Расчёт утверждён.", execute: () => apiClient.approvePayrollAdminRun(run!.id) },
       publish: { title: "Опубликовать расчётные листки", description: "После публикации сотрудники увидят суммы в разделе «Финансы».", confirmLabel: "Опубликовать", warning: "Проверьте дату выплаты и итог к выплате. Публикация сразу открывает листки сотрудникам.", successMessage: "Расчётные листки опубликованы.", execute: () => apiClient.publishPayrollAdminRun(run!.id) },
       close: { title: "Закрыть период", description: "Закрытый период больше нельзя пересчитывать.", confirmLabel: "Закрыть период", warning: "Это финальное действие для расчётного периода.", successMessage: "Период закрыт.", execute: () => apiClient.closePayrollAdminPeriod(selectedPeriod.id) },
     };
@@ -479,14 +458,14 @@ export function PayrollAdminWorkspace({ actionsTargetId, embedded = false, heade
                 </div>
                 <aside className="app-surface-muted rounded-xl p-4">
                   <div className="flex items-center gap-2"><ShieldCheck className="app-accent-text" size={18} /><h3 className="text-sm font-semibold text-[var(--foreground)]">Следующий шаг</h3></div>
-                  {primaryAction ? <><p className="app-text-muted mt-3 text-sm leading-relaxed">Все необходимые условия для этого этапа выполнены.</p><button type="button" className="app-action-primary mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold" onClick={() => openRunAction(primaryAction)}>{primaryAction === "calculate" ? <Calculator size={16} /> : primaryAction === "submit_review" ? <Send size={16} /> : <CheckCircle2 size={16} />}{payrollRunActionLabels[primaryAction]}</button></> : <p className="app-text-muted mt-3 text-sm leading-relaxed">Завершите отмеченные пункты или дождитесь действия сотрудника с нужными правами.</p>}
+                  {primaryAction ? <><p className="app-text-muted mt-3 text-sm leading-relaxed">Все необходимые условия для этого этапа выполнены.</p><button type="button" className="app-action-primary mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold" onClick={() => openRunAction(primaryAction)}>{primaryAction === "calculate" ? <Calculator size={16} /> : primaryAction === "submit_review" ? <Send size={16} /> : <CheckCircle2 size={16} />}{payrollRunActionLabels[primaryAction]}</button></> : <p className="app-text-muted mt-3 text-sm leading-relaxed">Завершите отмеченные пункты.</p>}
                   {selectedPeriod.status === "open" && permissions.manage_inputs && !workspace.current_run ? <button type="button" className="app-action-secondary mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium" onClick={() => { setEditingPeriod(selectedPeriod); setPeriodModalOpen(true); }}><Pencil size={15} /> Параметры периода</button> : null}
                 </aside>
               </div>
             </section>
           ) : null}
 
-          {tab === "rates" ? <section className="app-surface rounded-2xl p-4 sm:p-5"><SectionIntro title="Ставки" description="Оклад и цена балла действуют с указанной даты. Обычно черновик утверждает другой сотрудник; особое самоутверждение фиксируется в аудите." />{sourceDataLocked ? <div className="app-feedback-warning mb-4 rounded-lg px-3 py-2.5 text-sm">Исходные данные заблокированы текущим этапом расчёта. Для исправления сначала верните расчёт.</div> : null}<TableToolbar search={search} status={status} onSearch={setSearch} onStatus={setStatus} onAdd={canManageSourceData ? () => { setEditingRate(null); setRateModalOpen(true); } : undefined} addLabel="Добавить ставку" /><PayrollRatesTable records={filteredRates} loading={tableLoading} error={tableError} currentUserId={user?.id} canManage={canManageSourceData} canApprove={canApproveSourceData} canOverrideApproval={permissions.override_approval} onEdit={(record) => { setEditingRate(record); setRateModalOpen(true); }} onApprove={openApproveRate} onRevise={openReviseRate} /></section> : null}
+          {tab === "rates" ? <section className="app-surface rounded-2xl p-4 sm:p-5"><SectionIntro title="Ставки" description="Оклад и цена балла действуют с указанной даты. Черновик можно проверить и утвердить прямо в таблице." />{sourceDataLocked ? <div className="app-feedback-warning mb-4 rounded-lg px-3 py-2.5 text-sm">Исходные данные заблокированы текущим этапом расчёта. Для исправления сначала верните расчёт.</div> : null}<TableToolbar search={search} status={status} onSearch={setSearch} onStatus={setStatus} onAdd={canManageSourceData ? () => { setEditingRate(null); setRateModalOpen(true); } : undefined} addLabel="Добавить ставку" /><PayrollRatesTable records={filteredRates} loading={tableLoading} error={tableError} currentUserId={user?.id} canManage={canManageSourceData} canApprove={canApproveSourceData} canOverrideApproval={permissions.override_approval} fullAccess={permissions.full_access} onEdit={(record) => { setEditingRate(record); setRateModalOpen(true); }} onApprove={openApproveRate} onRevise={openReviseRate} /></section> : null}
           {tab === "work" ? (
             <section className="app-surface rounded-2xl p-4 sm:p-5">
               <SectionIntro title="Выработка" description="Норму и факт можно ввести вручную в баллах или заполнить рабочими часами из посещаемости." />
@@ -500,13 +479,13 @@ export function PayrollAdminWorkspace({ actionsTargetId, embedded = false, heade
                 onAdd={canManageSourceData && selectedPeriod.status !== "published" ? () => { setEditingWork(null); setWorkModalOpen(true); } : undefined}
                 addLabel="Добавить выработку"
               />
-              <PayrollWorkRecordsTable records={filteredWork} loading={tableLoading} error={tableError} currentUserId={user?.id} canManage={canManageSourceData} canApprove={canApproveSourceData} canOverrideApproval={permissions.override_approval} onEdit={(record) => { setEditingWork(record); setWorkModalOpen(true); }} onApprove={openApproveWork} onRevise={openReviseWork} />
+              <PayrollWorkRecordsTable records={filteredWork} loading={tableLoading} error={tableError} currentUserId={user?.id} canManage={canManageSourceData} canApprove={canApproveSourceData} canOverrideApproval={permissions.override_approval} fullAccess={permissions.full_access} onEdit={(record) => { setEditingWork(record); setWorkModalOpen(true); }} onApprove={openApproveWork} onRevise={openReviseWork} />
             </section>
           ) : null}
-          {tab === "inputs" ? <section className="app-surface rounded-2xl p-4 sm:p-5"><SectionIntro title="Начисления и выплаты" description="Премии, корректировки, удержания и авансы вводятся отдельными строками. Утверждённые строки исправляются новой корректировкой." />{sourceDataLocked ? <div className="app-feedback-warning mb-4 rounded-lg px-3 py-2.5 text-sm">Исходные данные заблокированы текущим этапом расчёта. Для исправления сначала верните расчёт.</div> : null}<TableToolbar search={search} status={status} onSearch={setSearch} onStatus={setStatus} onAdd={canManageSourceData ? () => { setEditingInput(null); setInputModalOpen(true); } : undefined} addLabel="Добавить операцию" /><PayrollInputLinesTable records={filteredInputs} loading={tableLoading} error={tableError} currentUserId={user?.id} canManage={canManageSourceData} canApprove={canApproveSourceData} canOverrideApproval={permissions.override_approval} onEdit={(record) => { setEditingInput(record); setInputModalOpen(true); }} onApprove={openApproveInput} /></section> : null}
+          {tab === "inputs" ? <section className="app-surface rounded-2xl p-4 sm:p-5"><SectionIntro title="Начисления и выплаты" description="Премии, корректировки, удержания и авансы вводятся отдельными строками. Утверждённые строки исправляются новой корректировкой." />{sourceDataLocked ? <div className="app-feedback-warning mb-4 rounded-lg px-3 py-2.5 text-sm">Исходные данные заблокированы текущим этапом расчёта. Для исправления сначала верните расчёт.</div> : null}<TableToolbar search={search} status={status} onSearch={setSearch} onStatus={setStatus} onAdd={canManageSourceData ? () => { setEditingInput(null); setInputModalOpen(true); } : undefined} addLabel="Добавить операцию" /><PayrollInputLinesTable records={filteredInputs} loading={tableLoading} error={tableError} currentUserId={user?.id} canManage={canManageSourceData} canApprove={canApproveSourceData} canOverrideApproval={permissions.override_approval} fullAccess={permissions.full_access} onEdit={(record) => { setEditingInput(record); setInputModalOpen(true); }} onApprove={openApproveInput} /></section> : null}
           {tab === "approval" ? (
             <section className="app-surface rounded-2xl p-4 sm:p-5">
-              <SectionIntro title="Согласование" description="Проверяющий утверждает исходные данные, затем расчёт проходит проверку, утверждение и публикацию." />
+              <SectionIntro title="Проверка данных" description="Здесь можно утвердить подготовленные черновики и продолжить расчёт." />
               {!canOpenInputTabs ? (
                 <div className="app-surface-muted rounded-xl p-4 text-sm">
                   <p className="font-semibold text-[var(--foreground)]">Очередь исходных данных недоступна для вашей роли</p>

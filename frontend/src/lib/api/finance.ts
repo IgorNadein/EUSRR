@@ -98,10 +98,10 @@ export type PayrollAdminRun = {
     published_by: PayrollAdminUserRef | null;
     published_at: string | null;
     recalculation_reason: string;
-    self_approval_overridden: boolean;
 };
 
 export type PayrollAdminPermissions = {
+    full_access: boolean;
     manage_inputs: boolean;
     approve_inputs: boolean;
     override_approval: boolean;
@@ -183,7 +183,6 @@ export type PayrollAdminPayRate = {
     created_at: string;
     approved_by: PayrollAdminUserRef | null;
     approved_at: string | null;
-    self_approval_overridden: boolean;
 };
 
 export type PayrollAdminWorkRecord = {
@@ -207,7 +206,6 @@ export type PayrollAdminWorkRecord = {
     created_at: string;
     approved_by: PayrollAdminUserRef | null;
     approved_at: string | null;
-    self_approval_overridden: boolean;
 };
 
 export type PayrollAttendanceWorkMode = "missing_only" | "replace_existing";
@@ -314,7 +312,6 @@ export type PayrollAdminInputLine = {
     created_at: string;
     approved_by: PayrollAdminUserRef | null;
     approved_at: string | null;
-    self_approval_overridden: boolean;
 };
 
 export type PayrollAdminPage<T> = {

@@ -54,13 +54,25 @@ into the calculation.
 
 ## Workflow
 
-Input records and rates are created as drafts and normally approved by another
-actor. An approver cannot approve their own record or edit another user's draft
-in the admin. A deliberately assigned self-approval override can waive only
-the first restriction; the actor must still hold the ordinary input or run
-approval permission. Every use persists `self_approval_overridden=true` on the
-approved object and in audit metadata. Database constraints reject both an
-unflagged self-approval and a flag without an actual self-approval.
+During the pilot, `PAYROLL_SIMPLE_ADMIN_ACCESS=true` is the default. Active
+`staff` and `superuser` accounts receive every payroll operation without extra
+Finance roles, may edit any draft, and may approve records and runs they
+created. The legacy `self_approval_overridden` value remains internal to
+satisfy existing database constraints; it is not exposed by the payroll API or
+shown in the normal payroll workspace and Django model forms. With the pilot
+mode disabled, privileged auditors can still inspect the preserved approval
+metadata in the immutable audit log.
+
+Set `PAYROLL_SIMPLE_ADMIN_ACCESS=false` to restore the preserved granular
+policy: input records and rates are created as drafts and normally approved by
+another actor; an approver cannot approve their own record or edit another
+user's draft without the dedicated override policy.
+
+> TODO(payroll-access-hardening): disable the temporary full-access mode only
+> after the Finance role matrix and maker-checker workflow have passed a full
+> pilot with representative payroll periods. In the same deployment, remove
+> the temporary `staff` shortcut from the frontend navigation so it follows
+> the granular Finance permissions again.
 
 The approval screen captures the exact draft version the checker reviewed; any
 concurrent maker edit increments that version and makes the approval fail
@@ -82,7 +94,9 @@ legacy Excel mismatch blocks submission for review.
 
 ## Permissions
 
-Use the custom Finance permissions rather than ordinary Django model access:
+In the current pilot, active `staff` and `superuser` accounts receive all of
+the following permissions automatically. When simple access is disabled, use
+the custom Finance permissions rather than ordinary Django model access:
 
 - `finance.manage_payroll_inputs` — create and maintain own drafts;
 - `finance.approve_payroll_inputs` — approve another actor's inputs;
@@ -107,8 +121,8 @@ POST /api/v1/finance/payroll/me/statements/<public_id>/acknowledge/
 Payroll operators use the permission-gated native workspace under
 `/api/v1/finance/payroll/admin/`. It exposes explicit commands rather than
 generic model CRUD: draft edits require the version that the operator opened,
-approvals require a different actor unless the explicit audited override is
-used, and run transitions call the payroll services. The portal entry point is
+the granular fallback can require a different actor, and run transitions call
+the payroll services. The portal entry point is
 `/finances/payroll/manage`; Django Admin is not required for the normal payroll
 workflow.
 
@@ -141,9 +155,9 @@ unit.  It is accepted only while the payroll point policy is `disabled`, so
 hours cannot accidentally become paid production points.  Missing days,
 technical issues, open shifts, unverified remote work and work outside the
 effective schedule block the affected employee.  The apply command never
-auto-approves: it creates a draft, updates only the operator's own draft, or
+auto-approves: it creates a draft, updates an administrator-accessible draft, or
 creates a draft revision that leaves the approved record intact until the
-normal maker-checker approval succeeds.
+record is explicitly approved.
 
 ## Operational boundaries
 
