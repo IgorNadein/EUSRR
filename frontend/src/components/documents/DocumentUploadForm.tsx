@@ -9,28 +9,18 @@ import {
   AlertCircle, 
   Loader2, 
   FolderOpen,
-  Users,
-  Building2,
-  CheckCircle,
   ScrollText,
   Tag as TagIcon,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
+import type { Department, User } from "@/types/api";
 import { toast } from "sonner";
 import { processDocument, needsProcessing, type ProcessingProgress } from "@/lib/document-utils";
 import { DocumentTagQuickCreate, type QuickDocumentTag } from "./DocumentTagQuickCreate";
-
-interface Department {
-  id: number;
-  name: string;
-}
-
-interface User {
-  id: number;
-  first_name: string;
-  last_name: string;
-  email?: string;
-}
+import {
+  DocumentAudienceSelector,
+  type DocumentAudienceMode,
+} from "./DocumentAudienceSelector";
 
 interface DocumentTagOption {
   id: number;
@@ -54,6 +44,7 @@ interface DocumentUploadFormProps {
   onSuccess?: () => void;
   onCancel?: () => void;
   currentFolderId?: number | null;
+  defaultIsRegulation?: boolean;
 }
 
 interface UploadFileItem {
@@ -127,7 +118,12 @@ const STAGE_MESSAGES: Record<string, string> = {
   complete: "Обработка завершена",
 };
 
-export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: DocumentUploadFormProps) {
+export function DocumentUploadForm({
+  onSuccess,
+  onCancel,
+  currentFolderId,
+  defaultIsRegulation = false,
+}: DocumentUploadFormProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [uploadItems, setUploadItems] = useState<UploadFileItem[]>([]);
@@ -138,14 +134,16 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
 
   // New fields for extended functionality
   const [sentToAll, setSentToAll] = useState(true);
-  const [acknowledgementRequired, setAcknowledgementRequired] = useState(false);
+  const [acknowledgementMode, setAcknowledgementMode] = useState<DocumentAudienceMode>("all");
   const [selectedDepartments, setSelectedDepartments] = useState<number[]>([]);
   const [selectedRecipients, setSelectedRecipients] = useState<number[]>([]);
+  const [acknowledgementDepartments, setAcknowledgementDepartments] = useState<number[]>([]);
+  const [acknowledgementRecipients, setAcknowledgementRecipients] = useState<number[]>([]);
   
   // Metadata fields
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(currentFolderId ?? null);
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
-  const [isRegulation, setIsRegulation] = useState(false);
+  const [isRegulation, setIsRegulation] = useState(defaultIsRegulation);
   
   // Data for selects
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -178,7 +176,11 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
 
       try {
         setLoadingEmployees(true);
-        const empResponse = await apiClient.getEmployees({ limit: 1000 });
+        const empResponse = await apiClient.getEmployees({
+          limit: 1000,
+          is_active: true,
+          ordering: "last_name,first_name",
+        });
         setEmployees(empResponse.results || empResponse);
       } catch (err) {
         console.error("Ошибка загрузки сотрудников:", err);
@@ -211,6 +213,30 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
     loadData();
   }, []);
 
+  const acknowledgementEmployees = useMemo(() => {
+    if (sentToAll) return employees;
+    const departmentIds = new Set(selectedDepartments);
+    const recipientIds = new Set(selectedRecipients);
+    return employees.filter((employee) => (
+      recipientIds.has(employee.id)
+      || (employee.departments || []).some((department) => departmentIds.has(department.id))
+    ));
+  }, [employees, selectedDepartments, selectedRecipients, sentToAll]);
+
+  const acknowledgementDepartmentOptions = useMemo(() => {
+    if (sentToAll) return departments;
+    const departmentIds = new Set(selectedDepartments);
+    return departments.filter((department) => departmentIds.has(department.id));
+  }, [departments, selectedDepartments, sentToAll]);
+
+  useEffect(() => {
+    if (sentToAll) return;
+    const allowedEmployeeIds = new Set(acknowledgementEmployees.map((employee) => employee.id));
+    const allowedDepartmentIds = new Set(selectedDepartments);
+    setAcknowledgementRecipients((current) => current.filter((id) => allowedEmployeeIds.has(id)));
+    setAcknowledgementDepartments((current) => current.filter((id) => allowedDepartmentIds.has(id)));
+  }, [acknowledgementEmployees, selectedDepartments, sentToAll]);
+
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return;
 
@@ -230,7 +256,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
 
     setIsProcessing(true);
     setProcessingProgress({
-      stage: "compressing",
+      stage: "extracting_text",
       progress: 0,
       message: "Начало обработки...",
     });
@@ -244,7 +270,6 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
         try {
           const result = await processDocument(item.file, {
             enableOCR: true,
-            enableCompression: true,
             enableTextExtraction: true,
             enableThumbnail: true,
             onProgress: (progress) => {
@@ -340,7 +365,16 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
 
     // Validate recipients if sent_to_all is false
     if (!sentToAll && selectedDepartments.length === 0 && selectedRecipients.length === 0) {
-      setError("Укажите получателей или отделы, либо выберите 'Отправить всем'");
+      setError("Выберите хотя бы один отдел или сотрудника с доступом к документу");
+      return;
+    }
+
+    if (
+      acknowledgementMode === "restricted"
+      && acknowledgementDepartments.length === 0
+      && acknowledgementRecipients.length === 0
+    ) {
+      setError("Выберите хотя бы один отдел или сотрудника для ознакомления");
       return;
     }
 
@@ -356,7 +390,12 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
           is_regulation: isRegulation,
           department_ids: sentToAll ? undefined : selectedDepartments,
           recipient_ids: sentToAll ? undefined : selectedRecipients,
-          acknowledgement_required: acknowledgementRequired,
+          acknowledgement_required: acknowledgementMode !== "none",
+          acknowledgement_for_all: acknowledgementMode === "all",
+          acknowledgement_department_ids:
+            acknowledgementMode === "restricted" ? acknowledgementDepartments : undefined,
+          acknowledgement_recipient_ids:
+            acknowledgementMode === "restricted" ? acknowledgementRecipients : undefined,
           tag_ids: selectedTags.length > 0 ? selectedTags : undefined,
         });
       } else {
@@ -376,7 +415,12 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
             is_regulation: isRegulation,
             department_ids: sentToAll ? undefined : selectedDepartments,
             recipient_ids: sentToAll ? undefined : selectedRecipients,
-            acknowledgement_required: acknowledgementRequired,
+            acknowledgement_required: acknowledgementMode !== "none",
+            acknowledgement_for_all: acknowledgementMode === "all",
+            acknowledgement_department_ids:
+              acknowledgementMode === "restricted" ? acknowledgementDepartments : undefined,
+            acknowledgement_recipient_ids:
+              acknowledgementMode === "restricted" ? acknowledgementRecipients : undefined,
             tag_ids: selectedTags.length > 0 ? selectedTags : undefined,
           });
         }
@@ -396,10 +440,12 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
       setUploadItems([]);
       setSelectedFolderId(currentFolderId ?? null);
       setSentToAll(true);
-      setIsRegulation(false);
-      setAcknowledgementRequired(false);
+      setIsRegulation(defaultIsRegulation);
+      setAcknowledgementMode("all");
       setSelectedDepartments([]);
       setSelectedRecipients([]);
+      setAcknowledgementDepartments([]);
+      setAcknowledgementRecipients([]);
       setSelectedTags([]);
       
       if (onSuccess) {
@@ -717,140 +763,37 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
         </div>
       )}
 
-      {/* Divider */}
       <div className="app-divider border-t pt-4">
-        <h3 className="mb-3 text-sm font-semibold text-[var(--foreground)]">Настройки доступа и уведомлений</h3>
-      </div>
+        <div className="space-y-6">
+          <DocumentAudienceSelector
+            kind="access"
+            mode={sentToAll ? "all" : "restricted"}
+            onModeChange={(mode) => setSentToAll(mode === "all")}
+            employees={employees}
+            departments={departments}
+            selectedEmployeeIds={selectedRecipients}
+            selectedDepartmentIds={selectedDepartments}
+            onSelectedEmployeeIdsChange={setSelectedRecipients}
+            onSelectedDepartmentIdsChange={setSelectedDepartments}
+            loading={loadingEmployees || loadingDepartments}
+            disabled={isSubmitting}
+          />
 
-      {/* Sent to All Toggle */}
-      <div className="app-surface-muted flex items-start gap-3 rounded-lg p-3">
-        <input
-          type="checkbox"
-          id="sentToAll"
-          checked={sentToAll}
-          onChange={(e) => {
-            setSentToAll(e.target.checked);
-            if (e.target.checked) {
-              setSelectedDepartments([]);
-              setSelectedRecipients([]);
-            }
-          }}
-          className="mt-0.5 h-4 w-4 rounded border-[var(--border-strong)] text-[var(--accent-primary)]"
-        />
-        <div className="flex-1">
-          <label htmlFor="sentToAll" className="block cursor-pointer text-sm font-medium text-[var(--foreground)]">
-            Отправить всем сотрудникам
-          </label>
-          <p className="app-text-muted mt-0.5 text-xs">
-            Документ будет доступен всем активным сотрудникам
-          </p>
-        </div>
-      </div>
-
-      {/* Recipients section - only show when sentToAll is false */}
-      {!sentToAll && (
-        <div className="app-surface-muted space-y-4 rounded-lg p-4">
-          <div className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
-            <Users size={16} />
-            <span>Выберите получателей</span>
+          <div className="app-divider border-t pt-5">
+            <DocumentAudienceSelector
+              kind="acknowledgement"
+              mode={acknowledgementMode}
+              onModeChange={setAcknowledgementMode}
+              employees={acknowledgementEmployees}
+              departments={acknowledgementDepartmentOptions}
+              selectedEmployeeIds={acknowledgementRecipients}
+              selectedDepartmentIds={acknowledgementDepartments}
+              onSelectedEmployeeIdsChange={setAcknowledgementRecipients}
+              onSelectedDepartmentIdsChange={setAcknowledgementDepartments}
+              loading={loadingEmployees || loadingDepartments}
+              disabled={isSubmitting}
+            />
           </div>
-
-          {/* Departments */}
-          <div>
-            <label htmlFor="departments" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
-              <Building2 size={14} className="mr-1 inline" />
-              Отделы
-            </label>
-            <select
-              id="departments"
-              multiple
-              value={selectedDepartments.map(String)}
-              onChange={(e) => {
-                const values = Array.from(e.target.selectedOptions, (option) => Number(option.value));
-                setSelectedDepartments(values);
-              }}
-              disabled={loadingDepartments}
-              className="app-select w-full rounded-lg px-3 py-2 text-sm"
-              size={5}
-            >
-              {loadingDepartments ? (
-                <option disabled>Загрузка...</option>
-              ) : departments.length === 0 ? (
-                <option disabled>Нет доступных отделов</option>
-              ) : (
-                departments.map((dept) => (
-                  <option key={dept.id} value={dept.id}>
-                    {dept.name}
-                  </option>
-                ))
-              )}
-            </select>
-            <p className="app-text-muted mt-1 text-xs">
-              Удерживайте Ctrl/Cmd для выбора нескольких
-            </p>
-          </div>
-
-          {/* Recipients */}
-          <div>
-            <label htmlFor="recipients" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
-              <Users size={14} className="mr-1 inline" />
-              Конкретные сотрудники
-            </label>
-            <select
-              id="recipients"
-              multiple
-              value={selectedRecipients.map(String)}
-              onChange={(e) => {
-                const values = Array.from(e.target.selectedOptions, (option) => Number(option.value));
-                setSelectedRecipients(values);
-              }}
-              disabled={loadingEmployees}
-              className="app-select w-full rounded-lg px-3 py-2 text-sm"
-              size={8}
-            >
-              {loadingEmployees ? (
-                <option disabled>Загрузка...</option>
-              ) : employees.length === 0 ? (
-                <option disabled>Нет доступных сотрудников</option>
-              ) : (
-                employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.last_name} {emp.first_name} {emp.email && `(${emp.email})`}
-                  </option>
-                ))
-              )}
-            </select>
-            <p className="app-text-muted mt-1 text-xs">
-              Удерживайте Ctrl/Cmd для выбора нескольких
-            </p>
-          </div>
-
-          {selectedDepartments.length === 0 && selectedRecipients.length === 0 && (
-            <div className="app-feedback-warning flex items-start gap-2 rounded-lg p-3 text-xs">
-              <AlertCircle size={14} className="mt-0.5 shrink-0" />
-              <span>Выберите хотя бы один отдел или сотрудника</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Acknowledgement Required */}
-      <div className="app-surface-muted flex items-start gap-3 rounded-lg p-3">
-        <input
-          type="checkbox"
-          id="acknowledgementRequired"
-          checked={acknowledgementRequired}
-          onChange={(e) => setAcknowledgementRequired(e.target.checked)}
-          className="mt-0.5 h-4 w-4 rounded border-[var(--border-strong)] text-[var(--accent-primary)]"
-        />
-        <div className="flex-1">
-          <label htmlFor="acknowledgementRequired" className="block cursor-pointer text-sm font-medium text-[var(--foreground)]">
-            <CheckCircle size={14} className="mr-1 inline" />
-            Требуется подтверждение ознакомления
-          </label>
-          <p className="app-text-muted mt-0.5 text-xs">
-            Получатели должны будут подтвердить, что ознакомились с документом
-          </p>
         </div>
       </div>
 
@@ -870,8 +813,8 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
               : uploadItems.length > 1
                 ? `Загрузить ${uploadItems.length} документов`
                 : uploadItems.length === 1
-                  ? "Загрузить документ"
-                  : "Создать документ"}
+                  ? isRegulation ? "Загрузить регламент" : "Загрузить документ"
+                  : isRegulation ? "Создать регламент" : "Создать документ"}
         </button>
         
         {onCancel && (

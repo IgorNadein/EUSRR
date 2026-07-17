@@ -2,7 +2,6 @@
 from django.conf import settings
 
 
-MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024  # 10 MB
 SAFE_EXTENSIONS = ["pdf", "jpg", "jpeg", "png"]
 _ALLOWED_EXTS_DOTTED = {
     e if str(e).startswith(".") else f".{e}"

@@ -17,14 +17,17 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   CalendarDays,
+  Check,
   ChevronDown,
   ChevronRight,
+  Download,
+  ExternalLink as ExternalLinkIcon,
   FileSignature,
   FileText,
-  GripVertical,
   History,
   Kanban,
   Link2,
+  ListChecks,
   Loader2,
   Maximize2,
   MessageSquare,
@@ -32,6 +35,7 @@ import {
   Newspaper,
   Paperclip,
   Pencil,
+  Play,
   Plus,
   RefreshCw,
   Search,
@@ -41,10 +45,12 @@ import {
   Trash2,
   UserRound,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { RequestAvatar } from "@/components/requests/RequestAvatar";
 import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
 import { Modal } from "@/components/ui";
 import { useUser } from "@/contexts/UserContext";
@@ -53,13 +59,18 @@ import { displayUserName, formatDate, formatDateTime, formatMoney } from "@/lib/
 import { resolveMediaUrl } from "@/lib/url";
 import wsManager from "@/lib/websocketManager";
 import type {
+  CalendarEvent,
   Department,
+  Document,
   Message,
   TaskActivity,
+  TaskAttachment,
   TaskBoard,
   TaskCard,
+  TaskChecklistItem,
   TaskColumn,
   TaskComment,
+  TaskExternalLink,
   TaskLinkedAttendanceRecord,
   TaskLinkedDocument,
   TaskLinkedEmployee,
@@ -89,7 +100,7 @@ type BoardFormState = {
   id: number | null;
   name: string;
   description: string;
-  access: "all" | "restricted";
+  access: "all" | "private" | "restricted";
   member_ids: number[];
   department_ids: number[];
 };
@@ -100,6 +111,22 @@ type ColumnFormState = {
   is_done: boolean;
 };
 
+type LinkedItemMode = "document" | "calendar_event" | "external_link";
+type LinkedItemTarget = "view" | "form";
+
+type TaskFormExternalLinkDraft = {
+  key: string;
+  url: string;
+  title: string;
+};
+
+type TaskFormChecklistItemDraft = {
+  key: string;
+  title: string;
+  position: number;
+  is_completed: boolean;
+};
+
 type TaskBoardSocketEvent = {
   type: string;
   data?: {
@@ -107,6 +134,7 @@ type TaskBoardSocketEvent = {
     event?: string;
     model?: string;
     object_id?: number | null;
+    task_id?: number;
   };
 };
 
@@ -144,6 +172,15 @@ function TaskDescriptionPreview({ description }: { description: string }) {
       {description}
     </p>
   );
+}
+
+function getEmployeeInitials(employee: User): string {
+  const initials = [employee.first_name, employee.last_name]
+    .map((part) => part?.trim().charAt(0) || "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  return initials || displayUserName(employee).slice(0, 2).toUpperCase();
 }
 
 const emptyColumnForm: ColumnFormState = {
@@ -207,6 +244,25 @@ function getTaskError(error: unknown, fallback: string) {
   return raw;
 }
 
+function extractApiResults<T>(response: T[] | { results?: T[] } | null | undefined): T[] {
+  if (Array.isArray(response)) return response;
+  return response?.results || [];
+}
+
+function normalizeExternalUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return /^[a-z][a-z\d+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+function getExternalLinkHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 function toDateOnlyTime(value?: string | null) {
   if (!value) return null;
   const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -239,6 +295,14 @@ function getTaskDueDateBadgeClass(task: TaskCard, defaultClass = "app-badge") {
   return defaultClass;
 }
 
+function formatFileSize(size: number): string {
+  if (size < 1024) return `${size} Б`;
+  if (size < 1024 * 1024) return `${Math.ceil(size / 1024)} КБ`;
+  return `${(size / (1024 * 1024)).toLocaleString("ru-RU", {
+    maximumFractionDigits: 1,
+  })} МБ`;
+}
+
 function getMessageCreatedLabel(message?: Message | null) {
   if (!message) return "";
   return message.created || (message.created_at ? formatDate(message.created_at) : "");
@@ -249,6 +313,11 @@ function TaskCardView({
   onOpen,
   onEdit,
   onDelete,
+  currentUserId,
+  claiming,
+  onClaim,
+  completing,
+  onComplete,
   menuOpen,
   menuRef,
   onToggleMenu,
@@ -257,6 +326,11 @@ function TaskCardView({
   onOpen: (task: TaskCard) => void;
   onEdit: (task: TaskCard) => void;
   onDelete: (task: TaskCard) => void;
+  currentUserId?: number;
+  claiming: boolean;
+  onClaim: (task: TaskCard) => void;
+  completing: boolean;
+  onComplete: (task: TaskCard) => void;
   menuOpen: boolean;
   menuRef: RefObject<HTMLDivElement | null>;
   onToggleMenu: () => void;
@@ -268,31 +342,23 @@ function TaskCardView({
   const style = transform && !isDragging ? { transform: CSS.Translate.toString(transform) } : undefined;
   const priority = priorityMeta[task.priority] ?? priorityMeta.medium;
   const dueDateClass = getTaskDueDateBadgeClass(task);
+  const canClaim = !task.assignee && !task.completed_at;
+  const canComplete = task.assignee?.id === currentUserId && !task.completed_at;
 
   return (
     <article
       ref={setNodeRef}
       style={style}
-      className={`app-surface-elevated rounded-xl border border-[var(--border-subtle)] p-3 shadow-sm transition ${
+      className={`app-surface-elevated cursor-grab select-none rounded-xl border border-[var(--border-subtle)] p-3 shadow-sm transition active:cursor-grabbing ${
         isDragging ? "opacity-30" : "hover:border-[var(--border-strong)]"
       }`}
+      title="Перетащите задачу в нужную колонку"
+      onClick={() => onOpen(task)}
+      {...attributes}
+      {...listeners}
     >
       <div className="mb-2 flex items-start gap-2">
-        <button
-          type="button"
-          className="app-action-ghost mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
-          aria-label="Переместить задачу"
-          title="Переместить"
-          {...listeners}
-          {...attributes}
-        >
-          <GripVertical size={14} />
-        </button>
-        <button
-          type="button"
-          onClick={() => onOpen(task)}
-          className="min-w-0 flex-1 overflow-hidden whitespace-normal text-left"
-        >
+        <div className="min-w-0 flex-1 overflow-hidden whitespace-normal text-left">
           <div className="flex min-w-0 items-center gap-2">
             <span className="app-badge shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
               #{task.id}
@@ -302,9 +368,14 @@ function TaskCardView({
             </h3>
           </div>
           {task.description ? <TaskDescriptionPreview description={task.description} /> : null}
-        </button>
+        </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
-          <div ref={menuOpen ? menuRef : null} className="relative">
+          <div
+            ref={menuOpen ? menuRef : null}
+            className="relative"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
             <button
               type="button"
               onClick={onToggleMenu}
@@ -361,6 +432,46 @@ function TaskCardView({
       ) : null}
 
       <div className="flex flex-wrap items-center gap-1.5">
+        {canClaim ? (
+          <button
+            type="button"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onClaim(task);
+            }}
+            disabled={claiming}
+            className="app-action-primary inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full disabled:cursor-wait disabled:opacity-60"
+            title="Взять задачу в работу"
+            aria-label={`Взять задачу в работу ${task.title}`}
+          >
+            {claiming ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <Play size={14} />
+            )}
+          </button>
+        ) : null}
+        {canComplete ? (
+          <button
+            type="button"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onComplete(task);
+            }}
+            disabled={completing}
+            className="app-action-success inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full disabled:cursor-wait disabled:opacity-60"
+            title="Завершить задачу"
+            aria-label={`Завершить задачу ${task.title}`}
+          >
+            {completing ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <Check size={14} strokeWidth={2.5} />
+            )}
+          </button>
+        ) : null}
         {task.assignee ? (
           <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]">
             <UserRound size={11} />
@@ -371,6 +482,18 @@ function TaskCardView({
           <span className={`${dueDateClass} inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]`}>
             <CalendarDays size={11} />
             {formatDate(task.due_date)}
+          </span>
+        ) : null}
+        {(task.checklist_total || 0) > 0 ? (
+          <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+            <ListChecks size={11} />
+            {task.checklist_completed || 0}/{task.checklist_total}
+          </span>
+        ) : null}
+        {(task.attachments_count || 0) > 0 ? (
+          <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+            <Paperclip size={11} />
+            {task.attachments_count}
           </span>
         ) : null}
         {(task.linked_objects_count || task.linked_messages_count || 0) > 0 ? (
@@ -397,9 +520,6 @@ function TaskDragOverlayCard({ task }: { task: TaskCard }) {
   return (
     <article className="app-surface-elevated w-[17rem] cursor-grabbing rounded-xl border border-[var(--accent-primary)] p-3 shadow-2xl ring-1 ring-[color:var(--accent-primary)]/20">
       <div className="mb-2 flex items-start gap-2">
-        <div className="app-action-ghost mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md">
-          <GripVertical size={14} />
-        </div>
         <div className="min-w-0 flex-1 overflow-hidden whitespace-normal text-left">
           <div className="flex min-w-0 items-center gap-2">
             <span className="app-badge shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
@@ -443,6 +563,18 @@ function TaskDragOverlayCard({ task }: { task: TaskCard }) {
             {formatDate(task.due_date)}
           </span>
         ) : null}
+        {(task.checklist_total || 0) > 0 ? (
+          <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+            <ListChecks size={11} />
+            {task.checklist_completed || 0}/{task.checklist_total}
+          </span>
+        ) : null}
+        {(task.attachments_count || 0) > 0 ? (
+          <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]">
+            <Paperclip size={11} />
+            {task.attachments_count}
+          </span>
+        ) : null}
         {(task.linked_objects_count || task.linked_messages_count || 0) > 0 ? (
           <span className="app-badge inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]">
             <Link2 size={11} />
@@ -467,6 +599,11 @@ function BoardColumn({
   onOpenTask,
   onEditTask,
   onDeleteTask,
+  currentUserId,
+  claimingTaskId,
+  onClaimTask,
+  completingTaskId,
+  onCompleteTask,
   openMenuTaskId,
   menuRef,
   onToggleTaskMenu,
@@ -479,6 +616,11 @@ function BoardColumn({
   onOpenTask: (task: TaskCard) => void;
   onEditTask: (task: TaskCard) => void;
   onDeleteTask: (task: TaskCard) => void;
+  currentUserId?: number;
+  claimingTaskId: number | null;
+  onClaimTask: (task: TaskCard) => void;
+  completingTaskId: number | null;
+  onCompleteTask: (task: TaskCard) => void;
   openMenuTaskId: number | null;
   menuRef: RefObject<HTMLDivElement | null>;
   onToggleTaskMenu: (taskId: number) => void;
@@ -533,6 +675,11 @@ function BoardColumn({
               onOpen={onOpenTask}
               onEdit={onEditTask}
               onDelete={onDeleteTask}
+              currentUserId={currentUserId}
+              claiming={claimingTaskId === task.id}
+              onClaim={onClaimTask}
+              completing={completingTaskId === task.id}
+              onComplete={onCompleteTask}
               menuOpen={openMenuTaskId === task.id}
               menuRef={menuRef}
               onToggleMenu={() => onToggleTaskMenu(task.id)}
@@ -1603,6 +1750,158 @@ function LinkedAttendanceRecordCard({
   );
 }
 
+function TaskExternalLinkCard({
+  link,
+  onDelete,
+  disabled,
+}: {
+  link: TaskExternalLink;
+  onDelete: (linkId: number) => void;
+  disabled: boolean;
+}) {
+  return (
+    <article className="app-surface-muted rounded-xl border border-[var(--border-subtle)] p-3">
+      <div className="relative">
+        <a
+          href={link.url}
+          target="_blank"
+          rel="noreferrer"
+          className="flex min-w-0 items-start gap-3 rounded-lg pr-10 transition hover:bg-[var(--surface-elevated)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
+          title="Открыть внешнюю ссылку"
+        >
+          <span className="app-selected flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
+            <ExternalLinkIcon size={15} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold text-[var(--foreground)]">
+              {link.title || getExternalLinkHost(link.url)}
+            </span>
+            <span className="app-text-muted mt-0.5 block truncate text-xs">
+              {link.url}
+            </span>
+            <span className="app-text-muted mt-2 block text-[11px]">
+              Добавил: {link.created_by ? displayUserName(link.created_by) : "не указано"}
+            </span>
+          </span>
+        </a>
+        <button
+          type="button"
+          onClick={() => onDelete(link.id)}
+          disabled={disabled}
+          className="app-icon-button absolute right-0 top-0 z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
+          title="Удалить ссылку"
+          aria-label={`Удалить ссылку ${link.title || link.url}`}
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function TaskFormResourceRow({
+  icon: Icon,
+  title,
+  meta,
+  pending = false,
+  onRemove,
+}: {
+  icon: LucideIcon;
+  title: string;
+  meta?: string;
+  pending?: boolean;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-2.5 last:border-b-0">
+      <span className="app-selected flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
+        <Icon size={15} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-[var(--foreground)]">
+          {title}
+        </span>
+        {meta ? (
+          <span className="app-text-muted mt-0.5 block truncate text-[11px]">
+            {meta}
+          </span>
+        ) : null}
+      </span>
+      {pending ? (
+        <span className="app-badge shrink-0 rounded-full px-2 py-0.5 text-[10px]">
+          новое
+        </span>
+      ) : null}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="app-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+        title="Убрать"
+        aria-label={`Убрать ${title}`}
+      >
+        <Trash2 size={14} />
+      </button>
+    </div>
+  );
+}
+
+
+function TaskChecklistFormRow({
+  title,
+  isCompleted,
+  pending,
+  disabled,
+  onTitleChange,
+  onCompletedChange,
+  onRemove,
+}: {
+  title: string;
+  isCompleted: boolean;
+  pending?: boolean;
+  disabled?: boolean;
+  onTitleChange: (value: string) => void;
+  onCompletedChange: (value: boolean) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-2 last:border-b-0">
+      <input
+        type="checkbox"
+        checked={isCompleted}
+        onChange={(event) => onCompletedChange(event.target.checked)}
+        disabled={disabled}
+        className="h-4 w-4 shrink-0 accent-sky-500"
+        aria-label={isCompleted ? "Вернуть пункт в работу" : "Отметить пункт выполненным"}
+      />
+      <input
+        value={title}
+        onChange={(event) => onTitleChange(event.target.value)}
+        disabled={disabled}
+        className={`app-input min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-sm ${
+          isCompleted ? "line-through opacity-70" : ""
+        }`}
+        aria-label="Текст пункта чек-листа"
+      />
+      {pending ? (
+        <span className="app-badge shrink-0 rounded-full px-2 py-0.5 text-[10px]">
+          новое
+        </span>
+      ) : null}
+      <button
+        type="button"
+        onClick={onRemove}
+        disabled={disabled}
+        className="app-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--danger-foreground)] disabled:opacity-50"
+        title="Удалить пункт"
+        aria-label={`Удалить пункт ${title}`}
+      >
+        <Trash2 size={14} />
+      </button>
+    </div>
+  );
+}
+
+
 const activityFieldLabels: Record<string, string> = {
   title: "название",
   description: "описание",
@@ -1635,6 +1934,33 @@ function getActivityDetail(activity: TaskActivity): string {
     const column = typeof metadata.column === "string" ? metadata.column : "";
     return column ? `Колонка: ${column}` : "";
   }
+  if (
+    activity.action === "attachment_added" ||
+    activity.action === "attachment_removed"
+  ) {
+    return typeof metadata.file_name === "string" ? metadata.file_name : "Файл";
+  }
+  if (activity.action.startsWith("checklist_item_")) {
+    return typeof metadata.item_title === "string"
+      ? metadata.item_title
+      : "Пункт чек-листа";
+  }
+  if (activity.action === "comment_edited") {
+    const previousText = typeof metadata.previous_text === "string"
+      ? metadata.previous_text
+      : "";
+    const commentText = typeof metadata.comment_text === "string"
+      ? metadata.comment_text
+      : "";
+    if (previousText && commentText) {
+      return `Было: ${previousText}\nСтало: ${commentText}`;
+    }
+  }
+  if (activity.action === "comment_added" || activity.action === "comment_removed") {
+    return typeof metadata.comment_text === "string"
+      ? metadata.comment_text
+      : `Комментарий #${activity.object_id || ""}`;
+  }
   return "";
 }
 
@@ -1659,7 +1985,7 @@ function TaskActivityCard({ activity }: { activity: TaskActivity }) {
             {activity.actor ? displayUserName(activity.actor) : "Система"}
           </p>
           {detail ? (
-            <p className="app-text-wrap mt-2 text-xs text-[var(--foreground)]">
+              <p className="app-text-wrap mt-2 whitespace-pre-wrap text-xs text-[var(--foreground)]">
               {detail}
             </p>
           ) : null}
@@ -1689,6 +2015,8 @@ function TasksPageContent() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [claimingTaskId, setClaimingTaskId] = useState<number | null>(null);
+  const [completingTaskId, setCompletingTaskId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [onlyMine, setOnlyMine] = useState(false);
@@ -1706,6 +2034,8 @@ function TasksPageContent() {
   const [columnModalOpen, setColumnModalOpen] = useState(false);
   const [form, setForm] = useState<TaskFormState>(emptyForm);
   const [boardForm, setBoardForm] = useState<BoardFormState>(emptyBoardForm);
+  const [boardMemberSearch, setBoardMemberSearch] = useState("");
+  const [boardDepartmentSearch, setBoardDepartmentSearch] = useState("");
   const [columnForm, setColumnForm] = useState<ColumnFormState>(emptyColumnForm);
   const [labelName, setLabelName] = useState("");
   const [labelColor, setLabelColor] = useState("#38bdf8");
@@ -1720,11 +2050,54 @@ function TasksPageContent() {
   const [linkedGuests, setLinkedGuests] = useState<TaskLinkedGuest[]>([]);
   const [linkedGuestVisits, setLinkedGuestVisits] = useState<TaskLinkedGuestVisit[]>([]);
   const [linkedAttendanceRecords, setLinkedAttendanceRecords] = useState<TaskLinkedAttendanceRecord[]>([]);
+  const [taskExternalLinks, setTaskExternalLinks] = useState<TaskExternalLink[]>([]);
   const [linkedObjectsLoading, setLinkedObjectsLoading] = useState(false);
+  const [linkedItemModalOpen, setLinkedItemModalOpen] = useState(false);
+  const [linkedItemMode, setLinkedItemMode] = useState<LinkedItemMode>("document");
+  const [linkedItemTarget, setLinkedItemTarget] = useState<LinkedItemTarget>("view");
+  const [linkedItemSearch, setLinkedItemSearch] = useState("");
+  const [linkedItemCandidatesLoading, setLinkedItemCandidatesLoading] = useState(false);
+  const [availableDocuments, setAvailableDocuments] = useState<Document[]>([]);
+  const [availableEvents, setAvailableEvents] = useState<CalendarEvent[]>([]);
+  const [externalLinkUrl, setExternalLinkUrl] = useState("");
+  const [externalLinkTitle, setExternalLinkTitle] = useState("");
+  const [taskFormFilesOpen, setTaskFormFilesOpen] = useState(false);
+  const [taskFormLinksOpen, setTaskFormLinksOpen] = useState(false);
+  const [taskFormChecklistOpen, setTaskFormChecklistOpen] = useState(false);
+  const [taskFormChecklistDraft, setTaskFormChecklistDraft] = useState("");
+  const [taskFormResourcesLoading, setTaskFormResourcesLoading] = useState(false);
+  const [taskFormChecklistItems, setTaskFormChecklistItems] = useState<TaskChecklistItem[]>([]);
+  const [taskFormPendingChecklistItems, setTaskFormPendingChecklistItems] = useState<TaskFormChecklistItemDraft[]>([]);
+  const [taskFormRemovedChecklistItemIds, setTaskFormRemovedChecklistItemIds] = useState<number[]>([]);
+  const [taskFormDirtyChecklistItemIds, setTaskFormDirtyChecklistItemIds] = useState<number[]>([]);
+  const [taskFormAttachments, setTaskFormAttachments] = useState<TaskAttachment[]>([]);
+  const [taskFormDocuments, setTaskFormDocuments] = useState<TaskLinkedDocument[]>([]);
+  const [taskFormEvents, setTaskFormEvents] = useState<TaskLinkedCalendarEvent[]>([]);
+  const [taskFormExternalLinks, setTaskFormExternalLinks] = useState<TaskExternalLink[]>([]);
+  const [taskFormPendingFiles, setTaskFormPendingFiles] = useState<File[]>([]);
+  const [taskFormPendingDocuments, setTaskFormPendingDocuments] = useState<Document[]>([]);
+  const [taskFormPendingEvents, setTaskFormPendingEvents] = useState<CalendarEvent[]>([]);
+  const [taskFormPendingExternalLinks, setTaskFormPendingExternalLinks] = useState<TaskFormExternalLinkDraft[]>([]);
+  const [taskFormRemovedAttachmentIds, setTaskFormRemovedAttachmentIds] = useState<number[]>([]);
+  const [taskFormRemovedDocumentLinkIds, setTaskFormRemovedDocumentLinkIds] = useState<number[]>([]);
+  const [taskFormRemovedEventLinkIds, setTaskFormRemovedEventLinkIds] = useState<number[]>([]);
+  const [taskFormRemovedExternalLinkIds, setTaskFormRemovedExternalLinkIds] = useState<number[]>([]);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [taskComments, setTaskComments] = useState<TaskComment[]>([]);
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editingCommentDraft, setEditingCommentDraft] = useState("");
   const [taskCommentsLoading, setTaskCommentsLoading] = useState(false);
   const [commentDraft, setCommentDraft] = useState("");
+  const [attachmentsOpen, setAttachmentsOpen] = useState(false);
+  const [taskAttachments, setTaskAttachments] = useState<TaskAttachment[]>([]);
+  const [taskAttachmentsLoading, setTaskAttachmentsLoading] = useState(false);
+  const [taskAttachmentsUploading, setTaskAttachmentsUploading] = useState(false);
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  const [taskChecklist, setTaskChecklist] = useState<TaskChecklistItem[]>([]);
+  const [taskChecklistLoaded, setTaskChecklistLoaded] = useState(false);
+  const [taskChecklistLoading, setTaskChecklistLoading] = useState(false);
+  const [taskChecklistSaving, setTaskChecklistSaving] = useState(false);
+  const [taskChecklistDraft, setTaskChecklistDraft] = useState("");
   const [activityOpen, setActivityOpen] = useState(false);
   const [taskActivities, setTaskActivities] = useState<TaskActivity[]>([]);
   const [taskActivityLoading, setTaskActivityLoading] = useState(false);
@@ -1737,6 +2110,11 @@ function TasksPageContent() {
   const taskBoardSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
   const columnNodeRefs = useRef<Map<number, HTMLElement>>(new Map());
+  const taskAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const taskFormAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const taskChecklistDraftRef = useRef<HTMLInputElement | null>(null);
+  const taskFormChecklistDraftRef = useRef<HTMLInputElement | null>(null);
+  const taskFormResourcesRequestRef = useRef(0);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -1792,6 +2170,7 @@ function TasksPageContent() {
         guests,
         guestVisits,
         attendanceRecords,
+        externalLinks,
       ] = await Promise.all([
         apiClient.getTaskLinkedPosts(taskId),
         apiClient.getTaskLinkedMessages(taskId),
@@ -1803,6 +2182,7 @@ function TasksPageContent() {
         apiClient.getTaskLinkedGuests(taskId),
         apiClient.getTaskLinkedGuestVisits(taskId),
         apiClient.getTaskLinkedAttendanceRecords(taskId),
+        apiClient.getTaskExternalLinks(taskId),
       ]);
       setLinkedPosts(posts);
       setLinkedMessages(messages);
@@ -1814,6 +2194,7 @@ function TasksPageContent() {
       setLinkedGuests(guests);
       setLinkedGuestVisits(guestVisits);
       setLinkedAttendanceRecords(attendanceRecords);
+      setTaskExternalLinks(externalLinks);
     } catch (linksError) {
       setError(getTaskError(linksError, "Не удалось загрузить связанные объекты"));
     } finally {
@@ -1833,6 +2214,83 @@ function TasksPageContent() {
     }
   }, []);
 
+  const loadTaskAttachments = useCallback(async (taskId: number) => {
+    setTaskAttachmentsLoading(true);
+    try {
+      const data = await apiClient.getTaskAttachments(taskId);
+      setTaskAttachments(data);
+    } catch (attachmentsError) {
+      setError(getTaskError(attachmentsError, "Не удалось загрузить файлы задачи"));
+    } finally {
+      setTaskAttachmentsLoading(false);
+    }
+  }, []);
+
+  const loadTaskChecklist = useCallback(async (taskId: number) => {
+    setTaskChecklistLoading(true);
+    try {
+      const data = await apiClient.getTaskChecklist(taskId);
+      setTaskChecklist(data);
+      setTaskChecklistLoaded(true);
+    } catch (checklistError) {
+      setError(getTaskError(checklistError, "Не удалось загрузить чек-лист"));
+    } finally {
+      setTaskChecklistLoading(false);
+    }
+  }, []);
+
+  const clearTaskFormResources = useCallback(() => {
+    setTaskFormFilesOpen(false);
+    setTaskFormLinksOpen(false);
+    setTaskFormChecklistOpen(false);
+    setTaskFormChecklistDraft("");
+    setTaskFormResourcesLoading(false);
+    setTaskFormChecklistItems([]);
+    setTaskFormPendingChecklistItems([]);
+    setTaskFormRemovedChecklistItemIds([]);
+    setTaskFormDirtyChecklistItemIds([]);
+    setTaskFormAttachments([]);
+    setTaskFormDocuments([]);
+    setTaskFormEvents([]);
+    setTaskFormExternalLinks([]);
+    setTaskFormPendingFiles([]);
+    setTaskFormPendingDocuments([]);
+    setTaskFormPendingEvents([]);
+    setTaskFormPendingExternalLinks([]);
+    setTaskFormRemovedAttachmentIds([]);
+    setTaskFormRemovedDocumentLinkIds([]);
+    setTaskFormRemovedEventLinkIds([]);
+    setTaskFormRemovedExternalLinkIds([]);
+  }, []);
+
+  const loadTaskFormResources = useCallback(async (taskId: number) => {
+    const requestId = ++taskFormResourcesRequestRef.current;
+    setTaskFormResourcesLoading(true);
+    try {
+      const [checklist, attachments, documents, events, externalLinks] = await Promise.all([
+        apiClient.getTaskChecklist(taskId),
+        apiClient.getTaskAttachments(taskId),
+        apiClient.getTaskLinkedDocuments(taskId),
+        apiClient.getTaskLinkedEvents(taskId),
+        apiClient.getTaskExternalLinks(taskId),
+      ]);
+      if (requestId !== taskFormResourcesRequestRef.current) return;
+      setTaskFormChecklistItems(checklist);
+      setTaskFormAttachments(attachments);
+      setTaskFormDocuments(documents);
+      setTaskFormEvents(events);
+      setTaskFormExternalLinks(externalLinks);
+    } catch (resourcesError) {
+      if (requestId === taskFormResourcesRequestRef.current) {
+        setError(getTaskError(resourcesError, "Не удалось загрузить файлы и связи задачи"));
+      }
+    } finally {
+      if (requestId === taskFormResourcesRequestRef.current) {
+        setTaskFormResourcesLoading(false);
+      }
+    }
+  }, []);
+
   const loadTaskComments = useCallback(async (taskId: number) => {
     setTaskCommentsLoading(true);
     try {
@@ -1844,6 +2302,49 @@ function TasksPageContent() {
       setTaskCommentsLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!linkedItemModalOpen || linkedItemMode === "external_link") {
+      setLinkedItemCandidatesLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setLinkedItemCandidatesLoading(true);
+      try {
+        const searchValue = linkedItemSearch.trim() || undefined;
+        if (linkedItemMode === "document") {
+          const response = await apiClient.getDocuments({
+            search: searchValue,
+            page_size: 100,
+          });
+          if (!cancelled) {
+            setAvailableDocuments(extractApiResults<Document>(response));
+          }
+        } else {
+          const response = await apiClient.getCalendarEvents({
+            search: searchValue,
+            page_size: 100,
+          });
+          if (!cancelled) {
+            setAvailableEvents(extractApiResults<CalendarEvent>(response));
+          }
+        }
+      } catch (candidatesError) {
+        if (!cancelled) {
+          setError(getTaskError(candidatesError, "Не удалось загрузить доступные объекты"));
+        }
+      } finally {
+        if (!cancelled) setLinkedItemCandidatesLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [linkedItemModalOpen, linkedItemMode, linkedItemSearch]);
 
   useEffect(() => {
     selectedBoardIdRef.current = selectedBoardId;
@@ -1938,6 +2439,37 @@ function TasksPageContent() {
       const boardId = Number(data.data?.board_id);
       if (!Number.isFinite(boardId) || boardId <= 0) return;
 
+      const eventTaskId = Number(
+        data.data?.task_id ?? (
+          data.data?.model === "task" ? data.data?.object_id : undefined
+        ),
+      );
+      if (
+        data.data?.model === "checklist_item" &&
+        checklistOpen &&
+        viewTaskId &&
+        eventTaskId === viewTaskId
+      ) {
+        void loadTaskChecklist(viewTaskId);
+      }
+
+      if (
+        commentsOpen &&
+        viewTaskId &&
+        eventTaskId === viewTaskId &&
+        (
+          data.data?.event === "commented" ||
+          data.data?.event === "comment_edited" ||
+          data.data?.event === "comment_deleted"
+        )
+      ) {
+        void loadTaskComments(viewTaskId);
+      }
+
+      if (activityOpen && viewTaskId && eventTaskId === viewTaskId) {
+        void loadTaskActivity(viewTaskId);
+      }
+
       if (taskBoardSyncTimerRef.current) {
         clearTimeout(taskBoardSyncTimerRef.current);
       }
@@ -1954,7 +2486,16 @@ function TasksPageContent() {
         taskBoardSyncTimerRef.current = null;
       }
     };
-  }, [syncTaskBoardState]);
+  }, [
+    activityOpen,
+    checklistOpen,
+    commentsOpen,
+    loadTaskActivity,
+    loadTaskChecklist,
+    loadTaskComments,
+    syncTaskBoardState,
+    viewTaskId,
+  ]);
 
   useEffect(() => {
     let mounted = true;
@@ -2078,6 +2619,30 @@ function TasksPageContent() {
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [cardMenuTaskId]);
 
+  const filteredBoardMembers = useMemo(() => {
+    const query = boardMemberSearch.trim().toLowerCase();
+    if (!query) return employees;
+    return employees.filter((employee) => {
+      const searchable = [
+        displayUserName(employee),
+        employee.email,
+        employee.position?.name,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return searchable.includes(query);
+    });
+  }, [boardMemberSearch, employees]);
+
+  const filteredBoardDepartments = useMemo(() => {
+    const query = boardDepartmentSearch.trim().toLowerCase();
+    if (!query) return departments;
+    return departments.filter((department) => (
+      department.name.toLowerCase().includes(query)
+    ));
+  }, [boardDepartmentSearch, departments]);
+
   const searchedTasks = useMemo(() => {
     const tasks = board?.tasks || [];
     const query = search.trim().toLowerCase();
@@ -2146,9 +2711,34 @@ function TasksPageContent() {
     () => activeColumns.find((column) => column.id === viewTask?.column) || null,
     [activeColumns, viewTask?.column],
   );
-  const linkedObjectsCount = linkedPosts.length + linkedMessages.length + linkedEvents.length + linkedDocuments.length + linkedRequests.length + linkedProcurementRequests.length + linkedEmployees.length + linkedGuests.length + linkedGuestVisits.length + linkedAttendanceRecords.length;
+  const linkedObjectsCount = linkedPosts.length + linkedMessages.length + linkedEvents.length + linkedDocuments.length + linkedRequests.length + linkedProcurementRequests.length + linkedEmployees.length + linkedGuests.length + linkedGuestVisits.length + linkedAttendanceRecords.length + taskExternalLinks.length;
   const linkedObjectsBadgeCount = viewTask?.linked_objects_count ?? linkedObjectsCount;
   const commentsBadgeCount = viewTask?.comments_count ?? taskComments.length;
+  const attachmentsBadgeCount = viewTask?.attachments_count ?? taskAttachments.length;
+  const checklistBadgeTotal = taskChecklistLoaded
+    ? taskChecklist.length
+    : (viewTask?.checklist_total || 0);
+  const checklistBadgeCompleted = taskChecklistLoaded
+    ? taskChecklist.filter((item) => item.is_completed).length
+    : (viewTask?.checklist_completed || 0);
+  const taskFormChecklistTotal = taskFormChecklistItems.length + taskFormPendingChecklistItems.length;
+  const taskFormChecklistCompleted = (
+    taskFormChecklistItems.filter((item) => item.is_completed).length +
+    taskFormPendingChecklistItems.filter((item) => item.is_completed).length
+  );
+  const taskFormChecklistHasInvalidTitle = [
+    ...taskFormChecklistItems.map((item) => item.title),
+    ...taskFormPendingChecklistItems.map((item) => item.title),
+  ].some((title) => !title.trim());
+  const taskFormAttachmentsCount = taskFormAttachments.length + taskFormPendingFiles.length;
+  const taskFormLinksCount = (
+    taskFormDocuments.length +
+    taskFormEvents.length +
+    taskFormExternalLinks.length +
+    taskFormPendingDocuments.length +
+    taskFormPendingEvents.length +
+    taskFormPendingExternalLinks.length
+  );
 
   useEffect(() => {
     if (
@@ -2171,12 +2761,20 @@ function TasksPageContent() {
       setLinkedGuests([]);
       setLinkedGuestVisits([]);
       setLinkedAttendanceRecords([]);
+      setTaskExternalLinks([]);
       setTaskActivities([]);
       setTaskComments([]);
+      setTaskAttachments([]);
+      setTaskChecklist([]);
+      setTaskChecklistLoaded(false);
+      setTaskChecklistDraft("");
       setCommentDraft("");
       setLinkedObjectsOpen(false);
       setCommentsOpen(false);
+      setAttachmentsOpen(false);
+      setChecklistOpen(false);
       setActivityOpen(false);
+      setLinkedItemModalOpen(false);
       return;
     }
 
@@ -2191,12 +2789,24 @@ function TasksPageContent() {
   }, [commentsOpen, loadTaskComments, viewTask?.comments_count, viewTaskId]);
 
   useEffect(() => {
+    if (!viewTaskId || !attachmentsOpen) return;
+    void loadTaskAttachments(viewTaskId);
+  }, [attachmentsOpen, loadTaskAttachments, viewTask?.attachments_count, viewTaskId]);
+
+  useEffect(() => {
+    if (!viewTaskId || !checklistOpen) return;
+    void loadTaskChecklist(viewTaskId);
+  }, [checklistOpen, loadTaskChecklist, viewTaskId]);
+
+  useEffect(() => {
     if (!viewTaskId || !activityOpen) return;
     void loadTaskActivity(viewTaskId);
   }, [activityOpen, loadTaskActivity, viewTask?.updated_at, viewTaskId]);
 
   const openCreateTask = useCallback((columnId?: number) => {
     const firstColumn = board?.columns.find((column) => !column.is_archived);
+    taskFormResourcesRequestRef.current += 1;
+    clearTaskFormResources();
     setForm({
       ...emptyForm,
       column: columnId || firstColumn?.id || "",
@@ -2204,7 +2814,7 @@ function TasksPageContent() {
     setLabelName("");
     setLabelColor("#38bdf8");
     setTaskModalOpen(true);
-  }, [board?.columns]);
+  }, [board?.columns, clearTaskFormResources]);
 
   const openTaskView = useCallback((task: TaskCard) => {
     setViewTaskId(task.id);
@@ -2212,6 +2822,8 @@ function TasksPageContent() {
     setViewColumnMenuOpen(false);
     setLinkedObjectsOpen(false);
     setCommentsOpen(false);
+    setAttachmentsOpen(false);
+    setChecklistOpen(true);
     setActivityOpen(false);
     setLinkedMessages([]);
     setLinkedEvents([]);
@@ -2223,6 +2835,12 @@ function TasksPageContent() {
     setLinkedGuestVisits([]);
     setLinkedAttendanceRecords([]);
     setTaskComments([]);
+    setEditingCommentId(null);
+    setEditingCommentDraft("");
+    setTaskAttachments([]);
+    setTaskChecklist([]);
+    setTaskChecklistLoaded(false);
+    setTaskChecklistDraft("");
     setTaskActivities([]);
     setCommentDraft("");
     setCardMenuTaskId(null);
@@ -2233,7 +2851,7 @@ function TasksPageContent() {
   }, []);
 
   const closeTaskView = useCallback(() => {
-    if (saving) return;
+    if (saving || taskAttachmentsUploading || taskChecklistSaving) return;
     setViewTaskId(null);
     setTaskMenuOpen(false);
     setViewColumnMenuOpen(false);
@@ -2247,14 +2865,24 @@ function TasksPageContent() {
     setLinkedGuestVisits([]);
     setLinkedAttendanceRecords([]);
     setTaskComments([]);
+    setEditingCommentId(null);
+    setEditingCommentDraft("");
+    setTaskAttachments([]);
+    setTaskChecklist([]);
+    setTaskChecklistLoaded(false);
     setTaskActivities([]);
     setLinkedObjectsOpen(false);
     setCommentsOpen(false);
+    setAttachmentsOpen(false);
+    setChecklistOpen(false);
     setActivityOpen(false);
     setCommentDraft("");
-  }, [saving]);
+    setTaskChecklistDraft("");
+  }, [saving, taskAttachmentsUploading, taskChecklistSaving]);
 
   const openEditTask = useCallback((task: TaskCard) => {
+    taskFormResourcesRequestRef.current += 1;
+    clearTaskFormResources();
     setForm({
       id: task.id,
       title: task.title,
@@ -2272,17 +2900,22 @@ function TasksPageContent() {
     setViewColumnMenuOpen(false);
     setCardMenuTaskId(null);
     setTaskModalOpen(true);
-  }, []);
+    void loadTaskFormResources(task.id);
+  }, [clearTaskFormResources, loadTaskFormResources]);
 
   const closeTaskModal = useCallback(() => {
     if (saving) return;
+    taskFormResourcesRequestRef.current += 1;
     setTaskModalOpen(false);
     setForm(emptyForm);
     setLabelName("");
-  }, [saving]);
+    clearTaskFormResources();
+  }, [clearTaskFormResources, saving]);
 
   const openCreateBoard = useCallback(() => {
     setBoardForm(emptyBoardForm);
+    setBoardMemberSearch("");
+    setBoardDepartmentSearch("");
     setBoardActionsMenuOpen(false);
     setBoardModalOpen(true);
   }, []);
@@ -2295,10 +2928,14 @@ function TasksPageContent() {
       id: board.id,
       name: board.name || "",
       description: board.description || "",
-      access: memberIds.length > 0 || departmentIds.length > 0 ? "restricted" : "all",
+      access: board.access_scope || (
+        memberIds.length > 0 || departmentIds.length > 0 ? "restricted" : "all"
+      ),
       member_ids: memberIds,
       department_ids: departmentIds,
     });
+    setBoardMemberSearch("");
+    setBoardDepartmentSearch("");
     setBoardActionsMenuOpen(false);
     setBoardModalOpen(true);
   }, [board]);
@@ -2307,6 +2944,8 @@ function TasksPageContent() {
     if (saving) return;
     setBoardModalOpen(false);
     setBoardForm(emptyBoardForm);
+    setBoardMemberSearch("");
+    setBoardDepartmentSearch("");
   }, [saving]);
 
   const openCreateColumn = useCallback(() => {
@@ -2427,6 +3066,7 @@ function TasksPageContent() {
       const payload = {
         name: boardForm.name.trim(),
         description: boardForm.description.trim(),
+        access_scope: boardForm.access,
         members: boardForm.access === "restricted" ? boardForm.member_ids : [],
         departments: boardForm.access === "restricted" ? boardForm.department_ids : [],
       };
@@ -2482,8 +3122,110 @@ function TasksPageContent() {
     }
   }, [board, columnForm.color, columnForm.is_done, columnForm.name, loadBoard]);
 
+  const persistTaskFormResources = useCallback(async (taskId: number) => {
+    for (const itemId of [...taskFormRemovedChecklistItemIds]) {
+      await apiClient.deleteTaskChecklistItem(taskId, itemId);
+      setTaskFormRemovedChecklistItemIds((current) => current.filter((id) => id !== itemId));
+    }
+
+    for (const itemId of [...taskFormDirtyChecklistItemIds]) {
+      const item = taskFormChecklistItems.find((currentItem) => currentItem.id === itemId);
+      if (!item) continue;
+      const updated = await apiClient.updateTaskChecklistItem(taskId, item.id, {
+        title: item.title.trim(),
+        is_completed: item.is_completed,
+      });
+      setTaskFormDirtyChecklistItemIds((current) => current.filter((id) => id !== itemId));
+      setTaskFormChecklistItems((current) => current.map((currentItem) => (
+        currentItem.id === updated.id ? updated : currentItem
+      )));
+    }
+
+    for (const item of [...taskFormPendingChecklistItems]) {
+      const created = await apiClient.addTaskChecklistItem(taskId, {
+        title: item.title.trim(),
+        position: item.position,
+        is_completed: item.is_completed,
+      });
+      setTaskFormPendingChecklistItems((current) => (
+        current.filter((currentItem) => currentItem.key !== item.key)
+      ));
+      setTaskFormChecklistItems((current) => [...current, created]);
+    }
+
+    for (const attachmentId of [...taskFormRemovedAttachmentIds]) {
+      await apiClient.deleteTaskAttachment(taskId, attachmentId);
+      setTaskFormRemovedAttachmentIds((current) => (
+        current.filter((id) => id !== attachmentId)
+      ));
+    }
+
+    for (const linkId of [...taskFormRemovedDocumentLinkIds]) {
+      await apiClient.unlinkTaskDocument(taskId, linkId);
+      setTaskFormRemovedDocumentLinkIds((current) => current.filter((id) => id !== linkId));
+    }
+
+    for (const linkId of [...taskFormRemovedEventLinkIds]) {
+      await apiClient.unlinkTaskCalendarEvent(taskId, linkId);
+      setTaskFormRemovedEventLinkIds((current) => current.filter((id) => id !== linkId));
+    }
+
+    for (const linkId of [...taskFormRemovedExternalLinkIds]) {
+      await apiClient.deleteTaskExternalLink(taskId, linkId);
+      setTaskFormRemovedExternalLinkIds((current) => current.filter((id) => id !== linkId));
+    }
+
+    for (const document of [...taskFormPendingDocuments]) {
+      const linked = await apiClient.linkTaskDocument(taskId, document.id);
+      setTaskFormPendingDocuments((current) => current.filter((item) => item.id !== document.id));
+      setTaskFormDocuments((current) => (
+        current.some((item) => item.id === linked.id) ? current : [...current, linked]
+      ));
+    }
+
+    for (const event of [...taskFormPendingEvents]) {
+      const linked = await apiClient.linkTaskCalendarEvent(taskId, event.id);
+      setTaskFormPendingEvents((current) => current.filter((item) => item.id !== event.id));
+      setTaskFormEvents((current) => (
+        current.some((item) => item.id === linked.id) ? current : [...current, linked]
+      ));
+    }
+
+    for (const link of [...taskFormPendingExternalLinks]) {
+      const created = await apiClient.addTaskExternalLink(taskId, {
+        url: link.url,
+        title: link.title || undefined,
+      });
+      setTaskFormPendingExternalLinks((current) => (
+        current.filter((item) => item.key !== link.key)
+      ));
+      setTaskFormExternalLinks((current) => (
+        current.some((item) => item.id === created.id) ? current : [...current, created]
+      ));
+    }
+
+    for (const file of [...taskFormPendingFiles]) {
+      const uploaded = await apiClient.uploadTaskAttachments(taskId, [file]);
+      setTaskFormPendingFiles((current) => current.filter((item) => item !== file));
+      setTaskFormAttachments((current) => [...current, ...uploaded]);
+    }
+  }, [
+    taskFormChecklistItems,
+    taskFormDirtyChecklistItemIds,
+    taskFormPendingDocuments,
+    taskFormPendingEvents,
+    taskFormPendingExternalLinks,
+    taskFormPendingFiles,
+    taskFormPendingChecklistItems,
+    taskFormRemovedAttachmentIds,
+    taskFormRemovedChecklistItemIds,
+    taskFormRemovedDocumentLinkIds,
+    taskFormRemovedEventLinkIds,
+    taskFormRemovedExternalLinkIds,
+  ]);
+
   const saveTask = useCallback(async () => {
-    if (!board || !form.title.trim() || !form.column) return;
+    if (!board || !form.title.trim() || !form.column || taskFormChecklistHasInvalidTitle) return;
     setSaving(true);
     setError(null);
     const payload = {
@@ -2496,20 +3238,46 @@ function TasksPageContent() {
       due_date: form.due_date || null,
       label_ids: form.label_ids,
     };
+    let savedTaskId = form.id || null;
+    let primaryDataSaved = false;
     try {
-      if (form.id) {
-        await apiClient.updateTask(form.id, payload);
-      } else {
-        await apiClient.createTask(payload);
+      const savedTask = form.id
+        ? await apiClient.updateTask(form.id, payload)
+        : await apiClient.createTask(payload);
+      savedTaskId = savedTask.id;
+      primaryDataSaved = true;
+      if (!form.id) {
+        setForm((current) => ({ ...current, id: savedTask.id }));
       }
+
+      await persistTaskFormResources(savedTask.id);
       await loadBoard(board.id);
       closeTaskModal();
     } catch (saveError) {
-      setError(getTaskError(saveError, "Не удалось сохранить задачу"));
+      if (primaryDataSaved && savedTaskId) {
+        try {
+          await loadBoard(board.id);
+        } catch {
+          // Исходная ошибка сохранения ресурса важнее ошибки обновления доски.
+        }
+        setError(getTaskError(
+          saveError,
+          "Основные данные сохранены, но не удалось сохранить чек-лист, файлы или связи",
+        ));
+      } else {
+        setError(getTaskError(saveError, "Не удалось сохранить задачу"));
+      }
     } finally {
       setSaving(false);
     }
-  }, [board, closeTaskModal, form, loadBoard]);
+  }, [
+    board,
+    closeTaskModal,
+    form,
+    loadBoard,
+    persistTaskFormResources,
+    taskFormChecklistHasInvalidTitle,
+  ]);
 
   const createLabel = useCallback(async () => {
     if (!board || !labelName.trim()) return;
@@ -2570,6 +3338,381 @@ function TasksPageContent() {
     await deleteTask(viewTask);
   }, [deleteTask, viewTask]);
 
+  const uploadViewedTaskAttachments = useCallback(async (files: File[]) => {
+    if (!board || !viewTask || taskAttachmentsUploading || files.length === 0) return;
+
+    setTaskAttachmentsUploading(true);
+    setError(null);
+    try {
+      const created = await apiClient.uploadTaskAttachments(viewTask.id, files);
+      setTaskAttachments((current) => [...current, ...created]);
+      await loadBoard(board.id);
+      if (activityOpen) await loadTaskActivity(viewTask.id);
+    } catch (attachmentError) {
+      setError(getTaskError(attachmentError, "Не удалось загрузить файлы"));
+    } finally {
+      setTaskAttachmentsUploading(false);
+    }
+  }, [activityOpen, board, loadBoard, loadTaskActivity, taskAttachmentsUploading, viewTask]);
+
+  const downloadViewedTaskAttachment = useCallback(async (attachment: TaskAttachment) => {
+    if (!viewTask) return;
+    setError(null);
+    try {
+      const { blob, filename } = await apiClient.downloadTaskAttachment(
+        viewTask.id,
+        attachment,
+      );
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (attachmentError) {
+      setError(getTaskError(attachmentError, "Не удалось скачать файл"));
+    }
+  }, [viewTask]);
+
+  const deleteViewedTaskAttachment = useCallback(async (attachment: TaskAttachment) => {
+    if (!board || !viewTask || taskAttachmentsUploading) return;
+    if (!window.confirm(`Удалить файл "${attachment.file_name}"?`)) return;
+
+    setTaskAttachmentsUploading(true);
+    setError(null);
+    try {
+      await apiClient.deleteTaskAttachment(viewTask.id, attachment.id);
+      setTaskAttachments((current) => current.filter((item) => item.id !== attachment.id));
+      await loadBoard(board.id);
+      if (activityOpen) await loadTaskActivity(viewTask.id);
+    } catch (attachmentError) {
+      setError(getTaskError(attachmentError, "Не удалось удалить файл"));
+    } finally {
+      setTaskAttachmentsUploading(false);
+    }
+  }, [activityOpen, board, loadBoard, loadTaskActivity, taskAttachmentsUploading, viewTask]);
+
+  const addViewedTaskChecklistItem = useCallback(async () => {
+    const title = taskChecklistDraft.trim();
+    if (!board || !viewTask || !title || taskChecklistSaving) return;
+
+    setTaskChecklistSaving(true);
+    setError(null);
+    try {
+      const created = await apiClient.addTaskChecklistItem(viewTask.id, { title });
+      setTaskChecklist((current) => [
+        ...current.filter((item) => item.id !== created.id),
+        created,
+      ].sort((left, right) => left.position - right.position || left.id - right.id));
+      setTaskChecklistLoaded(true);
+      setTaskChecklistDraft("");
+      await loadBoard(board.id);
+      if (activityOpen) await loadTaskActivity(viewTask.id);
+      window.requestAnimationFrame(() => taskChecklistDraftRef.current?.focus());
+    } catch (checklistError) {
+      setError(getTaskError(checklistError, "Не удалось добавить пункт чек-листа"));
+    } finally {
+      setTaskChecklistSaving(false);
+    }
+  }, [
+    activityOpen,
+    board,
+    loadBoard,
+    loadTaskActivity,
+    taskChecklistDraft,
+    taskChecklistSaving,
+    viewTask,
+  ]);
+
+  const toggleViewedTaskChecklistItem = useCallback(async (item: TaskChecklistItem) => {
+    if (!board || !viewTask || taskChecklistSaving) return;
+
+    setTaskChecklistSaving(true);
+    setError(null);
+    try {
+      const updated = await apiClient.updateTaskChecklistItem(viewTask.id, item.id, {
+        is_completed: !item.is_completed,
+      });
+      setTaskChecklist((current) => current.map((currentItem) => (
+        currentItem.id === updated.id ? updated : currentItem
+      )));
+      setTaskChecklistLoaded(true);
+      await loadBoard(board.id);
+      if (activityOpen) await loadTaskActivity(viewTask.id);
+    } catch (checklistError) {
+      setError(getTaskError(checklistError, "Не удалось изменить пункт чек-листа"));
+    } finally {
+      setTaskChecklistSaving(false);
+    }
+  }, [activityOpen, board, loadBoard, loadTaskActivity, taskChecklistSaving, viewTask]);
+
+  const deleteViewedTaskChecklistItem = useCallback(async (item: TaskChecklistItem) => {
+    if (!board || !viewTask || taskChecklistSaving) return;
+
+    setTaskChecklistSaving(true);
+    setError(null);
+    try {
+      await apiClient.deleteTaskChecklistItem(viewTask.id, item.id);
+      setTaskChecklist((current) => current.filter((currentItem) => currentItem.id !== item.id));
+      setTaskChecklistLoaded(true);
+      await loadBoard(board.id);
+      if (activityOpen) await loadTaskActivity(viewTask.id);
+    } catch (checklistError) {
+      setError(getTaskError(checklistError, "Не удалось удалить пункт чек-листа"));
+    } finally {
+      setTaskChecklistSaving(false);
+    }
+  }, [activityOpen, board, loadBoard, loadTaskActivity, taskChecklistSaving, viewTask]);
+
+  const addTaskFormChecklistItem = useCallback(() => {
+    const title = taskFormChecklistDraft.trim();
+    if (!title) return;
+    const maxPosition = Math.max(
+      0,
+      ...taskFormChecklistItems.map((item) => item.position),
+      ...taskFormPendingChecklistItems.map((item) => item.position),
+    );
+    setTaskFormPendingChecklistItems((current) => [
+      ...current,
+      {
+        key: `checklist-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        title,
+        position: maxPosition + 1000,
+        is_completed: false,
+      },
+    ]);
+    setTaskFormChecklistDraft("");
+    setTaskFormChecklistOpen(true);
+    window.requestAnimationFrame(() => taskFormChecklistDraftRef.current?.focus());
+  }, [taskFormChecklistDraft, taskFormChecklistItems, taskFormPendingChecklistItems]);
+
+  const updateExistingTaskFormChecklistItem = useCallback((
+    itemId: number,
+    patch: Partial<Pick<TaskChecklistItem, "title" | "is_completed">>,
+  ) => {
+    setTaskFormChecklistItems((current) => current.map((item) => (
+      item.id === itemId ? { ...item, ...patch } : item
+    )));
+    setTaskFormDirtyChecklistItemIds((current) => (
+      current.includes(itemId) ? current : [...current, itemId]
+    ));
+  }, []);
+
+  const updatePendingTaskFormChecklistItem = useCallback((
+    key: string,
+    patch: Partial<Pick<TaskFormChecklistItemDraft, "title" | "is_completed">>,
+  ) => {
+    setTaskFormPendingChecklistItems((current) => current.map((item) => (
+      item.key === key ? { ...item, ...patch } : item
+    )));
+  }, []);
+
+  const removeExistingTaskFormChecklistItem = useCallback((item: TaskChecklistItem) => {
+    setTaskFormChecklistItems((current) => current.filter((currentItem) => currentItem.id !== item.id));
+    setTaskFormRemovedChecklistItemIds((current) => (
+      current.includes(item.id) ? current : [...current, item.id]
+    ));
+    setTaskFormDirtyChecklistItemIds((current) => current.filter((id) => id !== item.id));
+  }, []);
+
+  const addFilesToTaskForm = useCallback((files: File[]) => {
+    if (files.length === 0) return;
+    setTaskFormFilesOpen(true);
+    setTaskFormPendingFiles((current) => {
+      const keys = new Set(
+        current.map((file) => `${file.name}:${file.size}:${file.lastModified}`),
+      );
+      return [
+        ...current,
+        ...files.filter((file) => {
+          const key = `${file.name}:${file.size}:${file.lastModified}`;
+          if (keys.has(key)) return false;
+          keys.add(key);
+          return true;
+        }),
+      ];
+    });
+  }, []);
+
+  const removeExistingTaskFormAttachment = useCallback((attachment: TaskAttachment) => {
+    setTaskFormAttachments((current) => current.filter((item) => item.id !== attachment.id));
+    setTaskFormRemovedAttachmentIds((current) => [...current, attachment.id]);
+  }, []);
+
+  const removeExistingTaskFormDocument = useCallback((link: TaskLinkedDocument) => {
+    setTaskFormDocuments((current) => current.filter((item) => item.id !== link.id));
+    setTaskFormRemovedDocumentLinkIds((current) => [...current, link.id]);
+  }, []);
+
+  const removeExistingTaskFormEvent = useCallback((link: TaskLinkedCalendarEvent) => {
+    setTaskFormEvents((current) => current.filter((item) => item.id !== link.id));
+    setTaskFormRemovedEventLinkIds((current) => [...current, link.id]);
+  }, []);
+
+  const removeExistingTaskFormExternalLink = useCallback((link: TaskExternalLink) => {
+    setTaskFormExternalLinks((current) => current.filter((item) => item.id !== link.id));
+    setTaskFormRemovedExternalLinkIds((current) => [...current, link.id]);
+  }, []);
+
+  const openLinkedItemModalForView = useCallback(() => {
+    if (!viewTask) return;
+    setLinkedItemTarget("view");
+    setLinkedItemMode("document");
+    setLinkedItemSearch("");
+    setExternalLinkUrl("");
+    setExternalLinkTitle("");
+    setLinkedObjectsOpen(true);
+    setLinkedItemModalOpen(true);
+  }, [viewTask]);
+
+  const openLinkedItemModalForForm = useCallback(() => {
+    if (!taskModalOpen) return;
+    setLinkedItemTarget("form");
+    setLinkedItemMode("document");
+    setLinkedItemSearch("");
+    setExternalLinkUrl("");
+    setExternalLinkTitle("");
+    setTaskFormLinksOpen(true);
+    setLinkedItemModalOpen(true);
+  }, [taskModalOpen]);
+
+  const closeLinkedItemModal = useCallback(() => {
+    if (saving) return;
+    setLinkedItemModalOpen(false);
+    setLinkedItemSearch("");
+    setExternalLinkUrl("");
+    setExternalLinkTitle("");
+  }, [saving]);
+
+  const refreshViewedTaskLinks = useCallback(async () => {
+    if (!board || !viewTask) return;
+    await Promise.all([
+      loadTaskLinkedObjects(viewTask.id),
+      loadBoard(board.id),
+    ]);
+    if (activityOpen) await loadTaskActivity(viewTask.id);
+  }, [activityOpen, board, loadBoard, loadTaskActivity, loadTaskLinkedObjects, viewTask]);
+
+  const linkDocumentToViewedTask = useCallback(async (documentId: number) => {
+    if (!viewTask || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await apiClient.linkTaskDocument(viewTask.id, documentId);
+      await refreshViewedTaskLinks();
+      setLinkedItemModalOpen(false);
+    } catch (linkError) {
+      setError(getTaskError(linkError, "Не удалось связать документ с задачей"));
+    } finally {
+      setSaving(false);
+    }
+  }, [refreshViewedTaskLinks, saving, viewTask]);
+
+  const linkEventToViewedTask = useCallback(async (eventId: number) => {
+    if (!viewTask || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await apiClient.linkTaskCalendarEvent(viewTask.id, eventId);
+      await refreshViewedTaskLinks();
+      setLinkedItemModalOpen(false);
+    } catch (linkError) {
+      setError(getTaskError(linkError, "Не удалось связать событие с задачей"));
+    } finally {
+      setSaving(false);
+    }
+  }, [refreshViewedTaskLinks, saving, viewTask]);
+
+  const addExternalLinkToViewedTask = useCallback(async () => {
+    if (!viewTask || saving) return;
+    const url = normalizeExternalUrl(externalLinkUrl);
+    if (!url) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      await apiClient.addTaskExternalLink(viewTask.id, {
+        url,
+        title: externalLinkTitle.trim() || undefined,
+      });
+      await refreshViewedTaskLinks();
+      setLinkedItemModalOpen(false);
+      setExternalLinkUrl("");
+      setExternalLinkTitle("");
+    } catch (linkError) {
+      setError(getTaskError(linkError, "Не удалось добавить ссылку"));
+    } finally {
+      setSaving(false);
+    }
+  }, [externalLinkTitle, externalLinkUrl, refreshViewedTaskLinks, saving, viewTask]);
+
+  const addDocumentToTaskForm = useCallback((document: Document) => {
+    const isExisting = taskFormDocuments.some((link) => link.document_id === document.id);
+    const isPending = taskFormPendingDocuments.some((item) => item.id === document.id);
+    if (isExisting || isPending) return;
+    setTaskFormPendingDocuments((current) => [...current, document]);
+    setTaskFormLinksOpen(true);
+    setLinkedItemModalOpen(false);
+  }, [taskFormDocuments, taskFormPendingDocuments]);
+
+  const addEventToTaskForm = useCallback((event: CalendarEvent) => {
+    const isExisting = taskFormEvents.some((link) => link.event_id === event.id);
+    const isPending = taskFormPendingEvents.some((item) => item.id === event.id);
+    if (isExisting || isPending) return;
+    setTaskFormPendingEvents((current) => [...current, event]);
+    setTaskFormLinksOpen(true);
+    setLinkedItemModalOpen(false);
+  }, [taskFormEvents, taskFormPendingEvents]);
+
+  const addExternalLinkToTaskForm = useCallback(() => {
+    const url = normalizeExternalUrl(externalLinkUrl);
+    if (!url) return;
+    const duplicate = (
+      taskFormExternalLinks.some((link) => link.url === url) ||
+      taskFormPendingExternalLinks.some((link) => link.url === url)
+    );
+    if (duplicate) {
+      setError("Эта ссылка уже добавлена к задаче");
+      return;
+    }
+
+    setTaskFormPendingExternalLinks((current) => [
+      ...current,
+      {
+        key: `${Date.now()}-${current.length}`,
+        url,
+        title: externalLinkTitle.trim(),
+      },
+    ]);
+    setTaskFormLinksOpen(true);
+    setLinkedItemModalOpen(false);
+    setExternalLinkUrl("");
+    setExternalLinkTitle("");
+  }, [
+    externalLinkTitle,
+    externalLinkUrl,
+    taskFormExternalLinks,
+    taskFormPendingExternalLinks,
+  ]);
+
+  const deleteExternalLinkFromViewedTask = useCallback(async (linkId: number) => {
+    if (!viewTask || saving) return;
+    if (!window.confirm("Удалить ссылку из задачи?")) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      await apiClient.deleteTaskExternalLink(viewTask.id, linkId);
+      await refreshViewedTaskLinks();
+    } catch (linkError) {
+      setError(getTaskError(linkError, "Не удалось удалить ссылку"));
+    } finally {
+      setSaving(false);
+    }
+  }, [refreshViewedTaskLinks, saving, viewTask]);
+
   const addViewedTaskComment = useCallback(async () => {
     if (!board || !viewTask || saving || !commentDraft.trim()) return;
 
@@ -2577,15 +3720,50 @@ function TasksPageContent() {
     setError(null);
     try {
       const created = await apiClient.addTaskComment(viewTask.id, commentDraft.trim());
-      setTaskComments((current) => [...current, created]);
+      setTaskComments((current) => [
+        ...current.filter((comment) => comment.id !== created.id),
+        created,
+      ]);
       setCommentDraft("");
       await loadBoard(board.id);
+      if (activityOpen) await loadTaskActivity(viewTask.id);
     } catch (commentError) {
       setError(getTaskError(commentError, "Не удалось добавить комментарий"));
     } finally {
       setSaving(false);
     }
-  }, [board, commentDraft, loadBoard, saving, viewTask]);
+  }, [activityOpen, board, commentDraft, loadBoard, loadTaskActivity, saving, viewTask]);
+
+  const beginEditingViewedTaskComment = useCallback((comment: TaskComment) => {
+    setEditingCommentId(comment.id);
+    setEditingCommentDraft(comment.text);
+  }, []);
+
+  const cancelEditingViewedTaskComment = useCallback(() => {
+    setEditingCommentId(null);
+    setEditingCommentDraft("");
+  }, []);
+
+  const updateViewedTaskComment = useCallback(async () => {
+    const text = editingCommentDraft.trim();
+    if (!viewTask || !editingCommentId || !text || saving) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await apiClient.updateTaskComment(viewTask.id, editingCommentId, text);
+      setTaskComments((current) => current.map((comment) => (
+        comment.id === updated.id ? updated : comment
+      )));
+      setEditingCommentId(null);
+      setEditingCommentDraft("");
+      if (activityOpen) await loadTaskActivity(viewTask.id);
+    } catch (commentError) {
+      setError(getTaskError(commentError, "Не удалось изменить комментарий"));
+    } finally {
+      setSaving(false);
+    }
+  }, [activityOpen, editingCommentDraft, editingCommentId, loadTaskActivity, saving, viewTask]);
 
   const deleteViewedTaskComment = useCallback(async (commentId: number) => {
     if (!board || !viewTask || saving) return;
@@ -2595,13 +3773,18 @@ function TasksPageContent() {
     try {
       await apiClient.deleteTaskComment(viewTask.id, commentId);
       setTaskComments((current) => current.filter((comment) => comment.id !== commentId));
+      if (editingCommentId === commentId) {
+        setEditingCommentId(null);
+        setEditingCommentDraft("");
+      }
       await loadBoard(board.id);
+      if (activityOpen) await loadTaskActivity(viewTask.id);
     } catch (commentError) {
       setError(getTaskError(commentError, "Не удалось удалить комментарий"));
     } finally {
       setSaving(false);
     }
-  }, [board, loadBoard, saving, viewTask]);
+  }, [activityOpen, board, editingCommentId, loadBoard, loadTaskActivity, saving, viewTask]);
 
   const unlinkPostFromViewedTask = useCallback(async (linkId: number) => {
     if (!board || !viewTask || saving) return;
@@ -2794,6 +3977,70 @@ function TasksPageContent() {
     }
   }, [activityOpen, board, loadBoard, loadTaskActivity, saving, viewTask]);
 
+  const claimTask = useCallback(async (task: TaskCard) => {
+    if (
+      !board ||
+      task.assignee ||
+      task.completed_at ||
+      claimingTaskId !== null
+    ) {
+      return;
+    }
+
+    setClaimingTaskId(task.id);
+    setCardMenuTaskId(null);
+    setError(null);
+    try {
+      await apiClient.claimTask(task.id);
+      await loadBoard(board.id);
+      if (activityOpen && viewTaskId === task.id) {
+        await loadTaskActivity(task.id);
+      }
+    } catch (claimError) {
+      setError(getTaskError(claimError, "Не удалось взять задачу в работу"));
+      await loadBoard(board.id);
+    } finally {
+      setClaimingTaskId(null);
+    }
+  }, [activityOpen, board, claimingTaskId, loadBoard, loadTaskActivity, viewTaskId]);
+
+  const completeTask = useCallback(async (task: TaskCard) => {
+    if (
+      !board ||
+      !user?.id ||
+      task.assignee?.id !== user.id ||
+      task.completed_at ||
+      completingTaskId !== null
+    ) {
+      return;
+    }
+
+    setCompletingTaskId(task.id);
+    setCardMenuTaskId(null);
+    setViewColumnMenuOpen(false);
+    setError(null);
+    try {
+      await apiClient.completeTask(task.id);
+      await loadBoard(board.id);
+      if (activityOpen && viewTaskId === task.id) {
+        await loadTaskActivity(task.id);
+      }
+    } catch (completeError) {
+      setError(getTaskError(completeError, "Не удалось завершить задачу"));
+      await loadBoard(board.id);
+    } finally {
+      setCompletingTaskId(null);
+    }
+  }, [
+    activityOpen,
+    board,
+    completingTaskId,
+    loadBoard,
+    loadTaskActivity,
+    user?.id,
+    viewTaskId,
+  ]);
+
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const taskId = Number(String(event.active.id).replace("task-", ""));
     setActiveTaskId(Number.isFinite(taskId) ? taskId : null);
@@ -2853,7 +4100,7 @@ function TasksPageContent() {
               <button
                 type="button"
                 onClick={() => changeDesktopWideMode(!desktopWideMode)}
-                className="app-action-secondary hidden h-10 w-10 items-center justify-center rounded-lg lg:inline-flex"
+                className="app-action-ghost hidden h-8 w-8 items-center justify-center rounded-md lg:inline-flex"
                 title={desktopWideMode ? "Вернуть обычный вид" : "Развернуть доску"}
                 aria-label={desktopWideMode ? "Вернуть обычный вид" : "Развернуть доску"}
                 aria-pressed={desktopWideMode}
@@ -3105,6 +4352,11 @@ function TasksPageContent() {
                   onOpenTask={openTaskView}
                   onEditTask={openEditTask}
                   onDeleteTask={deleteTask}
+                  currentUserId={user?.id}
+                  claimingTaskId={claimingTaskId}
+                  onClaimTask={claimTask}
+                  completingTaskId={completingTaskId}
+                  onCompleteTask={completeTask}
                   openMenuTaskId={cardMenuTaskId}
                   menuRef={cardMenuRef}
                   onToggleTaskMenu={toggleCardTaskMenu}
@@ -3174,7 +4426,7 @@ function TasksPageContent() {
 
           <div>
             <span className="app-text-muted mb-2 block text-xs font-medium">Доступ</span>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-2 sm:grid-cols-3">
               <button
                 type="button"
                 onClick={() => setBoardForm((current) => ({ ...current, access: "all" }))}
@@ -3185,6 +4437,17 @@ function TasksPageContent() {
                 }`}
               >
                 Для всех
+              </button>
+              <button
+                type="button"
+                onClick={() => setBoardForm((current) => ({ ...current, access: "private" }))}
+                className={`rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
+                  boardForm.access === "private"
+                    ? "app-selected border-[var(--accent-primary)]"
+                    : "border-[var(--border-subtle)] text-[var(--muted-foreground)] hover:border-[var(--border-strong)]"
+                }`}
+              >
+                Для себя
               </button>
               <button
                 type="button"
@@ -3209,26 +4472,57 @@ function TasksPageContent() {
                     {boardForm.member_ids.length}
                   </span>
                 </div>
+                <div className="relative mb-2">
+                  <Search
+                    size={14}
+                    className="app-text-muted pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2"
+                  />
+                  <input
+                    value={boardMemberSearch}
+                    onChange={(event) => setBoardMemberSearch(event.target.value)}
+                    className="app-input w-full rounded-xl py-2 pl-8 pr-3 text-xs"
+                    placeholder="Поиск сотрудников"
+                    aria-label="Поиск сотрудников"
+                  />
+                </div>
                 <div className="tasks-column-scroll app-surface-muted max-h-52 space-y-1 overflow-y-auto rounded-xl border border-[var(--border-subtle)] p-2">
-                  {employees.length > 0 ? (
-                    employees.map((employee) => (
-                      <label
-                        key={employee.id}
-                        className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-[var(--surface-elevated)]"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={boardForm.member_ids.includes(employee.id)}
-                          onChange={() => toggleBoardMember(employee.id)}
-                          className="h-4 w-4"
-                        />
-                        <span className="min-w-0 truncate text-[var(--foreground)]">
-                          {displayUserName(employee)}
-                        </span>
-                      </label>
-                    ))
+                  {filteredBoardMembers.length > 0 ? (
+                    filteredBoardMembers.map((employee) => {
+                      const employeeName = displayUserName(employee);
+                      return (
+                        <label
+                          key={employee.id}
+                          className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-[var(--surface-elevated)]"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={boardForm.member_ids.includes(employee.id)}
+                            onChange={() => toggleBoardMember(employee.id)}
+                            className="h-4 w-4 shrink-0"
+                          />
+                          <RequestAvatar
+                            alt={employeeName}
+                            fallback={getEmployeeInitials(employee)}
+                            src={employee.avatar}
+                            size="sm"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-xs font-medium text-[var(--foreground)]">
+                              {employeeName}
+                            </span>
+                            {employee.email ? (
+                              <span className="app-text-muted block truncate text-[10px]">
+                                {employee.email}
+                              </span>
+                            ) : null}
+                          </span>
+                        </label>
+                      );
+                    })
                   ) : (
-                    <p className="app-text-muted px-2 py-4 text-center text-xs">Нет сотрудников</p>
+                    <p className="app-text-muted px-2 py-4 text-center text-xs">
+                      Сотрудники не найдены
+                    </p>
                   )}
                 </div>
               </div>
@@ -3240,9 +4534,22 @@ function TasksPageContent() {
                     {boardForm.department_ids.length}
                   </span>
                 </div>
+                <div className="relative mb-2">
+                  <Search
+                    size={14}
+                    className="app-text-muted pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2"
+                  />
+                  <input
+                    value={boardDepartmentSearch}
+                    onChange={(event) => setBoardDepartmentSearch(event.target.value)}
+                    className="app-input w-full rounded-xl py-2 pl-8 pr-3 text-xs"
+                    placeholder="Поиск отделов"
+                    aria-label="Поиск отделов"
+                  />
+                </div>
                 <div className="tasks-column-scroll app-surface-muted max-h-52 space-y-1 overflow-y-auto rounded-xl border border-[var(--border-subtle)] p-2">
-                  {departments.length > 0 ? (
-                    departments.map((department) => (
+                  {filteredBoardDepartments.length > 0 ? (
+                    filteredBoardDepartments.map((department) => (
                       <label
                         key={department.id}
                         className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-[var(--surface-elevated)]"
@@ -3259,7 +4566,9 @@ function TasksPageContent() {
                       </label>
                     ))
                   ) : (
-                    <p className="app-text-muted px-2 py-4 text-center text-xs">Нет отделов</p>
+                    <p className="app-text-muted px-2 py-4 text-center text-xs">
+                      Отделы не найдены
+                    </p>
                   )}
                 </div>
               </div>
@@ -3357,6 +4666,38 @@ function TasksPageContent() {
                   </h2>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
+                  {!viewTask.assignee && !viewTask.completed_at ? (
+                    <button
+                      type="button"
+                      onClick={() => void claimTask(viewTask)}
+                      disabled={claimingTaskId !== null}
+                      className="app-action-primary inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full disabled:cursor-wait disabled:opacity-60"
+                      title="Взять задачу в работу"
+                      aria-label="Взять задачу в работу"
+                    >
+                      {claimingTaskId === viewTask.id ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <Play size={14} />
+                      )}
+                    </button>
+                  ) : null}
+                  {viewTask.assignee?.id === user?.id && !viewTask.completed_at ? (
+                    <button
+                      type="button"
+                      onClick={() => void completeTask(viewTask)}
+                      disabled={completingTaskId !== null}
+                      className="app-action-success inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full disabled:cursor-wait disabled:opacity-60"
+                      title="Завершить задачу"
+                      aria-label="Завершить задачу"
+                    >
+                      {completingTaskId === viewTask.id ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <Check size={14} strokeWidth={2.5} />
+                      )}
+                    </button>
+                  ) : null}
                   {viewTaskColumn ? (
                     <div ref={viewColumnMenuRef} className="relative">
                       <button
@@ -3476,6 +4817,117 @@ function TasksPageContent() {
               </div>
             ) : null}
 
+            <div className="rounded-xl border border-[var(--border-subtle)]">
+              <div className="flex items-center px-1 py-1">
+                <button
+                  type="button"
+                  onClick={() => setChecklistOpen((current) => !current)}
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left"
+                  aria-expanded={checklistOpen}
+                >
+                  <ListChecks size={15} className="app-text-muted shrink-0" />
+                  <span className="truncate text-sm font-medium text-[var(--foreground)]">
+                    Чек-лист
+                  </span>
+                  <span className="app-badge rounded-full px-2 py-0.5 text-[11px]">
+                    {checklistBadgeCompleted}/{checklistBadgeTotal}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChecklistOpen((current) => !current)}
+                  className="app-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                  title={checklistOpen ? "Скрыть чек-лист" : "Показать чек-лист"}
+                  aria-label={checklistOpen ? "Скрыть чек-лист" : "Показать чек-лист"}
+                  aria-expanded={checklistOpen}
+                >
+                  <ChevronRight
+                    size={16}
+                    className={`transition-transform ${checklistOpen ? "rotate-90" : ""}`}
+                  />
+                </button>
+              </div>
+
+              {checklistOpen ? (
+                <div className="space-y-3 border-t border-[var(--border-subtle)] p-3">
+                  {taskChecklistLoading && !taskChecklistLoaded ? (
+                    <div className="app-surface-muted rounded-xl border border-[var(--border-subtle)] p-4 text-center">
+                      <Loader2 size={18} className="mx-auto animate-spin text-sky-500" />
+                    </div>
+                  ) : taskChecklist.length > 0 ? (
+                    <div className="overflow-hidden rounded-lg border border-[var(--border-subtle)]">
+                      {taskChecklist.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex min-w-0 items-center gap-3 border-b border-[var(--border-subtle)] px-3 py-2.5 last:border-b-0"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={item.is_completed}
+                            onChange={() => void toggleViewedTaskChecklistItem(item)}
+                            disabled={taskChecklistSaving}
+                            className="h-4 w-4 shrink-0 accent-sky-500"
+                            aria-label={item.is_completed ? "Вернуть пункт в работу" : "Отметить пункт выполненным"}
+                          />
+                          <span className={`app-text-wrap min-w-0 flex-1 text-sm ${
+                            item.is_completed
+                              ? "app-text-muted line-through"
+                              : "text-[var(--foreground)]"
+                          }`}>
+                            {item.title}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void deleteViewedTaskChecklistItem(item)}
+                            disabled={taskChecklistSaving}
+                            className="app-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--danger-foreground)] disabled:opacity-50"
+                            title="Удалить пункт"
+                            aria-label={`Удалить пункт ${item.title}`}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="app-surface-muted rounded-xl border border-dashed border-[var(--border-subtle)] px-3 py-4 text-center">
+                      <p className="app-text-muted text-xs">Пунктов пока нет</p>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={taskChecklistDraftRef}
+                      value={taskChecklistDraft}
+                      onChange={(event) => setTaskChecklistDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter") return;
+                        event.preventDefault();
+                        void addViewedTaskChecklistItem();
+                      }}
+                      disabled={taskChecklistSaving}
+                      className="app-input min-w-0 flex-1 rounded-xl px-3 py-2 text-sm"
+                      placeholder="Новый пункт"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void addViewedTaskChecklistItem()}
+                      disabled={taskChecklistSaving || !taskChecklistDraft.trim()}
+                      className="app-icon-button flex h-9 w-9 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
+                      title="Добавить пункт"
+                      aria-label="Добавить пункт чек-листа"
+                    >
+                      {taskChecklistSaving ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <Plus size={15} />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
             {viewTask.labels && viewTask.labels.length > 0 ? (
               <div>
                 <div className="mb-2 flex items-center gap-2">
@@ -3495,6 +4947,122 @@ function TasksPageContent() {
                 </div>
               </div>
             ) : null}
+
+            <div className="rounded-xl border border-[var(--border-subtle)]">
+              <div className="flex items-center px-1 py-1">
+                <button
+                  type="button"
+                  onClick={() => setAttachmentsOpen((current) => !current)}
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left"
+                  aria-expanded={attachmentsOpen}
+                >
+                  <Paperclip size={15} className="app-text-muted shrink-0" />
+                  <span className="truncate text-sm font-medium text-[var(--foreground)]">
+                    Файлы
+                  </span>
+                  <span className="app-badge rounded-full px-2 py-0.5 text-[11px]">
+                    {attachmentsBadgeCount}
+                  </span>
+                </button>
+                <input
+                  ref={taskAttachmentInputRef}
+                  type="file"
+                  multiple
+                  className="sr-only"
+                  disabled={taskAttachmentsUploading}
+                  onChange={(event) => {
+                    const files = Array.from(event.currentTarget.files || []);
+                    event.currentTarget.value = "";
+                    setAttachmentsOpen(true);
+                    void uploadViewedTaskAttachments(files);
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => taskAttachmentInputRef.current?.click()}
+                  disabled={taskAttachmentsUploading}
+                  className="app-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
+                  title="Добавить файлы"
+                  aria-label="Добавить файлы"
+                >
+                  {taskAttachmentsUploading ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : (
+                    <Plus size={15} />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAttachmentsOpen((current) => !current)}
+                  className="app-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                  title={attachmentsOpen ? "Скрыть файлы" : "Показать файлы"}
+                  aria-label={attachmentsOpen ? "Скрыть файлы" : "Показать файлы"}
+                  aria-expanded={attachmentsOpen}
+                >
+                  <ChevronRight
+                    size={16}
+                    className={`transition-transform ${attachmentsOpen ? "rotate-90" : ""}`}
+                  />
+                </button>
+              </div>
+
+              {attachmentsOpen ? (
+                <div className="space-y-3 border-t border-[var(--border-subtle)] p-3">
+                  {taskAttachmentsLoading ? (
+                    <div className="app-surface-muted rounded-xl border border-[var(--border-subtle)] p-4 text-center">
+                      <Loader2 size={18} className="mx-auto animate-spin text-sky-500" />
+                    </div>
+                  ) : taskAttachments.length > 0 ? (
+                    <div className="overflow-hidden rounded-lg border border-[var(--border-subtle)]">
+                      {taskAttachments.map((attachment) => (
+                        <div
+                          key={attachment.id}
+                          className="flex items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-2.5 last:border-b-0"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => void downloadViewedTaskAttachment(attachment)}
+                            className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                            title={`Скачать ${attachment.file_name}`}
+                          >
+                            <span className="app-selected flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
+                              <FileText size={15} />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-medium text-[var(--foreground)]">
+                                {attachment.file_name}
+                              </span>
+                              <span className="app-text-muted mt-0.5 block truncate text-[11px]">
+                                {formatFileSize(attachment.file_size)}
+                                {attachment.uploaded_by
+                                  ? ` · ${displayUserName(attachment.uploaded_by)}`
+                                  : ""}
+                                {` · ${formatDateTime(attachment.created_at)}`}
+                              </span>
+                            </span>
+                            <Download size={14} className="app-text-muted shrink-0" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void deleteViewedTaskAttachment(attachment)}
+                            disabled={taskAttachmentsUploading}
+                            className="app-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--danger-foreground)] disabled:opacity-50"
+                            title="Удалить файл"
+                            aria-label={`Удалить файл ${attachment.file_name}`}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="app-surface-muted rounded-xl border border-dashed border-[var(--border-subtle)] px-3 py-4 text-center">
+                      <p className="app-text-muted text-xs">Файлов пока нет</p>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
 
             <div className="rounded-xl border border-[var(--border-subtle)]">
               <button
@@ -3527,6 +5095,7 @@ function TasksPageContent() {
                   ) : taskComments.length > 0 ? (
                     <div className="space-y-2">
                       {taskComments.map((comment) => {
+                        const canEditComment = comment.author?.id === user?.id;
                         const canDeleteComment = Boolean(
                           user?.auth?.is_staff ||
                           user?.auth?.is_superuser ||
@@ -3544,18 +5113,81 @@ function TasksPageContent() {
                                 </p>
                                 <p className="app-text-muted mt-0.5 text-[11px]">
                                   {formatDateTime(comment.created_at)}
+                                  {comment.is_edited ? " · изменён" : ""}
                                 </p>
                               </div>
-                              {canDeleteComment ? (
-                                <CommentDeleteButton
-                                  disabled={saving}
-                                  onClick={() => deleteViewedTaskComment(comment.id)}
-                                />
+                              {editingCommentId !== comment.id && (canEditComment || canDeleteComment) ? (
+                                <div className="flex shrink-0 items-center gap-1">
+                                  {canEditComment ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => beginEditingViewedTaskComment(comment)}
+                                      disabled={saving}
+                                      className="app-icon-button inline-flex h-7 w-7 items-center justify-center rounded-lg disabled:opacity-50"
+                                      title="Редактировать комментарий"
+                                      aria-label="Редактировать комментарий"
+                                    >
+                                      <Pencil size={13} />
+                                    </button>
+                                  ) : null}
+                                  {canDeleteComment ? (
+                                    <CommentDeleteButton
+                                      disabled={saving}
+                                      onClick={() => deleteViewedTaskComment(comment.id)}
+                                    />
+                                  ) : null}
+                                </div>
                               ) : null}
                             </div>
-                            <p className="app-text-wrap whitespace-pre-wrap text-sm leading-5 text-[var(--foreground)]">
-                              {comment.text}
-                            </p>
+                            {editingCommentId === comment.id ? (
+                              <div className="space-y-2">
+                                <textarea
+                                  autoFocus
+                                  value={editingCommentDraft}
+                                  onChange={(event) => setEditingCommentDraft(event.target.value)}
+                                  onKeyDown={(event) => {
+                                    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                                      event.preventDefault();
+                                      void updateViewedTaskComment();
+                                    }
+                                    if (event.key === "Escape") {
+                                      event.preventDefault();
+                                      cancelEditingViewedTaskComment();
+                                    }
+                                  }}
+                                  disabled={saving}
+                                  rows={3}
+                                  className="app-input w-full resize-none rounded-lg p-2.5 text-sm"
+                                  aria-label="Текст комментария"
+                                />
+                                <div className="flex justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={cancelEditingViewedTaskComment}
+                                    disabled={saving}
+                                    className="app-icon-button inline-flex h-8 w-8 items-center justify-center rounded-lg disabled:opacity-50"
+                                    title="Отменить редактирование"
+                                    aria-label="Отменить редактирование"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void updateViewedTaskComment()}
+                                    disabled={saving || !editingCommentDraft.trim()}
+                                    className="app-action-success inline-flex h-8 w-8 items-center justify-center rounded-lg disabled:opacity-50"
+                                    title="Сохранить комментарий"
+                                    aria-label="Сохранить комментарий"
+                                  >
+                                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="app-text-wrap whitespace-pre-wrap text-sm leading-5 text-[var(--foreground)]">
+                                {comment.text}
+                              </p>
+                            )}
                           </div>
                         );
                       })}
@@ -3580,26 +5212,45 @@ function TasksPageContent() {
             </div>
 
             <div className="rounded-xl border border-[var(--border-subtle)]">
-              <button
-                type="button"
-                onClick={() => setLinkedObjectsOpen((current) => !current)}
-                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
-                aria-expanded={linkedObjectsOpen}
-              >
-                <span className="flex min-w-0 items-center gap-2">
+              <div className="flex items-center px-1 py-1">
+                <button
+                  type="button"
+                  onClick={() => setLinkedObjectsOpen((current) => !current)}
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left"
+                  aria-expanded={linkedObjectsOpen}
+                >
                   <Link2 size={15} className="app-text-muted shrink-0" />
-                  <span className="text-sm font-medium text-[var(--foreground)]">
-                    Связанные объекты
+                  <span className="truncate text-sm font-medium text-[var(--foreground)]">
+                    Связанные объекты и ссылки
                   </span>
                   <span className="app-badge rounded-full px-2 py-0.5 text-[11px]">
                     {linkedObjectsBadgeCount}
                   </span>
-                </span>
-                <ChevronRight
-                  size={16}
-                  className={`app-text-muted shrink-0 transition-transform ${linkedObjectsOpen ? "rotate-90" : ""}`}
-                />
-              </button>
+                </button>
+                <button
+                  type="button"
+                  onClick={openLinkedItemModalForView}
+                  disabled={saving}
+                  className="app-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
+                  title="Добавить объект или ссылку"
+                  aria-label="Добавить объект или ссылку"
+                >
+                  <Plus size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLinkedObjectsOpen((current) => !current)}
+                  className="app-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                  title={linkedObjectsOpen ? "Скрыть связанные объекты" : "Показать связанные объекты"}
+                  aria-label={linkedObjectsOpen ? "Скрыть связанные объекты" : "Показать связанные объекты"}
+                  aria-expanded={linkedObjectsOpen}
+                >
+                  <ChevronRight
+                    size={16}
+                    className={`transition-transform ${linkedObjectsOpen ? "rotate-90" : ""}`}
+                  />
+                </button>
+              </div>
 
               {linkedObjectsOpen ? (
                 <div className="space-y-2 border-t border-[var(--border-subtle)] p-3">
@@ -3689,10 +5340,18 @@ function TasksPageContent() {
                           disabled={saving}
                         />
                       ))}
+                      {taskExternalLinks.map((link) => (
+                        <TaskExternalLinkCard
+                          key={link.id}
+                          link={link}
+                          onDelete={deleteExternalLinkFromViewedTask}
+                          disabled={saving}
+                        />
+                      ))}
                     </>
                   ) : (
                     <div className="app-surface-muted rounded-xl border border-dashed border-[var(--border-subtle)] px-3 py-4 text-center">
-                      <p className="app-text-muted text-xs">Связанных объектов нет</p>
+                      <p className="app-text-muted text-xs">Связанных объектов и ссылок нет</p>
                     </div>
                   )}
                 </div>
@@ -3787,6 +5446,217 @@ function TasksPageContent() {
       </Modal>
 
       <Modal
+        isOpen={linkedItemModalOpen}
+        onClose={closeLinkedItemModal}
+        title="Добавить объект или ссылку"
+        size="md"
+        stackLevel={1}
+        closeOnClickOutside
+        footer={(
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={closeLinkedItemModal}
+              className="app-action-secondary rounded-xl px-4 py-2 text-sm font-medium"
+              disabled={saving}
+            >
+              Отмена
+            </button>
+            {linkedItemMode === "external_link" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (linkedItemTarget === "view") {
+                    void addExternalLinkToViewedTask();
+                  } else {
+                    addExternalLinkToTaskForm();
+                  }
+                }}
+                disabled={saving || !externalLinkUrl.trim()}
+                className="app-action-primary inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-60"
+              >
+                {saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+                Добавить
+              </button>
+            ) : null}
+          </div>
+        )}
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-secondary)] p-1">
+            {([
+              ["document", "Документ", FileText],
+              ["calendar_event", "Событие", CalendarDays],
+              ["external_link", "Ссылка", ExternalLinkIcon],
+            ] as const).map(([mode, label, Icon]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => {
+                  setLinkedItemMode(mode);
+                  setLinkedItemSearch("");
+                }}
+                className={`inline-flex min-w-0 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition ${
+                  linkedItemMode === mode
+                    ? "app-surface text-[var(--foreground)] shadow-sm"
+                    : "app-text-muted hover:text-[var(--foreground)]"
+                }`}
+              >
+                <Icon size={14} className="shrink-0" />
+                <span className="truncate">{label}</span>
+              </button>
+            ))}
+          </div>
+
+          {linkedItemMode === "external_link" ? (
+            <div className="space-y-3">
+              <label className="block">
+                <span className="app-text-muted mb-1 block text-xs font-medium">Ссылка</span>
+                <input
+                  type="url"
+                  value={externalLinkUrl}
+                  onChange={(event) => setExternalLinkUrl(event.target.value)}
+                  className="app-input w-full rounded-xl px-3 py-2 text-sm"
+                  placeholder="https://service.example/item"
+                  autoFocus
+                />
+              </label>
+              <label className="block">
+                <span className="app-text-muted mb-1 block text-xs font-medium">Название</span>
+                <input
+                  value={externalLinkTitle}
+                  onChange={(event) => setExternalLinkTitle(event.target.value)}
+                  className="app-input w-full rounded-xl px-3 py-2 text-sm"
+                  placeholder="Необязательно"
+                />
+              </label>
+            </div>
+          ) : (
+            <>
+              <div className="relative">
+                <Search
+                  size={15}
+                  className="app-text-muted pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
+                />
+                <input
+                  value={linkedItemSearch}
+                  onChange={(event) => setLinkedItemSearch(event.target.value)}
+                  className="app-input w-full rounded-xl py-2 pl-9 pr-3 text-sm"
+                  placeholder={linkedItemMode === "document" ? "Поиск документов" : "Поиск событий"}
+                  autoFocus
+                />
+              </div>
+
+              <div className="tasks-column-scroll max-h-72 space-y-2 overflow-y-auto pr-1">
+                {linkedItemCandidatesLoading ? (
+                  <div className="app-surface-muted rounded-xl border border-[var(--border-subtle)] p-5 text-center">
+                    <Loader2 size={18} className="mx-auto animate-spin text-sky-500" />
+                  </div>
+                ) : linkedItemMode === "document" ? (
+                  availableDocuments.length > 0 ? (
+                    availableDocuments.map((item) => {
+                      const alreadyLinked = linkedItemTarget === "view"
+                        ? linkedDocuments.some((link) => link.document_id === item.id)
+                        : (
+                          taskFormDocuments.some((link) => link.document_id === item.id) ||
+                          taskFormPendingDocuments.some((document) => document.id === item.id)
+                        );
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            if (linkedItemTarget === "view") {
+                              void linkDocumentToViewedTask(item.id);
+                            } else {
+                              addDocumentToTaskForm(item);
+                            }
+                          }}
+                          disabled={saving || alreadyLinked}
+                          className="app-surface-muted flex w-full items-start gap-3 rounded-xl border border-[var(--border-subtle)] p-3 text-left transition hover:border-[var(--border-strong)] disabled:cursor-default disabled:opacity-60"
+                        >
+                          <span className="app-selected flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
+                            <FileText size={15} />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold text-[var(--foreground)]">
+                              #{item.id} {item.title}
+                            </span>
+                            <span className="app-text-muted mt-0.5 block truncate text-xs">
+                              {item.folder_path || item.file_name || "Без папки"}
+                            </span>
+                          </span>
+                          {alreadyLinked ? (
+                            <span className="app-badge shrink-0 rounded-full px-2 py-0.5 text-[10px]">
+                              добавлен
+                            </span>
+                          ) : (
+                            <Plus size={15} className="app-text-muted mt-1 shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="app-surface-muted rounded-xl border border-dashed border-[var(--border-subtle)] p-5 text-center">
+                      <p className="app-text-muted text-xs">Документы не найдены</p>
+                    </div>
+                  )
+                ) : availableEvents.length > 0 ? (
+                  availableEvents.map((item) => {
+                    const alreadyLinked = linkedItemTarget === "view"
+                      ? linkedEvents.some((link) => link.event_id === item.id)
+                      : (
+                        taskFormEvents.some((link) => link.event_id === item.id) ||
+                        taskFormPendingEvents.some((event) => event.id === item.id)
+                      );
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          if (linkedItemTarget === "view") {
+                            void linkEventToViewedTask(item.id);
+                          } else {
+                            addEventToTaskForm(item);
+                          }
+                        }}
+                        disabled={saving || alreadyLinked}
+                        className="app-surface-muted flex w-full items-start gap-3 rounded-xl border border-[var(--border-subtle)] p-3 text-left transition hover:border-[var(--border-strong)] disabled:cursor-default disabled:opacity-60"
+                      >
+                        <span className="app-selected flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
+                          <CalendarDays size={15} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-[var(--foreground)]">
+                            #{item.id} {item.title}
+                          </span>
+                          <span className="app-text-muted mt-0.5 block truncate text-xs">
+                            {formatDateTime(item.start)}
+                            {item.calendar_name ? ` · ${item.calendar_name}` : ""}
+                          </span>
+                        </span>
+                        {alreadyLinked ? (
+                          <span className="app-badge shrink-0 rounded-full px-2 py-0.5 text-[10px]">
+                            добавлено
+                          </span>
+                        ) : (
+                          <Plus size={15} className="app-text-muted mt-1 shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="app-surface-muted rounded-xl border border-dashed border-[var(--border-subtle)] p-5 text-center">
+                    <p className="app-text-muted text-xs">События не найдены</p>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
         isOpen={taskModalOpen}
         onClose={closeTaskModal}
         title={form.id ? "Редактировать задачу" : "Новая задача"}
@@ -3805,7 +5675,7 @@ function TasksPageContent() {
             <button
               type="button"
               onClick={() => void saveTask()}
-              disabled={saving || !form.title.trim() || !form.column}
+              disabled={saving || !form.title.trim() || !form.column || taskFormChecklistHasInvalidTitle}
               className="app-action-primary inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-60"
             >
               {saving ? <Loader2 size={16} className="animate-spin" /> : null}
@@ -3844,6 +5714,106 @@ function TasksPageContent() {
               className="app-input w-full rounded-xl px-3 py-2 text-sm"
             />
           </label>
+
+          <div className="rounded-xl border border-[var(--border-subtle)]">
+            <div className="flex items-center px-1 py-1">
+              <button
+                type="button"
+                onClick={() => setTaskFormChecklistOpen((current) => !current)}
+                className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left"
+                aria-expanded={taskFormChecklistOpen}
+              >
+                <ListChecks size={15} className="app-text-muted shrink-0" />
+                <span className="truncate text-sm font-medium text-[var(--foreground)]">
+                  Чек-лист
+                </span>
+                <span className="app-badge rounded-full px-2 py-0.5 text-[11px]">
+                  {taskFormChecklistCompleted}/{taskFormChecklistTotal}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTaskFormChecklistOpen((current) => !current)}
+                className="app-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                title={taskFormChecklistOpen ? "Скрыть чек-лист" : "Показать чек-лист"}
+                aria-label={taskFormChecklistOpen ? "Скрыть чек-лист" : "Показать чек-лист"}
+                aria-expanded={taskFormChecklistOpen}
+              >
+                <ChevronRight
+                  size={16}
+                  className={`transition-transform ${taskFormChecklistOpen ? "rotate-90" : ""}`}
+                />
+              </button>
+            </div>
+
+            {taskFormChecklistOpen ? (
+              <div className="space-y-3 border-t border-[var(--border-subtle)] p-3">
+                {taskFormResourcesLoading ? (
+                  <div className="app-surface-muted rounded-xl border border-[var(--border-subtle)] p-4 text-center">
+                    <Loader2 size={18} className="mx-auto animate-spin text-sky-500" />
+                  </div>
+                ) : taskFormChecklistTotal > 0 ? (
+                  <div className="overflow-hidden rounded-lg border border-[var(--border-subtle)]">
+                    {taskFormChecklistItems.map((item) => (
+                      <TaskChecklistFormRow
+                        key={`checklist-${item.id}`}
+                        title={item.title}
+                        isCompleted={item.is_completed}
+                        disabled={saving}
+                        onTitleChange={(title) => updateExistingTaskFormChecklistItem(item.id, { title })}
+                        onCompletedChange={(is_completed) => updateExistingTaskFormChecklistItem(item.id, { is_completed })}
+                        onRemove={() => removeExistingTaskFormChecklistItem(item)}
+                      />
+                    ))}
+                    {taskFormPendingChecklistItems.map((item) => (
+                      <TaskChecklistFormRow
+                        key={item.key}
+                        title={item.title}
+                        isCompleted={item.is_completed}
+                        pending
+                        disabled={saving}
+                        onTitleChange={(title) => updatePendingTaskFormChecklistItem(item.key, { title })}
+                        onCompletedChange={(is_completed) => updatePendingTaskFormChecklistItem(item.key, { is_completed })}
+                        onRemove={() => setTaskFormPendingChecklistItems((current) => (
+                          current.filter((currentItem) => currentItem.key !== item.key)
+                        ))}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="app-surface-muted rounded-xl border border-dashed border-[var(--border-subtle)] px-3 py-4 text-center">
+                    <p className="app-text-muted text-xs">Пунктов пока нет</p>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={taskFormChecklistDraftRef}
+                    value={taskFormChecklistDraft}
+                    onChange={(event) => setTaskFormChecklistDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      addTaskFormChecklistItem();
+                    }}
+                    disabled={saving}
+                    className="app-input min-w-0 flex-1 rounded-xl px-3 py-2 text-sm"
+                    placeholder="Новый пункт"
+                  />
+                  <button
+                    type="button"
+                    onClick={addTaskFormChecklistItem}
+                    disabled={saving || !taskFormChecklistDraft.trim()}
+                    className="app-icon-button flex h-9 w-9 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
+                    title="Добавить пункт"
+                    aria-label="Добавить пункт чек-листа"
+                  >
+                    <Plus size={15} />
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
 
           <div className="grid gap-3 md:grid-cols-2">
             <label className="block">
@@ -3945,6 +5915,220 @@ function TasksPageContent() {
                 Добавить
               </button>
             </div>
+          </div>
+
+          <div className="rounded-xl border border-[var(--border-subtle)]">
+            <div className="flex items-center px-1 py-1">
+              <button
+                type="button"
+                onClick={() => setTaskFormFilesOpen((current) => !current)}
+                className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left"
+                aria-expanded={taskFormFilesOpen}
+              >
+                <Paperclip size={15} className="app-text-muted shrink-0" />
+                <span className="truncate text-sm font-medium text-[var(--foreground)]">
+                  Файлы
+                </span>
+                <span className="app-badge rounded-full px-2 py-0.5 text-[11px]">
+                  {taskFormAttachmentsCount}
+                </span>
+              </button>
+              <input
+                ref={taskFormAttachmentInputRef}
+                type="file"
+                multiple
+                className="sr-only"
+                disabled={saving}
+                onChange={(event) => {
+                  const files = Array.from(event.currentTarget.files || []);
+                  event.currentTarget.value = "";
+                  addFilesToTaskForm(files);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => taskFormAttachmentInputRef.current?.click()}
+                disabled={saving}
+                className="app-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
+                title="Добавить файлы"
+                aria-label="Добавить файлы"
+              >
+                <Plus size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setTaskFormFilesOpen((current) => !current)}
+                className="app-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                title={taskFormFilesOpen ? "Скрыть файлы" : "Показать файлы"}
+                aria-label={taskFormFilesOpen ? "Скрыть файлы" : "Показать файлы"}
+                aria-expanded={taskFormFilesOpen}
+              >
+                <ChevronRight
+                  size={16}
+                  className={`transition-transform ${taskFormFilesOpen ? "rotate-90" : ""}`}
+                />
+              </button>
+            </div>
+
+            {taskFormFilesOpen ? (
+              <div className="border-t border-[var(--border-subtle)] p-3">
+                {taskFormResourcesLoading ? (
+                  <div className="app-surface-muted rounded-xl border border-[var(--border-subtle)] p-4 text-center">
+                    <Loader2 size={18} className="mx-auto animate-spin text-sky-500" />
+                  </div>
+                ) : taskFormAttachmentsCount > 0 ? (
+                  <div className="overflow-hidden rounded-lg border border-[var(--border-subtle)]">
+                    {taskFormAttachments.map((attachment) => (
+                      <TaskFormResourceRow
+                        key={`attachment-${attachment.id}`}
+                        icon={FileText}
+                        title={attachment.file_name}
+                        meta={formatFileSize(attachment.file_size)}
+                        onRemove={() => removeExistingTaskFormAttachment(attachment)}
+                      />
+                    ))}
+                    {taskFormPendingFiles.map((file) => (
+                      <TaskFormResourceRow
+                        key={`pending-file-${file.name}-${file.size}-${file.lastModified}`}
+                        icon={FileText}
+                        title={file.name}
+                        meta={formatFileSize(file.size)}
+                        pending
+                        onRemove={() => setTaskFormPendingFiles((current) => (
+                          current.filter((item) => item !== file)
+                        ))}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="app-surface-muted rounded-xl border border-dashed border-[var(--border-subtle)] p-4 text-center">
+                    <p className="app-text-muted text-xs">Файлов пока нет</p>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="rounded-xl border border-[var(--border-subtle)]">
+            <div className="flex items-center px-1 py-1">
+              <button
+                type="button"
+                onClick={() => setTaskFormLinksOpen((current) => !current)}
+                className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left"
+                aria-expanded={taskFormLinksOpen}
+              >
+                <Link2 size={15} className="app-text-muted shrink-0" />
+                <span className="truncate text-sm font-medium text-[var(--foreground)]">
+                  Связанные объекты и ссылки
+                </span>
+                <span className="app-badge rounded-full px-2 py-0.5 text-[11px]">
+                  {taskFormLinksCount}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={openLinkedItemModalForForm}
+                disabled={saving}
+                className="app-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
+                title="Добавить объект или ссылку"
+                aria-label="Добавить объект или ссылку"
+              >
+                <Plus size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setTaskFormLinksOpen((current) => !current)}
+                className="app-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                title={taskFormLinksOpen ? "Скрыть связи" : "Показать связи"}
+                aria-label={taskFormLinksOpen ? "Скрыть связи" : "Показать связи"}
+                aria-expanded={taskFormLinksOpen}
+              >
+                <ChevronRight
+                  size={16}
+                  className={`transition-transform ${taskFormLinksOpen ? "rotate-90" : ""}`}
+                />
+              </button>
+            </div>
+
+            {taskFormLinksOpen ? (
+              <div className="border-t border-[var(--border-subtle)] p-3">
+                {taskFormResourcesLoading ? (
+                  <div className="app-surface-muted rounded-xl border border-[var(--border-subtle)] p-4 text-center">
+                    <Loader2 size={18} className="mx-auto animate-spin text-sky-500" />
+                  </div>
+                ) : taskFormLinksCount > 0 ? (
+                  <div className="overflow-hidden rounded-lg border border-[var(--border-subtle)]">
+                    {taskFormDocuments.map((link) => (
+                      <TaskFormResourceRow
+                        key={`document-${link.id}`}
+                        icon={FileText}
+                        title={`#${link.document_id} ${link.document?.title || "Документ"}`}
+                        meta="Документ"
+                        onRemove={() => removeExistingTaskFormDocument(link)}
+                      />
+                    ))}
+                    {taskFormPendingDocuments.map((document) => (
+                      <TaskFormResourceRow
+                        key={`pending-document-${document.id}`}
+                        icon={FileText}
+                        title={`#${document.id} ${document.title}`}
+                        meta="Документ"
+                        pending
+                        onRemove={() => setTaskFormPendingDocuments((current) => (
+                          current.filter((item) => item.id !== document.id)
+                        ))}
+                      />
+                    ))}
+                    {taskFormEvents.map((link) => (
+                      <TaskFormResourceRow
+                        key={`event-${link.id}`}
+                        icon={CalendarDays}
+                        title={`#${link.event_id} ${link.event?.title || "Событие"}`}
+                        meta={link.event?.start ? formatDateTime(link.event.start) : "Событие календаря"}
+                        onRemove={() => removeExistingTaskFormEvent(link)}
+                      />
+                    ))}
+                    {taskFormPendingEvents.map((event) => (
+                      <TaskFormResourceRow
+                        key={`pending-event-${event.id}`}
+                        icon={CalendarDays}
+                        title={`#${event.id} ${event.title}`}
+                        meta={formatDateTime(event.start)}
+                        pending
+                        onRemove={() => setTaskFormPendingEvents((current) => (
+                          current.filter((item) => item.id !== event.id)
+                        ))}
+                      />
+                    ))}
+                    {taskFormExternalLinks.map((link) => (
+                      <TaskFormResourceRow
+                        key={`external-link-${link.id}`}
+                        icon={ExternalLinkIcon}
+                        title={link.title || getExternalLinkHost(link.url)}
+                        meta={link.url}
+                        onRemove={() => removeExistingTaskFormExternalLink(link)}
+                      />
+                    ))}
+                    {taskFormPendingExternalLinks.map((link) => (
+                      <TaskFormResourceRow
+                        key={`pending-external-link-${link.key}`}
+                        icon={ExternalLinkIcon}
+                        title={link.title || getExternalLinkHost(link.url)}
+                        meta={link.url}
+                        pending
+                        onRemove={() => setTaskFormPendingExternalLinks((current) => (
+                          current.filter((item) => item.key !== link.key)
+                        ))}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="app-surface-muted rounded-xl border border-dashed border-[var(--border-subtle)] p-4 text-center">
+                    <p className="app-text-muted text-xs">Связанных объектов и ссылок пока нет</p>
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
       </Modal>

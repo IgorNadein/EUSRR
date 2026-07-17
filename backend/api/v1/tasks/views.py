@@ -1,5 +1,10 @@
+import mimetypes
+from pathlib import Path
+from urllib.parse import urlsplit
+
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.db.models import (
     Count,
     IntegerField,
@@ -10,6 +15,9 @@ from django.db.models import (
     Value,
 )
 from django.db.models.functions import Coalesce
+from django.http import FileResponse
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from attendance.models import AttendanceRecord
 from communications import comments_helpers
 from communications.models import Message
@@ -19,7 +27,7 @@ from feed.models import Post
 from guests.models import Guest, GuestVisit
 from procurement.models import ProcurementRequest
 from requests_app.models import Request as EmployeeRequest
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, parsers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -41,8 +49,11 @@ from tasks.models import (
     Task,
     TaskActivity,
     TaskActivityAction,
+    TaskActivityObjectKind,
+    TaskAttachment,
     TaskBoard,
     TaskColumn,
+    TaskExternalLink,
     TaskLabel,
     TaskLinkedObject,
     TaskLinkedObjectKind,
@@ -63,8 +74,11 @@ from tasks.realtime import (
 from .serializers import (
     EmployeeBriefSerializer,
     TaskActivitySerializer,
+    TaskAttachmentSerializer,
     TaskBoardSerializer,
+    TaskChecklistItemSerializer,
     TaskColumnSerializer,
+    TaskExternalLinkSerializer,
     TaskLabelSerializer,
     TaskLinkedCalendarEventSerializer,
     TaskLinkedAttendanceRecordSerializer,
@@ -123,6 +137,22 @@ def normalize_column_positions(column):
         Task.objects.filter(id=task_id).update(position=(index + 1) * 1000)
 
 
+def send_task_checklist_update(task, event, item_id):
+    send_task_board_update(
+        task.board,
+        event,
+        "checklist_item",
+        item_id,
+        extra={
+            "task_id": task.id,
+            "checklist_total": task.checklist_items.count(),
+            "checklist_completed": task.checklist_items.filter(
+                is_completed=True
+            ).count(),
+        },
+    )
+
+
 class TaskBoardViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = TaskBoardSerializer
@@ -141,6 +171,9 @@ class TaskBoardViewSet(viewsets.ModelViewSet):
                 "tasks__assignee",
                 "tasks__labels",
                 "tasks__linked_objects",
+                "tasks__external_links",
+                "tasks__attachments",
+                "tasks__checklist_items",
             )
             .annotate(tasks_count=Count("tasks", distinct=True))
             .distinct()
@@ -330,7 +363,7 @@ class TaskViewSet(viewsets.ModelViewSet):
                 )
             )
             .select_related("board", "column", "created_by", "assignee")
-            .prefetch_related("labels")
+            .prefetch_related("labels", "checklist_items")
             .annotate(
                 linked_posts_count=Count(
                     "linked_objects",
@@ -402,10 +435,20 @@ class TaskViewSet(viewsets.ModelViewSet):
                     ),
                     distinct=True,
                 ),
-                linked_objects_count=Count("linked_objects", distinct=True),
+                linked_objects_count=(
+                    Count("linked_objects", distinct=True)
+                    + Count("external_links", distinct=True)
+                ),
                 comments_count=Coalesce(
                     Subquery(comments_subquery, output_field=IntegerField()),
                     Value(0),
+                ),
+                attachments_count=Count("attachments", distinct=True),
+                checklist_total=Count("checklist_items", distinct=True),
+                checklist_completed=Count(
+                    "checklist_items",
+                    filter=Q(checklist_items__is_completed=True),
+                    distinct=True,
                 ),
             )
         )
@@ -471,6 +514,49 @@ class TaskViewSet(viewsets.ModelViewSet):
         instance.delete()
         send_task_board_update(board, "deleted", "task", task_id)
 
+    def _move_task(self, task, column, position, actor):
+        old_column = task.column
+        if position in (None, ""):
+            max_position = (
+                Task.objects.filter(column=column).exclude(id=task.id).aggregate(
+                    Max("position")
+                )["position__max"]
+                or 0
+            )
+            position = max_position + 1000
+
+        task.column = column
+        task.position = position
+        task.save(
+            update_fields=["column", "position", "completed_at", "updated_at"]
+        )
+
+        normalize_column_positions(column)
+        if old_column.id != column.id:
+            normalize_column_positions(old_column)
+        task.refresh_from_db()
+
+        create_task_activity(
+            task,
+            actor,
+            TaskActivityAction.MOVED,
+            metadata={
+                "from_column_id": old_column.id,
+                "from_column": old_column.name,
+                "to_column_id": column.id,
+                "to_column": column.name,
+            },
+        )
+        notify_task_moved(task, actor, old_column, column)
+        send_task_board_update(
+            task.board,
+            "moved",
+            "task",
+            task.id,
+            extra={"column_id": task.column_id},
+        )
+        return task
+
     @action(detail=True, methods=["post"])
     def move(self, request, pk=None):
         task = self.get_object()
@@ -494,15 +580,8 @@ class TaskViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        old_column = task.column
         if position in (None, ""):
-            max_position = (
-                Task.objects.filter(column=column).exclude(id=task.id).aggregate(
-                    Max("position")
-                )["position__max"]
-                or 0
-            )
-            position = max_position + 1000
+            position = None
         else:
             try:
                 position = int(position)
@@ -512,36 +591,87 @@ class TaskViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-        task.column = column
-        task.position = position
-        task.save(update_fields=["column", "position", "completed_at", "updated_at"])
-
-        normalize_column_positions(column)
-        if old_column.id != column.id:
-            normalize_column_positions(old_column)
-        task.refresh_from_db()
-
+        task = self._move_task(task, column, position, request.user)
         serializer = self.get_serializer(task)
-        create_task_activity(
-            task,
-            request.user,
-            TaskActivityAction.MOVED,
-            metadata={
-                "from_column_id": old_column.id,
-                "from_column": old_column.name,
-                "to_column_id": column.id,
-                "to_column": column.name,
-            },
-        )
-        notify_task_moved(task, request.user, old_column, column)
-        send_task_board_update(
-            task.board,
-            "moved",
-            "task",
-            task.id,
-            extra={"column_id": task.column_id},
-        )
         return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def claim(self, request, pk=None):
+        visible_task = self.get_object()
+        with transaction.atomic():
+            task = (
+                Task.objects.select_for_update()
+                .select_related("board", "column", "assignee")
+                .get(id=visible_task.id)
+            )
+
+            if task.completed_at or task.column.is_done:
+                return Response(
+                    {"detail": "Нельзя взять в работу завершённую задачу."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if task.assignee_id:
+                if task.assignee_id == request.user.id:
+                    return Response(self.get_serializer(task).data)
+                return Response(
+                    {"detail": "У задачи уже есть исполнитель."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            task.assignee = request.user
+            task.save(update_fields=["assignee", "updated_at"])
+            create_task_activity(
+                task,
+                request.user,
+                TaskActivityAction.CLAIMED,
+                metadata={"assignee_id": request.user.id},
+            )
+            notify_task_updated(
+                task,
+                request.user,
+                {"assignee_id": None},
+                {"assignee_id": request.user.id},
+            )
+            send_task_board_update(
+                task.board,
+                "claimed",
+                "task",
+                task.id,
+                extra={"assignee_id": request.user.id},
+            )
+
+        return Response(self.get_serializer(task).data)
+
+    @action(detail=True, methods=["post"])
+    def complete(self, request, pk=None):
+        task = self.get_object()
+        if task.assignee_id != request.user.id:
+            return Response(
+                {"detail": "Завершить задачу может только назначенный исполнитель."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if task.column.is_done:
+            return Response(self.get_serializer(task).data)
+
+        done_column = (
+            TaskColumn.objects.filter(
+                board_id=task.board_id,
+                is_done=True,
+                is_archived=False,
+            )
+            .order_by("position", "id")
+            .first()
+        )
+        if done_column is None:
+            return Response(
+                {"detail": "На доске не настроена завершающая колонка."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        task = self._move_task(task, done_column, None, request.user)
+        return Response(self.get_serializer(task).data)
 
     @action(detail=True, methods=["get"], url_path="activity")
     def activity(self, request, pk=None):
@@ -553,12 +683,343 @@ class TaskViewSet(viewsets.ModelViewSet):
         serializer = TaskActivitySerializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        url_path="attachments",
+        parser_classes=[parsers.MultiPartParser, parsers.FormParser],
+    )
+    def attachments(self, request, pk=None):
+        task = self.get_object()
+        if request.method in ("GET", "HEAD"):
+            queryset = task.attachments.select_related("uploaded_by")
+            serializer = TaskAttachmentSerializer(
+                queryset,
+                many=True,
+                context=self.get_serializer_context(),
+            )
+            return Response(serializer.data)
+
+        files = request.FILES.getlist("files")
+        if not files and request.FILES.get("file"):
+            files = [request.FILES["file"]]
+        if not files:
+            return Response(
+                {"files": ["Выберите хотя бы один файл."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        created = []
+        for uploaded in files:
+            file_name = Path(uploaded.name.replace("\\", "/")).name[:255]
+            attachment = TaskAttachment.objects.create(
+                task=task,
+                file=uploaded,
+                file_name=file_name,
+                file_size=uploaded.size,
+                mime_type=(uploaded.content_type or "")[:255],
+                uploaded_by=request.user,
+            )
+            created.append(attachment)
+            create_task_activity(
+                task,
+                request.user,
+                TaskActivityAction.ATTACHMENT_ADDED,
+                object_id=attachment.id,
+                metadata={"file_name": attachment.file_name},
+            )
+
+        send_task_board_update(
+            task.board,
+            "attachments_updated",
+            "task",
+            task.id,
+            extra={"attachments_count": task.attachments.count()},
+        )
+        serializer = TaskAttachmentSerializer(
+            created,
+            many=True,
+            context=self.get_serializer_context(),
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path=r"attachments/(?P<attachment_id>\d+)/download",
+        url_name="attachment-download",
+    )
+    def attachment_download(self, request, pk=None, attachment_id=None):
+        task = self.get_object()
+        attachment = get_object_or_404(
+            task.attachments,
+            id=attachment_id,
+        )
+        try:
+            file_handle = attachment.file.open("rb")
+        except (FileNotFoundError, OSError):
+            return Response(
+                {"detail": "Файл не найден в хранилище."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        content_type = attachment.mime_type or (
+            mimetypes.guess_type(attachment.file_name)[0]
+            or "application/octet-stream"
+        )
+        response = FileResponse(
+            file_handle,
+            as_attachment=True,
+            filename=attachment.file_name,
+            content_type=content_type,
+        )
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"attachments/(?P<attachment_id>\d+)",
+        url_name="attachment-detail",
+    )
+    def attachment_detail(self, request, pk=None, attachment_id=None):
+        task = self.get_object()
+        attachment = get_object_or_404(
+            task.attachments,
+            id=attachment_id,
+        )
+        attachment_id = attachment.id
+        file_name = attachment.file_name
+        attachment.delete()
+        create_task_activity(
+            task,
+            request.user,
+            TaskActivityAction.ATTACHMENT_REMOVED,
+            object_id=attachment_id,
+            metadata={"file_name": file_name},
+        )
+        send_task_board_update(
+            task.board,
+            "attachments_updated",
+            "task",
+            task.id,
+            extra={"attachments_count": task.attachments.count()},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get", "post"], url_path="checklist")
+    def checklist(self, request, pk=None):
+        task = self.get_object()
+        if request.method in ("GET", "HEAD"):
+            serializer = TaskChecklistItemSerializer(
+                task.checklist_items.select_related("created_by", "completed_by"),
+                many=True,
+            )
+            return Response(serializer.data)
+
+        serializer = TaskChecklistItemSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        position = serializer.validated_data.get("position")
+        if position is None:
+            max_position = (
+                task.checklist_items.aggregate(Max("position"))["position__max"] or 0
+            )
+            position = max_position + 1000
+        is_completed = serializer.validated_data.get("is_completed", False)
+        item = serializer.save(
+            task=task,
+            created_by=request.user,
+            position=position,
+            completed_by=request.user if is_completed else None,
+            completed_at=timezone.now() if is_completed else None,
+        )
+        create_task_activity(
+            task,
+            request.user,
+            TaskActivityAction.CHECKLIST_ITEM_ADDED,
+            object_kind=TaskActivityObjectKind.CHECKLIST_ITEM,
+            object_id=item.id,
+            metadata={
+                "item_title": item.title,
+                "is_completed": item.is_completed,
+            },
+        )
+        send_task_checklist_update(task, "checklist_updated", item.id)
+        return Response(
+            TaskChecklistItemSerializer(item).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=True,
+        methods=["patch", "delete"],
+        url_path=r"checklist/(?P<item_id>\d+)",
+        url_name="checklist-item-detail",
+    )
+    def checklist_item_detail(self, request, pk=None, item_id=None):
+        task = self.get_object()
+        item = get_object_or_404(task.checklist_items, id=item_id)
+
+        if request.method == "DELETE":
+            item_id = item.id
+            item_title = item.title
+            item.delete()
+            create_task_activity(
+                task,
+                request.user,
+                TaskActivityAction.CHECKLIST_ITEM_REMOVED,
+                object_kind=TaskActivityObjectKind.CHECKLIST_ITEM,
+                object_id=item_id,
+                metadata={"item_title": item_title},
+            )
+            send_task_checklist_update(task, "checklist_updated", item_id)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        serializer = TaskChecklistItemSerializer(
+            item,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        previous_title = item.title
+        previous_completed = item.is_completed
+        changed_fields = [
+            field
+            for field, value in serializer.validated_data.items()
+            if getattr(item, field) != value
+        ]
+        if not changed_fields:
+            return Response(TaskChecklistItemSerializer(item).data)
+
+        completion_metadata = {}
+        if "is_completed" in serializer.validated_data:
+            is_completed = serializer.validated_data["is_completed"]
+            completion_metadata = {
+                "completed_by": request.user if is_completed else None,
+                "completed_at": timezone.now() if is_completed else None,
+            }
+        item = serializer.save(**completion_metadata)
+        if previous_completed != item.is_completed:
+            activity_action = (
+                TaskActivityAction.CHECKLIST_ITEM_COMPLETED
+                if item.is_completed
+                else TaskActivityAction.CHECKLIST_ITEM_REOPENED
+            )
+        else:
+            activity_action = TaskActivityAction.CHECKLIST_ITEM_UPDATED
+        create_task_activity(
+            task,
+            request.user,
+            activity_action,
+            object_kind=TaskActivityObjectKind.CHECKLIST_ITEM,
+            object_id=item.id,
+            metadata={
+                "item_title": item.title,
+                "previous_title": previous_title,
+                "is_completed": item.is_completed,
+                "fields": changed_fields,
+            },
+        )
+        send_task_checklist_update(task, "checklist_updated", item.id)
+        return Response(TaskChecklistItemSerializer(item).data)
+
+    @action(detail=True, methods=["get", "post"], url_path="external-links")
+    def external_links(self, request, pk=None):
+        task = self.get_object()
+        if request.method in ("GET", "HEAD"):
+            serializer = TaskExternalLinkSerializer(
+                task.external_links.select_related("created_by"),
+                many=True,
+            )
+            return Response(serializer.data)
+
+        input_serializer = TaskExternalLinkSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        url = input_serializer.validated_data["url"]
+        title = input_serializer.validated_data.get("title", "")
+        default_title = title or urlsplit(url).netloc or url
+        link, created = TaskExternalLink.objects.get_or_create(
+            task=task,
+            url=url,
+            defaults={
+                "title": default_title,
+                "created_by": request.user,
+            },
+        )
+        if not created and title and title != link.title:
+            link.title = title
+            link.save(update_fields=["title"])
+
+        if created:
+            create_task_activity(
+                task,
+                request.user,
+                TaskActivityAction.LINKED,
+                object_kind=TaskActivityObjectKind.EXTERNAL_LINK,
+                object_id=link.id,
+                metadata={
+                    "object_label": link.title or link.url,
+                    "object_type": "Ссылка",
+                    "url": link.url,
+                },
+            )
+        send_task_board_update(
+            task.board,
+            "linked",
+            "external_link",
+            link.id,
+            extra={"task_id": task.id, "link_id": link.id},
+        )
+        serializer = TaskExternalLinkSerializer(link)
+        return Response(
+            serializer.data,
+            status=(
+                status.HTTP_201_CREATED if created else status.HTTP_200_OK
+            ),
+        )
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"external-links/(?P<link_id>\d+)",
+        url_name="external-link-detail",
+    )
+    def external_link_detail(self, request, pk=None, link_id=None):
+        task = self.get_object()
+        link = get_object_or_404(task.external_links, id=link_id)
+        link_id = link.id
+        title = link.title or link.url
+        url = link.url
+        link.delete()
+        create_task_activity(
+            task,
+            request.user,
+            TaskActivityAction.UNLINKED,
+            object_kind=TaskActivityObjectKind.EXTERNAL_LINK,
+            object_id=link_id,
+            metadata={
+                "object_label": title,
+                "object_type": "Ссылка",
+                "url": url,
+            },
+        )
+        send_task_board_update(
+            task.board,
+            "unlinked",
+            "external_link",
+            link_id,
+            extra={"task_id": task.id, "link_id": link_id},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     def _comment_payload(self, task, message):
         return {
             "id": message.id,
             "task": task.id,
             "author": EmployeeBriefSerializer(message.author).data,
             "text": message.content,
+            "is_edited": message.is_edited,
+            "edited_at": message.edited_at,
             "created_at": message.created_at,
         }
 
@@ -584,6 +1045,14 @@ class TaskViewSet(viewsets.ModelViewSet):
             author=request.user,
             content=text,
         )
+        create_task_activity(
+            task,
+            request.user,
+            TaskActivityAction.COMMENT_ADDED,
+            object_kind=TaskActivityObjectKind.COMMENT,
+            object_id=message.id,
+            metadata={"comment_text": message.content},
+        )
         notify_task_comment(task, message)
         send_task_board_update(
             task.board,
@@ -599,8 +1068,9 @@ class TaskViewSet(viewsets.ModelViewSet):
 
     @action(
         detail=True,
-        methods=["delete"],
+        methods=["patch", "delete"],
         url_path=r"comments/(?P<comment_id>\d+)",
+        url_name="delete-comment",
     )
     def delete_comment(self, request, pk=None, comment_id=None):
         task = self.get_object()
@@ -623,6 +1093,49 @@ class TaskViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        if request.method == "PATCH":
+            if message.author_id != request.user.id:
+                return Response(
+                    {"detail": "Редактировать комментарий может только его автор."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            text = request.data.get("text", "").strip()
+            if not text:
+                return Response(
+                    {"text": ["Это поле не может быть пустым."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            previous_text = message.content
+            if text == previous_text:
+                return Response(self._comment_payload(task, message))
+
+            comments_helpers.update_comment(
+                message,
+                text,
+                edited_by=request.user,
+            )
+            create_task_activity(
+                task,
+                request.user,
+                TaskActivityAction.COMMENT_EDITED,
+                object_kind=TaskActivityObjectKind.COMMENT,
+                object_id=message.id,
+                metadata={
+                    "previous_text": previous_text,
+                    "comment_text": message.content,
+                },
+            )
+            send_task_board_update(
+                task.board,
+                "comment_edited",
+                "task",
+                task.id,
+                extra={"comment_id": message.id},
+            )
+            return Response(self._comment_payload(task, message))
+
         if not (
             request.user.is_staff
             or request.user.is_superuser
@@ -633,10 +1146,19 @@ class TaskViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        comment_text = message.content
         comments_helpers.delete_comment(
             message=message,
             deleted_by=request.user,
             soft_delete=True,
+        )
+        create_task_activity(
+            task,
+            request.user,
+            TaskActivityAction.COMMENT_REMOVED,
+            object_kind=TaskActivityObjectKind.COMMENT,
+            object_id=message.id,
+            metadata={"comment_text": comment_text},
         )
         send_task_board_update(
             task.board,

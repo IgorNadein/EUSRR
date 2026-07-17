@@ -4,6 +4,8 @@ import type {
     TaskCard,
     TaskColumn,
     TaskActivity,
+    TaskAttachment,
+    TaskChecklistItem,
     TaskComment,
     TaskLabel,
     TaskLinkedAttendanceRecord,
@@ -16,10 +18,20 @@ import type {
     TaskLinkedPost,
     TaskLinkedProcurementRequest,
     TaskLinkedRequest,
+    TaskExternalLink,
 } from "@/types/api";
-import { buildQuery, type RequestFn } from "./utils";
+import { buildQuery, type RawRequestFn, type RequestFn } from "./utils";
 
-export function createTasksApi(request: RequestFn) {
+function parseDownloadFilename(response: Response, fallback: string): string {
+    const disposition = response.headers.get("content-disposition") || "";
+    const encodedMatch = disposition.match(/filename\*=UTF-8''([^;]+)/);
+    const plainMatch = disposition.match(/filename="?([^";]+)"?/);
+    return encodedMatch?.[1]
+        ? decodeURIComponent(encodedMatch[1])
+        : plainMatch?.[1] || fallback;
+}
+
+export function createTasksApi(request: RequestFn, requestRaw: RawRequestFn) {
     return {
         getTaskBoards: (params?: Record<string, string | number>) =>
             request(`/api/v1/tasks/boards/${buildQuery(params)}`),
@@ -69,13 +81,75 @@ export function createTasksApi(request: RequestFn) {
                 method: "POST",
                 body: JSON.stringify(data),
             }),
+        completeTask: (id: number): Promise<TaskCard> =>
+            request(`/api/v1/tasks/${id}/complete/`, {
+                method: "POST",
+            }),
+        claimTask: (id: number): Promise<TaskCard> =>
+            request(`/api/v1/tasks/${id}/claim/`, {
+                method: "POST",
+            }),
         getTaskActivity: (id: number): Promise<TaskActivity[]> =>
             request(`/api/v1/tasks/${id}/activity/`),
+        getTaskAttachments: (id: number): Promise<TaskAttachment[]> =>
+            request(`/api/v1/tasks/${id}/attachments/`),
+        uploadTaskAttachments: (id: number, files: File[]): Promise<TaskAttachment[]> => {
+            const formData = new FormData();
+            files.forEach((file) => formData.append("files", file));
+            return request(`/api/v1/tasks/${id}/attachments/`, {
+                method: "POST",
+                body: formData,
+            });
+        },
+        downloadTaskAttachment: async (
+            taskId: number,
+            attachment: TaskAttachment,
+        ): Promise<{ blob: Blob; filename: string }> => {
+            const response = await requestRaw(
+                attachment.download_url || `/api/v1/tasks/${taskId}/attachments/${attachment.id}/download/`,
+            );
+            return {
+                blob: await response.blob(),
+                filename: parseDownloadFilename(response, attachment.file_name),
+            };
+        },
+        deleteTaskAttachment: (taskId: number, attachmentId: number): Promise<void> =>
+            request(`/api/v1/tasks/${taskId}/attachments/${attachmentId}/`, {
+                method: "DELETE",
+            }),
+        getTaskChecklist: (id: number): Promise<TaskChecklistItem[]> =>
+            request(`/api/v1/tasks/${id}/checklist/`),
+        addTaskChecklistItem: (
+            id: number,
+            data: { title: string; position?: number; is_completed?: boolean },
+        ): Promise<TaskChecklistItem> =>
+            request(`/api/v1/tasks/${id}/checklist/`, {
+                method: "POST",
+                body: JSON.stringify(data),
+            }),
+        updateTaskChecklistItem: (
+            id: number,
+            itemId: number,
+            data: { title?: string; position?: number; is_completed?: boolean },
+        ): Promise<TaskChecklistItem> =>
+            request(`/api/v1/tasks/${id}/checklist/${itemId}/`, {
+                method: "PATCH",
+                body: JSON.stringify(data),
+            }),
+        deleteTaskChecklistItem: (id: number, itemId: number): Promise<void> =>
+            request(`/api/v1/tasks/${id}/checklist/${itemId}/`, {
+                method: "DELETE",
+            }),
         getTaskComments: (id: number): Promise<TaskComment[]> =>
             request(`/api/v1/tasks/${id}/comments/`),
         addTaskComment: (id: number, text: string): Promise<TaskComment> =>
             request(`/api/v1/tasks/${id}/comments/`, {
                 method: "POST",
+                body: JSON.stringify({ text }),
+            }),
+        updateTaskComment: (id: number, commentId: number, text: string): Promise<TaskComment> =>
+            request(`/api/v1/tasks/${id}/comments/${commentId}/`, {
+                method: "PATCH",
                 body: JSON.stringify({ text }),
             }),
         deleteTaskComment: (id: number, commentId: number): Promise<void> =>
@@ -208,6 +282,20 @@ export function createTasksApi(request: RequestFn) {
             }),
         unlinkTaskCalendarEvent: (id: number, linkId: number): Promise<void> =>
             request(`/api/v1/tasks/${id}/linked-events/${linkId}/`, {
+                method: "DELETE",
+            }),
+        getTaskExternalLinks: (id: number): Promise<TaskExternalLink[]> =>
+            request(`/api/v1/tasks/${id}/external-links/`),
+        addTaskExternalLink: (
+            id: number,
+            data: { url: string; title?: string },
+        ): Promise<TaskExternalLink> =>
+            request(`/api/v1/tasks/${id}/external-links/`, {
+                method: "POST",
+                body: JSON.stringify(data),
+            }),
+        deleteTaskExternalLink: (id: number, linkId: number): Promise<void> =>
+            request(`/api/v1/tasks/${id}/external-links/${linkId}/`, {
                 method: "DELETE",
             }),
         deleteTask: (id: number): Promise<void> =>

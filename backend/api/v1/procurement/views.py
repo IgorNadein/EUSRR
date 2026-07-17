@@ -1,12 +1,17 @@
 """ViewSets для API модуля закупок."""
 
+from pathlib import Path
+
 from django.contrib.contenttypes.models import ContentType
+from django.db import transaction
+from django.http import FileResponse, Http404
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from django.db.models import Q
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, permissions, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
 from employees.models import Department, EmployeeDepartment
@@ -26,11 +31,15 @@ from procurement.models import (
     EquipmentTransferLog,
     MaintenanceRecord,
     ProcurementItem,
+    ProcurementItemAttachment,
+    ProcurementActivityAction,
+    ProcurementActivityObjectKind,
     ProcurementRequest,
     ProcurementRequestView,
     ProcurementSettings,
     Supplier,
 )
+from procurement.activity import create_procurement_activity
 from procurement.notifications.handlers import (
     notify_executor_reassigned,
     notify_item_comment,
@@ -63,11 +72,13 @@ from .serializers import (
     ProcurementDepartmentStatsSerializer,
     ProcurementOverviewStatsSerializer,
     ProcurementItemSerializer,
+    ProcurementItemAttachmentSerializer,
     ProcurementManualApprovalStepsSerializer,
     ProcurementNotificationReadResponseSerializer,
     ProcurementRequestCreateOptionsSerializer,
     ProcurementRequestCreateSerializer,
     ProcurementRequestDetailSerializer,
+    ProcurementRequestActivitySerializer,
     ProcurementRequestListSerializer,
     SupplierSerializer,
 )
@@ -81,7 +92,10 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         "processing_department",
         "requestor",
         "executor",
-    ).prefetch_related("items", "approvals__approver")
+    ).prefetch_related(
+        "items__attachments__uploaded_by",
+        "approvals__approver",
+    )
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
@@ -116,9 +130,49 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             "notify_arrival",
             "set_viewed",
             "approval_options",
+            "activity",
         ]:
             return ProcurementRequestDetailSerializer
         return ProcurementRequestListSerializer
+
+    @action(detail=True, methods=["get"], url_path="activity")
+    def activity(self, request, pk=None):
+        procurement_request = self.get_object()
+        queryset = procurement_request.activities.select_related("actor").order_by(
+            "-created_at",
+            "-id",
+        )
+        serializer = ProcurementRequestActivitySerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    def perform_update(self, serializer):
+        tracked_fields = [
+            "title",
+            "description",
+            "department_id",
+            "processing_department_id",
+            "urgency",
+            "actual_cost",
+        ]
+        before = {
+            field: getattr(serializer.instance, field)
+            for field in tracked_fields
+        }
+        procurement_request = serializer.save()
+        changed_fields = [
+            field
+            for field in tracked_fields
+            if before[field] != getattr(procurement_request, field)
+        ]
+        if changed_fields:
+            create_procurement_activity(
+                procurement_request,
+                self.request.user,
+                ProcurementActivityAction.UPDATED,
+                object_kind=ProcurementActivityObjectKind.REQUEST,
+                object_id=procurement_request.pk,
+                metadata={"fields": changed_fields},
+            )
 
     def get_permissions(self):
         """Выбрать права доступа в зависимости от действия."""
@@ -573,6 +627,14 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             message,
             actor=request.user,
         )
+        create_procurement_activity(
+            procurement_request,
+            request.user,
+            ProcurementActivityAction.COMMENT_ADDED,
+            object_kind=ProcurementActivityObjectKind.COMMENT,
+            object_id=message.pk,
+            metadata={"comment_text": message.content},
+        )
         author_ser = EmployeeBriefSerializer(message.author)
         return Response(
             {
@@ -625,6 +687,14 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             message=message,
             deleted_by=request.user,
             soft_delete=True,
+        )
+        create_procurement_activity(
+            procurement_request,
+            request.user,
+            ProcurementActivityAction.COMMENT_REMOVED,
+            object_kind=ProcurementActivityObjectKind.COMMENT,
+            object_id=message.pk,
+            metadata={"comment_text": message.content},
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -1042,9 +1112,24 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 )
 
             procurement_request.executor = request.user
-            procurement_request.started_at = timezone.now()
-            procurement_request.save(
-                update_fields=["executor", "started_at", "updated_at"],
+            procurement_request._notification_actor = request.user
+            update_fields = ["executor", "updated_at"]
+            if procurement_request.started_at is None:
+                procurement_request.started_at = timezone.now()
+                update_fields.append("started_at")
+            procurement_request.save(update_fields=update_fields)
+            create_procurement_activity(
+                procurement_request,
+                request.user,
+                ProcurementActivityAction.EXECUTOR_REASSIGNED,
+                object_kind=ProcurementActivityObjectKind.REQUEST,
+                object_id=procurement_request.pk,
+                metadata={
+                    "previous_executor": previous_executor.get_full_name(),
+                    "previous_executor_id": previous_executor.pk,
+                    "new_executor": request.user.get_full_name(),
+                    "new_executor_id": request.user.pk,
+                },
             )
             notify_executor_reassigned(
                 procurement_request,
@@ -1183,6 +1268,14 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         procurement_request._notification_actor = request.user
         procurement_request.recalculate_fulfillment_status(save=True)
         procurement_request.refresh_from_db()
+        create_procurement_activity(
+            procurement_request,
+            request.user,
+            ProcurementActivityAction.ALL_ITEMS_RECEIVED,
+            object_kind=ProcurementActivityObjectKind.REQUEST,
+            object_id=procurement_request.pk,
+            metadata={"items_count": len(items_to_update)},
+        )
 
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)
@@ -1208,6 +1301,13 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             )
 
         notify_request_arrival(procurement_request, actor=request.user)
+        create_procurement_activity(
+            procurement_request,
+            request.user,
+            ProcurementActivityAction.ARRIVAL_NOTIFIED,
+            object_kind=ProcurementActivityObjectKind.REQUEST,
+            object_id=procurement_request.pk,
+        )
         from django.contrib.contenttypes.models import ContentType
         from notifications.models import Notification
 
@@ -1333,6 +1433,16 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 class ProcurementItemViewSet(viewsets.ModelViewSet):
     """ViewSet для позиций заявок."""
 
+    EXECUTION_FIELDS = {
+        "actual_unit_price",
+        "execution_status",
+        "executor_comment",
+        "expected_delivery_dates",
+        "links",
+        "ordered_quantity",
+        "received_quantity",
+    }
+
     NOTIFICATION_TRACKED_FIELDS = [
         "name",
         "quantity",
@@ -1449,11 +1559,121 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
             "confirm_received",
             "cancel_received",
             "cancel_issue",
+            "attachments",
+            "attachment_detail",
         ]:
             permission_classes = [permissions.IsAuthenticated]
         else:
             permission_classes = [CanManageProcurementRequest]
         return [permission() for permission in permission_classes]
+
+    def _check_item_read_permission(self, item):
+        from rest_framework.exceptions import PermissionDenied
+
+        if not self._can_access_item_comments(self.request.user, item.request):
+            raise PermissionDenied("Нет доступа к этой позиции")
+
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        parser_classes=[MultiPartParser],
+        url_path="attachments",
+    )
+    def attachments(self, request, pk=None):
+        item = self.get_object()
+        self._check_item_read_permission(item)
+
+        if request.method == "GET":
+            serializer = ProcurementItemAttachmentSerializer(
+                item.attachments.select_related("uploaded_by").all(),
+                many=True,
+                context=self.get_serializer_context(),
+            )
+            return Response(serializer.data)
+
+        self._check_item_edit_permission(item)
+        files = request.FILES.getlist("files")
+        if not files:
+            return Response(
+                {"files": "Выберите хотя бы один файл."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        created = [
+            ProcurementItemAttachment.objects.create(
+                item=item,
+                file=uploaded_file,
+                file_name=Path(uploaded_file.name).name,
+                file_size=uploaded_file.size,
+                mime_type=uploaded_file.content_type or "",
+                uploaded_by=request.user,
+            )
+            for uploaded_file in files
+        ]
+        for attachment in created:
+            create_procurement_activity(
+                item.request,
+                request.user,
+                ProcurementActivityAction.ATTACHMENT_ADDED,
+                object_kind=ProcurementActivityObjectKind.ATTACHMENT,
+                object_id=attachment.pk,
+                metadata={
+                    "item_id": item.pk,
+                    "item_name": item.name,
+                    "file_name": attachment.file_name,
+                },
+            )
+        serializer = ProcurementItemAttachmentSerializer(
+            created,
+            many=True,
+            context=self.get_serializer_context(),
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(
+        detail=True,
+        methods=["get", "delete"],
+        url_path=r"attachments/(?P<attachment_id>\d+)",
+    )
+    def attachment_detail(self, request, pk=None, attachment_id=None):
+        item = self.get_object()
+        self._check_item_read_permission(item)
+        try:
+            attachment = item.attachments.get(pk=attachment_id)
+        except ProcurementItemAttachment.DoesNotExist as exc:
+            raise Http404 from exc
+
+        if request.method == "DELETE":
+            self._check_item_edit_permission(item)
+            attachment_id_value = attachment.pk
+            file_name = attachment.file_name
+            attachment.delete()
+            create_procurement_activity(
+                item.request,
+                request.user,
+                ProcurementActivityAction.ATTACHMENT_REMOVED,
+                object_kind=ProcurementActivityObjectKind.ATTACHMENT,
+                object_id=attachment_id_value,
+                metadata={
+                    "item_id": item.pk,
+                    "item_name": item.name,
+                    "file_name": file_name,
+                },
+            )
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        if not attachment.file or not attachment.file.name:
+            raise Http404
+        try:
+            file_handle = attachment.file.open("rb")
+        except FileNotFoundError as exc:
+            raise Http404 from exc
+        return FileResponse(
+            file_handle,
+            as_attachment=True,
+            filename=attachment.file_name,
+            content_type=attachment.mime_type or "application/octet-stream",
+        )
 
     def _can_use_item_quick_action(self, user, procurement_request):
         return (
@@ -1497,6 +1717,19 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         if ordered_quantity > 0:
             return ProcurementItemExecutionStatus.ORDERED
         return ProcurementItemExecutionStatus.PENDING
+
+    def _record_item_update(self, item, user, changed_fields):
+        create_procurement_activity(
+            item.request,
+            user,
+            ProcurementActivityAction.ITEM_UPDATED,
+            object_kind=ProcurementActivityObjectKind.ITEM,
+            object_id=item.pk,
+            metadata={
+                "item_name": item.name,
+                "fields": list(changed_fields),
+            },
+        )
 
     def _reopen_completed_request(self, procurement_request, user):
         if procurement_request.status != ProcurementStatus.COMPLETED:
@@ -1596,15 +1829,59 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         # Нет прав
         raise PermissionDenied("Вы не можете изменять позиции в этой заявке")
 
+    def _starts_execution(self, item, validated_data):
+        """Проверить, меняются ли данные из блока исполнения позиции."""
+        return any(
+            field in validated_data
+            and getattr(item, field) != validated_data[field]
+            for field in self.EXECUTION_FIELDS
+        )
+
+    def _start_request_for_execution(self, procurement_request):
+        """Назначить исполнителя при первом заполнении исполнения позиции."""
+        user = self.request.user
+        if (
+            procurement_request.status
+            not in {ProcurementStatus.APPROVED, ProcurementStatus.WAITING}
+            or procurement_request.executor_id
+            or not self._can_process_request_items(user, procurement_request)
+            or not ProcurementApprovalResolver.user_can_start_work(
+                user,
+                procurement_request,
+            )
+        ):
+            return
+
+        procurement_request.executor = user
+        procurement_request.status = ProcurementStatus.IN_PROGRESS
+        if procurement_request.started_at is None:
+            procurement_request.started_at = timezone.now()
+        procurement_request._notification_actor = user
+        procurement_request.save(
+            update_fields=[
+                "executor",
+                "status",
+                "started_at",
+                "updated_at",
+            ]
+        )
+
+    @transaction.atomic
     def perform_update(self, serializer):
         """Проверяем права при обновлении позиции."""
         item = self.get_object()
+        procurement_request = ProcurementRequest.objects.select_for_update().get(
+            pk=item.request_id,
+        )
+        item.request = procurement_request
+        serializer.instance.request = procurement_request
         self._check_item_edit_permission(item)
-        procurement_request = item.request
         before = {
             field: getattr(item, field)
             for field in self.NOTIFICATION_TRACKED_FIELDS
         }
+        if self._starts_execution(item, serializer.validated_data):
+            self._start_request_for_execution(procurement_request)
         procurement_request._notification_actor = self.request.user
         updated_item = serializer.save()
         after = {
@@ -1621,6 +1898,11 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
                 updated_item,
                 actor=self.request.user,
                 changed_fields=changed_fields,
+            )
+            self._record_item_update(
+                updated_item,
+                self.request.user,
+                changed_fields,
             )
 
     @action(detail=True, methods=["post"])
@@ -1662,6 +1944,7 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
             actor=user,
             changed_fields=["execution_status"],
         )
+        self._record_item_update(item, user, ["execution_status"])
         if procurement_request.requestor_id == user.id:
             notify_item_issue_reported(item, actor=user)
 
@@ -1739,6 +2022,11 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
                 "received_quantity",
             ],
         )
+        self._record_item_update(
+            item,
+            user,
+            ["execution_status", "ordered_quantity", "received_quantity"],
+        )
 
         item.refresh_from_db()
         serializer = self.get_serializer(item)
@@ -1771,6 +2059,7 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
             actor=user,
             changed_fields=["execution_status"],
         )
+        self._record_item_update(item, user, ["execution_status"])
 
         item.refresh_from_db()
         serializer = self.get_serializer(item)
@@ -1849,6 +2138,11 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
                 "received_quantity",
             ],
         )
+        self._record_item_update(
+            item,
+            user,
+            ["execution_status", "ordered_quantity", "received_quantity"],
+        )
 
         item.refresh_from_db()
         serializer = self.get_serializer(item)
@@ -1906,6 +2200,18 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
             item,
             message,
             actor=request.user,
+        )
+        create_procurement_activity(
+            item.request,
+            request.user,
+            ProcurementActivityAction.COMMENT_ADDED,
+            object_kind=ProcurementActivityObjectKind.COMMENT,
+            object_id=message.pk,
+            metadata={
+                "item_id": item.pk,
+                "item_name": item.name,
+                "comment_text": message.content,
+            },
         )
         author_ser = EmployeeBriefSerializer(message.author)
         return Response(
@@ -1966,6 +2272,18 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
             message=message,
             deleted_by=request.user,
             soft_delete=True,
+        )
+        create_procurement_activity(
+            item.request,
+            request.user,
+            ProcurementActivityAction.COMMENT_REMOVED,
+            object_kind=ProcurementActivityObjectKind.COMMENT,
+            object_id=message.pk,
+            metadata={
+                "item_id": item.pk,
+                "item_name": item.name,
+                "comment_text": message.content,
+            },
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
 

@@ -46,11 +46,12 @@ async function fetchDownload(
 
 export function createDocumentsApi(request: RequestFn, getToken?: GetTokenFn, requestRaw?: RawRequestFn) {
     return {
-        getDocuments: (params?: { search?: string; type?: string; status?: string; page?: number; page_size?: number; limit?: number; folder_id?: number; is_regulation?: boolean }) => {
+        getDocuments: (params?: { search?: string; type?: string; status?: string; scope?: string; page?: number; page_size?: number; limit?: number; folder_id?: number; is_regulation?: boolean }) => {
             const qp = new URLSearchParams();
             if (params?.search) qp.append('search', params.search);
             if (params?.type) qp.append('type', params.type);
             if (params?.status) qp.append('status', params.status);
+            if (params?.scope) qp.append('scope', params.scope);
             if (params?.page) qp.append('page', params.page.toString());
             const pageSize = params?.page_size ?? params?.limit;
             if (pageSize) qp.append('page_size', pageSize.toString());
@@ -60,7 +61,7 @@ export function createDocumentsApi(request: RequestFn, getToken?: GetTokenFn, re
             return request(`/api/v1/documents/${qs ? '?' + qs : ''}`);
         },
         getDocument: (id: number) => request(`/api/v1/documents/${id}/`),
-        createDocument: (data: { title?: string; description?: string; file?: File | Blob; extracted_text?: string; sent_to_all?: boolean; is_regulation?: boolean; recipient_ids?: number[]; department_ids?: number[]; folder_id?: number | null; acknowledgement_required?: boolean; tag_ids?: number[] }) => {
+        createDocument: (data: { title?: string; description?: string; file?: File | Blob; extracted_text?: string; sent_to_all?: boolean; is_regulation?: boolean; recipient_ids?: number[]; department_ids?: number[]; folder_id?: number | null; acknowledgement_required?: boolean; acknowledgement_for_all?: boolean; acknowledgement_recipient_ids?: number[]; acknowledgement_department_ids?: number[]; tag_ids?: number[] }) => {
             const fd = new FormData();
             if (data.title?.trim()) fd.append('title', data.title.trim());
             if (data.description) fd.append('description', data.description);
@@ -69,13 +70,16 @@ export function createDocumentsApi(request: RequestFn, getToken?: GetTokenFn, re
             fd.append('sent_to_all', String(data.sent_to_all ?? true));
             fd.append('is_regulation', String(data.is_regulation ?? false));
             if (data.acknowledgement_required !== undefined) fd.append('acknowledgement_required', String(data.acknowledgement_required));
-            data.recipient_ids?.forEach(id => fd.append('recipient_ids', String(id)));
-            data.department_ids?.forEach(id => fd.append('department_ids', String(id)));
+            if (data.acknowledgement_for_all !== undefined) fd.append('acknowledgement_for_all', String(data.acknowledgement_for_all));
+            if (data.recipient_ids !== undefined) fd.append('recipient_ids', JSON.stringify(data.recipient_ids));
+            if (data.department_ids !== undefined) fd.append('department_ids', JSON.stringify(data.department_ids));
+            if (data.acknowledgement_recipient_ids !== undefined) fd.append('acknowledgement_recipient_ids', JSON.stringify(data.acknowledgement_recipient_ids));
+            if (data.acknowledgement_department_ids !== undefined) fd.append('acknowledgement_department_ids', JSON.stringify(data.acknowledgement_department_ids));
             data.tag_ids?.forEach(id => fd.append('tag_ids', String(id)));
             if (data.file) fd.append('file', data.file);
             return request('/api/v1/documents/', { method: 'POST', body: fd });
         },
-        updateDocument: (id: number, data: { title?: string; description?: string; extracted_text?: string; file?: File; tag_ids?: number[]; folder?: number | null; is_regulation?: boolean; sent_to_all?: boolean; acknowledgement_required?: boolean; recipient_ids?: number[]; department_ids?: number[] }) => {
+        updateDocument: (id: number, data: { title?: string; description?: string; extracted_text?: string; file?: File; tag_ids?: number[]; folder?: number | null; is_regulation?: boolean; sent_to_all?: boolean; acknowledgement_required?: boolean; acknowledgement_for_all?: boolean; recipient_ids?: number[]; department_ids?: number[]; acknowledgement_recipient_ids?: number[]; acknowledgement_department_ids?: number[] }) => {
             const fd = new FormData();
             if (data.title !== undefined) fd.append('title', data.title);
             if (data.description !== undefined) fd.append('description', data.description);
@@ -85,8 +89,11 @@ export function createDocumentsApi(request: RequestFn, getToken?: GetTokenFn, re
             if (data.is_regulation !== undefined) fd.append('is_regulation', String(data.is_regulation));
             if (data.sent_to_all !== undefined) fd.append('sent_to_all', String(data.sent_to_all));
             if (data.acknowledgement_required !== undefined) fd.append('acknowledgement_required', String(data.acknowledgement_required));
-            data.department_ids?.forEach(departmentId => fd.append('department_ids', String(departmentId)));
-            data.recipient_ids?.forEach(recipientId => fd.append('recipient_ids', String(recipientId)));
+            if (data.acknowledgement_for_all !== undefined) fd.append('acknowledgement_for_all', String(data.acknowledgement_for_all));
+            if (data.department_ids !== undefined) fd.append('department_ids', JSON.stringify(data.department_ids));
+            if (data.recipient_ids !== undefined) fd.append('recipient_ids', JSON.stringify(data.recipient_ids));
+            if (data.acknowledgement_department_ids !== undefined) fd.append('acknowledgement_department_ids', JSON.stringify(data.acknowledgement_department_ids));
+            if (data.acknowledgement_recipient_ids !== undefined) fd.append('acknowledgement_recipient_ids', JSON.stringify(data.acknowledgement_recipient_ids));
             data.tag_ids?.forEach(tagId => fd.append('tag_ids', String(tagId)));
             return request(`/api/v1/documents/${id}/`, { method: 'PATCH', body: fd });
         },
@@ -138,11 +145,11 @@ export function createDocumentsApi(request: RequestFn, getToken?: GetTokenFn, re
         getFolderChildren: (id: number) => request(`/api/v1/folders/${id}/children/`),
         getFolderDocuments: (id: number) => request(`/api/v1/folders/${id}/documents/`),
         // Comments
-        getDocumentComments: (documentId: number) => request(`/api/v1/document-comments/?document=${documentId}`),
+        getDocumentComments: (documentId: number) => request(`/api/v1/documents/${documentId}/comments/`),
         createDocumentComment: (data: { document: number; text: string; parent?: number }) =>
-            request('/api/v1/document-comments/', { method: 'POST', body: JSON.stringify({ document_id: data.document, text: data.text, parent_id: data.parent }) }),
-        updateDocumentComment: (id: number, text: string) => request(`/api/v1/document-comments/${id}/`, { method: 'PATCH', body: JSON.stringify({ text }) }),
-        deleteDocumentComment: (id: number): Promise<void> => request(`/api/v1/document-comments/${id}/`, { method: 'DELETE' }),
+            request(`/api/v1/documents/${data.document}/comments/`, { method: 'POST', body: JSON.stringify({ text: data.text, parent_id: data.parent }) }),
+        updateDocumentComment: (documentId: number, id: number, text: string) => request(`/api/v1/documents/${documentId}/comments/${id}/`, { method: 'PATCH', body: JSON.stringify({ text }) }),
+        deleteDocumentComment: (documentId: number, id: number): Promise<void> => request(`/api/v1/documents/${documentId}/comments/${id}/`, { method: 'DELETE' }),
         getCommentReplies: (commentId: number) => request(`/api/v1/document-comments/${commentId}/replies/`),
         // Tags
         getDocumentTags: (params?: { page?: number; page_size?: number; limit?: number }) => {

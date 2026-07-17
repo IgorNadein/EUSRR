@@ -13,6 +13,12 @@ class TaskPriority(models.TextChoices):
     CRITICAL = "critical", "Критический"
 
 
+class TaskBoardAccessScope(models.TextChoices):
+    ALL = "all", "Для всех"
+    PRIVATE = "private", "Для себя"
+    RESTRICTED = "restricted", "Выборочно"
+
+
 class TaskBoard(models.Model):
     name = models.CharField("Название", max_length=255)
     description = models.TextField("Описание", blank=True)
@@ -33,6 +39,12 @@ class TaskBoard(models.Model):
         blank=True,
         related_name="task_boards",
         verbose_name="Отделы",
+    )
+    access_scope = models.CharField(
+        "Доступ",
+        max_length=16,
+        choices=TaskBoardAccessScope.choices,
+        default=TaskBoardAccessScope.ALL,
     )
     is_archived = models.BooleanField("Архивная", default=False)
     created_at = models.DateTimeField("Создано", auto_now_add=True)
@@ -199,6 +211,79 @@ class Task(models.Model):
         super().save(*args, **kwargs)
 
 
+class TaskAttachment(models.Model):
+    task = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+        verbose_name="Задача",
+    )
+    file = models.FileField(
+        "Файл",
+        upload_to="task_attachments/%Y/%m/%d/",
+    )
+    file_name = models.CharField("Название файла", max_length=255)
+    file_size = models.PositiveBigIntegerField("Размер файла (байты)")
+    mime_type = models.CharField("MIME-тип", max_length=255, blank=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="uploaded_task_attachments",
+        verbose_name="Загрузил",
+    )
+    created_at = models.DateTimeField("Загружено", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Вложение задачи"
+        verbose_name_plural = "Вложения задач"
+        ordering = ["created_at", "id"]
+        indexes = [models.Index(fields=["task", "created_at"])]
+
+    def __str__(self):
+        return f"{self.task}: {self.file_name}"
+
+
+class TaskChecklistItem(models.Model):
+    task = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name="checklist_items",
+        verbose_name="Задача",
+    )
+    title = models.CharField("Пункт", max_length=500)
+    position = models.PositiveIntegerField("Позиция", default=0)
+    is_completed = models.BooleanField("Выполнен", default=False)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_task_checklist_items",
+        verbose_name="Создал",
+    )
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="completed_task_checklist_items",
+        verbose_name="Отметил выполненным",
+    )
+    completed_at = models.DateTimeField("Выполнен", null=True, blank=True)
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+
+    class Meta:
+        verbose_name = "Пункт чек-листа задачи"
+        verbose_name_plural = "Пункты чек-листа задач"
+        ordering = ["position", "id"]
+        indexes = [
+            models.Index(fields=["task", "position"]),
+            models.Index(fields=["task", "is_completed"]),
+        ]
+
+    def __str__(self):
+        return f"{self.task}: {self.title}"
+
+
 class TaskLinkedObjectKind(models.TextChoices):
     POST = "post", "Новость"
     MESSAGE = "message", "Сообщение"
@@ -212,12 +297,45 @@ class TaskLinkedObjectKind(models.TextChoices):
     ATTENDANCE_RECORD = "attendance_record", "Запись посещаемости"
 
 
+class TaskActivityObjectKind(models.TextChoices):
+    POST = "post", "Новость"
+    MESSAGE = "message", "Сообщение"
+    CALENDAR_EVENT = "calendar_event", "Календарное событие"
+    DOCUMENT = "document", "Документ"
+    REQUEST = "request", "Заявление"
+    PROCUREMENT_REQUEST = "procurement_request", "Заявка на закупку"
+    EMPLOYEE = "employee", "Сотрудник"
+    GUEST = "guest", "Гость"
+    GUEST_VISIT = "guest_visit", "Заявка на гостевой визит"
+    ATTENDANCE_RECORD = "attendance_record", "Запись посещаемости"
+    EXTERNAL_LINK = "external_link", "Внешняя ссылка"
+    CHECKLIST_ITEM = "checklist_item", "Пункт чек-листа"
+    COMMENT = "comment", "Комментарий"
+
+
 class TaskActivityAction(models.TextChoices):
     CREATED = "created", "Создал задачу"
     UPDATED = "updated", "Обновил задачу"
+    CLAIMED = "claimed", "Взял задачу в работу"
     MOVED = "moved", "Переместил задачу"
     LINKED = "linked", "Связал объект"
     UNLINKED = "unlinked", "Убрал связь"
+    ATTACHMENT_ADDED = "attachment_added", "Добавил файл"
+    ATTACHMENT_REMOVED = "attachment_removed", "Удалил файл"
+    CHECKLIST_ITEM_ADDED = "checklist_item_added", "Добавил пункт чек-листа"
+    CHECKLIST_ITEM_UPDATED = "checklist_item_updated", "Изменил пункт чек-листа"
+    CHECKLIST_ITEM_COMPLETED = (
+        "checklist_item_completed",
+        "Выполнил пункт чек-листа",
+    )
+    CHECKLIST_ITEM_REOPENED = (
+        "checklist_item_reopened",
+        "Вернул пункт чек-листа в работу",
+    )
+    CHECKLIST_ITEM_REMOVED = "checklist_item_removed", "Удалил пункт чек-листа"
+    COMMENT_ADDED = "comment_added", "Добавил комментарий"
+    COMMENT_EDITED = "comment_edited", "Изменил комментарий"
+    COMMENT_REMOVED = "comment_removed", "Удалил комментарий"
 
 
 class TaskActivity(models.Model):
@@ -243,7 +361,7 @@ class TaskActivity(models.Model):
     object_kind = models.CharField(
         "Тип объекта",
         max_length=32,
-        choices=TaskLinkedObjectKind.choices,
+        choices=TaskActivityObjectKind.choices,
         blank=True,
     )
     object_id = models.PositiveBigIntegerField("ID объекта", null=True, blank=True)
@@ -307,3 +425,36 @@ class TaskLinkedObject(models.Model):
 
     def __str__(self):
         return f"{self.task} -> {self.kind}:{self.object_id}"
+
+
+class TaskExternalLink(models.Model):
+    task = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name="external_links",
+        verbose_name="Задача",
+    )
+    url = models.URLField("Ссылка", max_length=2048)
+    title = models.CharField("Название", max_length=255, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_task_external_links",
+        verbose_name="Добавил",
+    )
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Внешняя ссылка задачи"
+        verbose_name_plural = "Внешние ссылки задач"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["task", "url"],
+                name="uniq_task_external_link",
+            )
+        ]
+        indexes = [models.Index(fields=["task", "created_at"])]
+
+    def __str__(self):
+        return f"{self.task} -> {self.title or self.url}"

@@ -143,52 +143,34 @@ export function RequestListItem({
           </div>
 
           <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="mb-2 flex items-center gap-2">
-                  {authorLink ? (
-                    <Link href={authorLink} className="group flex min-w-0 items-center gap-2">
-                      <RequestAvatar
-                        alt={authorName}
-                        fallback={authorFallback}
-                        size="lg"
-                        src={requestAuthor?.avatar}
-                      />
-                      <span className="truncate text-sm font-medium text-[var(--foreground)] group-hover:text-[var(--accent-primary-strong)]">
-                        {authorName}
-                      </span>
-                    </Link>
-                  ) : (
-                    <div className="flex min-w-0 items-center gap-2">
-                      <RequestAvatar
-                        alt={authorName}
-                        fallback={authorFallback}
-                        size="lg"
-                      />
-                      <span className="truncate text-sm font-medium text-[var(--foreground)]">{authorName}</span>
-                    </div>
-                  )}
-                </div>
-
-                <button type="button" onClick={() => onOpenDetails(request)} className="block w-full text-left">
-                  <h3
-                    className={`${rowOpen ? "app-text-wrap line-clamp-3" : "truncate"} text-sm font-semibold text-[var(--foreground)] transition hover:text-[var(--accent-primary-strong)]`}
-                  >
-                    <span className="app-text-muted">{typeLabel}:</span>{" "}
-                    <span className="text-[var(--foreground)]">{title}</span>
-                  </h3>
-                </button>
-
-                <div className="app-text-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                  <span>
-                    Период: {request.date_from ? formatDate(request.date_from) : "—"}
-                    {request.date_to ? ` — ${formatDate(request.date_to)}` : ""}
-                  </span>
-                </div>
+            <div className="mb-2 flex min-w-0 flex-wrap items-start gap-2">
+              <div className="min-w-0 flex-[1_1_9rem]">
+                {authorLink ? (
+                  <Link href={authorLink} className="group flex min-w-0 max-w-full items-center gap-2">
+                    <RequestAvatar
+                      alt={authorName}
+                      fallback={authorFallback}
+                      size="lg"
+                      src={requestAuthor?.avatar}
+                    />
+                    <span className="app-text-wrap line-clamp-2 min-w-0 text-sm font-medium text-[var(--foreground)] group-hover:text-[var(--accent-primary-strong)]">
+                      {authorName}
+                    </span>
+                  </Link>
+                ) : (
+                  <div className="flex min-w-0 max-w-full items-center gap-2">
+                    <RequestAvatar
+                      alt={authorName}
+                      fallback={authorFallback}
+                      size="lg"
+                    />
+                    <span className="app-text-wrap line-clamp-2 min-w-0 text-sm font-medium text-[var(--foreground)]">{authorName}</span>
+                  </div>
+                )}
               </div>
 
-              <div className="shrink-0">
-                <div ref={isMenuOpen ? menuRef : null} className="flex items-center justify-end gap-2">
+              <div className="ml-auto shrink-0">
+                <div ref={isMenuOpen ? menuRef : null} className="flex max-w-full items-center justify-end gap-2">
                   <span className={`app-status-pill ${status.className}`}>
                     {status.label}
                   </span>
@@ -268,6 +250,22 @@ export function RequestListItem({
                   ) : null}
                 </div>
               </div>
+            </div>
+
+            <button type="button" onClick={() => onOpenDetails(request)} className="block w-full text-left">
+              <h3
+                className={`app-text-wrap ${rowOpen ? "line-clamp-4" : "line-clamp-2"} text-sm font-semibold text-[var(--foreground)] transition hover:text-[var(--accent-primary-strong)]`}
+              >
+                <span className="app-text-muted">{typeLabel}:</span>{" "}
+                <span className="text-[var(--foreground)]">{title}</span>
+              </h3>
+            </button>
+
+            <div className="app-text-muted app-text-wrap mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+              <span>
+                Период: {request.date_from ? formatDate(request.date_from) : "—"}
+                {request.date_to ? ` — ${formatDate(request.date_to)}` : ""}
+              </span>
             </div>
 
             {summary ? (

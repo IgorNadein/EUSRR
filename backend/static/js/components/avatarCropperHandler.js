@@ -64,7 +64,6 @@ const DEFAULT_CONFIG = {
     cancelButton: 'Отмена',
     errorTooSmall: 'Изображение слишком маленькое. Минимальный размер: ',
     errorInvalidFormat: 'Неподдерживаемый формат. Используйте JPG, PNG или GIF.',
-    errorFileSize: 'Файл слишком большой. Максимум 10 МБ.',
   }
 };
 
@@ -226,13 +225,6 @@ export class AvatarCropper {
     // Валидация формата
     if (!file.type.match(/^image\/(jpeg|jpg|png|gif)$/i)) {
       alert(this.config.texts.errorInvalidFormat);
-      event.target.value = '';
-      return;
-    }
-    
-    // Валидация размера (10 МБ)
-    if (file.size > 10 * 1024 * 1024) {
-      alert(this.config.texts.errorFileSize);
       event.target.value = '';
       return;
     }

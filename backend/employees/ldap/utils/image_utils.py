@@ -12,6 +12,58 @@ except ImportError:
     Image = None  # type: ignore
 
 
+def _encode_jpeg(image, quality: int) -> bytes:
+    """Кодирует JPEG, обходя ограничения буфера libjpeg для сложных фото."""
+    options = {
+        "format": "JPEG",
+        "quality": quality,
+        "subsampling": 0,
+    }
+
+    buffer = io.BytesIO()
+    try:
+        image.save(
+            buffer,
+            optimize=True,
+            progressive=True,
+            **options,
+        )
+    except OSError:
+        # Некоторые сборки libjpeg не могут оптимизировать высокоэнтропийное
+        # изображение через BytesIO. Обычный JPEG остаётся совместимым с AD.
+        buffer = io.BytesIO()
+        image.save(
+            buffer,
+            optimize=False,
+            progressive=False,
+            **options,
+        )
+    return buffer.getvalue()
+
+
+def _best_jpeg_within_limit(
+    image,
+    *,
+    min_quality: int,
+    max_quality: int,
+    max_bytes: int,
+) -> bytes | None:
+    """Возвращает JPEG максимального качества в заданном лимите."""
+    best = None
+    low, high = min_quality, max_quality
+
+    while low <= high:
+        quality = (low + high) // 2
+        encoded = _encode_jpeg(image, quality)
+        if len(encoded) <= max_bytes:
+            best = encoded
+            low = quality + 1
+        else:
+            high = quality - 1
+
+    return best
+
+
 def normalize_avatar_to_jpeg(
     data: bytes, *, size_px: int = 384, max_kb: int = 100
 ) -> bytes:
@@ -42,6 +94,10 @@ def normalize_avatar_to_jpeg(
     """
     if not data:
         raise ValueError("avatar: пустые данные")
+    if size_px <= 0:
+        raise ValueError("avatar: размер изображения должен быть положительным")
+    if max_kb <= 0:
+        raise ValueError("avatar: лимит размера должен быть положительным")
     if Image is None:
         raise RuntimeError(
             "Pillow не установлен. Установите 'Pillow' для обработки аватаров."
@@ -86,46 +142,46 @@ def normalize_avatar_to_jpeg(
         # вместо resize, который растягивает изображение
         img.thumbnail((size_px, size_px), Image.Resampling.LANCZOS)
 
-        # Бинарный поиск по качеству для соблюдения max_kb
-        # КАЧЕСТВО: Повышен минимум до 75, используется progressive и 4:4:4
-        lo, hi = 75, 98
-        best = None
-        while lo <= hi:
-            mid = (lo + hi) // 2
-            buf = io.BytesIO()
-            # МАКСИМАЛЬНОЕ КАЧЕСТВО:
-            # - progressive: лучше сжатие, плавная загрузка
-            # - subsampling=0: 4:4:4 (без потери цветности, лучше для лиц)
-            # - optimize: оптимизация таблиц Хаффмана
-            img.save(
-                buf,
-                format="JPEG",
-                quality=mid,
-                optimize=True,
-                progressive=True,
-                subsampling=0,  # 4:4:4 - без потери цветности
-            )
-            kb = len(buf.getvalue()) // 1024
-            if kb <= max_kb:
-                best = buf.getvalue()
-                lo = mid + 1
-            else:
-                hi = mid - 1
+        max_bytes = max_kb * 1024
+        working = img
 
-        if best is None:
-            # минимально возможное (с теми же настройками качества)
-            buf = io.BytesIO()
-            img.save(
-                buf,
-                format="JPEG",
-                quality=75,
-                optimize=True,
-                progressive=True,
-                subsampling=0,
+        # Сначала сохраняем высокое качество. Если сложное изображение не
+        # помещается, уменьшаем разрешение, не нарушая жёсткий лимит LDAP.
+        while True:
+            best = _best_jpeg_within_limit(
+                working,
+                min_quality=75,
+                max_quality=98,
+                max_bytes=max_bytes,
             )
-            best = buf.getvalue()
+            if best is not None:
+                return best
 
-        return best
+            if max(working.size) <= 64:
+                break
+
+            next_size = tuple(max(1, int(side * 0.85)) for side in working.size)
+            working = working.resize(next_size, Image.Resampling.LANCZOS)
+
+        # Аварийный диапазон качества нужен только для нетипично маленького
+        # лимита или высокоэнтропийного изображения.
+        while True:
+            best = _best_jpeg_within_limit(
+                working,
+                min_quality=20,
+                max_quality=74,
+                max_bytes=max_bytes,
+            )
+            if best is not None:
+                return best
+
+            if max(working.size) <= 1:
+                raise RuntimeError(
+                    "avatar: невозможно уложить JPEG в заданный лимит"
+                )
+
+            next_size = tuple(max(1, int(side * 0.75)) for side in working.size)
+            working = working.resize(next_size, Image.Resampling.LANCZOS)
     except Exception as exc:  # pragma: no cover
         raise RuntimeError(f"avatar: ошибка нормализации: {exc}") from exc
 

@@ -222,6 +222,9 @@ export interface TaskCard {
   linked_attendance_records_count?: number;
   linked_objects_count?: number;
   comments_count?: number;
+  attachments_count?: number;
+  checklist_total?: number;
+  checklist_completed?: number;
   created_at: string;
   updated_at: string;
 }
@@ -230,6 +233,7 @@ export interface TaskBoard {
   id: number;
   name: string;
   description?: string;
+  access_scope?: "all" | "private" | "restricted";
   created_by?: User;
   members?: number[];
   member_details?: User[];
@@ -451,15 +455,48 @@ export interface TaskLinkedAttendanceRecord {
   created_at: string;
 }
 
+export interface TaskExternalLink {
+  id: number;
+  task: number;
+  url: string;
+  title: string;
+  created_by?: User;
+  created_at: string;
+}
+
 export interface TaskActivity {
   id: number;
-  action: "created" | "updated" | "moved" | "linked" | "unlinked";
+  action: "created" | "updated" | "claimed" | "moved" | "linked" | "unlinked" | "attachment_added" | "attachment_removed" | "checklist_item_added" | "checklist_item_updated" | "checklist_item_completed" | "checklist_item_reopened" | "checklist_item_removed" | "comment_added" | "comment_edited" | "comment_removed";
   action_display?: string;
   actor?: User | null;
-  object_kind?: "post" | "message" | "calendar_event" | "document" | "request" | "procurement_request" | "employee" | "guest" | "guest_visit" | "attendance_record" | "";
+  object_kind?: "post" | "message" | "calendar_event" | "document" | "request" | "procurement_request" | "employee" | "guest" | "guest_visit" | "attendance_record" | "external_link" | "checklist_item" | "comment" | "";
   object_id?: number | null;
   metadata?: Record<string, unknown>;
   created_at: string;
+}
+
+export interface TaskAttachment {
+  id: number;
+  task: number;
+  file_name: string;
+  file_size: number;
+  mime_type?: string;
+  uploaded_by?: User;
+  created_at: string;
+  download_url: string;
+}
+
+export interface TaskChecklistItem {
+  id: number;
+  task: number;
+  title: string;
+  position: number;
+  is_completed: boolean;
+  created_by?: User;
+  completed_by?: User | null;
+  completed_at?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface TaskComment {
@@ -467,6 +504,8 @@ export interface TaskComment {
   task: number;
   author: User;
   text: string;
+  is_edited?: boolean;
+  edited_at?: string | null;
   created_at: string;
 }
 
@@ -660,7 +699,14 @@ export interface Document {
   departments?: { id: number; name: string }[];
   acknowledgements?: DocumentAcknowledgement[];
   acknowledgement_required?: boolean;
+  acknowledgement_for_all?: boolean;
+  acknowledgement_required_for_user?: boolean;
+  acknowledgement_recipients?: User[];
+  acknowledgement_departments?: { id: number; name: string }[];
   is_acknowledged?: boolean;
+  acknowledged_count?: number;
+  acknowledgement_total?: number;
+  comments_count?: number;
   linked_tasks?: MessageLinkedTask[];
 }
 
@@ -1008,6 +1054,17 @@ export type ProcurementItemExecutionStatus = 'pending' | 'ordered' | 'rejected' 
 export type UrgencyLevel = 'low' | 'medium' | 'high' | 'critical';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
 
+export interface ProcurementItemAttachment {
+  id: number;
+  file_name: string;
+  file_size: number;
+  mime_type?: string;
+  uploaded_by: number;
+  uploaded_by_name?: string;
+  created_at: string;
+  download_url?: string;
+}
+
 export interface ProcurementItem {
   id: number;
   request: number;
@@ -1027,6 +1084,8 @@ export interface ProcurementItem {
   received_quantity?: number | null;
   initial_comment?: string;
   comments_count?: number;
+  attachments?: ProcurementItemAttachment[];
+  attachments_count?: number;
   equipment?: number | null;
 }
 
@@ -1110,6 +1169,7 @@ export interface ProcurementRequest {
   total_received_quantity?: number;
   quantity_unit_label?: string;
   comments_count?: number;
+  activity_count?: number;
   can_current_user_approve?: boolean;
   can_current_user_submit_for_approval?: boolean;
   can_current_user_start_work?: boolean;
@@ -1120,6 +1180,17 @@ export interface ProcurementRequest {
   submitted_at?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
+}
+
+export interface ProcurementRequestActivity {
+  id: number;
+  action: string;
+  action_display: string;
+  actor?: User | null;
+  object_kind?: string;
+  object_id?: number | null;
+  metadata?: Record<string, unknown>;
+  created_at: string;
 }
 
 export interface ProcurementComment {

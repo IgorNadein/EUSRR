@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
@@ -37,8 +38,11 @@ from procurement.models import (
     Approval,
     ApprovalRoute,
     Budget,
+    ProcurementActivityAction,
     ProcurementItem,
+    ProcurementItemAttachment,
     ProcurementRequest,
+    ProcurementRequestActivity,
     ProcurementSettings,
 )
 from procurement.notifications.handlers import notify_new_request
@@ -605,6 +609,10 @@ class TestProcurementRequestCreate:
         assert response.data['title'] == 'Закупка мониторов'
         assert response.data['requestor'] == user.id
         assert response.data['status'] == ProcurementStatus.DRAFT
+        assert [item['id'] for item in response.data['items']] == list(
+            ProcurementRequest.objects.get(pk=response.data['id'])
+            .items.values_list('id', flat=True)
+        )
         
         # Проверяем что позиции созданы
         request_id = response.data['id']
@@ -834,6 +842,17 @@ class TestProcurementRequestComments:
         after = api_client.get(list_url)
         after_item = next(item for item in after.data['results'] if item['id'] == procurement_request.id)
         assert after_item['comments_count'] == 0
+        assert list(
+            procurement_request.activities.filter(
+                action__in=[
+                    ProcurementActivityAction.COMMENT_ADDED,
+                    ProcurementActivityAction.COMMENT_REMOVED,
+                ]
+            ).values_list("action", flat=True)
+        ) == [
+            ProcurementActivityAction.COMMENT_REMOVED,
+            ProcurementActivityAction.COMMENT_ADDED,
+        ]
 
 
 class TestProcurementItemComments:
@@ -912,6 +931,18 @@ class TestProcurementItemComments:
             if item['id'] == procurement_item.id
         )
         assert after_item['comments_count'] == 0
+        comment_activities = procurement_item.request.activities.filter(
+            action__in=[
+                ProcurementActivityAction.COMMENT_ADDED,
+                ProcurementActivityAction.COMMENT_REMOVED,
+            ],
+            object_id=comment_id,
+        )
+        assert list(comment_activities.values_list("action", flat=True)) == [
+            ProcurementActivityAction.COMMENT_REMOVED,
+            ProcurementActivityAction.COMMENT_ADDED,
+        ]
+        assert comment_activities.first().metadata["item_id"] == procurement_item.id
 
     def test_outsider_cannot_comment_item(
         self, api_client, procurement_item
@@ -992,6 +1023,123 @@ class TestProcurementItemComments:
         assert response.data['item'] == item.id
 
 
+class TestProcurementItemAttachments:
+    def test_archive_attachment_lifecycle(
+        self,
+        api_client,
+        user,
+        procurement_item,
+        settings,
+        tmp_path,
+    ):
+        settings.MEDIA_ROOT = tmp_path
+        api_client.force_authenticate(user=user)
+        attachments_url = reverse(
+            'api:v1:procurement:procurementitem-attachments',
+            kwargs={'pk': procurement_item.id},
+        )
+
+        archive_content = b'PK\x03\x04procurement archive content'
+        response = api_client.post(
+            attachments_url,
+            {
+                'files': SimpleUploadedFile(
+                    'specification.zip',
+                    archive_content,
+                    content_type='application/zip',
+                ),
+            },
+            format='multipart',
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data[0]['file_name'] == 'specification.zip'
+        assert response.data[0]['mime_type'] == 'application/zip'
+        attachment_id = response.data[0]['id']
+        assert ProcurementItemAttachment.objects.filter(pk=attachment_id).exists()
+
+        request_detail = api_client.get(
+            reverse(
+                'api:v1:procurement:procurementrequest-detail',
+                kwargs={'pk': procurement_item.request_id},
+            )
+        )
+        detail_item = next(
+            item for item in request_detail.data['items']
+            if item['id'] == procurement_item.id
+        )
+        assert detail_item['attachments_count'] == 1
+        assert detail_item['attachments'][0]['id'] == attachment_id
+
+        attachment_url = reverse(
+            'api:v1:procurement:procurementitem-attachment-detail',
+            kwargs={
+                'pk': procurement_item.id,
+                'attachment_id': attachment_id,
+            },
+        )
+        download_response = api_client.get(attachment_url)
+        assert download_response.status_code == status.HTTP_200_OK
+        assert b''.join(download_response.streaming_content) == archive_content
+
+        delete_response = api_client.delete(attachment_url)
+        assert delete_response.status_code == status.HTTP_204_NO_CONTENT
+        assert not ProcurementItemAttachment.objects.filter(pk=attachment_id).exists()
+        attachment_activities = procurement_item.request.activities.filter(
+            action__in=[
+                ProcurementActivityAction.ATTACHMENT_ADDED,
+                ProcurementActivityAction.ATTACHMENT_REMOVED,
+            ],
+            object_id=attachment_id,
+        )
+        assert list(attachment_activities.values_list("action", flat=True)) == [
+            ProcurementActivityAction.ATTACHMENT_REMOVED,
+            ProcurementActivityAction.ATTACHMENT_ADDED,
+        ]
+        assert attachment_activities.first().metadata["file_name"] == "specification.zip"
+
+    def test_outsider_cannot_access_attachment(
+        self,
+        api_client,
+        procurement_item,
+        user,
+        settings,
+        tmp_path,
+    ):
+        settings.MEDIA_ROOT = tmp_path
+        attachment = ProcurementItemAttachment.objects.create(
+            item=procurement_item,
+            file=SimpleUploadedFile('private.txt', b'private'),
+            file_name='private.txt',
+            file_size=7,
+            mime_type='text/plain',
+            uploaded_by=user,
+        )
+        outsider = Employee.objects.create_user(
+            email='attachment-outsider@example.com',
+            password='testpass123',
+            phone_number='+79997777773',
+            first_name='Чужой',
+            last_name='Получатель',
+            is_active=True,
+            email_verified=True,
+            send_activation_email=False,
+        )
+        api_client.force_authenticate(user=outsider)
+
+        response = api_client.get(
+            reverse(
+                'api:v1:procurement:procurementitem-attachment-detail',
+                kwargs={
+                    'pk': procurement_item.id,
+                    'attachment_id': attachment.id,
+                },
+            )
+        )
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
 # ==============================================================================
 # ТЕСТЫ ОБНОВЛЕНИЯ ЗАЯВОК
 # ==============================================================================
@@ -1037,6 +1185,67 @@ class TestProcurementRequestUpdate:
         response = api_client.patch(url, data, format='json')
         
         assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+class TestProcurementRequestActivity:
+    def test_activity_endpoint_returns_creation_and_update_history(
+        self,
+        api_client,
+        user,
+        procurement_request,
+    ):
+        api_client.force_authenticate(user=user)
+        detail_url = reverse(
+            "api:v1:procurement:procurementrequest-detail",
+            kwargs={"pk": procurement_request.pk},
+        )
+        activity_url = reverse(
+            "api:v1:procurement:procurementrequest-activity",
+            kwargs={"pk": procurement_request.pk},
+        )
+
+        update_response = api_client.patch(
+            detail_url,
+            {"title": "Новое название истории"},
+            format="json",
+        )
+        assert update_response.status_code == status.HTTP_200_OK
+
+        response = api_client.get(activity_url)
+        assert response.status_code == status.HTTP_200_OK
+        assert [entry["action"] for entry in response.data[:2]] == [
+            ProcurementActivityAction.UPDATED,
+            ProcurementActivityAction.CREATED,
+        ]
+        assert response.data[0]["actor"]["id"] == user.id
+        assert response.data[0]["metadata"]["fields"] == ["title"]
+
+        detail_response = api_client.get(detail_url)
+        assert detail_response.status_code == status.HTTP_200_OK
+        assert detail_response.data["activity_count"] == 2
+
+    def test_outsider_cannot_read_activity(
+        self,
+        api_client,
+        procurement_request,
+    ):
+        outsider = Employee.objects.create_user(
+            email="activity-outsider@example.com",
+            password="testpass123",
+            phone_number="+79998888777",
+            is_active=True,
+            email_verified=True,
+            send_activation_email=False,
+        )
+        api_client.force_authenticate(user=outsider)
+        url = reverse(
+            "api:v1:procurement:procurementrequest-activity",
+            kwargs={"pk": procurement_request.pk},
+        )
+
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 # ==============================================================================
@@ -1542,6 +1751,11 @@ class TestProcessingDepartmentWorkflow:
         processing_request.refresh_from_db()
         assert processing_request.executor == supply_user
         assert processing_request.status == ProcurementStatus.IN_PROGRESS
+        started_activity = ProcurementRequestActivity.objects.filter(
+            request=processing_request,
+            action=ProcurementActivityAction.STARTED,
+        ).latest("created_at")
+        assert started_activity.actor == supply_user
 
         api_client.force_authenticate(user=user)
         edit_response = api_client.patch(
@@ -1598,11 +1812,17 @@ class TestProcessingDepartmentWorkflow:
         processing_request.refresh_from_db()
         assert processing_request.executor == supply_replacement_user
         assert processing_request.status == ProcurementStatus.IN_PROGRESS
-        assert processing_request.started_at > previous_started_at
+        assert processing_request.started_at == previous_started_at
         assert response.data["executor"] == supply_replacement_user.id
         assert response.data["executor_name"] == (
             supply_replacement_user.get_full_name()
         )
+        reassigned_activity = ProcurementRequestActivity.objects.get(
+            request=processing_request,
+            action=ProcurementActivityAction.EXECUTOR_REASSIGNED,
+        )
+        assert reassigned_activity.actor == supply_replacement_user
+        assert reassigned_activity.metadata["previous_executor_id"] == supply_user.id
 
     def test_available_scope_includes_reassignable_processing_request(
         self, api_client, supply_user, supply_replacement_user,
@@ -1865,6 +2085,110 @@ class TestProcessingDepartmentWorkflow:
         item.refresh_from_db()
         assert item.execution_status == ProcurementItemExecutionStatus.RECEIVED
         assert item.received_quantity == item.quantity
+        actions = set(
+            processing_request.activities.values_list("action", flat=True)
+        )
+        assert ProcurementActivityAction.ITEM_UPDATED in actions
+        assert ProcurementActivityAction.ALL_ITEMS_RECEIVED in actions
+
+    def test_filling_execution_automatically_starts_request(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            quantity=3,
+        )
+        api_client.force_authenticate(user=supply_user)
+        item_url = reverse(
+            'api:v1:procurement:procurementitem-detail',
+            kwargs={'pk': item.id},
+        )
+
+        response = api_client.patch(
+            item_url,
+            {
+                'actual_unit_price': '125.00',
+                'ordered_quantity': 1,
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        processing_request.refresh_from_db()
+        assert processing_request.status == ProcurementStatus.IN_PROGRESS
+        assert processing_request.executor == supply_user
+        assert processing_request.started_at is not None
+        item_activity = processing_request.activities.filter(
+            action=ProcurementActivityAction.ITEM_UPDATED,
+            object_id=item.id,
+        ).latest("created_at")
+        assert item_activity.actor == supply_user
+        assert set(item_activity.metadata["fields"]) == {
+            "actual_unit_price",
+            "execution_status",
+            "ordered_quantity",
+        }
+
+    def test_later_execution_updates_keep_original_start_date(
+        self, api_client, supply_user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            quantity=3,
+        )
+        original_started_at = timezone.now() - timedelta(days=2)
+        processing_request.status = ProcurementStatus.IN_PROGRESS
+        processing_request.executor = supply_user
+        processing_request.started_at = original_started_at
+        processing_request.save(
+            update_fields=[
+                'status',
+                'executor',
+                'started_at',
+                'updated_at',
+            ]
+        )
+        api_client.force_authenticate(user=supply_user)
+
+        response = api_client.patch(
+            reverse(
+                'api:v1:procurement:procurementitem-detail',
+                kwargs={'pk': item.id},
+            ),
+            {'ordered_quantity': 2},
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        processing_request.refresh_from_db()
+        assert processing_request.started_at == original_started_at
+
+    def test_regular_item_edit_does_not_start_request(
+        self, api_client, user, processing_request,
+        procurement_item_factory
+    ):
+        item = procurement_item_factory(
+            request=processing_request,
+            name='Исходное название',
+        )
+        api_client.force_authenticate(user=user)
+
+        response = api_client.patch(
+            reverse(
+                'api:v1:procurement:procurementitem-detail',
+                kwargs={'pk': item.id},
+            ),
+            {'name': 'Уточнённое название'},
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        processing_request.refresh_from_db()
+        assert processing_request.status == ProcurementStatus.WAITING
+        assert processing_request.executor is None
+        assert processing_request.started_at is None
 
     def test_author_can_edit_waiting_request_with_items_before_work(
         self, api_client, user, department, supply_department,

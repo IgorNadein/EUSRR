@@ -173,6 +173,15 @@ def api_urls():
     def _acknowledgements(pk: int) -> str:
         return reverse("api:v1:documents-acknowledgements", args=[pk])
 
+    def _comments(pk: int) -> str:
+        return reverse("api:v1:documents-comments", args=[pk])
+
+    def _comment_detail(pk: int, comment_id: int) -> str:
+        return reverse(
+            "api:v1:documents-document-comment",
+            args=[pk, comment_id],
+        )
+
     def _folder_detail(pk: int) -> str:
         return reverse("api:v1:folders-detail", args=[pk])
 
@@ -185,6 +194,8 @@ def api_urls():
         "detail": _detail,
         "ack": _ack,
         "acknowledgements": _acknowledgements,
+        "comments": _comments,
+        "comment_detail": _comment_detail,
         "folder_detail": _folder_detail,
         "folder_archive": _folder_archive,
     }
@@ -1038,10 +1049,6 @@ class TestDocumentNotifications:
         def fake_notify_send(**kwargs):
             calls.append(kwargs)
 
-        monkeypatch.setattr(
-            "documents.notifications.handlers.notify.send",
-            fake_notify_send,
-        )
         author = make_user("required-document-author@example.com")
         viewer = make_user("required-document-viewer@example.com")
         doc = make_document(
@@ -1049,6 +1056,11 @@ class TestDocumentNotifications:
             uploaded_by=author,
             sent_to_all=False,
             acknowledgement_required=True,
+            recipients=[viewer],
+        )
+        monkeypatch.setattr(
+            "documents.notifications.handlers.notify.send",
+            fake_notify_send,
         )
 
         notify_document_ready(doc, viewer)
@@ -1207,6 +1219,197 @@ class TestAcknowledge:
             document=doc,
             user=viewer,
         ).exists()
+
+    def test_new_document_defaults_to_all_access_and_all_acknowledgement(
+        self, auth_client, make_user, api_urls
+    ):
+        """Новый документ без настроек доступен всем и требует ознакомления от всех."""
+        author = make_user("default-audience-author@example.com")
+
+        response = auth_client(author).post(
+            api_urls["list"],
+            {"title": "Общий регламент"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED, response.content
+        document = Document.objects.get(pk=response.json()["id"])
+        assert document.sent_to_all is True
+        assert document.acknowledgement_required is True
+        assert document.acknowledgement_for_all is True
+        assert response.json()["acknowledgement_required_for_user"] is True
+
+    def test_selective_acknowledgement_is_independent_from_access(
+        self, auth_client, make_user, api_urls
+    ):
+        """Доступный документ подтверждают только сотрудники из отдельной аудитории."""
+        author = make_user("selective-author@example.com")
+        required_user = make_user("selective-required@example.com")
+        access_only_user = make_user("selective-access-only@example.com")
+
+        response = auth_client(author).post(
+            api_urls["list"],
+            {
+                "title": "Выборочное ознакомление",
+                "sent_to_all": False,
+                "recipient_ids": [required_user.id, access_only_user.id],
+                "acknowledgement_required": True,
+                "acknowledgement_for_all": False,
+                "acknowledgement_recipient_ids": [required_user.id],
+            },
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED, response.content
+        document_id = response.json()["id"]
+        assert [
+            recipient["id"]
+            for recipient in response.json()["acknowledgement_recipients"]
+        ] == [required_user.id]
+
+        access_only_detail = auth_client(access_only_user).get(
+            api_urls["detail"](document_id)
+        )
+        assert access_only_detail.status_code == status.HTTP_200_OK
+        assert access_only_detail.json()["acknowledgement_required_for_user"] is False
+        assert access_only_detail.json()["acknowledged_count"] == 0
+        assert access_only_detail.json()["acknowledgement_total"] == 1
+        rejected = auth_client(access_only_user).post(api_urls["ack"](document_id), {})
+        assert rejected.status_code == status.HTTP_400_BAD_REQUEST
+
+        required_detail = auth_client(required_user).get(api_urls["detail"](document_id))
+        assert required_detail.json()["acknowledgement_required_for_user"] is True
+        acknowledged = auth_client(required_user).post(api_urls["ack"](document_id), {})
+        assert acknowledged.status_code == status.HTTP_200_OK
+        refreshed_detail = auth_client(required_user).get(
+            api_urls["detail"](document_id)
+        )
+        assert refreshed_detail.json()["acknowledged_count"] == 1
+        assert refreshed_detail.json()["acknowledgement_total"] == 1
+
+        report = auth_client(access_only_user).get(
+            api_urls["acknowledgements"](document_id)
+        )
+        assert report.status_code == status.HTTP_200_OK
+        assert report.json()["counts"] == {
+            "acknowledged": 1,
+            "unacknowledged": 0,
+            "total": 1,
+        }
+        assert report.json()["acknowledged"][0]["id"] == required_user.id
+
+    def test_selective_acknowledgement_cannot_exceed_document_access(
+        self, auth_client, make_user, api_urls
+    ):
+        """Нельзя обязать ознакомиться сотрудника без доступа к документу."""
+        author = make_user("invalid-audience-author@example.com")
+        recipient = make_user("invalid-audience-recipient@example.com")
+        outsider = make_user("invalid-audience-outsider@example.com")
+
+        response = auth_client(author).post(
+            api_urls["list"],
+            {
+                "title": "Некорректная аудитория",
+                "sent_to_all": False,
+                "recipient_ids": [recipient.id],
+                "acknowledgement_required": True,
+                "acknowledgement_for_all": False,
+                "acknowledgement_recipient_ids": [outsider.id],
+            },
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "acknowledgement_recipient_ids" in response.json()
+
+    def test_edit_replaces_acknowledgement_audience_without_changing_access(
+        self, auth_client, make_user, api_urls
+    ):
+        """Редактирование меняет только отдельную аудиторию ознакомления."""
+        author = make_user("edit-audience-author@example.com")
+        grant_perms(author, "change_document")
+        first_recipient = make_user("edit-audience-first@example.com")
+        second_recipient = make_user("edit-audience-second@example.com")
+        document = make_document(
+            uploaded_by=author,
+            sent_to_all=False,
+            acknowledgement_required=True,
+            recipients=[first_recipient, second_recipient],
+        )
+        document.acknowledgement_for_all = False
+        document.save(update_fields=["acknowledgement_for_all"])
+        document.acknowledgement_recipients.set([first_recipient])
+
+        response = auth_client(author).patch(
+            api_urls["detail"](document.pk),
+            {"acknowledgement_recipient_ids": [second_recipient.id]},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK, response.content
+        document.refresh_from_db()
+        assert set(document.recipients.values_list("id", flat=True)) == {
+            first_recipient.id,
+            second_recipient.id,
+        }
+        assert list(
+            document.acknowledgement_recipients.values_list("id", flat=True)
+        ) == [second_recipient.id]
+        assert [
+            recipient["id"]
+            for recipient in response.json()["acknowledgement_recipients"]
+        ] == [second_recipient.id]
+
+    def test_document_comments_crud_and_counter(
+        self, auth_client, make_user, api_urls
+    ):
+        """Комментарии документа работают через Communications и попадают в счётчик."""
+        author = make_user("document-comment-author@example.com")
+        other_user = make_user("document-comment-other@example.com")
+        document = make_document(
+            uploaded_by=author,
+            sent_to_all=True,
+        )
+        client = auth_client(author)
+
+        empty_detail = client.get(api_urls["detail"](document.pk))
+        assert empty_detail.json()["comments_count"] == 0
+
+        created = client.post(
+            api_urls["comments"](document.pk),
+            {"text": "Первый комментарий"},
+            format="json",
+        )
+        assert created.status_code == status.HTTP_201_CREATED, created.content
+        comment_id = created.json()["id"]
+        assert created.json()["text"] == "Первый комментарий"
+
+        detail = client.get(api_urls["detail"](document.pk))
+        assert detail.json()["comments_count"] == 1
+
+        edited = client.patch(
+            api_urls["comment_detail"](document.pk, comment_id),
+            {"text": "Исправленный комментарий"},
+            format="json",
+        )
+        assert edited.status_code == status.HTTP_200_OK
+        assert edited.json()["text"] == "Исправленный комментарий"
+        assert edited.json()["is_edited"] is True
+
+        forbidden = auth_client(other_user).patch(
+            api_urls["comment_detail"](document.pk, comment_id),
+            {"text": "Чужая правка"},
+            format="json",
+        )
+        assert forbidden.status_code == status.HTTP_403_FORBIDDEN
+
+        deleted = client.delete(
+            api_urls["comment_detail"](document.pk, comment_id)
+        )
+        assert deleted.status_code == status.HTTP_204_NO_CONTENT
+        assert client.get(api_urls["detail"](document.pk)).json()[
+            "comments_count"
+        ] == 0
 
 
 class TestAcknowledgementsReport:
@@ -1379,10 +1582,10 @@ class TestErrorsAndEdgeCases:
         assert client.get(api_urls["list"]).status_code == 200
         assert client.get(api_urls["detail"](d.pk)).status_code == 404
 
-    def test_big_file_over_limit_if_configured(
-        self, auth_client, make_user, api_urls, settings
+    def test_big_file_is_accepted(
+        self, auth_client, make_user, api_urls
     ):
-        """Большой файл > лимита → ожидаем 413 или 400 (если лимит включён); иначе 201."""
+        """Размер файла сам по себе не блокирует загрузку."""
         uploader = make_user("uploader@example.com", staff=True)
         client = auth_client(uploader)
 
@@ -1392,10 +1595,7 @@ class TestErrorsAndEdgeCases:
             {"title": "Big", "file": big, "sent_to_all": True},
             format="multipart",
         )
-        # django-filer не проверяет DATA_UPLOAD_MAX_MEMORY_SIZE при загрузке
-        # Лимит применяется на уровне Django request parserа, но во время тестов это может не работать
-        # Просто проверяем, что запрос корректно обработан
-        assert r.status_code in (200, 201, 400, 413)
+        assert r.status_code == 201
 
 # -------------------- I. Производительность/фильтры --------------------
 

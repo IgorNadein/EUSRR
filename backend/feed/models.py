@@ -17,17 +17,6 @@ from .constants import (
 Employee = get_user_model()
 
 
-# --- helpers: валидаторы размера файлов ---
-def validate_file_size(max_mb: int):
-    max_bytes = max_mb * 1024 * 1024
-
-    def _v(f):
-        if f and getattr(f, "size", 0) > max_bytes:
-            raise ValidationError(f"Файл превышает {max_mb} MB.")
-
-    return _v
-
-
 IMAGE_EXTS = ["jpg", "jpeg", "png", "gif", "webp"]
 FILE_EXTS = [
     "pdf",
@@ -49,12 +38,13 @@ FILE_EXTS = [
 
 @deconstructible
 class FileSizeValidator:
+    """Оставлен как no-op для совместимости со старыми миграциями."""
+
     def __init__(self, max_mb: int):
         self.max_mb = int(max_mb)
 
     def __call__(self, f):
-        if f and getattr(f, "size", 0) > self.max_mb * 1024 * 1024:
-            raise ValidationError(f"Файл превышает {self.max_mb} MB.")
+        return None
 
     def __eq__(self, other):
         return (

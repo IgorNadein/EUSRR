@@ -6,8 +6,6 @@ from pathlib import Path
 from celery.schedules import crontab
 from dotenv import load_dotenv
 
-from dotenv import load_dotenv
-
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -243,11 +241,11 @@ MEDIA_URL = "/media/"
 #   ├── chat_attachments/   ← Вложения в чате
 #   └── temp/              ← Временные файлы
 
-# Лимиты загрузки файлов
-# По умолчанию Django ограничивает загрузку до 2.5MB
-# Увеличиваем до 10MB для аватаров и документов
-DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
-FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
+# Параметры обработки загрузок
+# Ограничивает только нефайловые данные запроса. Размер файлов не ограничен.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+# Крупные и небольшие файлы сразу пишутся во временное хранилище, а не в RAM.
+FILE_UPLOAD_MAX_MEMORY_SIZE = 0
 
 # -----------------------------------------------------------------------------
 # ЛОГИРОВАНИЕ

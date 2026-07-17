@@ -32,10 +32,10 @@ export const apiClient = Object.assign(base, {
     ...createFeedApi(req, tok),
     ...createRequestsApi(req, tok),
     ...createEquipmentApi(req, tok),
-    ...createProcurementApi(req),
+    ...createProcurementApi(req, raw),
     ...createAttendanceApi(req, tok),
     ...createGuestsApi(req),
-    ...createTasksApi(req),
+    ...createTasksApi(req, raw),
 });
 
 export default apiClient;

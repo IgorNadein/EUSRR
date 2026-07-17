@@ -36,11 +36,18 @@ export function DocumentAcknowledgement({
 
   const acknowledgements = document.acknowledgements || [];
   const isAcknowledged = document.is_acknowledged || false;
+  const acknowledgementRequiredForUser =
+    document.acknowledgement_required_for_user ?? document.acknowledgement_required;
 
   return (
     <div className="space-y-3">
       {/* Acknowledge Button/Status */}
-      {!isAcknowledged ? (
+      {!acknowledgementRequiredForUser ? (
+        <div className="app-surface-muted flex items-center gap-2 rounded-lg px-3 py-2 text-sm">
+          <CheckCircle size={16} className="app-text-muted shrink-0" />
+          <span>Для вас подтверждение ознакомления не требуется</span>
+        </div>
+      ) : !isAcknowledged ? (
         <div className="app-feedback-warning rounded-xl p-4">
           <div className="mb-3 flex items-start gap-3">
             <CheckCircle size={20} className="mt-0.5 shrink-0" />
@@ -59,7 +66,7 @@ export function DocumentAcknowledgement({
             disabled={isSubmitting}
             className="app-action-primary w-full rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isSubmitting ? "Подтверждение..." : "Подтвердить прочтение"}
+            {isSubmitting ? "Подтверждение..." : "Ознакомился(лась)"}
           </button>
         </div>
       ) : (

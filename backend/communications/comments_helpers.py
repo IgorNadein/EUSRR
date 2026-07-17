@@ -25,7 +25,7 @@ from typing import Optional
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import QuerySet
 
-from .models import Chat, Message, MessageAttachment
+from .models import Chat, Message, MessageAttachment, MessageEditHistory
 
 
 def get_or_create_comments_chat(
@@ -261,7 +261,10 @@ def delete_comment(message: Message, deleted_by, soft_delete: bool = True):
 
 
 def update_comment(
-    message: Message, new_content: str, mark_edited: bool = True
+    message: Message,
+    new_content: str,
+    mark_edited: bool = True,
+    edited_by=None,
 ):
     """
     Обновить текст комментария.
@@ -270,11 +273,22 @@ def update_comment(
         message: Message - комментарий для обновления
         new_content: str - новый текст
         mark_edited: bool - пометить как отредактированный
+        edited_by: User - автор изменения для истории редактирования
 
     Examples:
         >>> update_comment(comment, "Новый текст")
     """
     from django.utils import timezone
+
+    if message.content == new_content:
+        return message
+
+    if mark_edited:
+        MessageEditHistory.objects.create(
+            message=message,
+            previous_content=message.content,
+            edited_by=edited_by,
+        )
 
     message.content = new_content
 
@@ -284,6 +298,8 @@ def update_comment(
         message.save(update_fields=["content", "is_edited", "edited_at"])
     else:
         message.save(update_fields=["content"])
+
+    return message
 
 
 def get_comments_chat_if_exists(obj) -> Optional[Chat]:

@@ -3,8 +3,11 @@ from django.contrib import admin
 from .models import (
     Task,
     TaskActivity,
+    TaskAttachment,
     TaskBoard,
+    TaskChecklistItem,
     TaskColumn,
+    TaskExternalLink,
     TaskLabel,
     TaskLinkedObject,
     TaskUserSettings,
@@ -25,8 +28,14 @@ class TaskLabelInline(admin.TabularInline):
 
 @admin.register(TaskBoard)
 class TaskBoardAdmin(admin.ModelAdmin):
-    list_display = ["name", "created_by", "is_archived", "created_at"]
-    list_filter = ["is_archived", "created_at"]
+    list_display = [
+        "name",
+        "created_by",
+        "access_scope",
+        "is_archived",
+        "created_at",
+    ]
+    list_filter = ["access_scope", "is_archived", "created_at"]
     search_fields = ["name", "description"]
     filter_horizontal = ["members", "departments"]
     inlines = [TaskColumnInline, TaskLabelInline]
@@ -62,11 +71,42 @@ class TaskAdmin(admin.ModelAdmin):
     filter_horizontal = ["labels"]
 
 
+@admin.register(TaskAttachment)
+class TaskAttachmentAdmin(admin.ModelAdmin):
+    list_display = ["file_name", "task", "uploaded_by", "file_size", "created_at"]
+    list_filter = ["created_at"]
+    search_fields = ["file_name", "task__title", "uploaded_by__email"]
+    autocomplete_fields = ["task", "uploaded_by"]
+
+
+@admin.register(TaskChecklistItem)
+class TaskChecklistItemAdmin(admin.ModelAdmin):
+    list_display = [
+        "title",
+        "task",
+        "position",
+        "is_completed",
+        "completed_by",
+        "updated_at",
+    ]
+    list_filter = ["is_completed", "created_at", "updated_at"]
+    search_fields = ["title", "task__title", "created_by__email"]
+    autocomplete_fields = ["task", "created_by", "completed_by"]
+
+
 @admin.register(TaskLinkedObject)
 class TaskLinkedObjectAdmin(admin.ModelAdmin):
     list_display = ["task", "kind", "content_type", "object_id", "created_by", "created_at"]
     list_filter = ["kind", "content_type", "created_at"]
     search_fields = ["task__title", "created_by__email", "object_id"]
+
+
+@admin.register(TaskExternalLink)
+class TaskExternalLinkAdmin(admin.ModelAdmin):
+    list_display = ["title", "url", "task", "created_by", "created_at"]
+    list_filter = ["created_at"]
+    search_fields = ["title", "url", "task__title", "created_by__email"]
+    autocomplete_fields = ["task", "created_by"]
 
 
 @admin.register(TaskActivity)

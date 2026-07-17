@@ -47,6 +47,7 @@ const DocumentPreviewPane = dynamic(
 interface DocumentDetailModalProps {
   document: Document | null;
   isOpen: boolean;
+  initialTab?: TabType;
   onClose: () => void;
   onUpdate?: () => void;
   onEditMetadata?: () => void;
@@ -59,6 +60,7 @@ type TabType = "preview" | "info" | "activity" | "acknowledgements" | "comments"
 export function DocumentDetailModal({
   document,
   isOpen,
+  initialTab,
   onClose,
   onUpdate,
   onEditMetadata,
@@ -103,7 +105,11 @@ export function DocumentDetailModal({
     { id: "comments" as TabType, label: "Комментарии", icon: MessageSquare },
     { id: "related" as TabType, label: "Связанные", icon: Link2 },
   ];
-  const defaultTab: TabType = documentHasFile ? "preview" : "info";
+  const defaultTab: TabType = initialTab && tabs.some((tab) => tab.id === initialTab)
+    ? initialTab
+    : documentHasFile
+      ? "preview"
+      : "info";
   const activeTab: TabType = activeTabState.documentId === documentId
     ? activeTabState.value
     : defaultTab;
@@ -522,7 +528,10 @@ export function DocumentDetailModal({
                   {currentActiveTab === "comments" && (
                     <div className="p-6">
                       <div className="app-surface rounded-xl p-6">
-                        <DocumentComments documentId={document.id} />
+                        <DocumentComments
+                          documentId={document.id}
+                          onCommentsChanged={() => onUpdate?.()}
+                        />
                       </div>
                     </div>
                   )}
@@ -790,7 +799,10 @@ export function DocumentDetailModal({
             {currentActiveTab === "comments" && (
               <div className="p-4 sm:p-6">
                 <div className="app-surface rounded-xl p-4 sm:p-6">
-                  <DocumentComments documentId={document.id} />
+                  <DocumentComments
+                    documentId={document.id}
+                    onCommentsChanged={() => onUpdate?.()}
+                  />
                 </div>
               </div>
             )}

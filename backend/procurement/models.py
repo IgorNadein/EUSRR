@@ -308,6 +308,77 @@ class ProcurementRequest(models.Model):
         return new_status
 
 
+class ProcurementActivityObjectKind(models.TextChoices):
+    REQUEST = "request", "Заявка"
+    APPROVAL = "approval", "Согласование"
+    ITEM = "item", "Позиция"
+    ATTACHMENT = "attachment", "Файл"
+    COMMENT = "comment", "Комментарий"
+
+
+class ProcurementActivityAction(models.TextChoices):
+    CREATED = "created", "Создал заявку"
+    UPDATED = "updated", "Изменил заявку"
+    SUBMITTED = "submitted", "Отправил на согласование"
+    STAGE_APPROVED = "stage_approved", "Согласовал этап"
+    STAGE_REJECTED = "stage_rejected", "Отклонил этап согласования"
+    APPROVED = "approved", "Заявка согласована"
+    STARTED = "started", "Взял заявку в работу"
+    EXECUTOR_REASSIGNED = "executor_reassigned", "Сменил исполнителя"
+    COMPLETED = "completed", "Завершил заявку"
+    REJECTED = "rejected", "Отклонил заявку"
+    CANCELLED = "cancelled", "Отменил заявку"
+    ITEM_UPDATED = "item_updated", "Изменил исполнение позиции"
+    ALL_ITEMS_RECEIVED = "all_items_received", "Отметил все позиции полученными"
+    ATTACHMENT_ADDED = "attachment_added", "Добавил файл"
+    ATTACHMENT_REMOVED = "attachment_removed", "Удалил файл"
+    COMMENT_ADDED = "comment_added", "Добавил комментарий"
+    COMMENT_REMOVED = "comment_removed", "Удалил комментарий"
+    ARRIVAL_NOTIFIED = "arrival_notified", "Уведомил о поступлении"
+
+
+class ProcurementRequestActivity(models.Model):
+    request = models.ForeignKey(
+        ProcurementRequest,
+        on_delete=models.CASCADE,
+        related_name="activities",
+        verbose_name="Заявка",
+    )
+    actor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="procurement_activities",
+        verbose_name="Инициатор",
+    )
+    action = models.CharField(
+        "Действие",
+        max_length=32,
+        choices=ProcurementActivityAction.choices,
+    )
+    object_kind = models.CharField(
+        "Тип объекта",
+        max_length=32,
+        choices=ProcurementActivityObjectKind.choices,
+        blank=True,
+    )
+    object_id = models.PositiveBigIntegerField("ID объекта", null=True, blank=True)
+    metadata = models.JSONField("Метаданные", default=dict, blank=True)
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "История заявки на закупку"
+        verbose_name_plural = "История заявок на закупку"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["request", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.request} - {self.action}"
+
+
 class ProcurementRequestView(models.Model):
     """Персональная отметка просмотра заявки пользователем."""
 
@@ -513,6 +584,7 @@ class ProcurementItem(models.Model):
                 {"received_quantity": "Не может быть больше количества позиции"}
             )
 
+
     @staticmethod
     def _mark_update_field(update_fields, field):
         if update_fields is not None:
@@ -587,6 +659,48 @@ class ProcurementItem(models.Model):
         result = super().delete(*args, **kwargs)
         request.recalculate_fulfillment_status(save=True)
         return result
+
+
+def procurement_item_attachment_upload_to(instance, filename):
+    """Keep item attachments grouped while discarding client-side paths."""
+    from pathlib import Path
+
+    safe_name = Path(filename).name
+    return f"procurement/item_attachments/{instance.item_id}/{safe_name}"
+
+
+class ProcurementItemAttachment(models.Model):
+    """Файл, прикреплённый к отдельной позиции заявки."""
+
+    item = models.ForeignKey(
+        ProcurementItem,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+        verbose_name="Позиция",
+    )
+    file = models.FileField(
+        "Файл",
+        upload_to=procurement_item_attachment_upload_to,
+        max_length=500,
+    )
+    file_name = models.TextField("Имя файла")
+    file_size = models.BigIntegerField("Размер файла", default=0)
+    mime_type = models.CharField("MIME-тип", max_length=255, blank=True)
+    uploaded_by = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name="procurement_item_attachments",
+        verbose_name="Загрузил",
+    )
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Вложение позиции закупки"
+        verbose_name_plural = "Вложения позиций закупки"
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return self.file_name
 
 
 class ApprovalRoute(models.Model):

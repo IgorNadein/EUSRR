@@ -16,6 +16,7 @@ import { MobileLeftDrawer, MobileCalendarDrawer } from "@/components/layout/Mobi
 import { usePwa } from "@/contexts/PwaContext";
 import { Modal } from "@/components/ui";
 import { apiClient } from "@/lib/api";
+import { NAV_NOTIFICATION_CATEGORIES } from "@/lib/navigation-notifications";
 import type { GuestVisit, GuestVisitComment } from "@/types/api";
 
 type AppShellProps = {
@@ -50,17 +51,17 @@ type PaginatedResponse<T> = {
 };
 
 const navItems = [
-  { href: "/", label: "Лента", icon: HomeIcon, category: "Новости" },
-  { href: "/messages", label: "Сообщения", icon: MessageSquare, category: "Сообщения" },
+  { href: "/", label: "Лента", icon: HomeIcon, category: NAV_NOTIFICATION_CATEGORIES.feed },
+  { href: "/messages", label: "Сообщения", icon: MessageSquare, category: NAV_NOTIFICATION_CATEGORIES.messages },
   { href: "/employees", label: "Сотрудники", icon: Users },
   { href: "/departments", label: "Отделы", icon: Building2 },
   { href: "/attendance", label: "Посещаемость", icon: CalendarCheck },
-  { href: "/requests", label: "Заявления", icon: FileSignature, category: "Заявки" },
-  { href: "/guests", label: "Гости", icon: UserRoundPlus, category: "Гости" },
+  { href: "/requests", label: "Заявления", icon: FileSignature, category: NAV_NOTIFICATION_CATEGORIES.requests },
+  { href: "/guests", label: "Гости", icon: UserRoundPlus, category: NAV_NOTIFICATION_CATEGORIES.guests },
   // { href: "/equipment", label: "Оборудование", icon: Monitor },
-  { href: "/procurement", label: "Закупки", icon: ShoppingCart, category: "Закупки", autoReadOnNavigate: false },
-  { href: "/tasks", label: "Доска", icon: Kanban, category: "Доска" },
-  { href: "/documents", label: "Документы", icon: FileText, category: "Документы" },
+  { href: "/procurement", label: "Закупки", icon: ShoppingCart, category: NAV_NOTIFICATION_CATEGORIES.procurement, autoReadOnNavigate: false },
+  { href: "/tasks", label: "Доска", icon: Kanban, category: NAV_NOTIFICATION_CATEGORIES.tasks },
+  { href: "/documents", label: "Документы", icon: FileText, category: NAV_NOTIFICATION_CATEGORIES.documents },
   // { href: "/finances", label: "Финансы", icon: Wallet },
 ];
 

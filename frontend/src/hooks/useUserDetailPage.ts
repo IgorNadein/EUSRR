@@ -255,11 +255,6 @@ export function useUserDetailPage(userId: number, currentUser: User | null) {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Файл слишком большой. Максимальный размер: 5MB");
-      return;
-    }
-
     if (!file.type.startsWith("image/")) {
       alert("Можно загружать только изображения");
       return;

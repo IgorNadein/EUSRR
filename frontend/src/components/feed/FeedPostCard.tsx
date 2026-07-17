@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { Heart, MessageSquare, Paperclip, Pin } from "lucide-react";
 
 import { RequestAvatar } from "@/components/requests/RequestAvatar";
+import { ExpandableFeedText } from "@/components/feed/ExpandableFeedText";
 import { resolveMediaUrl } from "@/lib/url";
 import type { Post } from "@/types/api";
 
@@ -136,9 +137,7 @@ export function FeedPostCard({
       ) : null}
 
       {postText ? (
-        <p className="app-text-wrap whitespace-pre-line text-sm leading-6 text-[var(--foreground)]">
-          {postText}
-        </p>
+        <ExpandableFeedText text={postText} />
       ) : null}
 
       {resolvedImageSrc ? (

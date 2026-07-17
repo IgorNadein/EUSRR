@@ -74,23 +74,6 @@ class FilerFileField(serializers.Field):
         if not isinstance(data, UploadedFile):
             raise serializers.ValidationError("Ожидается файл для загрузки.")
 
-        # Проверка размера файла
-        from django.conf import settings
-        from django.template.defaultfilters import filesizeformat
-
-        limit = getattr(settings, "DATA_UPLOAD_MAX_MEMORY_SIZE", None)
-        if limit:
-            size = getattr(data, "size", None)
-            if size is None:
-                raise serializers.ValidationError(
-                    "Невозможно определить размер файла"
-                )
-            if int(size) > int(limit):
-                human = filesizeformat(limit)
-                raise serializers.ValidationError(
-                    f"Файл слишком большой: > {human}."
-                )
-
         # Получаем пользователя из контекста
         request = self.context.get("request")
         owner = getattr(request, "user", None) if request else None

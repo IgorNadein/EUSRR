@@ -62,6 +62,8 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
             "acknowledge",
             "download",
             "archive",
+            "comments",
+            "document_comment",
         ):
             return bool(request.user and request.user.is_authenticated)
 
@@ -108,6 +110,9 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
         if action in ("add_related", "remove_related"):
             return user.has_perm("documents.change_document", obj)
 
+        if action in ("comments", "document_comment"):
+            return _user_has_document_access(user, obj)
+
         # PUT/PATCH → проверяем django-rules change_document
         if request.method in ("PUT", "PATCH"):
             return user.has_perm("documents.change_document", obj)
@@ -122,6 +127,8 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
             "acknowledge",
             "download",
             "archive",
+            "comments",
+            "document_comment",
         ):
             return _user_has_document_access(user, obj)
 

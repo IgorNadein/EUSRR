@@ -1,6 +1,9 @@
+from urllib.parse import urlsplit
+
 from django.db.models import Max
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
+from django.urls import reverse
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -37,8 +40,12 @@ from tasks.access import (
 from tasks.models import (
     Task,
     TaskActivity,
+    TaskAttachment,
     TaskBoard,
+    TaskBoardAccessScope,
+    TaskChecklistItem,
     TaskColumn,
+    TaskExternalLink,
     TaskLabel,
     TaskLinkedObject,
     TaskLinkedObjectKind,
@@ -162,6 +169,9 @@ class TaskSerializer(serializers.ModelSerializer):
     linked_attendance_records_count = serializers.SerializerMethodField()
     linked_objects_count = serializers.SerializerMethodField()
     comments_count = serializers.SerializerMethodField()
+    attachments_count = serializers.SerializerMethodField()
+    checklist_total = serializers.SerializerMethodField()
+    checklist_completed = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -196,6 +206,9 @@ class TaskSerializer(serializers.ModelSerializer):
             "linked_attendance_records_count",
             "linked_objects_count",
             "comments_count",
+            "attachments_count",
+            "checklist_total",
+            "checklist_completed",
             "created_at",
             "updated_at",
         ]
@@ -219,6 +232,9 @@ class TaskSerializer(serializers.ModelSerializer):
             "linked_attendance_records_count",
             "linked_objects_count",
             "comments_count",
+            "attachments_count",
+            "checklist_total",
+            "checklist_completed",
             "created_at",
             "updated_at",
         ]
@@ -307,13 +323,36 @@ class TaskSerializer(serializers.ModelSerializer):
     def get_linked_objects_count(self, obj):
         if hasattr(obj, "linked_objects_count"):
             return obj.linked_objects_count
-        return obj.linked_objects.count()
+        return obj.linked_objects.count() + obj.external_links.count()
 
     @extend_schema_field(serializers.IntegerField())
     def get_comments_count(self, obj):
         if hasattr(obj, "comments_count"):
             return obj.comments_count
         return get_comment_count(obj)
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_attachments_count(self, obj):
+        if hasattr(obj, "attachments_count"):
+            return obj.attachments_count
+        return obj.attachments.count()
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_checklist_total(self, obj):
+        if hasattr(obj, "checklist_total"):
+            return obj.checklist_total
+        return obj.checklist_items.count()
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_checklist_completed(self, obj):
+        if hasattr(obj, "checklist_completed"):
+            return obj.checklist_completed
+        prefetched = getattr(obj, "_prefetched_objects_cache", {}).get(
+            "checklist_items"
+        )
+        if prefetched is not None:
+            return sum(item.is_completed for item in prefetched)
+        return obj.checklist_items.filter(is_completed=True).count()
 
     def validate(self, attrs):
         request = self.context.get("request")
@@ -401,6 +440,7 @@ class TaskBoardSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "description",
+            "access_scope",
             "created_by",
             "members",
             "member_details",
@@ -415,6 +455,28 @@ class TaskBoardSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        access_scope = attrs.get("access_scope")
+        if access_scope is None:
+            has_members = bool(attrs.get("members"))
+            has_departments = bool(attrs.get("departments"))
+            if has_members or has_departments:
+                access_scope = TaskBoardAccessScope.RESTRICTED
+            elif "members" in attrs and "departments" in attrs:
+                access_scope = TaskBoardAccessScope.ALL
+            else:
+                access_scope = getattr(
+                    self.instance,
+                    "access_scope",
+                    TaskBoardAccessScope.ALL,
+                )
+            attrs["access_scope"] = access_scope
+        if access_scope != TaskBoardAccessScope.RESTRICTED:
+            attrs["members"] = []
+            attrs["departments"] = []
+        return attrs
 
     @extend_schema_field(serializers.BooleanField())
     def get_is_default_for_current_user(self, obj):
@@ -570,6 +632,89 @@ class TaskActivitySerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = fields
+
+
+class TaskAttachmentSerializer(serializers.ModelSerializer):
+    uploaded_by = EmployeeBriefSerializer(read_only=True)
+    download_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskAttachment
+        fields = [
+            "id",
+            "task",
+            "file_name",
+            "file_size",
+            "mime_type",
+            "uploaded_by",
+            "created_at",
+            "download_url",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.URLField())
+    def get_download_url(self, obj):
+        url = reverse(
+            "api:v1:tasks:task-attachment-download",
+            kwargs={"pk": obj.task_id, "attachment_id": obj.id},
+        )
+        request = self.context.get("request")
+        return request.build_absolute_uri(url) if request else url
+
+
+class TaskChecklistItemSerializer(serializers.ModelSerializer):
+    created_by = EmployeeBriefSerializer(read_only=True)
+    completed_by = EmployeeBriefSerializer(read_only=True)
+
+    class Meta:
+        model = TaskChecklistItem
+        fields = [
+            "id",
+            "task",
+            "title",
+            "position",
+            "is_completed",
+            "created_by",
+            "completed_by",
+            "completed_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "task",
+            "created_by",
+            "completed_by",
+            "completed_at",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate_title(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Введите текст пункта чек-листа.")
+        return value
+
+
+class TaskExternalLinkSerializer(serializers.ModelSerializer):
+    created_by = EmployeeBriefSerializer(read_only=True)
+
+    class Meta:
+        model = TaskExternalLink
+        fields = ["id", "task", "url", "title", "created_by", "created_at"]
+        read_only_fields = ["id", "task", "created_by", "created_at"]
+
+    def validate_url(self, value):
+        value = value.strip()
+        if urlsplit(value).scheme.lower() not in {"http", "https"}:
+            raise serializers.ValidationError(
+                "Разрешены только ссылки с протоколом http или https."
+            )
+        return value
+
+    def validate_title(self, value):
+        return value.strip()
 
 
 class TaskLinkedCalendarEventSerializer(serializers.ModelSerializer):

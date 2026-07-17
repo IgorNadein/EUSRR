@@ -1,11 +1,22 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { ProcurementApprovalOptions, ProcurementApprovalStepSelection, ProcurementCreateOptions } from '@/types/api';
-import { buildQuery, type RequestFn } from './utils';
+import type { ProcurementApprovalOptions, ProcurementApprovalStepSelection, ProcurementCreateOptions, ProcurementItemAttachment, ProcurementRequestActivity } from '@/types/api';
+import { buildQuery, type RawRequestFn, type RequestFn } from './utils';
 
-export function createProcurementApi(request: RequestFn) {
+function parseDownloadFilename(response: Response, fallback: string): string {
+    const disposition = response.headers.get('content-disposition') || '';
+    const encodedMatch = disposition.match(/filename\*=UTF-8''([^;]+)/);
+    const plainMatch = disposition.match(/filename="?([^";]+)"?/);
+    return encodedMatch?.[1]
+        ? decodeURIComponent(encodedMatch[1])
+        : plainMatch?.[1] || fallback;
+}
+
+export function createProcurementApi(request: RequestFn, requestRaw: RawRequestFn) {
     return {
         getProcurementRequests: (params?: Record<string, string | number>) => request(`/api/v1/procurement/requests/${buildQuery(params)}`),
         getProcurementRequest: (id: number) => request(`/api/v1/procurement/requests/${id}/`),
+        getProcurementRequestActivity: (id: number): Promise<ProcurementRequestActivity[]> =>
+            request(`/api/v1/procurement/requests/${id}/activity/`),
         getProcurementRequestCreateOptions: (): Promise<ProcurementCreateOptions> => request('/api/v1/procurement/requests/create-options/'),
         createProcurementRequest: (data: Record<string, any>) => request('/api/v1/procurement/requests/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
         updateProcurementRequest: (id: number, data: Record<string, any>) => request(`/api/v1/procurement/requests/${id}/`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
@@ -63,6 +74,30 @@ export function createProcurementApi(request: RequestFn) {
             request(`/api/v1/procurement/items/${itemId}/comments/`, { method: 'POST', body: JSON.stringify({ text }) }),
         deleteProcurementItemComment: (itemId: number, commentId: number): Promise<void> =>
             request(`/api/v1/procurement/items/${itemId}/comments/${commentId}/`, { method: 'DELETE' }),
+        getProcurementItemAttachments: (itemId: number): Promise<ProcurementItemAttachment[]> =>
+            request(`/api/v1/procurement/items/${itemId}/attachments/`),
+        uploadProcurementItemAttachments: (itemId: number, files: File[]): Promise<ProcurementItemAttachment[]> => {
+            const formData = new FormData();
+            files.forEach((file) => formData.append('files', file));
+            return request(`/api/v1/procurement/items/${itemId}/attachments/`, {
+                method: 'POST',
+                body: formData,
+            });
+        },
+        downloadProcurementItemAttachment: async (
+            itemId: number,
+            attachment: ProcurementItemAttachment,
+        ): Promise<{ blob: Blob; filename: string }> => {
+            const response = await requestRaw(
+                attachment.download_url || `/api/v1/procurement/items/${itemId}/attachments/${attachment.id}/`,
+            );
+            return {
+                blob: await response.blob(),
+                filename: parseDownloadFilename(response, attachment.file_name),
+            };
+        },
+        deleteProcurementItemAttachment: (itemId: number, attachmentId: number): Promise<void> =>
+            request(`/api/v1/procurement/items/${itemId}/attachments/${attachmentId}/`, { method: 'DELETE' }),
         // Suppliers
         getProcurementSuppliers: (params?: Record<string, string | number>) => request(`/api/v1/procurement/suppliers/${buildQuery(params)}`),
         createProcurementSupplier: (data: Record<string, any>) => request('/api/v1/procurement/suppliers/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { MessageCircle, Edit2, CornerDownRight } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { toast } from "sonner";
@@ -24,9 +24,10 @@ interface Comment {
 
 interface DocumentCommentsProps {
   documentId: number;
+  onCommentsChanged?: () => void;
 }
 
-export function DocumentComments({ documentId }: DocumentCommentsProps) {
+export function DocumentComments({ documentId, onCommentsChanged }: DocumentCommentsProps) {
   const { user } = useUser();
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,11 +37,7 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
   const [editText, setEditText] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    loadComments();
-  }, [documentId]);
-
-  const loadComments = async () => {
+  const loadComments = useCallback(async () => {
     try {
       setLoading(true);
       const response = await apiClient.getDocumentComments(documentId);
@@ -75,7 +72,11 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [documentId]);
+
+  useEffect(() => {
+    void loadComments();
+  }, [loadComments]);
 
   const handleSubmitComment = async () => {
     if (!newComment.trim()) return;
@@ -92,6 +93,7 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
       setNewComment("");
       setReplyTo(null);
       await loadComments();
+      onCommentsChanged?.();
     } catch (error) {
       console.error("Ошибка добавления комментария:", error);
       toast.error("Не удалось добавить комментарий");
@@ -105,7 +107,7 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
 
     setSubmitting(true);
     try {
-      await apiClient.updateDocumentComment(id, editText);
+      await apiClient.updateDocumentComment(documentId, id, editText);
       toast.success("Комментарий обновлен");
       setEditingId(null);
       setEditText("");
@@ -122,9 +124,10 @@ export function DocumentComments({ documentId }: DocumentCommentsProps) {
     if (!window.confirm("Удалить комментарий?")) return;
 
     try {
-      await apiClient.deleteDocumentComment(id);
+      await apiClient.deleteDocumentComment(documentId, id);
       toast.success("Комментарий удален");
       await loadComments();
+      onCommentsChanged?.();
     } catch (error) {
       console.error("Ошибка удаления комментария:", error);
       toast.error("Не удалось удалить комментарий");

@@ -34,6 +34,7 @@ import {
   Loader2,
   MessageSquare,
   Package,
+  Paperclip,
   Pencil,
   Play,
   Plus,
@@ -455,6 +456,9 @@ export default function ProcurementPage() {
     handleDeleteComment,
     handleAddItemComment,
     handleDeleteItemComment,
+    handleDownloadItemAttachment,
+    handleUploadItemAttachments,
+    handleDeleteItemAttachment,
     markRequestNotificationsRead,
     toggleItemComments,
   } = useProcurementPage(user);
@@ -1518,6 +1522,9 @@ export default function ProcurementPage() {
                           onItemCommentDraftChange={(itemId, value) => setItemCommentDrafts((previous) => ({ ...previous, [itemId]: value }))}
                           onAddItemComment={handleAddItemComment}
                           onDeleteItemComment={handleDeleteItemComment}
+                          onDownloadItemAttachment={handleDownloadItemAttachment}
+                          onUploadItemAttachments={handleUploadItemAttachments}
+                          onDeleteItemAttachment={handleDeleteItemAttachment}
                           footer={(
                             <ProcurementRequestActionButtons
                               request={resolvedDetail}
@@ -1695,6 +1702,9 @@ export default function ProcurementPage() {
               onItemCommentDraftChange={(itemId, value) => setItemCommentDrafts((previous) => ({ ...previous, [itemId]: value }))}
               onAddItemComment={handleAddItemComment}
               onDeleteItemComment={handleDeleteItemComment}
+              onDownloadItemAttachment={handleDownloadItemAttachment}
+              onUploadItemAttachments={handleUploadItemAttachments}
+              onDeleteItemAttachment={handleDeleteItemAttachment}
             />
 
             <div className="app-surface rounded-xl p-4">
@@ -2226,6 +2236,77 @@ export default function ProcurementPage() {
                                 ) : null}
                               </div>
                             ))}
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="app-text-muted text-xs font-medium">Файлы</span>
+                              <label className="app-link-accent inline-flex cursor-pointer items-center gap-1 text-xs font-medium">
+                                <Paperclip size={12} /> Прикрепить
+                                <input
+                                  type="file"
+                                  multiple
+                                  className="hidden"
+                                  onChange={(event) => {
+                                    const files = Array.from(event.target.files || []);
+                                    if (files.length > 0) {
+                                      updateItemRow(idx, { pending_files: [...it.pending_files, ...files] });
+                                    }
+                                    event.target.value = "";
+                                  }}
+                                />
+                              </label>
+                            </div>
+                            {it.attachments.length > 0 || it.pending_files.length > 0 ? (
+                              <div className="flex flex-wrap gap-1.5">
+                                {it.attachments.map((attachment) => (
+                                  <span
+                                    key={`attachment-${attachment.id}`}
+                                    className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px]"
+                                  >
+                                    <button
+                                      type="button"
+                                      className="inline-flex min-w-0 items-center gap-1"
+                                      onClick={() => void handleDownloadItemAttachment(it.id!, attachment)}
+                                    >
+                                      <Paperclip size={11} className="shrink-0" />
+                                      <span className="max-w-48 truncate">{attachment.file_name}</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Удалить файл"
+                                      onClick={() => updateItemRow(idx, {
+                                        attachments: it.attachments.filter((current) => current.id !== attachment.id),
+                                        removed_attachment_ids: [...it.removed_attachment_ids, attachment.id],
+                                      })}
+                                      className="app-action-ghost inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
+                                    >
+                                      <X size={10} />
+                                    </button>
+                                  </span>
+                                ))}
+                                {it.pending_files.map((file, fileIndex) => (
+                                  <span
+                                    key={`pending-${file.name}-${file.lastModified}-${fileIndex}`}
+                                    className="app-selected inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px]"
+                                  >
+                                    <Paperclip size={11} className="shrink-0" />
+                                    <span className="max-w-48 truncate">{file.name}</span>
+                                    <button
+                                      type="button"
+                                      title="Убрать файл"
+                                      onClick={() => updateItemRow(idx, {
+                                        pending_files: it.pending_files.filter((_, currentIndex) => currentIndex !== fileIndex),
+                                      })}
+                                      className="app-action-ghost inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
+                                    >
+                                      <X size={10} />
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="app-text-muted text-[11px]">Файлы не прикреплены</p>
+                            )}
                           </div>
                         </div>
                       </div>

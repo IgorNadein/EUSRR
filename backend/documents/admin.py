@@ -75,7 +75,12 @@ class DocumentAdmin(admin.ModelAdmin):
     )
     list_filter = ("sent_to_all", "is_regulation", "uploaded_at", "departments")
     search_fields = ("title", "description", "file__name", "file__description")
-    filter_horizontal = ("recipients", "departments")
+    filter_horizontal = (
+        "recipients",
+        "departments",
+        "acknowledgement_recipients",
+        "acknowledgement_departments",
+    )
     actions = ["send_document"]
 
     # Для django-reversion
@@ -112,7 +117,14 @@ class DocumentAdmin(admin.ModelAdmin):
         (
             _("Ознакомление"),
             {
-                "fields": ("recipients_summary", "pending_list"),
+                "fields": (
+                    "acknowledgement_required",
+                    "acknowledgement_for_all",
+                    "acknowledgement_departments",
+                    "acknowledgement_recipients",
+                    "recipients_summary",
+                    "pending_list",
+                ),
             },
         ),
     )
@@ -236,14 +248,15 @@ class DocumentAdmin(admin.ModelAdmin):
 
     def acknowledgement_status(self, obj):
         """Статус ознакомления (N из M)."""
-        recipients = set(self.get_recipients_qs(obj))
+        recipients = set(self.get_acknowledgement_recipients_qs(obj))
         total = len(recipients)
 
         if total == 0:
             return "—"
 
         acked_count = DocumentAcknowledgement.objects.filter(
-            document=obj
+            document=obj,
+            user__in=recipients,
         ).count()
 
         if acked_count == total:
@@ -286,6 +299,12 @@ class DocumentAdmin(admin.ModelAdmin):
 
         return list(recipients_set)
 
+    def get_acknowledgement_recipients_qs(self, obj):
+        """Возвращает сотрудников, обязанных ознакомиться."""
+        from documents.audience import document_acknowledgement_audience
+
+        return list(document_acknowledgement_audience(obj))
+
     def recipients_summary(self, obj):
         """Краткий список получателей."""
         recipients = self.get_recipients_qs(obj)
@@ -303,7 +322,7 @@ class DocumentAdmin(admin.ModelAdmin):
 
     def pending_list(self, obj):
         """Список сотрудников, которые ещё не ознакомились."""
-        recipients = set(self.get_recipients_qs(obj))
+        recipients = set(self.get_acknowledgement_recipients_qs(obj))
         acked_ids = set(
             DocumentAcknowledgement.objects.filter(document=obj).values_list(
                 "user_id", flat=True

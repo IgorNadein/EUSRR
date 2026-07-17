@@ -35,7 +35,7 @@ export default function CommentItem({
 
   const handleEdit = async () => {
     try {
-      const updated = await apiClient.updateDocumentComment(comment.id, editText);
+      const updated = await apiClient.updateDocumentComment(comment.document, comment.id, editText);
       onCommentUpdated(updated);
       setIsEditing(false);
     } catch (err) {
@@ -49,7 +49,7 @@ export default function CommentItem({
 
     try {
       setIsDeleting(true);
-      await apiClient.deleteDocumentComment(comment.id);
+      await apiClient.deleteDocumentComment(comment.document, comment.id);
       onCommentDeleted(comment.id);
     } catch (err) {
       console.error('Failed to delete comment:', err);

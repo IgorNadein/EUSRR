@@ -8,7 +8,7 @@ import type {
 } from '@/types/api';
 
 type CalendarScopeParam = { scope?: "all" };
-type CalendarQueryParams = { start?: string; end?: string; calendar?: number; scope?: "all" };
+type CalendarQueryParams = { start?: string; end?: string; calendar?: number; scope?: "all"; search?: string; page_size?: number };
 type CalendarListResponse = PaginatedResponse<Calendar> | Calendar[];
 type CalendarEventsResponse = PaginatedResponse<CalendarEvent> | CalendarEvent[];
 type CalendarRulesParams = Record<string, unknown>;
@@ -21,6 +21,8 @@ export function createCalendarApi(request: RequestFn, getToken: GetTokenFn) {
             if (params?.end) qp.append('end', params.end);
             if (params?.calendar) qp.append('calendar', params.calendar.toString());
             if (params?.scope) qp.append('scope', params.scope);
+            if (params?.search) qp.append('search', params.search);
+            if (params?.page_size) qp.append('page_size', params.page_size.toString());
             const qs = qp.toString();
             return request(`/api/v1/schedule/events/${qs ? '?' + qs : ''}`);
         },
