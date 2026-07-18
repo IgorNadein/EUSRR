@@ -838,3 +838,28 @@ CORS_ALLOW_CREDENTIALS = True
 COMMUNICATIONS_PARTICIPANT_RESOLVER = (
     "employees.utils.resolve_chat_participants"
 )
+
+# -----------------------------------------------------------------------------
+# FINANCE / PAYROLL
+# -----------------------------------------------------------------------------
+# Rules are versioned inputs of the deterministic payroll core. Changing a
+# value creates a different ruleset fingerprint; do not silently reuse a
+# version after changing calculation semantics.
+FINANCE_PAYROLL = {
+    "RULESET_ID": os.getenv("PAYROLL_RULESET_ID", "eusrr-standard"),
+    "RULESET_VERSION": os.getenv("PAYROLL_RULESET_VERSION", "2026.07.1"),
+    "EFFECTIVE_FROM": os.getenv("PAYROLL_EFFECTIVE_FROM", "2026-01-01"),
+    "EFFECTIVE_TO": os.getenv("PAYROLL_EFFECTIVE_TO") or None,
+    # Disabled until the point formula is confirmed against representative
+    # rows from the company's actual spreadsheets.
+    "POINT_POLICY": os.getenv("PAYROLL_POINT_POLICY", "disabled"),
+    "MONEY_QUANTUM": os.getenv("PAYROLL_MONEY_QUANTUM", "0.01"),
+    "ROUNDING": os.getenv("PAYROLL_ROUNDING", "half_up"),
+    "ALLOW_NEGATIVE_PAYABLE": os.getenv(
+        "PAYROLL_ALLOW_NEGATIVE_PAYABLE", "false"
+    ),
+    "BASE_RATE_CODE": os.getenv("PAYROLL_BASE_RATE_CODE", "BASE"),
+    # Temporary pilot mode. Set to false after the granular finance roles and
+    # maker-checker workflow have been fully tested.
+    "SIMPLE_ADMIN_ACCESS": os.getenv("PAYROLL_SIMPLE_ADMIN_ACCESS", "true"),
+}

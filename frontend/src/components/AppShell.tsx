@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Building2, CalendarCheck, CalendarDays, Download, FileSignature, FileText, Home as HomeIcon, Kanban, Loader2, Menu, MessageSquare, Search, Send, ShoppingCart, UserRoundPlus, Users } from "lucide-react";
+import { AlertTriangle, Building2, CalendarCheck, CalendarDays, Download, FileSignature, FileText, Home as HomeIcon, Kanban, Loader2, Menu, MessageSquare, Search, Send, ShoppingCart, UserRoundPlus, Users, Wallet } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -62,7 +62,7 @@ const navItems = [
   { href: "/procurement", label: "Закупки", icon: ShoppingCart, category: NAV_NOTIFICATION_CATEGORIES.procurement, autoReadOnNavigate: false },
   { href: "/tasks", label: "Доска", icon: Kanban, category: NAV_NOTIFICATION_CATEGORIES.tasks },
   { href: "/documents", label: "Документы", icon: FileText, category: NAV_NOTIFICATION_CATEGORIES.documents },
-  // { href: "/finances", label: "Финансы", icon: Wallet },
+  { href: "/finances", label: "Финансы", icon: Wallet },
 ];
 
 function Header({ mobileNavPlacement, suppressMobileChrome = false, onOpenLeftNav, onOpenCalendar }: HeaderProps) {
@@ -351,11 +351,13 @@ function LeftNavContent({ onNavigate, compact = false }: LeftNavContentProps) {
     }
   };
 
+  const isNavItemActive = (href: string) => pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
+
   const navLinkClass = (href: string) =>
-    `relative flex items-center rounded-lg transition ${compact ? "h-10 w-10 justify-center p-0" : "gap-3 px-3 py-2"} ${pathname === href ? "app-selected" : "text-[var(--foreground)] hover:bg-[var(--surface-secondary)]"
+    `relative flex items-center rounded-lg transition ${compact ? "h-10 w-10 justify-center p-0" : "gap-3 px-3 py-2"} ${isNavItemActive(href) ? "app-selected" : "text-[var(--foreground)] hover:bg-[var(--surface-secondary)]"
     }`;
 
-  const navIconClass = (href: string) => (pathname === href ? "app-accent-text" : "app-text-muted");
+  const navIconClass = (href: string) => (isNavItemActive(href) ? "app-accent-text" : "app-text-muted");
 
   return (
     <div className={`app-surface rounded-2xl ${compact ? "p-2" : "p-5"}`}>
