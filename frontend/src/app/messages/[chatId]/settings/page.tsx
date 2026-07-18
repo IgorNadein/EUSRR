@@ -199,12 +199,6 @@ export default function ChatSettingsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Проверка размера (макс 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Файл слишком большой. Максимальный размер: 5MB");
-      return;
-    }
-
     // Проверка типа
     if (!file.type.startsWith("image/")) {
       alert("Можно загружать только изображения");

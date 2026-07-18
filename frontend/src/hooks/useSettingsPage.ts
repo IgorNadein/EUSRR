@@ -388,11 +388,6 @@ export function useSettingsPage() {
       toast.error("Можно загрузить только изображение");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Максимальный размер файла 5 МБ");
-      return;
-    }
-
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result !== "string") {

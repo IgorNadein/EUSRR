@@ -19,6 +19,8 @@
   --danger-soft: rgba(239, 68, 68, 0.12);
   --danger-foreground: #dc2626;
   --warning-soft: rgba(245, 158, 11, 0.15);
+  --regulation-border: #a9822f;
+  --regulation-soft: rgba(169, 130, 47, 0.1);
   --app-shell-gradient: radial-gradient(circle at top, rgba(125, 211, 252, 0.12), transparent 32%), linear-gradient(180deg, #f5f9ff 0%, #eef3fb 46%, #f4f7fb 100%);
   --header-surface: rgba(255, 255, 255, 0.84);
   --shadow-card: 0 12px 30px -22px rgba(15, 23, 42, 0.16), 0 3px 10px -8px rgba(15, 23, 42, 0.08);
@@ -51,6 +53,8 @@ html[data-bs-theme="dark"] {
   --danger-soft: rgba(239, 68, 68, 0.16);
   --danger-foreground: #f87171;
   --warning-soft: rgba(245, 158, 11, 0.18);
+  --regulation-border: #d0ad58;
+  --regulation-soft: rgba(208, 173, 88, 0.12);
   --app-shell-gradient: radial-gradient(circle at top, rgba(30, 167, 255, 0.08), transparent 24%), linear-gradient(180deg, #10161d 0%, #111922 38%, #0b1016 100%);
   --header-surface: rgba(14, 20, 28, 0.88);
   --shadow-card: 0 20px 48px -30px rgba(2, 6, 23, 0.72);

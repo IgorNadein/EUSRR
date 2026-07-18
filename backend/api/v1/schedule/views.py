@@ -465,6 +465,9 @@ class ScheduleEventViewSet(viewsets.ModelViewSet):
         if calendar_id:
             qs = qs.filter(calendar_id=calendar_id)
 
+        if search := self.request.query_params.get("search", "").strip():
+            qs = qs.filter(Q(title__icontains=search) | Q(description__icontains=search))
+
         # Фильтр по диапазону дат
         start_str = self.request.query_params.get("start")
         end_str = self.request.query_params.get("end")

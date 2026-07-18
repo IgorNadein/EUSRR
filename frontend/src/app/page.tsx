@@ -1,9 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight, Link2, Pencil, Pin, Plus, Trash2 } from "lucide-react";
+import dynamic from "next/dynamic";
+import { ChevronRight, Link2, Newspaper, Pencil, Pin, Plus, ScrollText, Trash2 } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { FeedPostCard } from "@/components/feed/FeedPostCard";
+import { FeedRegulationCard } from "@/components/feed/FeedRegulationCard";
+import { DocumentAcknowledgementsReport } from "@/components/documents/DocumentAcknowledgementsReport";
+import { DocumentDetailModal } from "@/components/documents/DocumentDetailModal";
+import { DocumentMetadataEditor } from "@/components/documents/DocumentMetadataEditor";
+import { DocumentTaskLinks } from "@/components/documents/DocumentTaskLinks";
 import { Modal } from "@/components/ui";
 import { PostCommentsModal } from "@/components/feed/PostCommentsModal";
 import { RequestAvatar } from "@/components/requests/RequestAvatar";
@@ -11,12 +17,34 @@ import { RelatedTaskLinks } from "@/components/tasks/RelatedTaskLinks";
 import TaskLinkPill from "@/components/tasks/TaskLinkPill";
 import { useNotifications } from "@/contexts/NotificationsContext";
 import { apiClient } from "@/lib/api";
-import { userProfileLink } from "@/lib/shared";
+import { getDocumentFileExtension } from "@/lib/document-preview";
+import {
+  getRegulationAcknowledgementDepartments,
+  isCompanyAcknowledgementRegulation,
+  regulationMatchesAcknowledgementSource,
+} from "@/lib/feed-regulation-filters";
+import { loadAllPages, userProfileLink } from "@/lib/shared";
 import { resolveMediaUrl } from "@/lib/url";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { Comment, Post } from "@/types/api";
+import type { Comment, Document, Post } from "@/types/api";
 import { useUser } from "@/contexts/UserContext";
+import { toast } from "sonner";
+
+const EnhancedPDFViewer = dynamic(
+  () => import("@/components/documents/viewer").then((mod) => ({ default: mod.EnhancedPDFViewer })),
+  { ssr: false },
+);
+
+const DocumentPreview = dynamic(
+  () => import("@/components/documents/DocumentPreview").then((mod) => ({ default: mod.DocumentPreview })),
+  { ssr: false },
+);
+
+const DocumentUploadForm = dynamic(
+  () => import("@/components/documents/DocumentUploadForm").then((mod) => ({ default: mod.DocumentUploadForm })),
+  { ssr: false },
+);
 
 type LikeUser = {
   id: number;
@@ -27,6 +55,17 @@ type LikeUser = {
 };
 
 type PostSourceFilter = "all" | "company" | `department:${number}`;
+type FeedFilterKey = PostSourceFilter | "regulations";
+
+type FeedEntry =
+  | { kind: "post"; post: Post; timestamp: string }
+  | { kind: "regulation"; document: Document; timestamp: string };
+
+function postMatchesSource(post: Post, source: PostSourceFilter) {
+  if (source === "all") return true;
+  if (source === "company") return post.type !== "department";
+  return post.department_id === Number(source.split(":")[1]);
+}
 
 export default function Home() {
   return (
@@ -54,14 +93,29 @@ function HomePageContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [posts, setPosts] = useState<Post[]>([]);
+  const [regulations, setRegulations] = useState<Document[]>([]);
+  const [selectedRegulation, setSelectedRegulation] = useState<Document | null>(null);
+  const [selectedRegulationInitialTab, setSelectedRegulationInitialTab] = useState<"comments" | undefined>();
+  const [metadataRegulation, setMetadataRegulation] = useState<Document | null>(null);
+  const [taskLinkRegulation, setTaskLinkRegulation] = useState<Document | null>(null);
+  const [regulationPreviewFile, setRegulationPreviewFile] = useState<{ url: string; name: string } | null>(null);
+  const [regulationPdfFile, setRegulationPdfFile] = useState<{ url: string; name: string } | null>(null);
+  const [acknowledgingRegulationId, setAcknowledgingRegulationId] = useState<number | null>(null);
+  const [acknowledgementsReport, setAcknowledgementsReport] = useState<{
+    documentId: number;
+    documentTitle: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [likeBusyId, setLikeBusyId] = useState<number | null>(null);
   const [sourceFilter, setSourceFilter] = useState<PostSourceFilter>("all");
+  const [regulationsOnly, setRegulationsOnly] = useState(false);
 
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [activePost, setActivePost] = useState<Post | null>(null);
   const [createPostOpen, setCreatePostOpen] = useState(false);
+  const [createRegulationOpen, setCreateRegulationOpen] = useState(false);
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [createType, setCreateType] = useState<"company" | "department">("company");
   const [createDepartmentId, setCreateDepartmentId] = useState<string>("");
   const [createTitle, setCreateTitle] = useState("");
@@ -80,6 +134,7 @@ function HomePageContent() {
   const [postMenuOpenId, setPostMenuOpenId] = useState<number | null>(null);
   const [taskLinkPost, setTaskLinkPost] = useState<Post | null>(null);
   const postMenuRef = useRef<HTMLDivElement | null>(null);
+  const createMenuRef = useRef<HTMLDivElement | null>(null);
 
   const formatUserName = (u: LikeUser) => {
     const composed = `${u.last_name || ""} ${u.first_name || ""}`.trim();
@@ -228,6 +283,80 @@ function HomePageContent() {
     setPosts(sortPostsPinnedFirst(response.results));
   }, [sortPostsPinnedFirst]);
 
+  const refreshRegulations = useCallback(async () => {
+    const items = await loadAllPages<Document>((pagination) => (
+      apiClient.getDocuments({
+        ...pagination,
+        scope: "mine",
+        is_regulation: true,
+      })
+    ));
+    setRegulations(items);
+  }, []);
+
+  const handleAcknowledgeRegulation = async (documentItem: Document) => {
+    if (acknowledgingRegulationId !== null) return;
+
+    setAcknowledgingRegulationId(documentItem.id);
+    try {
+      await apiClient.acknowledgeDocument(documentItem.id);
+      setRegulations((current) => current.map((document) => (
+        document.id === documentItem.id ? { ...document, is_acknowledged: true } : document
+      )));
+      if (selectedRegulation?.id === documentItem.id) {
+        setSelectedRegulation({ ...selectedRegulation, is_acknowledged: true });
+      }
+      toast.success("Ознакомление подтверждено");
+      void refreshRegulations();
+    } catch (err) {
+      console.error("Ошибка подтверждения ознакомления:", err);
+      toast.error("Не удалось подтвердить ознакомление");
+    } finally {
+      setAcknowledgingRegulationId(null);
+    }
+  };
+
+  const openRegulation = (document: Document) => {
+    setSelectedRegulationInitialTab(undefined);
+    setSelectedRegulation(document);
+  };
+
+  const openRegulationComments = (document: Document) => {
+    setSelectedRegulationInitialTab("comments");
+    setSelectedRegulation(document);
+  };
+
+  const openRegulationPreview = (document: Document) => {
+    if (!document.file_url) return;
+
+    const previewFile = {
+      url: document.file_url,
+      name: document.file_name || document.title,
+    };
+    if (getDocumentFileExtension(previewFile.name) === "pdf") {
+      setRegulationPdfFile(previewFile);
+    } else {
+      setRegulationPreviewFile(previewFile);
+    }
+  };
+
+  const deleteRegulation = async (document: Document) => {
+    if (!window.confirm(`Удалить документ "${document.title}"?`)) return;
+
+    try {
+      await apiClient.deleteDocument(document.id);
+      setRegulations((current) => current.filter((item) => item.id !== document.id));
+      if (selectedRegulation?.id === document.id) {
+        setSelectedRegulation(null);
+        setSelectedRegulationInitialTab(undefined);
+      }
+      toast.success("Документ удалён");
+    } catch (err) {
+      console.error("Ошибка удаления документа:", err);
+      toast.error("Не удалось удалить документ");
+    }
+  };
+
   const postSourceCounts = useMemo(() => {
     const departmentCounts = new Map<number, { id: number; name: string; total: number }>();
     let companyCount = 0;
@@ -249,29 +378,71 @@ function HomePageContent() {
       }
     }
 
+    for (const document of regulations) {
+      if (isCompanyAcknowledgementRegulation(document)) companyCount += 1;
+      for (const department of getRegulationAcknowledgementDepartments(document)) {
+        const current = departmentCounts.get(department.id);
+        if (current) {
+          current.total += 1;
+        } else {
+          departmentCounts.set(department.id, {
+            id: department.id,
+            name: department.name,
+            total: 1,
+          });
+        }
+      }
+    }
+
     const departments = Array.from(departmentCounts.values()).sort((left, right) => {
       if (right.total !== left.total) return right.total - left.total;
       return left.name.localeCompare(right.name, "ru");
     });
 
     return {
-      all: posts.length,
+      all: posts.length + regulations.length,
       company: companyCount,
+      regulations: regulations.length,
       departments,
     };
-  }, [posts]);
+  }, [posts, regulations]);
 
   const postSourceUnreadCounts = useMemo(() => {
     const departmentUnread = new Map<number, number>();
     let companyUnread = 0;
+    let regulationsUnread = 0;
+    let companyRegulationsUnread = 0;
+    const departmentRegulationsUnread = new Map<number, number>();
+    const regulationsById = new Map(regulations.map((document) => [document.id, document]));
 
     for (const notification of notifications) {
-      if ((notification.verb || "") !== "feed_new_post") continue;
-
       const rawData = notification.data;
       const data = rawData && typeof rawData === "object"
         ? rawData as Record<string, unknown>
         : null;
+
+      if ((notification.verb || "") === "document_ready") {
+        const rawDocumentId = data?.document_id;
+        const documentId = typeof rawDocumentId === "number"
+          ? rawDocumentId
+          : typeof rawDocumentId === "string"
+            ? Number(rawDocumentId)
+            : null;
+        const regulation = documentId !== null ? regulationsById.get(documentId) : undefined;
+        if (regulation) {
+          regulationsUnread += 1;
+          if (isCompanyAcknowledgementRegulation(regulation)) companyRegulationsUnread += 1;
+          for (const department of getRegulationAcknowledgementDepartments(regulation)) {
+            departmentRegulationsUnread.set(
+              department.id,
+              (departmentRegulationsUnread.get(department.id) || 0) + 1,
+            );
+          }
+        }
+        continue;
+      }
+
+      if ((notification.verb || "") !== "feed_new_post") continue;
 
       const postType = typeof data?.post_type === "string" ? data.post_type : "";
       const departmentId =
@@ -288,25 +459,45 @@ function HomePageContent() {
       }
     }
 
-    const departmentEntries = Array.from(departmentUnread.entries()).map(([id, unread]) => ({
+    const departmentIds = new Set([
+      ...departmentUnread.keys(),
+      ...departmentRegulationsUnread.keys(),
+    ]);
+    const departmentEntries = Array.from(departmentIds).map((id) => ({
       id,
-      unread,
+      unread: (departmentUnread.get(id) || 0) + (departmentRegulationsUnread.get(id) || 0),
+      regulationsUnread: departmentRegulationsUnread.get(id) || 0,
     }));
 
     return {
-      all: companyUnread + departmentEntries.reduce((sum, entry) => sum + entry.unread, 0),
-      company: companyUnread,
+      all: companyUnread + regulationsUnread + Array.from(departmentUnread.values()).reduce((sum, unread) => sum + unread, 0),
+      company: companyUnread + companyRegulationsUnread,
+      regulations: regulationsUnread,
+      companyRegulations: companyRegulationsUnread,
       departments: departmentEntries,
     };
-  }, [notifications]);
+  }, [notifications, regulations]);
 
   const postSourceOptions = useMemo(() => {
     const unreadByDepartment = new Map(
       postSourceUnreadCounts.departments.map((entry) => [entry.id, entry.unread]),
     );
 
-    const options: Array<{ key: PostSourceFilter; label: string; total: number; unread: number }> = [
+    const departmentRegulationsUnread = new Map(
+      postSourceUnreadCounts.departments.map((entry) => [entry.id, entry.regulationsUnread]),
+    );
+    const scopedRegulations = regulations.filter((document) => (
+      regulationMatchesAcknowledgementSource(document, sourceFilter)
+    ));
+    const scopedRegulationsUnread = sourceFilter === "all"
+      ? postSourceUnreadCounts.regulations
+      : sourceFilter === "company"
+        ? postSourceUnreadCounts.companyRegulations
+        : departmentRegulationsUnread.get(Number(sourceFilter.split(":")[1])) || 0;
+
+    const options: Array<{ key: FeedFilterKey; label: string; total: number; unread: number }> = [
       { key: "all", label: "Все", total: postSourceCounts.all, unread: postSourceUnreadCounts.all },
+      { key: "regulations", label: "Регламенты", total: scopedRegulations.length, unread: scopedRegulationsUnread },
       { key: "company", label: "Компания", total: postSourceCounts.company, unread: postSourceUnreadCounts.company },
     ];
 
@@ -319,24 +510,38 @@ function HomePageContent() {
       });
     }
 
-    return options.filter(({ key, total }) => key === "all" || total > 0);
-  }, [postSourceCounts, postSourceUnreadCounts]);
+    return options.filter(({ key, total }) => key === "all" || key === "regulations" || total > 0);
+  }, [postSourceCounts, postSourceUnreadCounts, regulations, sourceFilter]);
 
-  const filteredPosts = useMemo(() => {
-    if (sourceFilter === "company") {
-      return posts.filter((post) => post.type !== "department");
-    }
-    if (sourceFilter.startsWith("department:")) {
-      const departmentId = Number(sourceFilter.split(":")[1]);
-      return posts.filter((post) => post.department_id === departmentId);
-    }
-    return posts;
-  }, [posts, sourceFilter]);
+  const filteredEntries = useMemo<FeedEntry[]>(() => {
+    const postEntries: FeedEntry[] = posts.map((post) => ({
+      kind: "post",
+      post,
+      timestamp: post.created_at,
+    }));
+    const regulationEntries: FeedEntry[] = regulations.map((document) => ({
+      kind: "regulation",
+      document,
+      timestamp: document.uploaded_at || document.created_at,
+    }));
+
+    return [...postEntries, ...regulationEntries].filter((entry) => {
+      if (regulationsOnly && entry.kind !== "regulation") return false;
+      return entry.kind === "post"
+        ? postMatchesSource(entry.post, sourceFilter)
+        : regulationMatchesAcknowledgementSource(entry.document, sourceFilter);
+    }).sort((left, right) => {
+      const leftPinned = left.kind === "post" && left.post.pinned ? 1 : 0;
+      const rightPinned = right.kind === "post" && right.post.pinned ? 1 : 0;
+      if (leftPinned !== rightPinned) return rightPinned - leftPinned;
+      return new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime();
+    });
+  }, [posts, regulations, regulationsOnly, sourceFilter]);
 
   useEffect(() => {
     async function loadPosts() {
       try {
-        await refreshPosts();
+        await Promise.all([refreshPosts(), refreshRegulations()]);
       } catch (err: unknown) {
         console.error('Ошибка загрузки ленты:', err);
         setError('Не удалось загрузить ленту');
@@ -345,7 +550,7 @@ function HomePageContent() {
       }
     }
     loadPosts();
-  }, [refreshPosts]);
+  }, [refreshPosts, refreshRegulations]);
 
   useEffect(() => {
     if (postMenuOpenId === null) return;
@@ -370,6 +575,26 @@ function HomePageContent() {
       document.removeEventListener("keydown", handleEscape);
     };
   }, [postMenuOpenId]);
+
+  useEffect(() => {
+    if (!createMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (createMenuRef.current && !createMenuRef.current.contains(event.target as Node)) {
+        setCreateMenuOpen(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setCreateMenuOpen(false);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [createMenuOpen]);
 
   useEffect(() => {
     if (createType !== "department") return;
@@ -528,6 +753,7 @@ function HomePageContent() {
   }, [activePost?.id, commentsOpen, linkedPostId, posts]);
 
   const openCreatePostModal = () => {
+    setCreateMenuOpen(false);
     setCreateError(null);
     setEditingPostId(null);
     setCreateTitle("");
@@ -541,6 +767,11 @@ function HomePageContent() {
       setCreateDepartmentId(userDepartments[0] ? String(userDepartments[0].id) : "");
     }
     setCreatePostOpen(true);
+  };
+
+  const openCreateRegulationModal = () => {
+    setCreateMenuOpen(false);
+    setCreateRegulationOpen(true);
   };
 
   const openEditPostModal = (post: Post) => {
@@ -651,13 +882,20 @@ function HomePageContent() {
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
           {postSourceOptions.map(({ key, label, total, unread }) => {
-              const active = sourceFilter === key;
+            const active = key === "regulations" ? regulationsOnly : sourceFilter === key;
 
-              return (
+            return (
                 <button
                   key={key}
                   type="button"
-                  onClick={() => setSourceFilter(key)}
+                  aria-pressed={active}
+                  onClick={() => {
+                    if (key === "regulations") {
+                      setRegulationsOnly((current) => !current);
+                    } else {
+                      setSourceFilter(key);
+                    }
+                  }}
                   className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
                     active ? "app-pill-active" : "app-pill"
                   }`}
@@ -681,11 +919,11 @@ function HomePageContent() {
             })}
         </div>
 
-        {posts.length === 0 ? (
+        {posts.length === 0 && regulations.length === 0 ? (
           <div className="app-surface-muted rounded-2xl p-8 text-center">
-            <p className="app-text-muted text-sm">Пока нет постов в ленте</p>
+            <p className="app-text-muted text-sm">Пока нет публикаций в ленте</p>
           </div>
-        ) : filteredPosts.length === 0 ? (
+        ) : filteredEntries.length === 0 ? (
           <div className="app-surface-muted rounded-2xl p-8 text-center">
             <p className="text-sm font-medium text-[var(--foreground)]">
               Публикации не найдены
@@ -695,7 +933,31 @@ function HomePageContent() {
             </p>
           </div>
         ) : (
-          filteredPosts.map((post) => {
+          filteredEntries.map((entry) => {
+            if (entry.kind === "regulation") {
+              return (
+                <FeedRegulationCard
+                  key={`regulation-${entry.document.id}`}
+                  currentUserId={user?.id}
+                  document={entry.document}
+                  isAcknowledging={acknowledgingRegulationId === entry.document.id}
+                  onAcknowledge={(document) => void handleAcknowledgeRegulation(document)}
+                  onDelete={(document) => void deleteRegulation(document)}
+                  onEdit={setMetadataRegulation}
+                  onLinkTask={setTaskLinkRegulation}
+                  onMove={setMetadataRegulation}
+                  onOpen={openRegulation}
+                  onOpenComments={openRegulationComments}
+                  onPreview={openRegulationPreview}
+                  onOpenAcknowledgements={(document) => setAcknowledgementsReport({
+                    documentId: document.id,
+                    documentTitle: document.title,
+                  })}
+                />
+              );
+            }
+
+            const post = entry.post;
             // Форматируем дату
             const postDate = new Date(post.created_at);
             const now = new Date();
@@ -710,7 +972,7 @@ function HomePageContent() {
 
             return (
               <FeedPostCard
-                key={post.id}
+                key={`post-${post.id}`}
                 authorHref={post.author ? userProfileLink(post.author, user?.id) : null}
                 post={post}
                 authorSubtitle={
@@ -854,19 +1116,64 @@ function HomePageContent() {
         )}
       </div>
 
-      {canCreatePost && !createPostOpen ? (
-        <div className="pointer-events-none fixed bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] right-4 z-30 lg:bottom-6 lg:right-[max(2rem,calc((100vw-72rem)/2+21.5rem))]">
+      {user && !createPostOpen && !createRegulationOpen ? (
+        <div
+          ref={createMenuRef}
+          className="pointer-events-none fixed bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] right-4 z-30 flex flex-col items-end gap-2 lg:bottom-6 lg:right-[max(2rem,calc((100vw-72rem)/2+21.5rem))]"
+        >
+          {createMenuOpen ? (
+            <div className="flex flex-col items-end gap-2" role="menu" aria-label="Создать в ленте">
+              {canCreatePost ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={openCreatePostModal}
+                  className="app-action-primary pointer-events-auto inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-medium shadow-[var(--shadow-card)]"
+                >
+                  <Newspaper size={17} />
+                  Новость
+                </button>
+              ) : null}
+              <button
+                type="button"
+                role="menuitem"
+                onClick={openCreateRegulationModal}
+                className="app-action-primary pointer-events-auto inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-medium shadow-[var(--shadow-card)]"
+              >
+                <ScrollText size={17} />
+                Регламент
+              </button>
+            </div>
+          ) : null}
           <button
             type="button"
-            onClick={openCreatePostModal}
+            onClick={() => setCreateMenuOpen((current) => !current)}
             className="app-action-primary pointer-events-auto inline-flex h-12 w-12 items-center justify-center rounded-full p-0 leading-none shadow-[var(--shadow-card)] transition active:scale-[0.98]"
-            title="Создать публикацию"
-            aria-label="Создать публикацию"
+            title={createMenuOpen ? "Закрыть меню создания" : "Создать"}
+            aria-label={createMenuOpen ? "Закрыть меню создания" : "Открыть меню создания"}
+            aria-expanded={createMenuOpen}
+            aria-haspopup="menu"
           >
-            <Plus size={22} />
+            <Plus size={22} className={`transition-transform duration-200 ${createMenuOpen ? "rotate-45" : ""}`} />
           </button>
         </div>
       ) : null}
+
+      <Modal
+        isOpen={createRegulationOpen}
+        onClose={() => setCreateRegulationOpen(false)}
+        title="Создать регламент"
+        size="xl"
+      >
+        <DocumentUploadForm
+          defaultIsRegulation
+          onCancel={() => setCreateRegulationOpen(false)}
+          onSuccess={() => {
+            setCreateRegulationOpen(false);
+            void refreshRegulations();
+          }}
+        />
+      </Modal>
 
       <Modal
         isOpen={createPostOpen}
@@ -978,6 +1285,85 @@ function HomePageContent() {
         onCommentCountChange={applyCommentCountDelta}
         post={activePost}
       />
+
+      <DocumentDetailModal
+        key={selectedRegulation ? `${selectedRegulation.id}-${selectedRegulationInitialTab || "default"}` : "regulation-detail"}
+        document={selectedRegulation}
+        isOpen={Boolean(selectedRegulation)}
+        initialTab={selectedRegulationInitialTab}
+        onClose={() => {
+          setSelectedRegulation(null);
+          setSelectedRegulationInitialTab(undefined);
+        }}
+        onUpdate={() => {
+          void refreshRegulations();
+          if (selectedRegulation) {
+            void apiClient.getDocument(selectedRegulation.id).then(setSelectedRegulation);
+          }
+        }}
+        onEditMetadata={() => {
+          if (selectedRegulation) setMetadataRegulation(selectedRegulation);
+        }}
+        onViewReport={() => {
+          if (!selectedRegulation) return;
+          setAcknowledgementsReport({
+            documentId: selectedRegulation.id,
+            documentTitle: selectedRegulation.title,
+          });
+        }}
+        onNavigateToRelated={(documentId) => {
+          setSelectedRegulationInitialTab(undefined);
+          void apiClient.getDocument(documentId).then(setSelectedRegulation);
+        }}
+      />
+
+      {metadataRegulation ? (
+        <DocumentMetadataEditor
+          isOpen
+          document={metadataRegulation}
+          onClose={() => setMetadataRegulation(null)}
+          onUpdate={() => {
+            void refreshRegulations();
+            if (selectedRegulation?.id === metadataRegulation.id) {
+              void apiClient.getDocument(metadataRegulation.id).then(setSelectedRegulation);
+            }
+          }}
+        />
+      ) : null}
+
+      {taskLinkRegulation ? (
+        <DocumentTaskLinks
+          document={taskLinkRegulation}
+          variant="dialog"
+          open
+          onClose={() => setTaskLinkRegulation(null)}
+          onLinked={() => void refreshRegulations()}
+        />
+      ) : null}
+
+      {regulationPreviewFile ? (
+        <DocumentPreview
+          fileUrl={regulationPreviewFile.url}
+          fileName={regulationPreviewFile.name}
+          onClose={() => setRegulationPreviewFile(null)}
+        />
+      ) : null}
+
+      {regulationPdfFile ? (
+        <EnhancedPDFViewer
+          fileUrl={regulationPdfFile.url}
+          fileName={regulationPdfFile.name}
+          onClose={() => setRegulationPdfFile(null)}
+        />
+      ) : null}
+
+      {acknowledgementsReport ? (
+        <DocumentAcknowledgementsReport
+          documentId={acknowledgementsReport.documentId}
+          documentTitle={acknowledgementsReport.documentTitle}
+          onClose={() => setAcknowledgementsReport(null)}
+        />
+      ) : null}
 
       {taskLinkPost ? (
         <RelatedTaskLinks

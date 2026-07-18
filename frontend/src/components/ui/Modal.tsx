@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 
 let openModalCount = 0;
+const openModalStack: string[] = [];
 
 export interface ModalProps {
   isOpen: boolean;
@@ -20,6 +21,8 @@ export interface ModalProps {
   noPadding?: boolean;
   /** Hide the built-in header (caller manages its own header inside children) */
   noHeader?: boolean;
+  /** Visual level for a modal opened above another modal */
+  stackLevel?: number;
 }
 
 export function Modal({
@@ -35,36 +38,41 @@ export function Modal({
   className = "",
   noPadding = false,
   noHeader = false,
+  stackLevel = 0,
 }: ModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
 
   useEffect(() => {
     if (!isOpen) return;
 
     openModalCount += 1;
+    openModalStack.push(titleId);
     document.body.style.overflow = "hidden";
 
     return () => {
       openModalCount = Math.max(0, openModalCount - 1);
+      const stackIndex = openModalStack.lastIndexOf(titleId);
+      if (stackIndex >= 0) openModalStack.splice(stackIndex, 1);
       if (openModalCount === 0) {
         document.body.style.overflow = "";
       }
     };
-  }, [isOpen]);
+  }, [isOpen, titleId]);
 
   useEffect(() => {
     if (!isOpen || !closeOnEsc) return;
 
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && openModalStack.at(-1) === titleId) {
         onClose();
       }
     };
 
     document.addEventListener("keydown", handleEsc);
     return () => document.removeEventListener("keydown", handleEsc);
-  }, [isOpen, closeOnEsc, onClose]);
+  }, [isOpen, closeOnEsc, onClose, titleId]);
 
   useEffect(() => {
     if (!isOpen || !contentRef.current) return;
@@ -81,7 +89,7 @@ export function Modal({
     firstElement?.focus();
 
     const handleTab = (e: KeyboardEvent) => {
-      if (e.key !== "Tab") return;
+      if (e.key !== "Tab" || openModalStack.at(-1) !== titleId) return;
 
       if (e.shiftKey) {
         if (document.activeElement === firstElement) {
@@ -98,12 +106,16 @@ export function Modal({
 
     document.addEventListener("keydown", handleTab);
     return () => document.removeEventListener("keydown", handleTab);
-  }, [isOpen]);
+  }, [isOpen, titleId]);
 
   if (!isOpen) return null;
 
   const handleBackdropClick = (e: React.MouseEvent) => {
-    if (closeOnClickOutside && e.target === modalRef.current) {
+    if (
+      closeOnClickOutside &&
+      e.target === modalRef.current &&
+      openModalStack.at(-1) === titleId
+    ) {
       onClose();
     }
   };
@@ -126,9 +138,10 @@ export function Modal({
       onClick={handleBackdropClick}
       data-overlay-root="true"
       className="app-overlay fixed inset-0 z-[100] flex items-center justify-center p-2 transition-opacity duration-200 opacity-100 sm:p-4"
+      style={{ zIndex: 100 + stackLevel }}
       role="dialog"
       aria-modal="true"
-      aria-labelledby={title ? "modal-title" : undefined}
+      aria-labelledby={title ? titleId : undefined}
     >
       <div
         ref={contentRef}
@@ -139,7 +152,7 @@ export function Modal({
           <div className="mb-3 flex shrink-0 items-center gap-2 px-4 pt-4 sm:mb-4 sm:gap-3 sm:px-6 sm:pt-6">
             {title && (
               <h3
-                id="modal-title"
+                id={titleId}
                 className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--foreground)] sm:text-base lg:text-lg"
                 title={title}
               >

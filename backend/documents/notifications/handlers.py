@@ -27,9 +27,19 @@ logger = logging.getLogger(__name__)
 Employee = get_user_model()
 
 
-def _document_ready_payload(document, uploader_name):
+def _document_ready_payload(document, uploader_name, recipient=None):
     """Собирает единый текст и данные уведомления о новом документе."""
-    acknowledgement_required = bool(document.acknowledgement_required)
+    if recipient is None:
+        acknowledgement_required = bool(
+            document.acknowledgement_required
+            and document.acknowledgement_for_all
+        )
+    else:
+        from documents.audience import user_requires_document_acknowledgement
+
+        acknowledgement_required = user_requires_document_acknowledgement(
+            document, recipient
+        )
     return {
         "description": MessageTemplates.document_ready(
             uploader_name,
@@ -64,7 +74,7 @@ def notify_document_ready(document, recipient):
     )
 
     uploader_name = get_uploader_name(document.uploaded_by)
-    payload = _document_ready_payload(document, uploader_name)
+    payload = _document_ready_payload(document, uploader_name, recipient)
 
     notify.send(
         sender=document.uploaded_by,
@@ -101,10 +111,11 @@ def notify_all_employees(document):
     # Создаём уведомления
     created_count = 0
     uploader_name = get_uploader_name(document.uploaded_by)
-    payload = _document_ready_payload(document, uploader_name)
-
     for employee in active_employees:
         try:
+            payload = _document_ready_payload(
+                document, uploader_name, employee
+            )
             notify.send(
                 sender=document.uploaded_by,
                 recipient=employee,
@@ -169,11 +180,10 @@ def notify_specific_users(document, user_ids):
     # Уведомляем получателей
     created_count = 0
     uploader_name = get_uploader_name(document.uploaded_by)
-    payload = _document_ready_payload(document, uploader_name)
-
     for user_id in user_ids:
         try:
             user = Employee.objects.get(id=user_id)
+            payload = _document_ready_payload(document, uploader_name, user)
             logger.debug(f"[handlers] Creating notification for user={user_id}")
             notify.send(
                 sender=document.uploaded_by,
@@ -254,10 +264,11 @@ def notify_department_employees(document, department_ids):
     # Создаём уведомления
     created_count = 0
     uploader_name = get_uploader_name(document.uploaded_by)
-    payload = _document_ready_payload(document, uploader_name)
-
     for employee in all_employees:
         try:
+            payload = _document_ready_payload(
+                document, uploader_name, employee
+            )
             notify.send(
                 sender=document.uploaded_by,
                 recipient=employee,
@@ -276,6 +287,22 @@ def notify_department_employees(document, department_ids):
             )
 
     logger.info(f"[handlers] Created {created_count} notifications")
+
+
+def notify_document_audience(document):
+    """Уведомляет аудиторию доступа после полной настройки документа."""
+    if document.sent_to_all:
+        notify_all_employees(document)
+        return
+
+    from documents.audience import document_access_audience
+
+    recipient_ids = set(
+        document_access_audience(document).values_list("pk", flat=True)
+    )
+    if document.uploaded_by_id:
+        recipient_ids.discard(document.uploaded_by_id)
+    notify_specific_users(document, recipient_ids)
 
 
 def notify_all_acknowledged(document, total_recipients, acknowledged_count):

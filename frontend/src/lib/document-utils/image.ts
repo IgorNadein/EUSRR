@@ -4,7 +4,6 @@
  */
 
 export interface ImageCompressOptions {
-  maxSizeMB?: number;
   maxWidthOrHeight?: number;
   quality?: number;
 }
@@ -28,7 +27,6 @@ export async function compressImage(
   options: ImageCompressOptions = {}
 ): Promise<Blob> {
   const {
-    maxSizeMB = 10,
     maxWidthOrHeight = 2048,
     quality = 0.85
   } = options;
@@ -62,21 +60,7 @@ export async function compressImage(
       canvas.toBlob(
         (blob) => {
           if (blob) {
-            // Проверяем размер
-            const sizeMB = blob.size / (1024 * 1024);
-            if (sizeMB > maxSizeMB) {
-              // Если еще слишком большой, рекурсивно сжимаем с меньшим quality
-              const newQuality = quality * 0.8;
-              if (newQuality < 0.1) {
-                reject(new Error('Не удалось сжать изображение до требуемого размера'));
-              } else {
-                compressImage(file, { ...options, quality: newQuality })
-                  .then(resolve)
-                  .catch(reject);
-              }
-            } else {
-              resolve(blob);
-            }
+            resolve(blob);
           } else {
             reject(new Error('Ошибка создания Blob'));
           }

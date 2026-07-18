@@ -16,6 +16,7 @@ import { createProcurementApi } from './procurement';
 import { createAttendanceApi } from './attendance';
 import { createGuestsApi } from './guests';
 import { createTasksApi } from './tasks';
+import { createFinanceApi } from './finance';
 
 const base = new ApiClientBase();
 const req = base.request.bind(base);
@@ -32,10 +33,11 @@ export const apiClient = Object.assign(base, {
     ...createFeedApi(req, tok),
     ...createRequestsApi(req, tok),
     ...createEquipmentApi(req, tok),
-    ...createProcurementApi(req),
+    ...createProcurementApi(req, raw),
     ...createAttendanceApi(req, tok),
     ...createGuestsApi(req),
-    ...createTasksApi(req),
+    ...createTasksApi(req, raw),
+    ...createFinanceApi(req),
 });
 
 export default apiClient;

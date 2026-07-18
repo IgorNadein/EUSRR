@@ -40,6 +40,7 @@ import { BulkActionsToolbar, useDocumentSelection } from "@/components/documents
 import { TagManagementModal } from "@/components/documents/tags";
 import TaskLinkPill from "@/components/tasks/TaskLinkPill";
 import { Modal } from "@/components/ui";
+import { canPreviewDocument, getDocumentFileExtension } from "@/lib/document-preview";
 
 // Динамический импорт компонентов с PDF обработкой (избегаем SSR ошибок с DOMMatrix)
 const DocumentUploadForm = dynamic(
@@ -66,99 +67,6 @@ function formatDate(value?: string): string {
     month: "2-digit",
     year: "numeric",
   });
-}
-
-const DOCUMENT_PREVIEW_EXTENSIONS = new Set([
-  "pdf",
-  "jpg",
-  "jpeg",
-  "png",
-  "gif",
-  "webp",
-  "svg",
-  "bmp",
-  "ico",
-  "avif",
-  "docx",
-  "xls",
-  "xlsx",
-  "xlsm",
-  "xlsb",
-  "ods",
-  "csv",
-  "tsv",
-  "txt",
-  "text",
-  "md",
-  "markdown",
-  "json",
-  "xml",
-  "html",
-  "htm",
-  "css",
-  "scss",
-  "sass",
-  "less",
-  "js",
-  "jsx",
-  "ts",
-  "tsx",
-  "mjs",
-  "cjs",
-  "yml",
-  "yaml",
-  "ini",
-  "conf",
-  "cfg",
-  "log",
-  "sql",
-  "py",
-  "java",
-  "c",
-  "cpp",
-  "h",
-  "hpp",
-  "cs",
-  "go",
-  "rs",
-  "php",
-  "rb",
-  "kt",
-  "kts",
-  "swift",
-  "sh",
-  "bash",
-  "zsh",
-  "ps1",
-  "bat",
-  "cmd",
-  "properties",
-  "env",
-  "rtf",
-  "mp4",
-  "webm",
-  "ogg",
-  "ogv",
-  "mov",
-  "m4v",
-  "mp3",
-  "wav",
-  "oga",
-  "m4a",
-  "aac",
-  "flac",
-]);
-const DOCUMENT_PREVIEW_FILE_NAMES = new Set(["dockerfile", "makefile", "readme", "license", ".gitignore", ".env"]);
-
-function getDocumentFileExtension(fileName?: string | null): string {
-  const cleanName = (fileName || "").toLowerCase().split("?")[0].split("#")[0];
-  return cleanName.match(/\.([^.]+)$/)?.[1] || "";
-}
-
-function canPreviewDocument(fileName?: string | null): boolean {
-  const lowerName = (fileName || "").toLowerCase();
-  const extension = getDocumentFileExtension(fileName);
-  return DOCUMENT_PREVIEW_EXTENSIONS.has(extension) || DOCUMENT_PREVIEW_FILE_NAMES.has(lowerName);
 }
 
 function formatFileSize(value?: number): string {
@@ -1322,6 +1230,8 @@ function DocumentsPageContent() {
                           const departmentsCount = doc.departments?.length || 0;
                           const hasPreview = Boolean(doc.file_url && canPreviewDocument(doc.file_name || doc.title));
                           const isAcknowledging = acknowledgingDocumentId === doc.id;
+                          const acknowledgementRequiredForUser =
+                            doc.acknowledgement_required_for_user ?? doc.acknowledgement_required;
 
                           // DEBUG: Проверка данных документа
                           if (!authorName || !createdDate) {
@@ -1434,7 +1344,7 @@ function DocumentsPageContent() {
 
                                       <div className="flex shrink-0 items-start gap-2">
                                         <div className="text-right">
-                                          {doc.acknowledgement_required ? (
+                                          {acknowledgementRequiredForUser ? (
                                             doc.is_acknowledged ? (
                                               <span className="app-feedback-success inline-flex rounded-full px-2.5 py-1 text-xs font-medium">
                                                 Ознакомлен
@@ -1538,7 +1448,7 @@ function DocumentsPageContent() {
                                                 </button>
                                               )}
 
-                                              {doc.acknowledgement_required && !doc.is_acknowledged && (
+                                              {acknowledgementRequiredForUser && !doc.is_acknowledged && (
                                                 <button
                                                   type="button"
                                                   onClick={() => void handleAcknowledgeDocument(doc)}
@@ -1546,7 +1456,7 @@ function DocumentsPageContent() {
                                                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
                                                 >
                                                   {isAcknowledging ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-                                                  {isAcknowledging ? "Подтверждение..." : "Ознакомиться"}
+                                                  {isAcknowledging ? "Подтверждение..." : "Ознакомился(лась)"}
                                                 </button>
                                               )}
 
@@ -1641,7 +1551,7 @@ function DocumentsPageContent() {
                                     )}
 
                                     <div className="mt-3 flex flex-wrap items-center justify-end gap-1.5">
-                                      {doc.acknowledgement_required && !doc.is_acknowledged ? (
+                                      {acknowledgementRequiredForUser && !doc.is_acknowledged ? (
                                         <button
                                           type="button"
                                           onClick={() => void handleAcknowledgeDocument(doc)}
@@ -1654,7 +1564,7 @@ function DocumentsPageContent() {
                                           ) : (
                                             <CheckCircle size={14} />
                                           )}
-                                          <span>{isAcknowledging ? "Подтверждение..." : "Ознакомиться"}</span>
+                                          <span>{isAcknowledging ? "Подтверждение..." : "Ознакомился(лась)"}</span>
                                         </button>
                                       ) : null}
 
@@ -1732,7 +1642,7 @@ function DocumentsPageContent() {
         isOpen={showUploadForm}
         onClose={() => setShowUploadForm(false)}
         title="Загрузить документ"
-        size="lg"
+        size="xl"
       >
         <DocumentUploadForm
           currentFolderId={selectedFolderId}

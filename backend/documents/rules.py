@@ -104,6 +104,16 @@ def has_acknowledged_document(user, document):
     ).exists()
 
 
+@rules.predicate
+def requires_document_acknowledgement(user, document):
+    """Пользователь входит в отдельную аудиторию ознакомления."""
+    if document is None:
+        return False
+    from documents.audience import user_requires_document_acknowledgement
+
+    return user_requires_document_acknowledgement(document, user)
+
+
 # -----------------------------------------------------------------------------
 # ПРАВИЛА (rules)
 # -----------------------------------------------------------------------------
@@ -133,7 +143,10 @@ rules.add_rule(
 )
 
 # Отметка об ознакомлении (только те, у кого есть доступ)
-rules.add_rule("documents.acknowledge_document", has_document_access)
+rules.add_rule(
+    "documents.acknowledge_document",
+    has_document_access & requires_document_acknowledgement,
+)
 
 # Просмотр списка ознакомившихся (все, у кого есть доступ к документу)
 rules.add_rule(

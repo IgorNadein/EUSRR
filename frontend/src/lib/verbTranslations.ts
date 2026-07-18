@@ -87,6 +87,18 @@ export const VERB_CATEGORIES: Record<string, string> = {
   feed_post_comment: 'Новости',
   feed_post_reaction: 'Новости',
 
+  // Доска
+  task_assigned: 'Доска',
+  task_reassigned: 'Доска',
+  task_comment: 'Доска',
+  task_due_date_changed: 'Доска',
+  task_due_soon: 'Доска',
+  task_overdue: 'Доска',
+  task_completed: 'Доска',
+  task_reopened: 'Доска',
+  task_linked_object_added: 'Доска',
+  task_board_member_added: 'Доска',
+
   // Отделы
   department_new_employee: 'Отдел',
   department_employee_left: 'Отдел',
@@ -192,6 +204,18 @@ export const VERB_NAMES: Record<string, string> = {
   feed_new_post: 'Новая публикация',
   feed_post_comment: 'Комментарий к публикации',
   feed_post_reaction: 'Реакция на публикацию',
+
+  // Доска
+  task_assigned: 'Вам назначена задача',
+  task_reassigned: 'Исполнитель задачи изменён',
+  task_comment: 'Комментарий к задаче',
+  task_due_date_changed: 'Срок задачи изменён',
+  task_due_soon: 'Срок задачи сегодня',
+  task_overdue: 'Задача просрочена',
+  task_completed: 'Задача завершена',
+  task_reopened: 'Задача возвращена в работу',
+  task_linked_object_added: 'К задаче добавлен связанный объект',
+  task_board_member_added: 'Вас добавили на доску',
 
   // Отделы
   department_new_employee: 'Новый сотрудник в отделе',

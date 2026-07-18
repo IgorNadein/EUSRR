@@ -12,6 +12,7 @@ import type {
   ProcurementApprovalStepSelection,
   ProcurementComment,
   ProcurementItem,
+  ProcurementItemAttachment,
   ProcurementItemComment,
   ProcurementRequest,
   ProcurementStatus,
@@ -29,6 +30,9 @@ type ItemDraft = {
   supplier_info: string;
   links: string[];
   initial_comment: string;
+  attachments: ProcurementItemAttachment[];
+  pending_files: File[];
+  removed_attachment_ids: number[];
 };
 
 const emptyItem: ItemDraft = {
@@ -40,6 +44,9 @@ const emptyItem: ItemDraft = {
   supplier_info: "",
   links: [],
   initial_comment: "",
+  attachments: [],
+  pending_files: [],
+  removed_attachment_ids: [],
 };
 
 type FormState = {
@@ -575,6 +582,9 @@ export function useProcurementPage(user: User | null) {
             supplier_info: item.supplier_info || "",
             links: toLinkRows(item.links),
             initial_comment: "",
+            attachments: item.attachments || [],
+            pending_files: [],
+            removed_attachment_ids: [],
           }))
         : [{ ...emptyItem }],
     });
@@ -714,9 +724,10 @@ export function useProcurementPage(user: User | null) {
         })),
       };
 
+      let savedRequest: ProcurementRequest;
       if (modalMode === "create") {
-        await apiClient.createProcurementRequest(payload) as ProcurementRequest;
-        toast.success("Заявка создана и направлена в отдел.");
+        const created = await apiClient.createProcurementRequest(payload) as ProcurementRequest;
+        savedRequest = await apiClient.getProcurementRequest(created.id) as ProcurementRequest;
         setCreateOpen(false);
       } else if (editingId) {
         await apiClient.updateProcurementRequest(editingId, {
@@ -726,9 +737,42 @@ export function useProcurementPage(user: User | null) {
           processing_department: payload.processing_department,
           items: payload.items,
         });
-        toast.success("Заявка обновлена.");
+        savedRequest = await apiClient.getProcurementRequest(editingId) as ProcurementRequest;
         setEditingId(null);
+      } else {
+        return;
       }
+
+      const existingIds = new Set(
+        validItems
+          .map((item) => item.id)
+          .filter((id): id is number => typeof id === "number"),
+      );
+      const createdItems = (savedRequest.items || []).filter((item) => !existingIds.has(item.id));
+      let createdItemIndex = 0;
+
+      for (const item of validItems) {
+        const itemId = item.id ?? createdItems[createdItemIndex++]?.id;
+        if (!itemId) continue;
+
+        if (item.removed_attachment_ids.length > 0) {
+          await Promise.all(
+            item.removed_attachment_ids.map((attachmentId) => (
+              apiClient.deleteProcurementItemAttachment(itemId, attachmentId)
+            )),
+          );
+        }
+        if (item.pending_files.length > 0) {
+          await apiClient.uploadProcurementItemAttachments(itemId, item.pending_files);
+        }
+      }
+
+      await refreshOne(savedRequest.id);
+      toast.success(
+        modalMode === "create"
+          ? "Заявка создана и направлена в отдел."
+          : "Заявка обновлена.",
+      );
 
       resetForm();
       await refreshCurrentView();
@@ -740,7 +784,7 @@ export function useProcurementPage(user: User | null) {
     } finally {
       setBusyKey(null);
     }
-  }, [editingId, form, markRequestNotificationsRead, modalMode, refreshCurrentView, resetForm]);
+  }, [editingId, form, markRequestNotificationsRead, modalMode, refreshCurrentView, refreshOne, resetForm]);
 
   const handleSave = useCallback(() => saveRequest(), [saveRequest]);
 
@@ -1205,6 +1249,64 @@ export function useProcurementPage(user: User | null) {
     }));
   }, []);
 
+  const handleDownloadItemAttachment = useCallback(async (
+    itemId: number,
+    attachment: ProcurementItemAttachment,
+  ) => {
+    try {
+      const { blob, filename } = await apiClient.downloadProcurementItemAttachment(itemId, attachment);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (downloadError) {
+      setActionError(getReadableError(downloadError, "Не удалось скачать файл"));
+    }
+  }, []);
+
+  const handleUploadItemAttachments = useCallback(async (
+    requestId: number,
+    itemId: number,
+    files: File[],
+  ) => {
+    if (files.length === 0) return false;
+    try {
+      setBusyKey(`item-attachments-${itemId}`);
+      await apiClient.uploadProcurementItemAttachments(itemId, files);
+      await refreshOne(requestId);
+      toast.success(files.length > 1 ? "Файлы добавлены." : "Файл добавлен.");
+      return true;
+    } catch (uploadError) {
+      setActionError(getReadableError(uploadError, "Не удалось добавить файл"));
+      return false;
+    } finally {
+      setBusyKey(null);
+    }
+  }, [refreshOne]);
+
+  const handleDeleteItemAttachment = useCallback(async (
+    requestId: number,
+    itemId: number,
+    attachmentId: number,
+  ) => {
+    try {
+      setBusyKey(`item-attachment-delete-${attachmentId}`);
+      await apiClient.deleteProcurementItemAttachment(itemId, attachmentId);
+      await refreshOne(requestId);
+      toast.success("Файл удалён.");
+      return true;
+    } catch (deleteError) {
+      setActionError(getReadableError(deleteError, "Не удалось удалить файл"));
+      return false;
+    } finally {
+      setBusyKey(null);
+    }
+  }, [refreshOne]);
+
   const activeFilterCount = [
     statusFilter.length > 0,
     urgencyFilter,
@@ -1315,6 +1417,9 @@ export function useProcurementPage(user: User | null) {
     addItemRow,
     removeItemRow,
     updateItemRow,
+    handleDownloadItemAttachment,
+    handleUploadItemAttachments,
+    handleDeleteItemAttachment,
     activeFilterCount,
     isFinal,
     resolveUserId,

@@ -202,6 +202,7 @@ ooo.html
 # Test reports
 newman-report*.json
 *-report.json
+/output/
 dump.rdb
 .playwright-cli/
 .ruff_cache/

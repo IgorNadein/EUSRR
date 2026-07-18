@@ -4,9 +4,9 @@
  */
 
 import { performOCR, isOCRSupported } from './ocr';
-import { extractPDFText, generatePDFThumbnail, getPDFInfo } from './pdf';
+import { extractPDFText, generatePDFThumbnail } from './pdf';
 import { extractDOCXText, isDOCXFile } from './docx';
-import { compressImage, generateImageThumbnail, isImageFile } from './image';
+import { generateImageThumbnail, isImageFile } from './image';
 
 export interface ProcessingResult {
   extractedText: string;
@@ -24,17 +24,15 @@ export interface ProcessingResult {
 }
 
 export interface ProcessingProgress {
-  stage: 'compressing' | 'ocr' | 'extracting_text' | 'generating_thumbnail' | 'complete';
+  stage: 'ocr' | 'extracting_text' | 'generating_thumbnail' | 'complete';
   progress: number;
   message: string;
 }
 
 export interface ProcessDocumentOptions {
   enableOCR?: boolean;
-  enableCompression?: boolean;
   enableTextExtraction?: boolean;
   enableThumbnail?: boolean;
-  maxImageSizeMB?: number;
   onProgress?: (progress: ProcessingProgress) => void;
 }
 
@@ -42,7 +40,6 @@ export interface ProcessDocumentOptions {
  * Интеллектуально обрабатывает документ перед загрузкой
  * 
  * Автоматически определяет тип файла и выполняет:
- * - Сжатие изображений
  * - OCR для изображений
  * - Извлечение текста из PDF/DOCX
  * - Генерацию thumbnails
@@ -57,42 +54,18 @@ export async function processDocument(
 ): Promise<ProcessingResult> {
   const {
     enableOCR = true,
-    enableCompression = true,
     enableTextExtraction = true,
     enableThumbnail = true,
-    maxImageSizeMB = 10,
     onProgress
   } = options;
 
   const startTime = Date.now();
   let extractedText = '';
   let thumbnail: string | undefined;
-  let processedFile: File | Blob | undefined;
   let ocrApplied = false;
-  let compressed = false;
 
   try {
-    // 1. Сжатие изображений
-    if (enableCompression && isImageFile(file)) {
-      onProgress?.({
-        stage: 'compressing',
-        progress: 10,
-        message: 'Сжатие изображения...'
-      });
-
-      const sizeMB = file.size / (1024 * 1024);
-      if (sizeMB > maxImageSizeMB) {
-        processedFile = await compressImage(file, {
-          maxSizeMB: maxImageSizeMB,
-          quality: 0.85
-        });
-        compressed = true;
-      }
-    }
-
-    const fileToProcess = processedFile || file;
-
-    // 2. Извлечение текста
+    // 1. Извлечение текста
     if (enableTextExtraction) {
       onProgress?.({
         stage: 'extracting_text',
@@ -136,7 +109,7 @@ export async function processDocument(
       }
     }
 
-    // 3. Генерация thumbnail
+    // 2. Генерация thumbnail
     if (enableThumbnail) {
       onProgress?.({
         stage: 'generating_thumbnail',
@@ -162,15 +135,12 @@ export async function processDocument(
     return {
       extractedText,
       thumbnail,
-      processedFile,
       metadata: {
         originalSize: file.size,
-        processedSize: processedFile?.size,
         mimeType: file.type,
         hasText: extractedText.length > 0,
         processingTime,
-        ocrApplied,
-        compressed
+        ocrApplied
       }
     };
   } catch (error) {

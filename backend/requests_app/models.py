@@ -10,7 +10,6 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from .constants import (
-    MAX_ATTACHMENT_SIZE,
     SAFE_EXTENSIONS,
     SAFE_MIME_TYPES,
 )
@@ -20,12 +19,8 @@ logger = logging.getLogger(__name__)
 
 
 def attachment_file_size(value):
-    """Ограничение размера вложения (10 МБ)."""
-    if value and getattr(value, "size", 0) > MAX_ATTACHMENT_SIZE:
-        mb = MAX_ATTACHMENT_SIZE // (1024 * 1024)
-        raise ValidationError(
-            _("Размер файла не должен превышать %(mb)s МБ."), params={"mb": mb}
-        )
+    """Оставлено для совместимости со старыми миграциями."""
+    return None
 
 
 def attachment_mime_validator(value):
@@ -142,7 +137,6 @@ class Request(models.Model):
         null=True,
         validators=[
             FileExtensionValidator(allowed_extensions=SAFE_EXTENSIONS),
-            attachment_file_size,
             attachment_mime_validator,
         ],
     )

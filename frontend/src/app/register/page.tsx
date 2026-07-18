@@ -95,12 +95,6 @@ export default function Register() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Проверка размера (макс 10MB для исходного файла)
-    if (file.size > 10 * 1024 * 1024) {
-      setError('Размер файла не должен превышать 10MB');
-      return;
-    }
-
     // Проверка типа
     if (!file.type.startsWith('image/')) {
       setError('Выберите изображение');

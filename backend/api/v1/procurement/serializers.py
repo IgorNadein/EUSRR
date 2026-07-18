@@ -25,6 +25,8 @@ from procurement.models import (
     MaintenanceRecord,
     ApprovalRoute,
     ProcurementItem,
+    ProcurementItemAttachment,
+    ProcurementRequestActivity,
     ProcurementRequest,
     ProcurementRequestView,
     ProcurementSettings,
@@ -41,6 +43,28 @@ PROBLEM_ITEM_STATUSES = {
     ProcurementItemExecutionStatus.EDITED,
     ProcurementItemExecutionStatus.DEFECTIVE,
 }
+
+
+class ProcurementRequestActivitySerializer(serializers.ModelSerializer):
+    actor = EmployeeBriefSerializer(read_only=True)
+    action_display = serializers.CharField(
+        source="get_action_display",
+        read_only=True,
+    )
+
+    class Meta:
+        model = ProcurementRequestActivity
+        fields = [
+            "id",
+            "action",
+            "action_display",
+            "actor",
+            "object_kind",
+            "object_id",
+            "metadata",
+            "created_at",
+        ]
+        read_only_fields = fields
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 UNIT_DISPLAY_LABELS = {
@@ -316,6 +340,34 @@ class ProcurementRequestSummaryMixin(serializers.Serializer):
         ]
 
 
+class ProcurementItemAttachmentSerializer(serializers.ModelSerializer):
+    uploaded_by_name = serializers.CharField(
+        source="uploaded_by.get_full_name",
+        read_only=True,
+    )
+    download_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProcurementItemAttachment
+        fields = [
+            "id",
+            "file_name",
+            "file_size",
+            "mime_type",
+            "uploaded_by",
+            "uploaded_by_name",
+            "created_at",
+            "download_url",
+        ]
+        read_only_fields = fields
+
+    def get_download_url(self, obj):
+        return (
+            f"/api/v1/procurement/items/{obj.item_id}/"
+            f"attachments/{obj.id}/"
+        )
+
+
 class ProcurementItemSerializer(serializers.ModelSerializer):
     """Сериализатор для позиций заявки."""
 
@@ -350,6 +402,11 @@ class ProcurementItemSerializer(serializers.ModelSerializer):
     )
     execution_status_display = serializers.SerializerMethodField()
     comments_count = serializers.SerializerMethodField()
+    attachments = ProcurementItemAttachmentSerializer(many=True, read_only=True)
+    attachments_count = serializers.IntegerField(
+        source="attachments.count",
+        read_only=True,
+    )
 
     @extend_schema_field(serializers.IntegerField())
     def get_comments_count(self, obj):
@@ -387,6 +444,8 @@ class ProcurementItemSerializer(serializers.ModelSerializer):
             "executor_comment",
             "initial_comment",
             "comments_count",
+            "attachments",
+            "attachments_count",
             "equipment",
             "created_at",
         ]
@@ -396,6 +455,8 @@ class ProcurementItemSerializer(serializers.ModelSerializer):
             "total_price",
             "execution_status_display",
             "comments_count",
+            "attachments",
+            "attachments_count",
         ]
 
     def validate(self, attrs):
@@ -451,6 +512,7 @@ class ProcurementItemCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProcurementItem
         fields = [
+            "id",
             "name",
             "description",
             "quantity",
@@ -466,6 +528,7 @@ class ProcurementItemCreateSerializer(serializers.ModelSerializer):
             "executor_comment",
             "initial_comment",
         ]
+        read_only_fields = ["id"]
 
     def validate(self, attrs):
         return _validate_item_quantities(attrs, self.instance)
@@ -873,6 +936,7 @@ class ProcurementRequestDetailSerializer(
     )
     is_editable = serializers.BooleanField(read_only=True)
     comments_count = serializers.IntegerField(read_only=True, default=0)
+    activity_count = serializers.SerializerMethodField()
     can_current_user_approve = serializers.SerializerMethodField()
     can_current_user_submit_for_approval = serializers.SerializerMethodField()
     can_current_user_start_work = serializers.SerializerMethodField()
@@ -904,6 +968,10 @@ class ProcurementRequestDetailSerializer(
         request = self.context.get("request")
         user = getattr(request, "user", None)
         return ProcurementApprovalResolver.user_can_process_items(user, obj)
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_activity_count(self, obj):
+        return obj.activities.count()
 
     class Meta:
         model = ProcurementRequest
@@ -944,6 +1012,7 @@ class ProcurementRequestDetailSerializer(
             "required_approval_priorities",
             "is_editable",
             "comments_count",
+            "activity_count",
             "linked_tasks",
             "can_current_user_approve",
             "can_current_user_submit_for_approval",
@@ -980,6 +1049,7 @@ class ProcurementRequestDetailSerializer(
             "processing_department_name",
             "fulfillment_status_display",
             "comments_count",
+            "activity_count",
             "linked_tasks",
             "can_current_user_approve",
             "can_current_user_submit_for_approval",

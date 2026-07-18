@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import apiClient from '@/lib/api';
 import wsManager from '@/lib/websocketManager';
 import { getVerbCategory } from '@/lib/verbTranslations';
+import { useUser } from '@/contexts/UserContext';
 
 const NOTIFICATIONS_SYNC_INTERVAL_MS = 30000;
 const UNREAD_NOTIFICATIONS_PAGE_SIZE = 50;
@@ -52,6 +53,8 @@ interface NotificationsContextType {
 const NotificationsContext = createContext<NotificationsContextType | undefined>(undefined);
 
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useUser();
+  const authenticatedUserId = user?.id ?? null;
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -63,6 +66,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   );
   const fetchInFlightRef = useRef<Promise<void> | null>(null);
   const summaryInFlightRef = useRef<Promise<void> | null>(null);
+  const knownNotificationIdsRef = useRef<Set<number>>(new Set());
 
   const applyUnreadSummary = useCallback((summary: {
     total?: number;
@@ -114,6 +118,11 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         });
         const notifs = data.notifications || data.results || data;
         const notificationsArray = Array.isArray(notifs) ? notifs : [];
+        notificationsArray.forEach((notification) => {
+          if (typeof notification.id === 'number') {
+            knownNotificationIdsRef.current.add(notification.id);
+          }
+        });
         setNotifications(notificationsArray);
         setUnreadCount(data.unread_count ?? notificationsArray.length);
         setError(null);
@@ -157,13 +166,24 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   // Загрузка начальных данных
   useEffect(() => {
+    if (!authenticatedUserId) {
+      setNotifications([]);
+      setUnreadCount(0);
+      setUnreadCategoryCounts({});
+      setUnreadProcurementRequestCounts({});
+      knownNotificationIdsRef.current.clear();
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     void syncUnreadNotifications(true);
     void syncUnreadSummary();
-  }, [syncUnreadNotifications, syncUnreadSummary]);
+  }, [authenticatedUserId, syncUnreadNotifications, syncUnreadSummary]);
 
   // ЕДИНСТВЕННЫЙ WebSocket через singleton manager
   useEffect(() => {
-    if (typeof window === 'undefined' || !localStorage.getItem('access_token')) {
+    if (!authenticatedUserId || typeof window === 'undefined' || !localStorage.getItem('access_token')) {
       console.log('[NotificationsContext] WebSocket disabled: not in browser or not authenticated');
       return;
     }
@@ -178,12 +198,13 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       const incomingNotification = data.notification;
 
       if (data.type === 'notification' && incomingNotification) {
-        setNotifications(prev => {
-          if (prev.some(n => n.id === incomingNotification.id)) {
-            return prev;
-          }
-          return [incomingNotification, ...prev];
-        });
+        if (knownNotificationIdsRef.current.has(incomingNotification.id)) {
+          void syncUnreadSummary();
+          return;
+        }
+
+        knownNotificationIdsRef.current.add(incomingNotification.id);
+        setNotifications(prev => [incomingNotification, ...prev]);
 
         const isRead = incomingNotification.is_read ?? !incomingNotification.unread;
         if (!isRead) {
@@ -205,6 +226,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
             }
           }
         }
+        void syncUnreadSummary();
         return;
       }
 
@@ -251,11 +273,11 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       unsubscribeMessages();
       unsubscribeStatus();
     };
-  }, [syncUnreadNotifications, syncUnreadSummary]);
+  }, [authenticatedUserId, syncUnreadNotifications, syncUnreadSummary]);
 
   // Регулярная сверка с API нужна даже при живом WebSocket: часть событий может не дойти по сокету.
   useEffect(() => {
-    if (typeof window === 'undefined' || !localStorage.getItem('access_token')) {
+    if (!authenticatedUserId || typeof window === 'undefined' || !localStorage.getItem('access_token')) {
       return;
     }
 
@@ -282,16 +304,16 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [syncUnreadNotifications, syncUnreadSummary]);
+  }, [authenticatedUserId, syncUnreadNotifications, syncUnreadSummary]);
 
   useEffect(() => {
-    if (!isWsConnected) {
+    if (!authenticatedUserId || !isWsConnected) {
       return;
     }
 
     void syncUnreadSummary();
     void syncUnreadNotifications(false);
-  }, [isWsConnected, syncUnreadNotifications, syncUnreadSummary]);
+  }, [authenticatedUserId, isWsConnected, syncUnreadNotifications, syncUnreadSummary]);
 
   const markAsRead = useCallback(async (id: number) => {
     await apiClient.markNotificationAsRead(id);

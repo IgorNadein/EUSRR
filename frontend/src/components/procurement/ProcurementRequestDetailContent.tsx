@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Check, CheckCircle2, CircleDot, ExternalLink, MessageSquare, Minus, Plus, RotateCcw, Save, SlidersHorizontal, X } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, CircleDot, Download, ExternalLink, MessageSquare, Minus, Paperclip, Plus, RotateCcw, Save, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { RequestAvatar } from "@/components/requests/RequestAvatar";
+import { ProcurementRequestHistory } from "@/components/procurement/ProcurementRequestHistory";
 import { CommentComposer, CommentDeleteButton } from "@/components/shared/CommentControls";
 import { Modal } from "@/components/ui";
 
@@ -11,7 +12,7 @@ import { cleanLinkRows, linkHref, toLinkRows } from "@/lib/procurementLinks";
 import { getExpectedDeliveryDateBadgeClass } from "@/lib/procurementDates";
 import { getProcurementUnitLabel } from "@/lib/procurementUnits";
 import { formatDate, formatMoney, userProfileLink } from "@/lib/shared";
-import type { ProcurementItem, ProcurementItemComment, ProcurementItemExecutionStatus, ProcurementRequest, User } from "@/types/api";
+import type { ProcurementItem, ProcurementItemAttachment, ProcurementItemComment, ProcurementItemExecutionStatus, ProcurementRequest, User } from "@/types/api";
 
 interface ProcurementRequestDetailContentProps {
   currentUserId?: number | null;
@@ -37,6 +38,9 @@ interface ProcurementRequestDetailContentProps {
   onItemCommentDraftChange?: (itemId: number, value: string) => void;
   onAddItemComment?: (requestId: number, itemId: number) => void | Promise<void>;
   onDeleteItemComment?: (requestId: number, itemId: number, commentId: number) => void | Promise<void>;
+  onDownloadItemAttachment?: (itemId: number, attachment: ProcurementItemAttachment) => void | Promise<void>;
+  onUploadItemAttachments?: (requestId: number, itemId: number, files: File[]) => void | Promise<unknown>;
+  onDeleteItemAttachment?: (requestId: number, itemId: number, attachmentId: number) => void | Promise<unknown>;
   footer?: React.ReactNode;
 }
 
@@ -178,6 +182,9 @@ interface ProcurementItemCardProps {
   onCommentDraftChange?: (itemId: number, value: string) => void;
   onAddComment?: (requestId: number, itemId: number) => void | Promise<void>;
   onDeleteComment?: (requestId: number, itemId: number, commentId: number) => void | Promise<void>;
+  onDownloadAttachment?: (itemId: number, attachment: ProcurementItemAttachment) => void | Promise<void>;
+  onUploadAttachments?: (requestId: number, itemId: number, files: File[]) => void | Promise<unknown>;
+  onDeleteAttachment?: (requestId: number, itemId: number, attachmentId: number) => void | Promise<unknown>;
 }
 
 function ProcurementItemCard({
@@ -204,6 +211,9 @@ function ProcurementItemCard({
   onCommentDraftChange,
   onAddComment,
   onDeleteComment,
+  onDownloadAttachment,
+  onUploadAttachments,
+  onDeleteAttachment,
 }: ProcurementItemCardProps) {
   const [draft, setDraft] = useState<ItemProcessingDraft>(() => normalizeItemDraft(item));
   const [processingOpen, setProcessingOpen] = useState(false);
@@ -214,6 +224,7 @@ function ProcurementItemCard({
   const links = Array.isArray(item.links) ? item.links.filter(Boolean) : [];
   const expectedDeliveryDates = toDateRows(item.expected_delivery_dates);
   const commentsTotal = item.comments_count ?? comments.length;
+  const attachments = item.attachments || [];
   const requestedQuantity = Math.max(0, Math.trunc(toNumber(item.quantity)));
   const orderedQuantity = effectiveOrderedQuantity(item, requestedQuantity);
   const receivedQuantity = effectiveReceivedQuantity(item, requestedQuantity);
@@ -449,6 +460,65 @@ function ProcurementItemCard({
               </a>
             ))}
           </div>
+        </div>
+      ) : null}
+
+      {attachments.length > 0 || (canEditItemProcessing && onUploadAttachments) ? (
+        <div className="mt-3">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <p className="app-text-muted text-[11px] font-medium">Файлы</p>
+            {canEditItemProcessing && onUploadAttachments ? (
+              <label className="app-action-ghost inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium">
+                <Plus size={11} /> Добавить
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => {
+                    const files = Array.from(event.target.files || []);
+                    if (files.length > 0) {
+                      void onUploadAttachments(requestId, item.id, files);
+                    }
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+            ) : null}
+          </div>
+          {attachments.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {attachments.map((attachment) => (
+                <span
+                  key={attachment.id}
+                  className="app-badge inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px]"
+                >
+                  <button
+                    type="button"
+                    onClick={() => void onDownloadAttachment?.(item.id, attachment)}
+                    className="inline-flex min-w-0 items-center gap-1"
+                    title={`Скачать ${attachment.file_name}`}
+                  >
+                    <Paperclip size={11} className="shrink-0" />
+                    <span className="max-w-48 truncate">{attachment.file_name}</span>
+                    <Download size={10} className="shrink-0" />
+                  </button>
+                  {canEditItemProcessing && onDeleteAttachment ? (
+                    <button
+                      type="button"
+                      title="Удалить файл"
+                      disabled={busyKey === `item-attachment-delete-${attachment.id}`}
+                      onClick={() => void onDeleteAttachment(requestId, item.id, attachment.id)}
+                      className="app-action-ghost inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full disabled:opacity-60"
+                    >
+                      <Trash2 size={10} />
+                    </button>
+                  ) : null}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="app-text-muted text-[11px]">Файлы не прикреплены</p>
+          )}
         </div>
       ) : null}
 
@@ -926,6 +996,9 @@ export function ProcurementRequestDetailContent({
   onItemCommentDraftChange,
   onAddItemComment,
   onDeleteItemComment,
+  onDownloadItemAttachment,
+  onUploadItemAttachments,
+  onDeleteItemAttachment,
   footer,
 }: ProcurementRequestDetailContentProps) {
   const canEditItemProcessing = Boolean(canProcessItems && onUpdateItem);
@@ -969,7 +1042,11 @@ export function ProcurementRequestDetailContent({
         <p className="app-text-wrap mt-2 whitespace-pre-line text-sm leading-6 text-[var(--foreground)]">
           {request.description || "—"}
         </p>
-        <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+        <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+          <div className="app-surface-muted rounded-lg px-3 py-2">
+            <p className="app-text-muted text-[11px] uppercase tracking-wide">Создана</p>
+            <p className="mt-1 font-medium text-[var(--foreground)]">{formatDate(request.created_at) || "—"}</p>
+          </div>
           <div className="app-surface-muted rounded-lg px-3 py-2">
             <p className="app-text-muted text-[11px] uppercase tracking-wide">Отправлена</p>
             <p className="mt-1 font-medium text-[var(--foreground)]">{formatDate(request.submitted_at) || "—"}</p>
@@ -1040,6 +1117,9 @@ export function ProcurementRequestDetailContent({
                 onCommentDraftChange={onItemCommentDraftChange}
                 onAddComment={onAddItemComment}
                 onDeleteComment={onDeleteItemComment}
+                onDownloadAttachment={onDownloadItemAttachment}
+                onUploadAttachments={onUploadItemAttachments}
+                onDeleteAttachment={onDeleteItemAttachment}
               />
             ))}
           </div>
@@ -1101,6 +1181,8 @@ export function ProcurementRequestDetailContent({
           </div>
         </div>
       ) : null}
+
+      <ProcurementRequestHistory request={request} displayUserName={displayUserName} />
 
       {footer}
     </div>

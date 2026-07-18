@@ -9,7 +9,7 @@ from django.db.models import Q
 
 from employees.models import Department, EmployeeDepartment, RoleAssignment
 
-from .models import TaskBoard
+from .models import TaskBoard, TaskBoardAccessScope
 
 logger = logging.getLogger(__name__)
 
@@ -20,16 +20,27 @@ def get_task_board_recipient_ids(board: TaskBoard) -> set[int]:
 
     User = get_user_model()
     admin_q = Q(is_staff=True) | Q(is_superuser=True)
+    is_private = board.access_scope == TaskBoardAccessScope.PRIVATE
 
-    if not board.members.exists() and not board.departments.exists():
+    if (
+        not is_private
+        and board.access_scope == TaskBoardAccessScope.ALL
+        and not board.members.exists()
+        and not board.departments.exists()
+    ):
         return set(
             User.objects.filter(is_active=True)
             .values_list("id", flat=True)
         )
 
-    department_ids = list(board.departments.values_list("id", flat=True))
+    department_ids = (
+        []
+        if is_private
+        else list(board.departments.values_list("id", flat=True))
+    )
     recipient_ids = {board.created_by_id}
-    recipient_ids.update(board.members.values_list("id", flat=True))
+    if not is_private:
+        recipient_ids.update(board.members.values_list("id", flat=True))
 
     if department_ids:
         recipient_ids.update(

@@ -41,6 +41,9 @@ def create_document_notification(sender, instance, created, **kwargs):
         f"created={created} sent_to_all={instance.sent_to_all}"
     )
 
+    if getattr(instance, "_suppress_document_notifications", False):
+        return
+
     if not created:
         return
 
@@ -73,6 +76,9 @@ def notify_specific_recipients(sender, instance, action, pk_set, **kwargs):
         f"action={action} pk_set={pk_set} sent_to_all={instance.sent_to_all}"
     )
 
+    if getattr(instance, "_suppress_document_notifications", False):
+        return
+
     if action != "post_add":
         logger.info(f"[signals] Skipping (action={action} != 'post_add')")
         return
@@ -100,6 +106,9 @@ def notify_department_employees_signal(
         f"[signals] m2m_changed Document.departments "
         f"id={instance.pk} action={action} pk_set={pk_set}"
     )
+
+    if getattr(instance, "_suppress_document_notifications", False):
+        return
 
     if action != "post_add":
         logger.info(f"[signals] Skipping (action={action} != 'post_add')")
@@ -134,23 +143,15 @@ def check_all_acknowledged(sender, instance, created, **kwargs):
         )
         return
 
-    # Определяем общее количество получателей
-    if document.sent_to_all:
-        total_recipients = Employee.objects.filter(is_active=True).count()
-    else:
-        # Считаем получателей из recipients + departments
-        recipients_count = document.recipients.count()
+    from documents.audience import document_acknowledgement_audience
 
-        # Добавляем сотрудников из отделов
-        department_employees = set()
-        for department in document.departments.all():
-            department_employees.update(department.active_employees)
-
-        # Исключаем дубликаты с recipients
-        total_recipients = recipients_count + len(department_employees)
+    acknowledgement_audience = document_acknowledgement_audience(document)
+    total_recipients = acknowledgement_audience.count()
 
     # Проверяем количество ознакомившихся
-    acknowledged_count = document.acknowledgements.count()
+    acknowledged_count = document.acknowledgements.filter(
+        user__in=acknowledgement_audience
+    ).count()
 
     # Если все ознакомились - уведомляем загрузившего
     if (

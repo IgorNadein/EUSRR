@@ -97,9 +97,18 @@ class Document(models.Model):
     # Требование ознакомления
     acknowledgement_required = models.BooleanField(
         _("Требуется ознакомление"),
-        default=False,
+        default=True,
         help_text=_(
             "Если включено — сотрудники должны подтвердить ознакомление"
+        ),
+    )
+
+    acknowledgement_for_all = models.BooleanField(
+        _("Ознакомление для всех с доступом"),
+        default=True,
+        help_text=_(
+            "Если включено — ознакомиться должны все сотрудники, "
+            "которым доступен документ"
         ),
     )
 
@@ -127,6 +136,24 @@ class Document(models.Model):
             "Если `Разослать всем` отключено, документ пойдет только этим"
         ),
         related_name="document_recipients",
+    )
+    acknowledgement_departments = models.ManyToManyField(
+        "employees.Department",
+        verbose_name=_("Отделы для ознакомления"),
+        blank=True,
+        related_name="documents_requiring_acknowledgement",
+        help_text=_(
+            "Сотрудники выбранных отделов должны ознакомиться с документом"
+        ),
+    )
+    acknowledgement_recipients = models.ManyToManyField(
+        User,
+        verbose_name=_("Сотрудники для ознакомления"),
+        blank=True,
+        related_name="documents_requiring_acknowledgement",
+        help_text=_(
+            "Выбранные сотрудники должны ознакомиться с документом"
+        ),
     )
 
     # Связанные документы

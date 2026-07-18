@@ -4,6 +4,7 @@ from datetime import date, timedelta
 import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
@@ -19,7 +20,15 @@ from procurement.constants import ProcurementStatus, UrgencyLevel
 from procurement.models import ProcurementRequest
 from requests_app.models import Request as EmployeeRequest
 from schedule.models import Calendar, CalendarRelation, Event
-from tasks.models import Task, TaskBoard, TaskColumn, TaskUserSettings
+from tasks.models import (
+    Task,
+    TaskAttachment,
+    TaskBoard,
+    TaskChecklistItem,
+    TaskColumn,
+    TaskExternalLink,
+    TaskUserSettings,
+)
 from tasks.realtime import get_task_board_recipient_ids
 
 pytestmark = pytest.mark.django_db
@@ -180,6 +189,182 @@ def test_create_task_and_move_to_done_column(api_client, user):
     assert task.completed_at is not None
 
 
+def test_member_can_claim_unassigned_task(api_client, user):
+    claimant = make_user("task-claimant@example.com", "+79994440095")
+    other_member = make_user("task-claim-other@example.com", "+79994440096")
+    board = TaskBoard.objects.create(name="Доска самоназначения", created_by=user)
+    board.members.add(claimant, other_member)
+    source_column = TaskColumn.objects.create(
+        board=board,
+        name="Новые",
+        position=1000,
+    )
+    done_column = TaskColumn.objects.create(
+        board=board,
+        name="Готово",
+        position=2000,
+        is_done=True,
+    )
+    task = Task.objects.create(
+        board=board,
+        column=source_column,
+        title="Свободная задача",
+        created_by=user,
+    )
+    claim_url = reverse("api:v1:tasks:task-claim", kwargs={"pk": task.id})
+
+    api_client.force_authenticate(user=claimant)
+    with (
+        patch("api.v1.tasks.views.notify_task_updated") as notify_updated,
+        patch("api.v1.tasks.views.send_task_board_update") as send_update,
+    ):
+        claim_response = api_client.post(claim_url)
+
+    assert claim_response.status_code == status.HTTP_200_OK
+    assert claim_response.data["assignee"]["id"] == claimant.id
+    assert claim_response.data["column"] == source_column.id
+    task.refresh_from_db()
+    assert task.assignee_id == claimant.id
+    assert task.column_id == source_column.id
+    claimed_activity = task.activities.get(action="claimed")
+    assert claimed_activity.actor_id == claimant.id
+    assert claimed_activity.metadata == {"assignee_id": claimant.id}
+    notify_updated.assert_called_once()
+    send_update.assert_called_once()
+    send_args, send_kwargs = send_update.call_args
+    assert send_args[1:4] == ("claimed", "task", task.id)
+    assert send_kwargs["extra"] == {"assignee_id": claimant.id}
+
+    with (
+        patch("api.v1.tasks.views.notify_task_updated") as notify_updated,
+        patch("api.v1.tasks.views.send_task_board_update") as send_update,
+    ):
+        repeated_response = api_client.post(claim_url)
+
+    assert repeated_response.status_code == status.HTTP_200_OK
+    assert task.activities.filter(action="claimed").count() == 1
+    notify_updated.assert_not_called()
+    send_update.assert_not_called()
+
+    api_client.force_authenticate(user=other_member)
+    conflict_response = api_client.post(claim_url)
+    assert conflict_response.status_code == status.HTTP_409_CONFLICT
+    assert conflict_response.data["detail"] == "У задачи уже есть исполнитель."
+    task.refresh_from_db()
+    assert task.assignee_id == claimant.id
+
+    completed_task = Task.objects.create(
+        board=board,
+        column=done_column,
+        title="Завершённая задача",
+        created_by=user,
+    )
+    completed_response = api_client.post(
+        reverse("api:v1:tasks:task-claim", kwargs={"pk": completed_task.id})
+    )
+    assert completed_response.status_code == status.HTTP_400_BAD_REQUEST
+    assert completed_response.data["detail"] == "Нельзя взять в работу завершённую задачу."
+    completed_task.refresh_from_db()
+    assert completed_task.assignee_id is None
+
+
+def test_only_assignee_can_complete_task_in_first_done_column(api_client, user):
+    assignee = make_user("task-assignee@example.com", "+79994440093")
+    member = make_user("task-member@example.com", "+79994440094")
+    board = TaskBoard.objects.create(name="Доска завершения", created_by=user)
+    board.members.add(assignee, member)
+    source_column = TaskColumn.objects.create(
+        board=board,
+        name="В работе",
+        position=1000,
+    )
+    first_done_column = TaskColumn.objects.create(
+        board=board,
+        name="Готово",
+        position=2000,
+        is_done=True,
+    )
+    TaskColumn.objects.create(
+        board=board,
+        name="Архив завершенных",
+        position=3000,
+        is_done=True,
+    )
+    task = Task.objects.create(
+        board=board,
+        column=source_column,
+        title="Завершить исполнителем",
+        created_by=user,
+        assignee=assignee,
+    )
+    complete_url = reverse("api:v1:tasks:task-complete", kwargs={"pk": task.id})
+
+    api_client.force_authenticate(user=member)
+    forbidden_response = api_client.post(complete_url)
+    assert forbidden_response.status_code == status.HTTP_403_FORBIDDEN
+    task.refresh_from_db()
+    assert task.column_id == source_column.id
+    assert task.completed_at is None
+
+    api_client.force_authenticate(user=assignee)
+    with (
+        patch("api.v1.tasks.views.notify_task_moved") as notify_moved,
+        patch("api.v1.tasks.views.send_task_board_update") as send_update,
+    ):
+        complete_response = api_client.post(complete_url)
+
+    assert complete_response.status_code == status.HTTP_200_OK
+    assert complete_response.data["column"] == first_done_column.id
+    assert complete_response.data["completed_at"] is not None
+    task.refresh_from_db()
+    assert task.column_id == first_done_column.id
+    assert task.completed_at is not None
+    moved_activity = task.activities.get(action="moved")
+    assert moved_activity.actor_id == assignee.id
+    assert moved_activity.metadata == {
+        "from_column_id": source_column.id,
+        "from_column": source_column.name,
+        "to_column_id": first_done_column.id,
+        "to_column": first_done_column.name,
+    }
+    notify_moved.assert_called_once()
+    send_update.assert_called_once()
+
+    with (
+        patch("api.v1.tasks.views.notify_task_moved") as notify_moved,
+        patch("api.v1.tasks.views.send_task_board_update") as send_update,
+    ):
+        repeated_response = api_client.post(complete_url)
+
+    assert repeated_response.status_code == status.HTTP_200_OK
+    assert task.activities.filter(action="moved").count() == 1
+    notify_moved.assert_not_called()
+    send_update.assert_not_called()
+
+
+def test_assignee_cannot_complete_task_without_done_column(api_client, user):
+    board = TaskBoard.objects.create(name="Доска без финала", created_by=user)
+    column = TaskColumn.objects.create(board=board, name="В работе", position=1000)
+    task = Task.objects.create(
+        board=board,
+        column=column,
+        title="Некуда завершать",
+        created_by=user,
+        assignee=user,
+    )
+    api_client.force_authenticate(user=user)
+
+    response = api_client.post(
+        reverse("api:v1:tasks:task-complete", kwargs={"pk": task.id})
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data["detail"] == "На доске не настроена завершающая колонка."
+    task.refresh_from_db()
+    assert task.column_id == column.id
+    assert task.completed_at is None
+
+
 def test_task_rejects_column_from_another_board(api_client, user):
     api_client.force_authenticate(user=user)
     first = api_client.get(reverse("api:v1:tasks:task-board-default")).data
@@ -207,6 +392,308 @@ def test_task_rejects_column_from_another_board(api_client, user):
     assert "column" in response.data
 
 
+def test_task_attachments_follow_board_access_and_support_full_lifecycle(
+    api_client,
+    user,
+    tmp_path,
+    settings,
+    django_capture_on_commit_callbacks,
+):
+    settings.MEDIA_ROOT = tmp_path
+    member = make_user("task-file-member@example.com", "+79994440101")
+    outsider = make_user("task-file-outsider@example.com", "+79994440102")
+    board = TaskBoard.objects.create(name="Доска с файлами", created_by=user)
+    board.members.add(member)
+    column = TaskColumn.objects.create(board=board, name="Новые", position=1000)
+    task = Task.objects.create(
+        board=board,
+        column=column,
+        title="Задача с файлами",
+        created_by=user,
+    )
+    attachments_url = reverse(
+        "api:v1:tasks:task-attachments",
+        kwargs={"pk": task.id},
+    )
+
+    api_client.force_authenticate(user=member)
+    upload_response = api_client.post(
+        attachments_url,
+        {
+            "files": [
+                SimpleUploadedFile(
+                    "brief.txt",
+                    b"task brief",
+                    content_type="text/plain",
+                ),
+                SimpleUploadedFile(
+                    "report.pdf",
+                    b"pdf content",
+                    content_type="application/pdf",
+                ),
+                SimpleUploadedFile(
+                    "logs.tar.gz",
+                    b"archive content",
+                    content_type="application/gzip",
+                ),
+            ]
+        },
+        format="multipart",
+    )
+
+    assert upload_response.status_code == status.HTTP_201_CREATED
+    assert [item["file_name"] for item in upload_response.data] == [
+        "brief.txt",
+        "report.pdf",
+        "logs.tar.gz",
+    ]
+    assert all(item["uploaded_by"]["id"] == member.id for item in upload_response.data)
+    assert TaskAttachment.objects.filter(task=task).count() == 3
+
+    task_response = api_client.get(
+        reverse("api:v1:tasks:task-detail", kwargs={"pk": task.id})
+    )
+    assert task_response.status_code == status.HTTP_200_OK
+    assert task_response.data["attachments_count"] == 3
+
+    attachment = TaskAttachment.objects.get(task=task, file_name="brief.txt")
+    stored_name = attachment.file.name
+    download_url = reverse(
+        "api:v1:tasks:task-attachment-download",
+        kwargs={"pk": task.id, "attachment_id": attachment.id},
+    )
+    download_response = api_client.get(download_url)
+    assert download_response.status_code == status.HTTP_200_OK
+    assert b"".join(download_response.streaming_content) == b"task brief"
+    assert download_response["X-Content-Type-Options"] == "nosniff"
+    assert "attachment" in download_response["Content-Disposition"]
+
+    api_client.force_authenticate(user=outsider)
+    assert api_client.get(attachments_url).status_code == status.HTTP_404_NOT_FOUND
+    assert api_client.get(download_url).status_code == status.HTTP_404_NOT_FOUND
+
+    api_client.force_authenticate(user=member)
+    delete_url = reverse(
+        "api:v1:tasks:task-attachment-detail",
+        kwargs={"pk": task.id, "attachment_id": attachment.id},
+    )
+    with django_capture_on_commit_callbacks(execute=True):
+        delete_response = api_client.delete(delete_url)
+
+    assert delete_response.status_code == status.HTTP_204_NO_CONTENT
+    assert not TaskAttachment.objects.filter(id=attachment.id).exists()
+    assert not attachment.file.storage.exists(stored_name)
+
+
+def test_task_attachment_has_no_size_limit(
+    api_client,
+    user,
+    settings,
+):
+    settings.TASK_ATTACHMENT_MAX_SIZE = 4
+    board = TaskBoard.objects.create(name="Доска лимитов", created_by=user)
+    column = TaskColumn.objects.create(board=board, name="Новые", position=1000)
+    task = Task.objects.create(
+        board=board,
+        column=column,
+        title="Проверить лимит файла",
+        created_by=user,
+    )
+    api_client.force_authenticate(user=user)
+
+    response = api_client.post(
+        reverse("api:v1:tasks:task-attachments", kwargs={"pk": task.id}),
+        {
+            "files": SimpleUploadedFile(
+                "large.txt",
+                b"12345",
+                content_type="text/plain",
+            )
+        },
+        format="multipart",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert TaskAttachment.objects.filter(task=task, file_name="large.txt").exists()
+
+
+def test_task_external_links_follow_board_access_and_support_lifecycle(
+    api_client,
+    user,
+):
+    member = make_user("task-link-member@example.com", "+79994440103")
+    outsider = make_user("task-link-outsider@example.com", "+79994440104")
+    board = TaskBoard.objects.create(name="Доска со ссылками", created_by=user)
+    board.members.add(member)
+    column = TaskColumn.objects.create(board=board, name="Новые", position=1000)
+    task = Task.objects.create(
+        board=board,
+        column=column,
+        title="Задача со ссылкой",
+        created_by=user,
+    )
+    links_url = reverse(
+        "api:v1:tasks:task-external-links",
+        kwargs={"pk": task.id},
+    )
+
+    api_client.force_authenticate(user=member)
+    invalid_response = api_client.post(
+        links_url,
+        {"url": "javascript:alert(1)", "title": "Опасная ссылка"},
+        format="json",
+    )
+    assert invalid_response.status_code == status.HTTP_400_BAD_REQUEST
+
+    create_response = api_client.post(
+        links_url,
+        {"url": "https://example.com/service/item/42", "title": "Карточка сервиса"},
+        format="json",
+    )
+    assert create_response.status_code == status.HTTP_201_CREATED
+    assert create_response.data["title"] == "Карточка сервиса"
+    assert create_response.data["created_by"]["id"] == member.id
+    link_id = create_response.data["id"]
+    assert TaskExternalLink.objects.filter(task=task).count() == 1
+
+    duplicate_response = api_client.post(
+        links_url,
+        {"url": "https://example.com/service/item/42", "title": "Обновленное название"},
+        format="json",
+    )
+    assert duplicate_response.status_code == status.HTTP_200_OK
+    assert duplicate_response.data["title"] == "Обновленное название"
+    assert TaskExternalLink.objects.filter(task=task).count() == 1
+
+    task_response = api_client.get(
+        reverse("api:v1:tasks:task-detail", kwargs={"pk": task.id})
+    )
+    assert task_response.status_code == status.HTTP_200_OK
+    assert task_response.data["linked_objects_count"] == 1
+
+    api_client.force_authenticate(user=outsider)
+    assert api_client.get(links_url).status_code == status.HTTP_404_NOT_FOUND
+
+    api_client.force_authenticate(user=member)
+    delete_response = api_client.delete(
+        reverse(
+            "api:v1:tasks:task-external-link-detail",
+            kwargs={"pk": task.id, "link_id": link_id},
+        )
+    )
+    assert delete_response.status_code == status.HTTP_204_NO_CONTENT
+    assert not TaskExternalLink.objects.filter(id=link_id).exists()
+
+
+def test_task_checklist_follows_board_access_and_supports_full_lifecycle(
+    api_client,
+):
+    owner = make_user("task-checklist-owner@example.com", "+79994440105")
+    member = make_user("task-checklist-member@example.com", "+79994440106")
+    outsider = make_user("task-checklist-outsider@example.com", "+79994440107")
+    board = TaskBoard.objects.create(name="Доска с чек-листом", created_by=owner)
+    board.members.add(member)
+    column = TaskColumn.objects.create(board=board, name="Новые", position=1000)
+    task = Task.objects.create(
+        board=board,
+        column=column,
+        title="Подготовить релиз",
+        created_by=owner,
+    )
+    checklist_url = reverse(
+        "api:v1:tasks:task-checklist",
+        kwargs={"pk": task.id},
+    )
+
+    api_client.force_authenticate(user=member)
+    invalid_response = api_client.post(
+        checklist_url,
+        {"title": "   "},
+        format="json",
+    )
+    assert invalid_response.status_code == status.HTTP_400_BAD_REQUEST
+
+    first_response = api_client.post(
+        checklist_url,
+        {"title": "  Проверить миграции  "},
+        format="json",
+    )
+    second_response = api_client.post(
+        checklist_url,
+        {"title": "Обновить документацию"},
+        format="json",
+    )
+    assert first_response.status_code == status.HTTP_201_CREATED
+    assert second_response.status_code == status.HTTP_201_CREATED
+    assert first_response.data["title"] == "Проверить миграции"
+    assert first_response.data["position"] == 1000
+    assert second_response.data["position"] == 2000
+    assert first_response.data["created_by"]["id"] == member.id
+
+    item_id = first_response.data["id"]
+    item_url = reverse(
+        "api:v1:tasks:task-checklist-item-detail",
+        kwargs={"pk": task.id, "item_id": item_id},
+    )
+    complete_response = api_client.patch(
+        item_url,
+        {"is_completed": True},
+        format="json",
+    )
+    assert complete_response.status_code == status.HTTP_200_OK
+    assert complete_response.data["is_completed"] is True
+    assert complete_response.data["completed_by"]["id"] == member.id
+    assert complete_response.data["completed_at"] is not None
+
+    completed_at = complete_response.data["completed_at"]
+    rename_response = api_client.patch(
+        item_url,
+        {"title": "Проверить миграции на стенде"},
+        format="json",
+    )
+    assert rename_response.status_code == status.HTTP_200_OK
+    assert rename_response.data["title"] == "Проверить миграции на стенде"
+    assert rename_response.data["completed_by"]["id"] == member.id
+    assert rename_response.data["completed_at"] == completed_at
+
+    list_response = api_client.get(checklist_url)
+    assert list_response.status_code == status.HTTP_200_OK
+    assert [item["title"] for item in list_response.data] == [
+        "Проверить миграции на стенде",
+        "Обновить документацию",
+    ]
+
+    detail_response = api_client.get(
+        reverse("api:v1:tasks:task-detail", kwargs={"pk": task.id})
+    )
+    assert detail_response.status_code == status.HTTP_200_OK
+    assert detail_response.data["checklist_total"] == 2
+    assert detail_response.data["checklist_completed"] == 1
+
+    api_client.force_authenticate(user=outsider)
+    assert api_client.get(checklist_url).status_code == status.HTTP_404_NOT_FOUND
+    assert (
+        api_client.patch(item_url, {"is_completed": False}, format="json").status_code
+        == status.HTTP_404_NOT_FOUND
+    )
+
+    api_client.force_authenticate(user=member)
+    delete_response = api_client.delete(item_url)
+    assert delete_response.status_code == status.HTTP_204_NO_CONTENT
+    assert not TaskChecklistItem.objects.filter(id=item_id).exists()
+
+    activity_response = api_client.get(
+        reverse("api:v1:tasks:task-activity", kwargs={"pk": task.id})
+    )
+    assert activity_response.status_code == status.HTTP_200_OK
+    assert {
+        "checklist_item_added",
+        "checklist_item_completed",
+        "checklist_item_updated",
+        "checklist_item_removed",
+    }.issubset({item["action"] for item in activity_response.data})
+
+
 def test_create_board_accepts_members_and_departments(api_client, user):
     member = make_user("task-member@example.com", "+79994440002")
     department = Department.objects.create(name="Проектный отдел")
@@ -224,11 +711,67 @@ def test_create_board_accepts_members_and_departments(api_client, user):
     )
 
     assert response.status_code == status.HTTP_201_CREATED
+    assert response.data["access_scope"] == "restricted"
     assert response.data["members"] == [member.id]
     assert response.data["member_details"][0]["id"] == member.id
     assert response.data["departments"] == [department.id]
     assert response.data["department_details"][0]["name"] == department.name
     assert TaskColumn.objects.filter(board_id=response.data["id"]).count() == 4
+
+
+def test_private_board_is_available_only_to_owner_and_admin(api_client):
+    owner = make_user("task-private-owner@example.com", "+79994440901")
+    selected_member = make_user("task-private-member@example.com", "+79994440902")
+    department_member = make_user("task-private-dept@example.com", "+79994440903")
+    outsider = make_user("task-private-outsider@example.com", "+79994440904")
+    admin = make_user(
+        "task-private-admin@example.com",
+        "+79994440905",
+        is_staff=True,
+    )
+    department = Department.objects.create(name="Приватный отдел")
+    EmployeeDepartment.objects.create(
+        employee=department_member,
+        department=department,
+        is_active=True,
+    )
+    api_client.force_authenticate(user=owner)
+
+    create_response = api_client.post(
+        reverse("api:v1:tasks:task-board-list"),
+        {
+            "name": "Личная доска",
+            "access_scope": "private",
+            "members": [selected_member.id],
+            "departments": [department.id],
+        },
+        format="json",
+    )
+
+    assert create_response.status_code == status.HTTP_201_CREATED
+    assert create_response.data["access_scope"] == "private"
+    assert create_response.data["members"] == []
+    assert create_response.data["departments"] == []
+    board = TaskBoard.objects.get(id=create_response.data["id"])
+    assert get_task_board_recipient_ids(board) == {owner.id, admin.id}
+
+    for hidden_user in (selected_member, department_member, outsider):
+        api_client.force_authenticate(user=hidden_user)
+        list_response = api_client.get(reverse("api:v1:tasks:task-board-list"))
+        assert list_response.status_code == status.HTTP_200_OK
+        assert board.id not in {
+            item["id"] for item in list_response.data["results"]
+        }
+        detail_response = api_client.get(
+            reverse("api:v1:tasks:task-board-detail", kwargs={"pk": board.id})
+        )
+        assert detail_response.status_code == status.HTTP_404_NOT_FOUND
+
+    api_client.force_authenticate(user=admin)
+    admin_response = api_client.get(
+        reverse("api:v1:tasks:task-board-detail", kwargs={"pk": board.id})
+    )
+    assert admin_response.status_code == status.HTTP_200_OK
 
 
 def test_board_member_can_access_private_board(api_client):
@@ -1256,14 +1799,65 @@ def test_task_comments_use_communications_and_update_count(api_client, user):
     message = Message.objects.get(chat=chat)
     assert message.content == "Нужно уточнить детали"
     assert message.author == user
+    added_activity = task.activities.get(action="comment_added")
+    assert added_activity.actor == user
+    assert added_activity.object_kind == "comment"
+    assert added_activity.object_id == message.id
+    assert added_activity.metadata == {"comment_text": "Нужно уточнить детали"}
+
+    comment_detail_url = reverse(
+        "api:v1:tasks:task-delete-comment",
+        kwargs={"pk": task.id, "comment_id": message.id},
+    )
+    other_user = make_user("task-comment-editor@example.com", "+79994440027")
+    api_client.force_authenticate(user=other_user)
+    forbidden_edit_response = api_client.patch(
+        comment_detail_url,
+        {"text": "Чужое изменение"},
+        format="json",
+    )
+    assert forbidden_edit_response.status_code == status.HTTP_403_FORBIDDEN
+
+    api_client.force_authenticate(user=user)
+    empty_edit_response = api_client.patch(
+        comment_detail_url,
+        {"text": ""},
+        format="json",
+    )
+    assert empty_edit_response.status_code == status.HTTP_400_BAD_REQUEST
+
+    edit_response = api_client.patch(
+        comment_detail_url,
+        {"text": "Детали уже уточнены"},
+        format="json",
+    )
+    assert edit_response.status_code == status.HTTP_200_OK
+    assert edit_response.data["text"] == "Детали уже уточнены"
+    assert edit_response.data["is_edited"] is True
+    assert edit_response.data["edited_at"] is not None
+
+    message.refresh_from_db()
+    assert message.content == "Детали уже уточнены"
+    edit_history = message.edit_history_records.get()
+    assert edit_history.previous_content == "Нужно уточнить детали"
+    assert edit_history.edited_by == user
+    edited_activity = task.activities.get(action="comment_edited")
+    assert edited_activity.actor == user
+    assert edited_activity.object_kind == "comment"
+    assert edited_activity.object_id == message.id
+    assert edited_activity.metadata == {
+        "previous_text": "Нужно уточнить детали",
+        "comment_text": "Детали уже уточнены",
+    }
 
     list_response = api_client.get(
         reverse("api:v1:tasks:task-comments", kwargs={"pk": task.id})
     )
     assert list_response.status_code == status.HTTP_200_OK
     assert [comment["text"] for comment in list_response.data] == [
-        "Нужно уточнить детали"
+        "Детали уже уточнены"
     ]
+    assert list_response.data[0]["is_edited"] is True
 
     detail_response = api_client.get(
         reverse("api:v1:tasks:task-detail", kwargs={"pk": task.id})
@@ -1271,14 +1865,26 @@ def test_task_comments_use_communications_and_update_count(api_client, user):
     assert detail_response.data["comments_count"] == 1
 
     delete_response = api_client.delete(
-        reverse(
-            "api:v1:tasks:task-delete-comment",
-            kwargs={"pk": task.id, "comment_id": message.id},
-        )
+        comment_detail_url
     )
     assert delete_response.status_code == status.HTTP_204_NO_CONTENT
     message.refresh_from_db()
     assert message.is_deleted is True
+    removed_activity = task.activities.get(action="comment_removed")
+    assert removed_activity.actor == user
+    assert removed_activity.object_kind == "comment"
+    assert removed_activity.object_id == message.id
+    assert removed_activity.metadata == {"comment_text": "Детали уже уточнены"}
+
+    activity_response = api_client.get(
+        reverse("api:v1:tasks:task-activity", kwargs={"pk": task.id})
+    )
+    assert activity_response.status_code == status.HTTP_200_OK
+    assert [item["action"] for item in activity_response.data] == [
+        "comment_removed",
+        "comment_edited",
+        "comment_added",
+    ]
 
     assert api_client.get(
         reverse("api:v1:tasks:task-comments", kwargs={"pk": task.id})

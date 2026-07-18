@@ -1,0 +1,40 @@
+{% extends "admin/base_site.html" %}
+{% load admin_urls %}
+
+{% block content %}
+  <form method="post">
+    {% csrf_token %}
+    <p>
+      Проверьте суммы, сотрудника и основание. Будут утверждены только показанные
+      версии; если оператор изменит черновик, операция завершится конфликтом.
+    </p>
+    <ul>
+      {% for object in queryset %}
+        <li>
+          {{ object }} — версия {{ object.lock_version }}
+          (<a
+            href="{% url opts|admin_urlname:'change' object.pk|admin_urlquote %}"
+            target="_blank"
+            rel="noopener"
+          >открыть карточку</a>)
+        </li>
+        <input type="hidden" name="{{ action_checkbox_name }}" value="{{ object.pk }}">
+        <input
+          type="hidden"
+          name="lock_version_{{ object.pk }}"
+          value="{{ object.lock_version }}"
+        >
+      {% endfor %}
+    </ul>
+
+    {% if error %}
+      <p class="errornote">{{ error }}</p>
+    {% endif %}
+
+    <input type="hidden" name="action" value="{{ action_name }}">
+    <input type="hidden" name="confirm_payroll_approval" value="1">
+    <input type="hidden" name="select_across" value="0">
+    <input type="submit" value="Утвердить показанные версии" class="default">
+    <a href="../" class="button cancel-link">Отмена</a>
+  </form>
+{% endblock %}

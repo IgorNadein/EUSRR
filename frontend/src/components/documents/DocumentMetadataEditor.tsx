@@ -6,19 +6,20 @@ import { apiClient } from '@/lib/api';
 import { toast } from 'sonner';
 import {
   AlertCircle,
-  Building2,
-  CheckCircle,
   FileText,
   Folder,
   Loader2,
   ScrollText,
   Tag as TagIcon,
   Upload,
-  Users,
   X,
 } from 'lucide-react';
 import type { Department, Document, User } from '@/types/api';
 import { DocumentTagQuickCreate, type QuickDocumentTag } from './DocumentTagQuickCreate';
+import {
+  DocumentAudienceSelector,
+  type DocumentAudienceMode,
+} from './DocumentAudienceSelector';
 
 type DocumentTagOption = NonNullable<Document["tags"]>[number];
 
@@ -44,8 +45,11 @@ interface DocumentUpdatePayload {
   is_regulation?: boolean;
   sent_to_all?: boolean;
   acknowledgement_required?: boolean;
+  acknowledgement_for_all?: boolean;
   recipient_ids?: number[];
   department_ids?: number[];
+  acknowledgement_recipient_ids?: number[];
+  acknowledgement_department_ids?: number[];
 }
 
 interface DocumentMetadataEditorProps {
@@ -73,14 +77,6 @@ function formatFileSize(bytes?: number): string {
   if (bytes < 1024) return `${bytes} Б`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
   return `${(bytes / 1024 / 1024).toFixed(2)} МБ`;
-}
-
-function getEmployeeLabel(employee: User): string {
-  const name = [employee.last_name, employee.first_name, employee.patronymic]
-    .filter(Boolean)
-    .join(' ')
-    .trim();
-  return employee.email ? `${name || employee.email} (${employee.email})` : name || `ID ${employee.id}`;
 }
 
 function buildFolderOptionRows(folders: FolderOption[]): FolderOptionRow[] {
@@ -123,9 +119,17 @@ export function DocumentMetadataEditor({
   const [selectedFolder, setSelectedFolder] = useState<number | null>(document.folder?.id || null);
   const [isRegulation, setIsRegulation] = useState(Boolean(document.is_regulation));
   const [sentToAll, setSentToAll] = useState(Boolean(document.sent_to_all ?? true));
-  const [acknowledgementRequired, setAcknowledgementRequired] = useState(Boolean(document.acknowledgement_required));
+  const [acknowledgementMode, setAcknowledgementMode] = useState<DocumentAudienceMode>(
+    !document.acknowledgement_required
+      ? 'none'
+      : document.acknowledgement_for_all === false
+        ? 'restricted'
+        : 'all'
+  );
   const [selectedDepartments, setSelectedDepartments] = useState<number[]>([]);
   const [selectedRecipients, setSelectedRecipients] = useState<number[]>([]);
+  const [acknowledgementDepartments, setAcknowledgementDepartments] = useState<number[]>([]);
+  const [acknowledgementRecipients, setAcknowledgementRecipients] = useState<number[]>([]);
 
   const [documentTags, setDocumentTags] = useState<DocumentTagOption[]>([]);
   const [folders, setFolders] = useState<FolderOption[]>([]);
@@ -149,9 +153,21 @@ export function DocumentMetadataEditor({
     setSelectedFolder(document.folder?.id || null);
     setIsRegulation(Boolean(document.is_regulation));
     setSentToAll(Boolean(document.sent_to_all ?? true));
-    setAcknowledgementRequired(Boolean(document.acknowledgement_required));
+    setAcknowledgementMode(
+      !document.acknowledgement_required
+        ? 'none'
+        : document.acknowledgement_for_all === false
+          ? 'restricted'
+          : 'all'
+    );
     setSelectedDepartments((document.departments || []).map((department) => department.id));
     setSelectedRecipients((document.recipients || []).map((recipient) => recipient.id));
+    setAcknowledgementDepartments(
+      (document.acknowledgement_departments || []).map((department) => department.id)
+    );
+    setAcknowledgementRecipients(
+      (document.acknowledgement_recipients || []).map((recipient) => recipient.id)
+    );
     setError(null);
   }, [isOpen, document]);
 
@@ -193,6 +209,30 @@ export function DocumentMetadataEditor({
     };
   }, [isOpen]);
 
+  const acknowledgementEmployees = useMemo(() => {
+    if (sentToAll) return employees;
+    const departmentIds = new Set(selectedDepartments);
+    const recipientIds = new Set(selectedRecipients);
+    return employees.filter((employee) => (
+      recipientIds.has(employee.id)
+      || (employee.departments || []).some((department) => departmentIds.has(department.id))
+    ));
+  }, [employees, selectedDepartments, selectedRecipients, sentToAll]);
+
+  const acknowledgementDepartmentOptions = useMemo(() => {
+    if (sentToAll) return departments;
+    const departmentIds = new Set(selectedDepartments);
+    return departments.filter((department) => departmentIds.has(department.id));
+  }, [departments, selectedDepartments, sentToAll]);
+
+  useEffect(() => {
+    if (sentToAll) return;
+    const allowedEmployeeIds = new Set(acknowledgementEmployees.map((employee) => employee.id));
+    const allowedDepartmentIds = new Set(selectedDepartments);
+    setAcknowledgementRecipients((current) => current.filter((id) => allowedEmployeeIds.has(id)));
+    setAcknowledgementDepartments((current) => current.filter((id) => allowedDepartmentIds.has(id)));
+  }, [acknowledgementEmployees, selectedDepartments, sentToAll]);
+
   const toggleTag = (tagId: number) => {
     setSelectedTags((prev) =>
       prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
@@ -221,6 +261,15 @@ export function DocumentMetadataEditor({
       return;
     }
 
+    if (
+      acknowledgementMode === 'restricted'
+      && acknowledgementDepartments.length === 0
+      && acknowledgementRecipients.length === 0
+    ) {
+      setError('Выберите хотя бы один отдел или сотрудника для ознакомления');
+      return;
+    }
+
     setIsSaving(true);
 
     try {
@@ -228,6 +277,12 @@ export function DocumentMetadataEditor({
       const currentTagIds = (document.tags || []).map((tag) => tag.id);
       const currentDepartmentIds = (document.departments || []).map((department) => department.id);
       const currentRecipientIds = (document.recipients || []).map((recipient) => recipient.id);
+      const currentAcknowledgementDepartmentIds = (document.acknowledgement_departments || []).map(
+        (department) => department.id
+      );
+      const currentAcknowledgementRecipientIds = (document.acknowledgement_recipients || []).map(
+        (recipient) => recipient.id
+      );
       const currentFolder = document.folder?.id || null;
       const currentSentToAll = Boolean(document.sent_to_all ?? true);
 
@@ -259,8 +314,13 @@ export function DocumentMetadataEditor({
         updateData.sent_to_all = sentToAll;
       }
 
+      const acknowledgementRequired = acknowledgementMode !== 'none';
+      const acknowledgementForAll = acknowledgementMode === 'all';
       if (acknowledgementRequired !== Boolean(document.acknowledgement_required)) {
         updateData.acknowledgement_required = acknowledgementRequired;
+      }
+      if (acknowledgementForAll !== Boolean(document.acknowledgement_for_all ?? true)) {
+        updateData.acknowledgement_for_all = acknowledgementForAll;
       }
 
       if (!arraysEqual(currentTagIds, selectedTags)) {
@@ -274,6 +334,15 @@ export function DocumentMetadataEditor({
 
         if (sentToAll !== currentSentToAll || !arraysEqual(currentRecipientIds, selectedRecipients)) {
           updateData.recipient_ids = selectedRecipients;
+        }
+      }
+
+      if (acknowledgementMode === 'restricted') {
+        if (!arraysEqual(currentAcknowledgementDepartmentIds, acknowledgementDepartments)) {
+          updateData.acknowledgement_department_ids = acknowledgementDepartments;
+        }
+        if (!arraysEqual(currentAcknowledgementRecipientIds, acknowledgementRecipients)) {
+          updateData.acknowledgement_recipient_ids = acknowledgementRecipients;
         }
       }
 
@@ -518,125 +587,36 @@ export function DocumentMetadataEditor({
           </div>
         </section>
 
-        <section className="space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
-            <Users className="h-4 w-4" />
-            Доступ и ознакомление
+        <section className="space-y-6">
+          <DocumentAudienceSelector
+            kind="access"
+            mode={sentToAll ? 'all' : 'restricted'}
+            onModeChange={(mode) => setSentToAll(mode === 'all')}
+            employees={employees}
+            departments={departments}
+            selectedEmployeeIds={selectedRecipients}
+            selectedDepartmentIds={selectedDepartments}
+            onSelectedEmployeeIdsChange={setSelectedRecipients}
+            onSelectedDepartmentIdsChange={setSelectedDepartments}
+            loading={loadingReferences}
+            disabled={isSaving}
+          />
+
+          <div className="app-divider border-t pt-5">
+            <DocumentAudienceSelector
+              kind="acknowledgement"
+              mode={acknowledgementMode}
+              onModeChange={setAcknowledgementMode}
+              employees={acknowledgementEmployees}
+              departments={acknowledgementDepartmentOptions}
+              selectedEmployeeIds={acknowledgementRecipients}
+              selectedDepartmentIds={acknowledgementDepartments}
+              onSelectedEmployeeIdsChange={setAcknowledgementRecipients}
+              onSelectedDepartmentIdsChange={setAcknowledgementDepartments}
+              loading={loadingReferences}
+              disabled={isSaving}
+            />
           </div>
-
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="app-surface-muted flex items-start gap-3 rounded-lg p-3">
-              <input
-                type="checkbox"
-                id="metadataSentToAll"
-                checked={sentToAll}
-                onChange={(event) => {
-                  setSentToAll(event.target.checked);
-                  if (event.target.checked) {
-                    setSelectedDepartments([]);
-                    setSelectedRecipients([]);
-                  }
-                }}
-                disabled={isSaving}
-                className="mt-0.5 h-4 w-4 rounded border-[var(--border-strong)] text-[var(--accent-primary)] disabled:opacity-50"
-              />
-              <div className="flex-1">
-                <label htmlFor="metadataSentToAll" className="block cursor-pointer text-sm font-medium text-[var(--foreground)]">
-                  Для всей компании
-                </label>
-                <p className="app-text-muted mt-0.5 text-xs">Документ доступен всем активным сотрудникам.</p>
-              </div>
-            </div>
-
-            <div className="app-surface-muted flex items-start gap-3 rounded-lg p-3">
-              <input
-                type="checkbox"
-                id="metadataAcknowledgementRequired"
-                checked={acknowledgementRequired}
-                onChange={(event) => setAcknowledgementRequired(event.target.checked)}
-                disabled={isSaving}
-                className="mt-0.5 h-4 w-4 rounded border-[var(--border-strong)] text-[var(--accent-primary)] disabled:opacity-50"
-              />
-              <div className="flex-1">
-                <label htmlFor="metadataAcknowledgementRequired" className="block cursor-pointer text-sm font-medium text-[var(--foreground)]">
-                  <CheckCircle className="mr-1 inline h-4 w-4" />
-                  Требуется ознакомление
-                </label>
-                <p className="app-text-muted mt-0.5 text-xs">Получатели должны подтвердить прочтение документа.</p>
-              </div>
-            </div>
-          </div>
-
-          {!sentToAll && (
-            <div className="app-surface-muted grid grid-cols-1 gap-4 rounded-lg p-4 lg:grid-cols-2">
-              <div>
-                <label htmlFor="metadataDepartments" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
-                  <Building2 className="mr-1 inline h-4 w-4" />
-                  Отделы
-                </label>
-                <select
-                  id="metadataDepartments"
-                  multiple
-                  value={selectedDepartments.map(String)}
-                  onChange={(event) => {
-                    const values = Array.from(event.target.selectedOptions, (option) => Number(option.value));
-                    setSelectedDepartments(values);
-                  }}
-                  disabled={loadingReferences || isSaving}
-                  className="app-select w-full rounded-lg px-3 py-2 text-sm"
-                  size={7}
-                >
-                  {departments.length === 0 ? (
-                    <option disabled>Нет доступных отделов</option>
-                  ) : (
-                    departments.map((department) => (
-                      <option key={department.id} value={department.id}>
-                        {department.name}
-                      </option>
-                    ))
-                  )}
-                </select>
-                <p className="app-text-muted mt-1 text-xs">Удерживайте Ctrl/Cmd для выбора нескольких.</p>
-              </div>
-
-              <div>
-                <label htmlFor="metadataRecipients" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
-                  <Users className="mr-1 inline h-4 w-4" />
-                  Сотрудники
-                </label>
-                <select
-                  id="metadataRecipients"
-                  multiple
-                  value={selectedRecipients.map(String)}
-                  onChange={(event) => {
-                    const values = Array.from(event.target.selectedOptions, (option) => Number(option.value));
-                    setSelectedRecipients(values);
-                  }}
-                  disabled={loadingReferences || isSaving}
-                  className="app-select w-full rounded-lg px-3 py-2 text-sm"
-                  size={7}
-                >
-                  {employees.length === 0 ? (
-                    <option disabled>Нет доступных сотрудников</option>
-                  ) : (
-                    employees.map((employee) => (
-                      <option key={employee.id} value={employee.id}>
-                        {getEmployeeLabel(employee)}
-                      </option>
-                    ))
-                  )}
-                </select>
-                <p className="app-text-muted mt-1 text-xs">Можно выбрать сотрудников напрямую, отделы или оба варианта.</p>
-              </div>
-
-              {selectedDepartments.length === 0 && selectedRecipients.length === 0 && (
-                <div className="app-feedback-warning flex items-start gap-2 rounded-lg p-3 text-xs lg:col-span-2">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>Выберите хотя бы один отдел или сотрудника.</span>
-                </div>
-              )}
-            </div>
-          )}
         </section>
 
         <div className="app-divider sticky bottom-0 z-10 -mx-4 flex items-center justify-end gap-3 border-t bg-[var(--surface-elevated)] px-4 pt-4 sm:-mx-6 sm:px-6">

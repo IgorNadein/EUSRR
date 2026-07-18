@@ -8,7 +8,7 @@ from requests_app.models import Request as EmployeeRequest
 from schedule.models import Event
 from scheduling.services import user_can_view_calendar
 
-from .models import TaskBoard
+from .models import TaskBoard, TaskBoardAccessScope
 
 
 def get_user_department_ids(user) -> list[int]:
@@ -39,10 +39,15 @@ def task_board_access_q(user):
 
     department_ids = get_user_department_ids(user)
     q = Q(created_by=user)
-    q |= Q(members=user)
+    non_private_q = ~Q(access_scope=TaskBoardAccessScope.PRIVATE)
+    q |= non_private_q & Q(members=user)
     if department_ids:
-        q |= Q(departments__in=department_ids)
-    q |= Q(members__isnull=True, departments__isnull=True)
+        q |= non_private_q & Q(departments__in=department_ids)
+    q |= Q(
+        access_scope=TaskBoardAccessScope.ALL,
+        members__isnull=True,
+        departments__isnull=True,
+    )
     return q
 
 
@@ -53,13 +58,16 @@ def user_can_access_task_board(user, board: TaskBoard | None) -> bool:
         return True
     if board.created_by_id == user.id:
         return True
+    if board.access_scope == TaskBoardAccessScope.PRIVATE:
+        return False
     if board.members.filter(id=user.id).exists():
         return True
     department_ids = get_user_department_ids(user)
     if department_ids and board.departments.filter(id__in=department_ids).exists():
         return True
-    return (
-        not board.members.exists()
+    return bool(
+        board.access_scope == TaskBoardAccessScope.ALL
+        and not board.members.exists()
         and not board.departments.exists()
     )
 

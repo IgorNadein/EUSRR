@@ -8,6 +8,7 @@ from typing import Any, Dict, Sequence, Iterable
 from drf_spectacular.utils import extend_schema_field
 from django.http import QueryDict
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from django.utils.text import slugify
 from documents.models import Document, DocumentAcknowledgement
 from rest_framework import serializers
@@ -281,6 +282,12 @@ class DocumentReadSerializer(serializers.ModelSerializer):
     modified_by = EmployeeBriefSerializer(read_only=True)
     recipients = EmployeeBriefSerializer(many=True, read_only=True)
     departments = DepartmentBriefSerializer(many=True, read_only=True)
+    acknowledgement_recipients = EmployeeBriefSerializer(
+        many=True, read_only=True
+    )
+    acknowledgement_departments = DepartmentBriefSerializer(
+        many=True, read_only=True
+    )
     folder = FolderBriefSerializer(read_only=True)
     folder_path = serializers.CharField(read_only=True)
     tags = DocumentTagSerializer(many=True, read_only=True)
@@ -293,6 +300,10 @@ class DocumentReadSerializer(serializers.ModelSerializer):
         source="file.size", read_only=True, allow_null=True
     )
     is_acknowledged = serializers.SerializerMethodField()
+    acknowledgement_required_for_user = serializers.SerializerMethodField()
+    acknowledged_count = serializers.SerializerMethodField()
+    acknowledgement_total = serializers.SerializerMethodField()
+    comments_count = serializers.SerializerMethodField()
     linked_tasks = serializers.SerializerMethodField()
 
     class Meta:
@@ -314,8 +325,15 @@ class DocumentReadSerializer(serializers.ModelSerializer):
             "sent_to_all",
             "is_regulation",
             "acknowledgement_required",  # Требуется ли ознакомление
+            "acknowledgement_for_all",
+            "acknowledgement_required_for_user",
+            "acknowledged_count",
+            "acknowledgement_total",
+            "comments_count",
             "departments",
             "recipients",
+            "acknowledgement_departments",
+            "acknowledgement_recipients",
             "file_url",
             "file_name",
             "file_size",
@@ -342,6 +360,51 @@ class DocumentReadSerializer(serializers.ModelSerializer):
         return DocumentAcknowledgement.objects.filter(
             document=obj, user=request.user
         ).exists()
+
+    def get_acknowledgement_required_for_user(self, obj: Document) -> bool:
+        """Нужно ли текущему сотруднику подтверждать ознакомление."""
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return False
+
+        audience_ids = getattr(obj, "_acknowledgement_user_ids", None)
+        if audience_ids is not None:
+            return request.user.pk in audience_ids
+
+        from documents.audience import user_requires_document_acknowledgement
+
+        return user_requires_document_acknowledgement(obj, request.user)
+
+    def get_acknowledged_count(self, obj: Document) -> int:
+        """Количество сотрудников из аудитории, уже ознакомившихся."""
+        attached = getattr(obj, "_acknowledged_count", None)
+        if attached is not None:
+            return int(attached)
+
+        from documents.audience import document_acknowledgement_audience
+
+        audience = document_acknowledgement_audience(obj)
+        return obj.acknowledgements.filter(user__in=audience).count()
+
+    def get_acknowledgement_total(self, obj: Document) -> int:
+        """Размер аудитории обязательного ознакомления."""
+        attached = getattr(obj, "_acknowledgement_total", None)
+        if attached is not None:
+            return int(attached)
+
+        from documents.audience import document_acknowledgement_audience
+
+        return document_acknowledgement_audience(obj).count()
+
+    def get_comments_count(self, obj: Document) -> int:
+        """Количество неудалённых комментариев документа."""
+        attached = getattr(obj, "_comments_count", None)
+        if attached is not None:
+            return int(attached)
+
+        from communications.comments_helpers import get_comment_count
+
+        return get_comment_count(obj)
 
     @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_linked_tasks(self, obj: Document) -> list[dict]:
@@ -432,6 +495,18 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
         help_text="Список ID отделов-получателей.",
     )
 
+    acknowledgement_recipient_ids = RecipientIDsField(
+        write_only=True,
+        required=False,
+        help_text="Список ID сотрудников, обязанных ознакомиться.",
+    )
+
+    acknowledgement_department_ids = RecipientIDsField(
+        write_only=True,
+        required=False,
+        help_text="Список ID отделов, обязанных ознакомиться.",
+    )
+
     tag_ids = RecipientIDsField(
         write_only=True,
         required=False,
@@ -456,8 +531,11 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             "sent_to_all",
             "is_regulation",
             "acknowledgement_required",
+            "acknowledgement_for_all",
             "department_ids",
             "recipient_ids",
+            "acknowledgement_department_ids",
+            "acknowledgement_recipient_ids",
             "tag_ids",
         )
 
@@ -491,9 +569,27 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             elif self.instance is not None:
                 attrs.pop("title", None)
 
-        sent_to_all = attrs.get("sent_to_all", True)
-        recipient_ids = attrs.get("recipient_ids", [])
-        department_ids = attrs.get("department_ids", [])
+        instance = self.instance
+        sent_to_all = attrs.get(
+            "sent_to_all",
+            instance.sent_to_all if instance is not None else True,
+        )
+        recipient_ids = set(
+            attrs.get(
+                "recipient_ids",
+                instance.recipients.values_list("pk", flat=True)
+                if instance is not None
+                else [],
+            )
+        )
+        department_ids = set(
+            attrs.get(
+                "department_ids",
+                instance.departments.values_list("pk", flat=True)
+                if instance is not None
+                else [],
+            )
+        )
 
         if sent_to_all is False and not recipient_ids and not department_ids:
             raise serializers.ValidationError(
@@ -504,6 +600,77 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
                     )
                 }
             )
+
+        acknowledgement_required = attrs.get(
+            "acknowledgement_required",
+            instance.acknowledgement_required if instance is not None else True,
+        )
+        acknowledgement_for_all = attrs.get(
+            "acknowledgement_for_all",
+            instance.acknowledgement_for_all if instance is not None else True,
+        )
+        acknowledgement_recipient_ids = set(
+            attrs.get(
+                "acknowledgement_recipient_ids",
+                instance.acknowledgement_recipients.values_list("pk", flat=True)
+                if instance is not None
+                else [],
+            )
+        )
+        acknowledgement_department_ids = set(
+            attrs.get(
+                "acknowledgement_department_ids",
+                instance.acknowledgement_departments.values_list("pk", flat=True)
+                if instance is not None
+                else [],
+            )
+        )
+
+        if (
+            acknowledgement_required
+            and not acknowledgement_for_all
+            and not acknowledgement_recipient_ids
+            and not acknowledgement_department_ids
+        ):
+            raise serializers.ValidationError(
+                {
+                    "acknowledgement_recipient_ids": (
+                        "Выберите сотрудников, отделы или включите "
+                        "ознакомление для всех с доступом."
+                    )
+                }
+            )
+
+        if acknowledgement_required and not acknowledgement_for_all and not sent_to_all:
+            invalid_departments = acknowledgement_department_ids - department_ids
+            if invalid_departments:
+                raise serializers.ValidationError(
+                    {
+                        "acknowledgement_department_ids": (
+                            "Отдел для ознакомления должен иметь доступ к документу."
+                        )
+                    }
+                )
+
+            allowed_recipients = User.objects.filter(is_active=True).filter(
+                Q(pk__in=recipient_ids)
+                | Q(
+                    departments_links__department_id__in=department_ids,
+                    departments_links__is_active=True,
+                )
+            ).values_list("pk", flat=True)
+            invalid_recipients = acknowledgement_recipient_ids - set(
+                allowed_recipients
+            )
+            if invalid_recipients:
+                raise serializers.ValidationError(
+                    {
+                        "acknowledgement_recipient_ids": (
+                            "Сотрудник для ознакомления должен иметь доступ "
+                            "к документу."
+                        )
+                    }
+                )
         return attrs
 
     def _set_departments(
@@ -574,6 +741,22 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
         logger.info(f"[serializers] Set {count} recipients for doc={doc.id}")
         return count
 
+    def _set_acknowledgement_departments(
+        self, doc: Document, department_ids: Sequence[int]
+    ) -> int:
+        from employees.models import Department
+
+        departments = Department.objects.filter(id__in=set(department_ids))
+        doc.acknowledgement_departments.set(departments)
+        return departments.count()
+
+    def _set_acknowledgement_recipients(
+        self, doc: Document, recipient_ids: Sequence[int]
+    ) -> int:
+        users = User.objects.filter(is_active=True, id__in=set(recipient_ids))
+        doc.acknowledgement_recipients.set(users)
+        return users.count()
+
     def _set_tags(self, doc: Document, tag_ids: Sequence[int]) -> int:
         """Привязывает теги по списку ID.
 
@@ -618,6 +801,12 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
         """
         recipient_ids = validated_data.pop("recipient_ids", [])
         department_ids = validated_data.pop("department_ids", [])
+        acknowledgement_recipient_ids = validated_data.pop(
+            "acknowledgement_recipient_ids", []
+        )
+        acknowledgement_department_ids = validated_data.pop(
+            "acknowledgement_department_ids", []
+        )
         tag_ids = validated_data.pop("tag_ids", [])
         request = self.context.get("request")
         uploader = getattr(request, "user", None)
@@ -632,17 +821,29 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
 
         # Создаём документ - сигналы из notification_signals.py сработают
         # автоматически
-        doc = Document.objects.create(  # type: ignore[arg-type]
+        doc = Document(  # type: ignore[arg-type]
             uploaded_by=uploader,
             **validated_data,
         )
+        doc._suppress_document_notifications = True
+        doc.save()
         logger.info(
             f"[serializers] Document created id={doc.id} "
             f"sent_to_all={doc.sent_to_all}"
         )
 
-        # Для индивидуальной рассылки устанавливаем получателей
-        # Это вызовет m2m_changed сигнал
+        if (
+            doc.acknowledgement_required
+            and not doc.acknowledgement_for_all
+        ):
+            self._set_acknowledgement_departments(
+                doc, acknowledgement_department_ids
+            )
+            self._set_acknowledgement_recipients(
+                doc, acknowledgement_recipient_ids
+            )
+
+        # Для индивидуальной доступности устанавливаем получателей.
         if validated_data.get("sent_to_all") is False:
             if department_ids:
                 logger.info(
@@ -661,6 +862,11 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             logger.info(f"[serializers] Setting tags for doc={doc.id}")
             self._set_tags(doc, tag_ids)
 
+        doc._suppress_document_notifications = False
+        from documents.notifications.handlers import notify_document_audience
+
+        notify_document_audience(doc)
+
         logger.info(f"[serializers] Document creation complete id={doc.id}")
         return doc
 
@@ -678,6 +884,12 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
         """
         recipient_ids = validated_data.pop("recipient_ids", None)
         department_ids = validated_data.pop("department_ids", None)
+        acknowledgement_recipient_ids = validated_data.pop(
+            "acknowledgement_recipient_ids", None
+        )
+        acknowledgement_department_ids = validated_data.pop(
+            "acknowledgement_department_ids", None
+        )
         tag_ids = validated_data.pop("tag_ids", None)
 
         for f in (
@@ -687,12 +899,26 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             "sent_to_all",
             "is_regulation",
             "acknowledgement_required",
+            "acknowledgement_for_all",
             "file",
             "folder",
         ):
             if f in validated_data:
                 setattr(instance, f, validated_data[f])
         instance.save()
+
+        if not instance.acknowledgement_required or instance.acknowledgement_for_all:
+            instance.acknowledgement_recipients.clear()
+            instance.acknowledgement_departments.clear()
+        else:
+            if acknowledgement_department_ids is not None:
+                self._set_acknowledgement_departments(
+                    instance, acknowledgement_department_ids
+                )
+            if acknowledgement_recipient_ids is not None:
+                self._set_acknowledgement_recipients(
+                    instance, acknowledgement_recipient_ids
+                )
 
         # очищаем получателей и отделы при sent_to_all=true
         if "sent_to_all" in validated_data and instance.sent_to_all:
