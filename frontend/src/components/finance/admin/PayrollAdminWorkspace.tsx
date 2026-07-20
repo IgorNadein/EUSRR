@@ -29,6 +29,7 @@ import {
   PayrollConfirmModal,
   PayrollBulkPayRateModal,
   PayrollBulkPointRateModal,
+  PayrollBulkTargetPointsModal,
   PayrollInputLineFormModal,
   PayrollPeriodFormModal,
   PayrollRateFormModal,
@@ -55,6 +56,7 @@ import type {
   PayrollApprovalStatus,
   PayrollBulkPayRateResult,
   PayrollBulkPointRateResult,
+  PayrollBulkTargetPointsResult,
   PayrollInputLineWrite,
   PayrollPayRateWrite,
   PayrollPeriodTable,
@@ -282,6 +284,7 @@ export function PayrollAdminWorkspace({
   const [rateModalOpen, setRateModalOpen] = useState(false);
   const [bulkPayRateModalOpen, setBulkPayRateModalOpen] = useState(false);
   const [bulkPointRateModalOpen, setBulkPointRateModalOpen] = useState(false);
+  const [bulkTargetPointsModalOpen, setBulkTargetPointsModalOpen] = useState(false);
   const [editingRate, setEditingRate] = useState<PayrollAdminPayRate | null>(null);
   const [workModalOpen, setWorkModalOpen] = useState(false);
   const [editingWork, setEditingWork] = useState<PayrollAdminWorkRecord | null>(null);
@@ -428,7 +431,7 @@ export function PayrollAdminWorkspace({
   }, [loadWorkspace, selectedPeriod?.id]);
 
   const handleStale = useCallback(async () => {
-    setPeriodModalOpen(false); setRateModalOpen(false); setBulkPayRateModalOpen(false); setBulkPointRateModalOpen(false); setWorkModalOpen(false); setAttendanceWorkModalOpen(false); setInputModalOpen(false); setPendingAction(null);
+    setPeriodModalOpen(false); setRateModalOpen(false); setBulkPayRateModalOpen(false); setBulkPointRateModalOpen(false); setBulkTargetPointsModalOpen(false); setWorkModalOpen(false); setAttendanceWorkModalOpen(false); setInputModalOpen(false); setPendingAction(null);
     await refreshView("Данные изменились в другой сессии. Экран обновлён — повторите действие.");
   }, [refreshView]);
 
@@ -454,6 +457,21 @@ export function PayrollAdminWorkspace({
   const openApproveInput = (record: PayrollAdminInputLine) => setPendingAction({
     title: "Утвердить операцию", description: `${record.component.name} для ${record.employee.display_name}: ${formatPayrollMoney(record.amount, selectedPeriod?.currency)}.`, confirmLabel: "Утвердить", warning: "Утверждённая операция станет входом следующего расчёта.", successMessage: "Операция утверждена.", execute: () => apiClient.approvePayrollAdminInputLine(record.id, record.lock_version),
   });
+  const openApproveAll = () => {
+    if (!selectedPeriod) return;
+    const rateCount = rates.filter((record) => record.status === "draft").length;
+    const workCount = workRecords.filter((record) => record.status === "draft").length;
+    const inputCount = inputLines.filter((record) => record.status === "draft").length;
+    const total = rateCount + workCount + inputCount;
+    setPendingAction({
+      title: "Утвердить все данные",
+      description: `Будут утверждены все черновики выбранного периода (${total}): ставки — ${rateCount}, выработка — ${workCount}, начисления и выплаты — ${inputCount}.`,
+      confirmLabel: "Утвердить всё",
+      warning: "Операция выполняется целиком: если один из черновиков не пройдёт проверку, остальные тоже не будут утверждены.",
+      successMessage: "Все черновики периода утверждены.",
+      execute: () => apiClient.approveAllPayrollAdminDrafts(selectedPeriod.id),
+    });
+  };
   const openReviseRate = (record: PayrollAdminPayRate) => setPendingAction({
     title: "Создать новую версию ставки", description: `Будет создан отдельный черновик ставки для ${record.employee.display_name}.`, confirmLabel: "Создать черновик", reasonLabel: "Основание изменения", reasonRequired: true, successMessage: "Новая версия ставки создана в черновиках.", execute: (reason) => apiClient.revisePayrollAdminPayRate(record.id, reason),
   });
@@ -512,6 +530,16 @@ export function PayrollAdminWorkspace({
   );
   const canManageSourceData = permissions.manage_inputs && !sourceDataLocked;
   const canApproveSourceData = permissions.approve_inputs && !sourceDataLocked;
+  const draftApprovalRecords = [
+    ...rates.filter((record) => record.status === "draft"),
+    ...workRecords.filter((record) => record.status === "draft"),
+    ...inputLines.filter((record) => record.status === "draft"),
+  ];
+  const draftApprovalCount = draftApprovalRecords.length;
+  const hasOwnRestrictedDraft = !permissions.override_approval && draftApprovalRecords.some(
+    (record) => record.created_by.id === user?.id,
+  );
+  const canApproveAllDrafts = canApproveSourceData && !tableLoading && draftApprovalCount > 0 && !hasOwnRestrictedDraft;
 
   const savePeriod = async (payload: PayrollPeriodWrite) => {
     if (editingPeriod) await apiClient.updatePayrollAdminPeriod(editingPeriod.id, { ...payload, expected_lock_version: editingPeriod.lock_version });
@@ -555,9 +583,9 @@ export function PayrollAdminWorkspace({
   const saveRateCell = async (row: PayrollPeriodTableRow, field: "amount" | "point_rate", value: string) => {
     if (!canManageSourceData || !selectedPeriod) return;
     const rawValue = value.trim().replace(",", ".");
-    const normalized = field === "point_rate" && rawValue === "" ? "0" : rawValue;
-    const numeric = Number(normalized);
-    if (!Number.isFinite(numeric) || numeric < 0 || (field === "amount" && numeric === 0)) {
+    const normalized = field === "point_rate" && rawValue === "" ? null : rawValue;
+    const numeric = normalized === null ? null : Number(normalized);
+    if ((numeric !== null && (!Number.isFinite(numeric) || numeric < 0)) || (field === "amount" && numeric === 0)) {
       throw new Error(field === "amount" ? "Оклад должен быть больше нуля." : "Укажите корректную цену балла сверх нормы.");
     }
     const record = rates
@@ -576,7 +604,7 @@ export function PayrollAdminWorkspace({
         employee_id: row.employee.id,
         rate_code: "BASE",
         amount,
-        point_rate: field === "point_rate" ? normalized : row.point_rate || "0",
+        point_rate: field === "point_rate" ? normalized : row.point_rate,
         currency: selectedPeriod.currency,
         effective_from: selectedPeriod.date_from,
         reason: "Введено в итоговой таблице",
@@ -625,13 +653,23 @@ export function PayrollAdminWorkspace({
   const saveComponentCell = async (row: PayrollPeriodTableRow, componentCode: string, value: string) => {
     if (!canManageSourceData || !selectedPeriod) return;
     const normalized = value.trim().replace(",", ".");
-    const desiredAmount = Number(normalized);
-    if (!Number.isFinite(desiredAmount) || desiredAmount <= 0) {
-      throw new Error("Сумма операции должна быть больше нуля.");
-    }
     const component = workspace.components.find((item) => item.code === componentCode);
     if (!component) throw new Error("Вид операции не найден.");
     const matchingLines = inputLines.filter((item) => item.employee.id === row.employee.id && item.component.id === component.id && item.status !== "voided");
+    if (!normalized) {
+      if (matchingLines.length) {
+        await apiClient.clearPayrollAdminComponentCell(selectedPeriod.id, {
+          employee_id: row.employee.id,
+          component_id: component.id,
+        });
+        await refreshInlineTable("inputs");
+      }
+      return;
+    }
+    const desiredAmount = Number(normalized);
+    if (!Number.isFinite(desiredAmount) || desiredAmount <= 0) {
+      throw new Error("Сумма операции должна быть больше нуля или оставлена пустой.");
+    }
     const draft = matchingLines
       .filter((item) => item.status === "draft")
       .sort((left, right) => right.id - left.id)[0];
@@ -753,10 +791,10 @@ export function PayrollAdminWorkspace({
             </section>
           ) : null}
 
-          {tab === "rates" ? <section className="app-surface rounded-2xl p-4 sm:p-5"><SectionIntro title="Ставки" description="Оклад и цена балла сверх нормы действуют с указанной даты. Цена балла в пределах нормы рассчитывается как оклад, разделённый на норму." />{sourceDataLocked ? <div className="app-feedback-warning mb-4 rounded-lg px-3 py-2.5 text-sm">Исходные данные заблокированы текущим этапом расчёта. Для исправления сначала верните расчёт.</div> : null}<TableToolbar search={search} status={status} onSearch={setSearch} onStatus={setStatus} onAdd={canManageSourceData ? () => { setEditingRate(null); setRateModalOpen(true); } : undefined} onBulkPayRate={canManageSourceData ? () => setBulkPayRateModalOpen(true) : undefined} onBulkPointRate={canManageSourceData && rates.some((record) => record.status !== "voided") ? () => setBulkPointRateModalOpen(true) : undefined} addLabel="Добавить ставку" /><PayrollRatesTable records={filteredRates} loading={tableLoading} error={tableError} currentUserId={user?.id} canManage={canManageSourceData} canApprove={canApproveSourceData} canOverrideApproval={permissions.override_approval} fullAccess={permissions.full_access} onEdit={(record) => { setEditingRate(record); setRateModalOpen(true); }} onApprove={openApproveRate} onRevise={openReviseRate} /></section> : null}
+          {tab === "rates" ? <section className="app-surface rounded-2xl p-4 sm:p-5"><SectionIntro title="Ставки" description="Оклад и цена балла сверх нормы действуют с указанной даты. Цена балла в норме рассчитывается по Excel: оклад плюс премия, разделённые на норму." />{sourceDataLocked ? <div className="app-feedback-warning mb-4 rounded-lg px-3 py-2.5 text-sm">Исходные данные заблокированы текущим этапом расчёта. Для исправления сначала верните расчёт.</div> : null}<TableToolbar search={search} status={status} onSearch={setSearch} onStatus={setStatus} onAdd={canManageSourceData ? () => { setEditingRate(null); setRateModalOpen(true); } : undefined} onBulkPayRate={canManageSourceData ? () => setBulkPayRateModalOpen(true) : undefined} onBulkPointRate={canManageSourceData && rates.some((record) => record.status !== "voided") ? () => setBulkPointRateModalOpen(true) : undefined} addLabel="Добавить ставку" /><PayrollRatesTable records={filteredRates} loading={tableLoading} error={tableError} currentUserId={user?.id} canManage={canManageSourceData} canApprove={canApproveSourceData} canOverrideApproval={permissions.override_approval} fullAccess={permissions.full_access} onEdit={(record) => { setEditingRate(record); setRateModalOpen(true); }} onApprove={openApproveRate} onRevise={openReviseRate} /></section> : null}
           {tab === "work" ? (
             <section className="app-surface rounded-2xl p-4 sm:p-5">
-              <SectionIntro title="Выработка" description="Норму и факт можно ввести вручную в баллах или заполнить рабочими часами из посещаемости." />
+              <SectionIntro title="Выработка" description="Норму и факт можно ввести вручную в баллах или рассчитать по посещаемости пропорционально дневной норме баллов." />
               {sourceDataLocked ? <div className="app-feedback-warning mb-4 rounded-lg px-3 py-2.5 text-sm">Исходные данные заблокированы текущим этапом расчёта. Для исправления сначала верните расчёт.</div> : null}
               <TableToolbar
                 search={search}
@@ -774,12 +812,28 @@ export function PayrollAdminWorkspace({
           {tab === "summary" ? (
             <section className="app-surface min-w-0 rounded-2xl p-4 sm:p-5">
               <SectionIntro title="Итоговая таблица" description="Сводные исходные данные, начисления, удержания и выплаты по всем сотрудникам за выбранный период." />
-              <PayrollPeriodTableView data={periodTable} loading={tableLoading} error={tableError} search={search} onSearch={setSearch} canEdit={canManageSourceData} onSaveRate={saveRateCell} onSaveWork={saveWorkCell} onSaveComponent={saveComponentCell} />
+              <PayrollPeriodTableView data={periodTable} loading={tableLoading} error={tableError} search={search} onSearch={setSearch} storageUserId={user?.id} canEdit={canManageSourceData} onBulkEditRate={canManageSourceData ? () => setBulkPayRateModalOpen(true) : undefined} onBulkEditPointRate={canManageSourceData && rates.some((record) => record.status !== "voided") ? () => setBulkPointRateModalOpen(true) : undefined} onBulkEditTargetPoints={canManageSourceData ? () => setBulkTargetPointsModalOpen(true) : undefined} onSaveRate={saveRateCell} onSaveWork={saveWorkCell} onSaveComponent={saveComponentCell} />
             </section>
           ) : null}
           {tab === "approval" ? (
             <section className="app-surface rounded-2xl p-4 sm:p-5">
-              <SectionIntro title="Проверка данных" description="Здесь можно утвердить подготовленные черновики и продолжить расчёт." />
+              <div className="mb-4 flex flex-col items-start justify-between gap-3 sm:flex-row">
+                <div>
+                  <h2 className="text-base font-semibold text-[var(--foreground)]">Проверка данных</h2>
+                  <p className="app-text-muted mt-1 text-sm">Здесь можно утвердить подготовленные черновики и продолжить расчёт.</p>
+                </div>
+                {draftApprovalCount > 0 ? (
+                  <button
+                    type="button"
+                    className="app-action-primary inline-flex shrink-0 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={openApproveAll}
+                    disabled={!canApproveAllDrafts}
+                    title={hasOwnRestrictedDraft ? "В очереди есть ваши записи, для которых требуется другой утверждающий." : undefined}
+                  >
+                    <CheckCircle2 size={16} /> Утвердить всё
+                  </button>
+                ) : null}
+              </div>
               {!canOpenInputTabs ? (
                 <div className="app-surface-muted rounded-xl p-4 text-sm">
                   <p className="font-semibold text-[var(--foreground)]">Очередь исходных данных недоступна для вашей роли</p>
@@ -813,6 +867,7 @@ export function PayrollAdminWorkspace({
       {selectedPeriod && rateModalOpen ? <PayrollRateFormModal isOpen period={selectedPeriod} employees={workspace.employees} rate={editingRate} onClose={() => setRateModalOpen(false)} onSubmit={saveRate} onSaved={async () => { setRateModalOpen(false); await refreshView("Черновик ставки сохранён."); }} onStale={handleStale} /> : null}
       {selectedPeriod && bulkPayRateModalOpen ? <PayrollBulkPayRateModal isOpen period={selectedPeriod} employees={workspace.employees} rates={rates} onClose={() => setBulkPayRateModalOpen(false)} onSubmit={(payload) => apiClient.bulkCreatePayrollAdminPayRates(selectedPeriod.id, payload)} onSaved={async (result: PayrollBulkPayRateResult) => { setBulkPayRateModalOpen(false); const changed = result.summary.created_drafts + result.summary.updated_drafts + result.summary.created_revisions; const details = [result.summary.unchanged ? `без изменений: ${result.summary.unchanged}` : "", result.summary.skipped ? `пропущено: ${result.summary.skipped}` : ""].filter(Boolean).join(", "); await refreshView(`Ставка сохранена для ${changed} сотрудников${details ? ` (${details})` : ""}.`); }} onStale={handleStale} /> : null}
       {selectedPeriod && bulkPointRateModalOpen ? <PayrollBulkPointRateModal isOpen period={selectedPeriod} rates={rates} onClose={() => setBulkPointRateModalOpen(false)} onSubmit={(payload) => apiClient.bulkSetPayrollAdminPointRate(selectedPeriod.id, payload)} onSaved={async (result: PayrollBulkPointRateResult) => { setBulkPointRateModalOpen(false); const changed = result.summary.updated_drafts + result.summary.created_revisions; const details = [result.summary.unchanged ? `без изменений: ${result.summary.unchanged}` : "", result.summary.skipped ? `пропущено: ${result.summary.skipped}` : ""].filter(Boolean).join(", "); await refreshView(`Цена балла сверх нормы сохранена для ${changed} ставок${details ? ` (${details})` : ""}.`); }} onStale={handleStale} /> : null}
+      {selectedPeriod && bulkTargetPointsModalOpen ? <PayrollBulkTargetPointsModal isOpen period={selectedPeriod} employees={workspace.employees} records={workRecords} onClose={() => setBulkTargetPointsModalOpen(false)} onSubmit={(payload) => apiClient.bulkSetPayrollAdminTargetPoints(selectedPeriod.id, payload)} onSaved={async (result: PayrollBulkTargetPointsResult) => { setBulkTargetPointsModalOpen(false); const changed = result.summary.created_drafts + result.summary.updated_drafts + result.summary.created_revisions; const details = [result.summary.unchanged ? `без изменений: ${result.summary.unchanged}` : "", result.summary.skipped ? `пропущено: ${result.summary.skipped}` : ""].filter(Boolean).join(", "); await refreshView(`Норма баллов сохранена для ${changed} сотрудников${details ? ` (${details})` : ""}.`); }} onStale={handleStale} /> : null}
       {selectedPeriod && workModalOpen ? <PayrollWorkRecordFormModal isOpen period={selectedPeriod} employees={workspace.employees} record={editingWork} onClose={() => setWorkModalOpen(false)} onSubmit={saveWork} onSaved={async () => { setWorkModalOpen(false); await refreshView("Черновик выработки сохранён."); }} onStale={handleStale} /> : null}
       {selectedPeriod && attendanceWorkModalOpen ? (
         <PayrollAttendanceWorkModal

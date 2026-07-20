@@ -276,6 +276,7 @@ class EmployeePayRateRevisionSerializer(serializers.Serializer):
         decimal_places=4,
         min_value=0,
         required=False,
+        allow_null=True,
     )
     currency = serializers.CharField(max_length=3, required=False)
     reason = serializers.CharField(allow_blank=False, trim_whitespace=True)
@@ -291,7 +292,7 @@ class BulkPointRateCommandSerializer(serializers.Serializer):
     )
     mode = serializers.ChoiceField(
         choices=(MODE_FIXED, MODE_IN_NORM),
-        default=MODE_FIXED,
+        required=False,
     )
     point_rate = serializers.DecimalField(
         max_digits=19,
@@ -307,9 +308,19 @@ class BulkPointRateCommandSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
-        if attrs["mode"] == self.MODE_FIXED and attrs.get("point_rate") is None:
-            attrs["point_rate"] = Decimal("0")
-        elif attrs["mode"] == self.MODE_IN_NORM:
+        mode = attrs.get("mode")
+        if mode is None:
+            mode = (
+                self.MODE_FIXED
+                if attrs.get("point_rate") is not None
+                else self.MODE_IN_NORM
+            )
+            attrs["mode"] = mode
+        if mode == self.MODE_FIXED and attrs.get("point_rate") is None:
+            raise serializers.ValidationError(
+                {"point_rate": "Укажите фиксированную цену или выберите автоматический расчёт."}
+            )
+        if mode == self.MODE_IN_NORM:
             attrs["point_rate"] = None
         return attrs
 
@@ -329,6 +340,38 @@ class BulkPayRateCommandSerializer(serializers.Serializer):
 
     def validate_employee_ids(self, value):
         return list(dict.fromkeys(value))
+
+
+class BulkTargetPointsCommandSerializer(serializers.Serializer):
+    MODE_FIXED = "fixed"
+    MODE_AUTOMATIC = "automatic"
+
+    employee_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+    )
+    mode = serializers.ChoiceField(choices=(MODE_FIXED, MODE_AUTOMATIC))
+    target_points = serializers.DecimalField(
+        max_digits=19,
+        decimal_places=4,
+        min_value=Decimal("0.0001"),
+        required=False,
+        allow_null=True,
+    )
+    reason = serializers.CharField(allow_blank=False, trim_whitespace=True)
+
+    def validate_employee_ids(self, value):
+        return list(dict.fromkeys(value))
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if attrs["mode"] == self.MODE_FIXED and attrs.get("target_points") is None:
+            raise serializers.ValidationError(
+                {"target_points": "Укажите норму баллов."}
+            )
+        if attrs["mode"] == self.MODE_AUTOMATIC:
+            attrs["target_points"] = None
+        return attrs
 
 
 class PayrollWorkRecordSerializer(serializers.ModelSerializer):
@@ -554,6 +597,11 @@ class PayrollInputLineWriteSerializer(
 
 class ApprovalCommandSerializer(serializers.Serializer):
     expected_lock_version = serializers.IntegerField(min_value=0)
+
+
+class ClearComponentCellCommandSerializer(serializers.Serializer):
+    employee_id = serializers.IntegerField(min_value=1)
+    component_id = serializers.IntegerField(min_value=1)
 
 
 class CalculatePayrollCommandSerializer(serializers.Serializer):

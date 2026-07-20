@@ -847,11 +847,12 @@ COMMUNICATIONS_PARTICIPANT_RESOLVER = (
 # version after changing calculation semantics.
 FINANCE_PAYROLL = {
     "RULESET_ID": os.getenv("PAYROLL_RULESET_ID", "eusrr-standard"),
-    "RULESET_VERSION": os.getenv("PAYROLL_RULESET_VERSION", "2026.07.2"),
+    "RULESET_VERSION": os.getenv("PAYROLL_RULESET_VERSION", "2026.07.4"),
     "EFFECTIVE_FROM": os.getenv("PAYROLL_EFFECTIVE_FROM", "2026-01-01"),
     "EFFECTIVE_TO": os.getenv("PAYROLL_EFFECTIVE_TO") or None,
-    # Below target the base accrual follows completion percentage; above target
-    # the full base is retained and excess points use the configured point rate.
+    # Excel-compatible point basis is base accrual plus bonus inputs. Below the
+    # target it is reduced proportionally; above target the configured excess
+    # price is used. A blank price resolves to the same in-norm point price.
     "POINT_POLICY": os.getenv(
         "PAYROLL_POINT_POLICY",
         "proportional_with_excess",

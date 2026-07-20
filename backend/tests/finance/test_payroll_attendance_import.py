@@ -115,7 +115,19 @@ def test_attendance_preview_and_missing_only_create_audited_draft(
 
     assert preview_response.status_code == 200
     preview = preview_response.json()
-    assert preview["policy"]["code"] == "hours_as_work_units_v1"
+    assert preview["policy"] == {
+        "code": "attendance_to_daily_points_v2",
+        "label": "Посещаемость переводится в баллы дневной нормы",
+        "description": (
+            "Полностью отработанный день даёт дневную норму баллов. "
+            "Неполный день и переработка рассчитываются пропорционально "
+            "плановым часам."
+        ),
+        "formula": (
+            "Баллы дня = дневная норма × отработанные часы ÷ плановые часы"
+        ),
+        "daily_target_points": "5.0000",
+    }
     assert preview["summary"] == {
         "attendance_employees": 1,
         "existing": 0,
@@ -142,8 +154,11 @@ def test_attendance_preview_and_missing_only_create_audited_draft(
         },
     }
     item = preview["items"][0]
-    assert item["target_points"] == "16.0000"
-    assert item["actual_points"] == "8.0000"
+    assert item["expected_hours"] == "16.0000"
+    assert item["worked_hours"] == "8.0000"
+    assert item["daily_target_points"] == "5.0000"
+    assert item["target_points"] == "10.0000"
+    assert item["actual_points"] == "5.0000"
     assert item["actions"] == {
         "missing_only": "create",
         "replace_existing": "create",
@@ -168,8 +183,9 @@ def test_attendance_preview_and_missing_only_create_audited_draft(
     record = PayrollWorkRecord.objects.get(period=period, employee=employee)
     assert record.status == ApprovalStatus.DRAFT
     assert record.source == InputSource.ATTENDANCE
-    assert record.target_points == Decimal("16.0000")
-    assert record.actual_points == Decimal("8.0000")
+    assert record.target_points == Decimal("10.0000")
+    assert record.target_points_overridden is False
+    assert record.actual_points == Decimal("5.0000")
     assert record.created_by == manager
     assert record.approved_by is None
     assert PayrollAuditEvent.objects.filter(
@@ -289,7 +305,9 @@ def test_replace_updates_only_own_draft_and_protects_foreign_draft(
     assert response.json()["summary"]["blocked"] == 1
     own.refresh_from_db()
     foreign.refresh_from_db()
-    assert own.target_points == Decimal("16.0000")
+    assert own.target_points == Decimal("10.0000")
+    assert own.target_points_overridden is False
+    assert own.actual_points == Decimal("5.0000")
     assert own.lock_version == 1
     assert own.source == InputSource.ATTENDANCE
     assert foreign.target_points == Decimal("1")
@@ -338,7 +356,9 @@ def test_staff_admin_can_refresh_a_foreign_attendance_draft(
     assert response.status_code == 200
     assert response.json()["summary"]["updated"] == 1
     record.refresh_from_db()
-    assert record.target_points == Decimal("16.0000")
+    assert record.target_points == Decimal("10.0000")
+    assert record.target_points_overridden is False
+    assert record.actual_points == Decimal("5.0000")
     assert record.lock_version == 1
 
 

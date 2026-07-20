@@ -144,8 +144,9 @@ function PreviewTable({
                 </div>
                 <div className="text-xs text-[var(--foreground)]">
                   <span className="app-text-muted mr-1 md:hidden">Выработка:</span>
-                  <p>Норма: <b>{item.target_points} ч</b></p>
-                  <p className="mt-1">Факт: <b>{item.actual_points} ч</b></p>
+                  <p>Норма: <b>{item.target_points} балл.</b></p>
+                  <p className="mt-1">Факт: <b>{item.actual_points} балл.</b></p>
+                  <p className="app-text-muted mt-1 text-[11px]">Дневная норма: {item.daily_target_points}</p>
                   <span className="app-selected mt-2 inline-flex rounded-full px-2 py-1 text-[10px] font-semibold leading-none">
                     Из посещаемости
                   </span>
@@ -302,13 +303,13 @@ export function PayrollAttendanceWorkModal({
               <CalendarCheck2 className="app-accent-text mt-0.5 shrink-0" size={19} />
               <div>
                 <p className="text-sm font-semibold text-[var(--foreground)]">
-                  1 час = 1 единица выработки
+                  Полный рабочий день = {preview.policy.daily_target_points} балл.
                 </p>
                 <p className="app-text-muted mt-1 text-xs leading-relaxed">
                   {preview.policy.description || preview.policy.label}
                 </p>
                 <p className="mt-2 text-xs font-medium text-[var(--foreground)]">
-                  Часы попадут в норму и факт выработки: до нормы они пропорционально формируют оклад, сверх нормы — доплату по заданной цене.
+                  {preview.policy.formula}. Часы остаются исходными данными посещаемости, а в зарплатный расчёт попадут баллы.
                 </p>
               </div>
             </div>

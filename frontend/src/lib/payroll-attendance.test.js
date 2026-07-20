@@ -15,10 +15,10 @@ test("attendance warnings use the correct employee form", () => {
   assert.equal(formatPayrollAttendanceEmployeeCount(11), "11 сотрудников");
 });
 
-test("attendance work metrics are explicitly displayed as hours", () => {
+test("attendance work metrics are explicitly displayed as points", () => {
   assert.equal(isAttendancePayrollWorkRecord("attendance"), true);
   assert.equal(isAttendancePayrollWorkRecord("manual"), false);
-  assert.equal(formatPayrollWorkMetric("152.5000", "attendance"), "152.5000 ч");
+  assert.equal(formatPayrollWorkMetric("95.3125", "attendance"), "95.3125 балл.");
   assert.equal(formatPayrollWorkMetric("110.0000", "manual"), "110.0000");
 });
 

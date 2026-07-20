@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Context, Decimal, ROUND_HALF_UP, localcontext
 
 from payroll_core import (
     ExpectedTotals,
@@ -18,6 +18,8 @@ from finance.models import (
     PayrollPeriod,
     PayrollWorkRecord,
 )
+
+POINT_BASE_COMPONENT_CODES = frozenset({"BONUS"})
 
 
 def _core_period(period: PayrollPeriod) -> CorePayrollPeriod:
@@ -65,22 +67,69 @@ def _mapped_input_lines(input_lines: list[PayrollInputLine]) -> tuple[InputLine,
     return tuple(mapped_lines)
 
 
+def _effective_point_rate(
+    rate: EmployeePayRate | None,
+    point_base_accrual: Decimal,
+    target_points: Decimal | None,
+    *,
+    rounding: str = ROUND_HALF_UP,
+) -> Decimal:
+    """Resolve a nullable excess price without persisting the derived value."""
+
+    if rate is not None and rate.point_rate is not None:
+        return rate.point_rate
+    if target_points is None or target_points <= 0:
+        return Decimal("0")
+    with localcontext(Context(prec=80, rounding=rounding)):
+        return (point_base_accrual / target_points).quantize(
+            Decimal("0.0001"),
+            rounding=rounding,
+        )
+
+
+def _point_base_accrual(
+    rate: EmployeePayRate | None,
+    input_lines: list[PayrollInputLine],
+) -> Decimal:
+    """Reproduce the Excel point basis: base salary plus bonus inputs."""
+
+    base_amount = rate.amount if rate is not None else Decimal("0")
+    return base_amount + sum(
+        (
+            record.amount
+            for record in input_lines
+            if record.component.code in POINT_BASE_COMPONENT_CODES
+        ),
+        Decimal("0"),
+    )
+
+
 def build_core_request(
     *,
     period: PayrollPeriod,
     rate: EmployeePayRate,
     work_record: PayrollWorkRecord | None,
     input_lines: list[PayrollInputLine],
+    rounding: str = ROUND_HALF_UP,
 ) -> PayrollRequest:
+    target_points = work_record.target_points if work_record else None
+    point_base_accrual = _point_base_accrual(rate, input_lines)
     return PayrollRequest(
         employee_ref=f"employee:{rate.employee_id}",
         period=_core_period(period),
         currency=period.currency,
         base_accrual=rate.amount,
         base_source_ref=f"pay-rate:{rate.pk}:revision:{rate.revision}",
-        target_points=(work_record.target_points if work_record else None),
+        point_base_accrual=point_base_accrual,
+        target_points=target_points,
         actual_points=(work_record.actual_points if work_record else None),
-        point_rate=rate.point_rate,
+        point_rate=_effective_point_rate(
+            rate,
+            point_base_accrual,
+            target_points,
+            rounding=rounding,
+        ),
+        point_rate_overridden=rate.point_rate is not None,
         lines=_mapped_input_lines(input_lines),
         expected_totals=(
             _expected_totals(work_record) if work_record is not None else None
@@ -96,9 +145,11 @@ def build_core_preview_request(
     target_points: Decimal,
     actual_points: Decimal,
     input_lines: list[PayrollInputLine],
+    rounding: str = ROUND_HALF_UP,
 ) -> PayrollRequest:
     """Build a non-persisted calculation request from draft or partial inputs."""
 
+    point_base_accrual = _point_base_accrual(rate, input_lines)
     return PayrollRequest(
         employee_ref=f"employee:{employee_id}",
         period=_core_period(period),
@@ -109,9 +160,16 @@ def build_core_preview_request(
             if rate is not None
             else "preview:missing-pay-rate"
         ),
+        point_base_accrual=point_base_accrual,
         target_points=target_points,
         actual_points=actual_points,
-        point_rate=rate.point_rate if rate is not None else Decimal("0"),
+        point_rate=_effective_point_rate(
+            rate,
+            point_base_accrual,
+            target_points,
+            rounding=rounding,
+        ),
+        point_rate_overridden=bool(rate is not None and rate.point_rate is not None),
         lines=_mapped_input_lines(input_lines),
         expected_totals=None,
     )

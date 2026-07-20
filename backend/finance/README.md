@@ -150,14 +150,16 @@ attendance through the period-scoped preview/apply command.  This integration
 does not live in `payroll_core`: it translates verified portal attendance into
 the versioned payroll input contract.
 
-Policy `hours_as_work_units_v1` maps one verified attendance hour to one work
-unit.  It is accepted only while the payroll point policy is `disabled`, so
-hours cannot accidentally become paid production points.  Missing days,
-technical issues, open shifts, unverified remote work and work outside the
-effective schedule block the affected employee.  The apply command never
-auto-approves: it creates a draft, updates an administrator-accessible draft, or
-creates a draft revision that leaves the approved record intact until the
-record is explicitly approved.
+Policy `attendance_to_daily_points_v2` keeps attendance hours and payroll points
+in separate units.  Every verified workday contributes the configured daily
+point target; actual points for that day are `daily target × worked hours ÷
+expected hours`.  A complete shift therefore earns the daily target, a partial
+shift earns its fraction, and overtime may exceed it.  Missing days, technical
+issues, open shifts, unverified remote work and work outside the effective
+schedule block the affected employee.  The apply command never auto-approves:
+it creates a draft, updates an administrator-accessible draft, or creates a
+draft revision that leaves the approved record intact until the record is
+explicitly approved.
 
 ## Operational boundaries
 

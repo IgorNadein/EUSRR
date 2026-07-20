@@ -7,7 +7,12 @@ from dataclasses import replace
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.db.models import Prefetch, Q
 from payroll_core import DeterministicPayrollCalculator
+
+from attendance.models import AttendanceRecord
+from employees.models import EmployeeAction
+from requests_app.enums import RequestStatus
 
 from finance.enums import ApprovalStatus
 from finance.models import (
@@ -16,15 +21,21 @@ from finance.models import (
     PayrollInputLine,
     PayrollPeriod,
     PayrollWorkRecord,
+    PayrollWorkSettings,
 )
 
-from .adapter import build_core_preview_request
+from .adapter import POINT_BASE_COMPONENT_CODES, build_core_preview_request
+from .attendance import calculate_attendance_points_projection
 from .config import base_rate_code, build_rules
-from .work_norm import calculate_period_target_points
+from .work_norm import (
+    calculate_period_personnel_points,
+    calculate_period_target_points,
+    resolve_employee_schedule,
+)
 
 Employee = get_user_model()
 
-SYSTEM_COMPONENT_CODES = {"BASE", "POINT_EXCESS"}
+SYSTEM_COMPONENT_CODES = {"BASE", "POINT_EXCESS", "POINT_ADJUSTMENT"}
 
 
 def _decimal_text(value):
@@ -45,6 +56,29 @@ def _in_norm_point_rate(amount, target_points, *, rounding):
             rounding=rounding,
         )
     )
+
+
+def _point_base_amount(rate_amount, component_amounts):
+    if rate_amount in (None, ""):
+        return None
+    return Decimal(str(rate_amount)) + sum(
+        (
+            Decimal(str(component_amounts.get(code, "0")))
+            for code in POINT_BASE_COMPONENT_CODES
+        ),
+        Decimal("0"),
+    )
+
+
+def _signed_point_amount(lines):
+    point_line = next(
+        (line for line in lines if line.code in {"POINT_EXCESS", "POINT_ADJUSTMENT"}),
+        None,
+    )
+    if point_line is None:
+        return Decimal("0")
+    kind = getattr(point_line.kind, "value", point_line.kind)
+    return -point_line.amount if kind == "adjustment_debit" else point_line.amount
 
 
 def _employee_department(employee):
@@ -71,15 +105,12 @@ def _employee_payload(employee):
 
 def _latest_rate_by_employee(period, employee_ids):
     grouped = defaultdict(list)
-    rates = (
-        EmployeePayRate.objects.filter(
-            employee_id__in=employee_ids,
-            rate_code=base_rate_code(),
-            status__in=[ApprovalStatus.DRAFT, ApprovalStatus.APPROVED],
-            effective_from__lte=period.date_from,
-        )
-        .order_by("employee_id", "effective_from", "revision", "id")
-    )
+    rates = EmployeePayRate.objects.filter(
+        employee_id__in=employee_ids,
+        rate_code=base_rate_code(),
+        status__in=[ApprovalStatus.DRAFT, ApprovalStatus.APPROVED],
+        effective_from__lte=period.date_from,
+    ).order_by("employee_id", "effective_from", "revision", "id")
     for rate in rates:
         grouped[rate.employee_id].append(rate)
     return {
@@ -202,9 +233,28 @@ def build_payroll_period_table(period: PayrollPeriod):
     employees = list(
         Employee.objects.filter(id__in=employee_ids)
         .select_related("position")
-        .prefetch_related("departments_links__department")
+        .prefetch_related(
+            "departments_links__department",
+            Prefetch(
+                "actions",
+                queryset=EmployeeAction.objects.filter(
+                    Q(source_request__isnull=True)
+                    | Q(source_request__status=RequestStatus.APPROVED),
+                    date__date__lte=period.date_to,
+                ).select_related("source_request"),
+                to_attr="payroll_personnel_actions",
+            ),
+        )
         .order_by("last_name", "first_name", "id")
     )
+
+    attendance_by_employee = defaultdict(list)
+    attendance_records = AttendanceRecord.objects.filter(
+        employee_id__in=employee_ids,
+        date__range=(period.date_from, period.date_to),
+    ).select_related("analysis_run")
+    for record in attendance_records:
+        attendance_by_employee[record.employee_id].append(record)
 
     rates = _latest_rate_by_employee(period, employee_ids)
     work_records = _latest_work_by_employee(period, employee_ids)
@@ -225,7 +275,9 @@ def build_payroll_period_table(period: PayrollPeriod):
         if component.is_active and component.code not in SYSTEM_COMPONENT_CODES
     }
     calculator = DeterministicPayrollCalculator()
-    preview_rules = replace(build_rules(), allow_negative_payable=True)
+    active_rules = build_rules()
+    preview_rules = replace(active_rules, allow_negative_payable=True)
+    daily_target_points = PayrollWorkSettings.get_daily_target_points()
     rows = []
 
     for employee in employees:
@@ -233,20 +285,33 @@ def build_payroll_period_table(period: PayrollPeriod):
         rate = rates.get(employee.pk)
         work = work_records.get(employee.pk)
         source_lines = input_lines.get(employee.pk, [])
-        automatic_target_points, _, target_points_source = (
-            calculate_period_target_points(period, employee=employee)
+        schedule, target_points_source = resolve_employee_schedule(employee)
+        automatic_target_points, _, _ = calculate_period_target_points(
+            period,
+            employee=employee,
+            daily_target_points=daily_target_points,
+            schedule=schedule,
+        )
+        attendance_records_for_employee = attendance_by_employee.get(employee.pk, [])
+        attendance_points = (
+            calculate_attendance_points_projection(
+                attendance_records_for_employee,
+                daily_target_points=daily_target_points,
+            )
+            if attendance_records_for_employee
+            else None
+        )
+        personnel_points, _ = calculate_period_personnel_points(
+            period,
+            employee=employee,
+            actions=employee.payroll_personnel_actions,
+            daily_target_points=daily_target_points,
+            schedule=schedule,
         )
         if statement is not None:
             snapshot = statement.input_snapshot or {}
             result_lines = list(statement.lines.all())
-            point_amount = next(
-                (
-                    line.amount
-                    for line in result_lines
-                    if line.code == "POINT_EXCESS"
-                ),
-                Decimal("0"),
-            )
+            point_amount = _signed_point_amount(result_lines)
             component_amounts = _component_amounts(
                 result_lines,
                 component_definitions,
@@ -263,7 +328,9 @@ def build_payroll_period_table(period: PayrollPeriod):
                 "payable": str(statement.payable),
             }
             rate_amount = snapshot.get("base_accrual")
-            point_rate = snapshot.get("point_rate")
+            # Keep the configured value nullable in the editable projection.
+            # The snapshot contains the effective value used historically.
+            point_rate = _decimal_text(rate.point_rate) if rate else None
             target_points = snapshot.get("target_points")
             actual_points = snapshot.get("actual_points")
             point_delta = _decimal_text(statement.point_delta)
@@ -300,16 +367,10 @@ def build_payroll_period_table(period: PayrollPeriod):
                 target_points=preview_target_points,
                 actual_points=preview_actual_points,
                 input_lines=source_lines,
+                rounding=preview_rules.rounding.value,
             )
             preview_result = calculator.calculate(preview_request, preview_rules)
-            point_amount = next(
-                (
-                    line.amount
-                    for line in preview_result.lines
-                    if line.code == "POINT_EXCESS"
-                ),
-                Decimal("0"),
-            )
+            point_amount = _signed_point_amount(preview_result.lines)
             preview_totals = preview_result.totals
             totals = {
                 "gross_before_adjustments": str(
@@ -335,8 +396,9 @@ def build_payroll_period_table(period: PayrollPeriod):
             else:
                 status = "ready"
 
+        point_base_amount = _point_base_amount(rate_amount, component_amounts)
         in_norm_point_rate = _in_norm_point_rate(
-            rate_amount,
+            point_base_amount,
             target_points,
             rounding=preview_rules.rounding.value,
         )
@@ -353,6 +415,8 @@ def build_payroll_period_table(period: PayrollPeriod):
                 "target_points": target_points,
                 "target_points_automatic": target_points_automatic,
                 "target_points_source": target_points_source,
+                "attendance_points": _decimal_text(attendance_points),
+                "personnel_points": _decimal_text(personnel_points),
                 "actual_points": actual_points,
                 "point_delta": point_delta,
                 "point_amount": _decimal_text(point_amount),
@@ -373,6 +437,7 @@ def build_payroll_period_table(period: PayrollPeriod):
     return {
         "period_id": period.pk,
         "currency": period.currency,
+        "calculation_rules": active_rules.to_dict(),
         "run": (
             {
                 "id": current_run.pk,
@@ -390,9 +455,7 @@ def build_payroll_period_table(period: PayrollPeriod):
             "ready_count": status_counts["ready"],
             "draft_count": status_counts["draft"],
             "incomplete_count": status_counts["incomplete"],
-            "preliminary_count": sum(
-                1 for row in rows if row["totals_preliminary"]
-            ),
+            "preliminary_count": sum(1 for row in rows if row["totals_preliminary"]),
             "gross_total": _row_money_total(rows, "gross_total"),
             "deduction_total": _row_money_total(rows, "deduction_total"),
             "payable_total": _row_money_total(rows, "payable"),
