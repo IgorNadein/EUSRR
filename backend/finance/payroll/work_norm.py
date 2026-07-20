@@ -97,7 +97,7 @@ def calculate_period_personnel_points(
     *,
     employee,
     actions,
-    daily_target_points: Decimal | None = None,
+    period_target_points: Decimal,
     schedule: dict | None = None,
 ) -> tuple[Decimal, int]:
     """Project points from the work calendar and official personnel events.
@@ -110,19 +110,19 @@ def calculate_period_personnel_points(
 
     if schedule is None:
         schedule, _ = resolve_employee_schedule(employee)
-    daily_target = (
-        daily_target_points
-        if daily_target_points is not None
-        else PayrollWorkSettings.get_daily_target_points()
-    )
+    workdates = period_workdates(period, schedule)
     attended_dates = [
         workdate
-        for workdate in period_workdates(period, schedule)
+        for workdate in workdates
         if resolve_employee_personnel_state(
             employee,
             workdate,
             actions=actions,
         ).expects_attendance
     ]
-    points = (daily_target * len(attended_dates)).quantize(QUANTUM)
+    points = (
+        period_target_points * Decimal(len(attended_dates)) / Decimal(len(workdates))
+        if workdates
+        else Decimal("0")
+    ).quantize(QUANTUM)
     return points, len(attended_dates)

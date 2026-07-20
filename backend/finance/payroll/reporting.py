@@ -286,25 +286,9 @@ def build_payroll_period_table(period: PayrollPeriod):
         work = work_records.get(employee.pk)
         source_lines = input_lines.get(employee.pk, [])
         schedule, target_points_source = resolve_employee_schedule(employee)
-        automatic_target_points, _, _ = calculate_period_target_points(
+        automatic_target_points, scheduled_workdays, _ = calculate_period_target_points(
             period,
             employee=employee,
-            daily_target_points=daily_target_points,
-            schedule=schedule,
-        )
-        attendance_records_for_employee = attendance_by_employee.get(employee.pk, [])
-        attendance_points = (
-            calculate_attendance_points_projection(
-                attendance_records_for_employee,
-                daily_target_points=daily_target_points,
-            )
-            if attendance_records_for_employee
-            else None
-        )
-        personnel_points, _ = calculate_period_personnel_points(
-            period,
-            employee=employee,
-            actions=employee.payroll_personnel_actions,
             daily_target_points=daily_target_points,
             schedule=schedule,
         )
@@ -395,6 +379,29 @@ def build_payroll_period_table(period: PayrollPeriod):
                 status = "draft"
             else:
                 status = "ready"
+
+        projection_target_points = Decimal(str(target_points or "0"))
+        daily_point_value = (
+            projection_target_points / Decimal(scheduled_workdays)
+            if scheduled_workdays
+            else Decimal("0")
+        )
+        attendance_records_for_employee = attendance_by_employee.get(employee.pk, [])
+        attendance_points = (
+            calculate_attendance_points_projection(
+                attendance_records_for_employee,
+                daily_point_value=daily_point_value,
+            )
+            if attendance_records_for_employee
+            else None
+        )
+        personnel_points, _ = calculate_period_personnel_points(
+            period,
+            employee=employee,
+            actions=employee.payroll_personnel_actions,
+            period_target_points=projection_target_points,
+            schedule=schedule,
+        )
 
         point_base_amount = _point_base_amount(rate_amount, component_amounts)
         in_norm_point_rate = _in_norm_point_rate(

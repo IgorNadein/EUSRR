@@ -97,7 +97,7 @@ def _is_explicit_absence(record: AttendanceRecord) -> bool:
 def calculate_attendance_points_projection(
     records: list[AttendanceRecord],
     *,
-    daily_target_points: Decimal,
+    daily_point_value: Decimal,
 ) -> Decimal:
     """Calculate a read-only point total from the available attendance rows.
 
@@ -132,7 +132,7 @@ def calculate_attendance_points_projection(
             continue
         if worked == 0 and not record.arrival_time and not _is_explicit_absence(record):
             continue
-        actual_points += daily_target_points * worked / expected
+        actual_points += daily_point_value * worked / expected
     return actual_points.quantize(QUANTUM)
 
 

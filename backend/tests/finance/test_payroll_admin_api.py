@@ -302,6 +302,14 @@ def test_period_table_projects_attendance_and_official_personnel_points(
         expected_hours=9,
         effective_is_workday=True,
     )
+    PayrollWorkRecord.objects.create(
+        period=period,
+        employee=employee,
+        target_points="220",
+        target_points_overridden=True,
+        actual_points="0",
+        created_by=manager,
+    )
     AttendanceRecord.objects.create(
         analysis_run=attendance_run,
         employee=employee,
@@ -338,8 +346,9 @@ def test_period_table_projects_attendance_and_official_personnel_points(
         for item in response.json()["rows"]
         if item["employee"]["id"] == employee.pk
     )
-    assert row["attendance_points"] == "7.5000"
-    assert row["personnel_points"] == "105.0000"
+    assert row["target_points"] == "220.0000"
+    assert row["attendance_points"] == "15.0000"
+    assert row["personnel_points"] == "210.0000"
 
 
 def test_component_cell_can_be_cleared_and_voids_all_active_lines(
