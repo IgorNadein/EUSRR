@@ -600,7 +600,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         visible_task = self.get_object()
         with transaction.atomic():
             task = (
-                Task.objects.select_for_update()
+                Task.objects.select_for_update(of=("self",))
                 .select_related("board", "column", "assignee")
                 .get(id=visible_task.id)
             )

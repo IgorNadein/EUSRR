@@ -757,7 +757,7 @@ def bulk_set_point_rate(
 
     selected_employee_ids = sorted(set(employee_ids))
     rates = list(
-        EmployeePayRate.objects.select_for_update()
+        EmployeePayRate.objects.select_for_update(of=("self",))
         .filter(
             employee_id__in=selected_employee_ids,
             rate_code=base_rate_code(),
@@ -984,7 +984,7 @@ def bulk_set_pay_rate(
         ).order_by("pk")
     }
     rates = list(
-        EmployeePayRate.objects.select_for_update()
+        EmployeePayRate.objects.select_for_update(of=("self",))
         .filter(
             employee_id__in=employees,
             rate_code=base_rate_code(),
@@ -1374,7 +1374,7 @@ def save_own_daily_work_entry(
             "Для сохранения выработки необходимо войти в систему.",
         )
     period = (
-        PayrollPeriod.objects.select_for_update()
+        PayrollPeriod.objects.select_for_update(of=("self",))
         .select_related("current_run")
         .get(pk=period_id)
     )

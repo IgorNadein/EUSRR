@@ -433,8 +433,10 @@ def build_attendance_work_preview(
         "employee", "employee__position", "created_by"
     )
     if lock:
-        attendance = attendance.select_for_update()
-        work = work.select_for_update()
+        # Both projections contain nullable outer joins (analysis run and
+        # employee position).  Lock only the source rows being imported.
+        attendance = attendance.select_for_update(of=("self",))
+        work = work.select_for_update(of=("self",))
     attendance_records = list(attendance.order_by("employee_id", "date", "id"))
     work_records = list(work.order_by("employee_id", "revision", "id"))
 
@@ -594,7 +596,7 @@ def apply_attendance_work_preview(
         )
 
     period = (
-        PayrollPeriod.objects.select_for_update()
+        PayrollPeriod.objects.select_for_update(of=("self",))
         .select_related("current_run")
         .get(pk=period_id)
     )

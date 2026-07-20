@@ -150,7 +150,9 @@ def _audit_api_mutation(*, actor, action, instance, period=None, metadata=None):
 
 def _lock_period_accepting_draft_edits(period_id):
     period = get_object_or_404(
-        PayrollPeriod.objects.select_for_update().select_related("current_run"),
+        PayrollPeriod.objects.select_for_update(of=("self",)).select_related(
+            "current_run"
+        ),
         pk=period_id,
     )
     if period.status == PayrollPeriodStatus.CLOSED:
@@ -699,7 +701,12 @@ class DraftDetailView(PayrollAdminAPIView):
             period = _lock_period_accepting_draft_edits(reference.period_id)
         else:
             period = None
-        instance = get_object_or_404(scoped_queryset.select_for_update())
+        # Read serializers join nullable audit/revision relations.  PostgreSQL
+        # cannot apply FOR UPDATE to the nullable side of those outer joins,
+        # and only the draft itself needs to be locked here.
+        instance = get_object_or_404(
+            scoped_queryset.select_for_update(of=("self",))
+        )
         if period is not None:
             instance._state.fields_cache["period"] = period
             self.validate_period_update(instance, period)
@@ -1001,7 +1008,9 @@ class EmployeePayRateReviseView(PayrollAdminAPIView):
     def post(self, request, pk):
         self.require_permission(request, PAYROLL_PERMISSIONS["manage_inputs"])
         source = get_object_or_404(
-            EmployeePayRate.objects.select_for_update().select_related("employee"),
+            EmployeePayRate.objects.select_for_update(of=("self",)).select_related(
+                "employee"
+            ),
             pk=pk,
             status=ApprovalStatus.APPROVED,
         )
@@ -1071,7 +1080,7 @@ class PayrollWorkRecordReviseView(PayrollAdminAPIView):
         )
         period = _lock_period_accepting_draft_edits(reference.period_id)
         source = get_object_or_404(
-            PayrollWorkRecord.objects.select_for_update().select_related(
+            PayrollWorkRecord.objects.select_for_update(of=("self",)).select_related(
                 "period", "employee"
             ),
             pk=pk,
