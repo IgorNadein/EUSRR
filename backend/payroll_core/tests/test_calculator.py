@@ -139,7 +139,7 @@ def test_points_below_target_do_not_silently_reduce_pay(period, rules):
     ]
 
 
-def test_proportional_policy_reduces_base_below_target(period, rules):
+def test_proportional_policy_records_a_signed_adjustment_below_target(period, rules):
     proportional_rules = replace(
         rules,
         point_policy=PointPolicy.PROPORTIONAL_WITH_EXCESS,
@@ -157,9 +157,12 @@ def test_proportional_policy_reduces_base_below_target(period, rules):
     )
 
     base_line = next(line for line in result.lines if line.code == "BASE")
-    point_line = next(line for line in result.lines if line.code == "POINT_EXCESS")
-    assert base_line.amount == Decimal("78260.87")
-    assert point_line.amount == Decimal("0.00")
+    point_line = next(
+        line for line in result.lines if line.code == "POINT_ADJUSTMENT"
+    )
+    assert base_line.amount == Decimal("90000.00")
+    assert point_line.kind is LineKind.ADJUSTMENT_DEBIT
+    assert point_line.amount == Decimal("11739.13")
     assert result.point_delta == Decimal("-15")
     assert result.totals.payable == Decimal("78260.87")
     assert result.warnings == ()
@@ -184,10 +187,78 @@ def test_proportional_policy_keeps_full_base_and_pays_excess(period, rules):
     )
 
     base_line = next(line for line in result.lines if line.code == "BASE")
-    point_line = next(line for line in result.lines if line.code == "POINT_EXCESS")
+    point_line = next(
+        line for line in result.lines if line.code == "POINT_ADJUSTMENT"
+    )
     assert base_line.amount == Decimal("90000.00")
+    assert point_line.kind is LineKind.ADJUSTMENT_CREDIT
     assert point_line.amount == Decimal("500.00")
     assert result.totals.payable == Decimal("90500.00")
+
+
+def test_proportional_policy_matches_excel_bonus_basis(period, rules):
+    proportional_rules = replace(
+        rules,
+        point_policy=PointPolicy.PROPORTIONAL_WITH_EXCESS,
+    )
+    request = make_request(
+        period,
+        base_accrual=Decimal("30000"),
+        point_base_accrual=Decimal("40000"),
+        target_points=Decimal("110"),
+        actual_points=Decimal("90"),
+        lines=(input_line("bonus:1", "BONUS", LineKind.EARNING, "10000"),),
+        expected_totals=ExpectedTotals(
+            point_amount=Decimal("-7272.73"),
+            gross=Decimal("40000"),
+            recalculated_gross=Decimal("32727.27"),
+            payable=Decimal("32727.27"),
+        ),
+    )
+
+    result = DeterministicPayrollCalculator().calculate(
+        request,
+        proportional_rules,
+    )
+
+    point_line = next(
+        line for line in result.lines if line.code == "POINT_ADJUSTMENT"
+    )
+    assert point_line.kind is LineKind.ADJUSTMENT_DEBIT
+    assert point_line.amount == Decimal("7272.73")
+    assert result.totals.gross_before_adjustments == Decimal("40000.00")
+    assert result.totals.adjustment_total == Decimal("-7272.73")
+    assert result.totals.gross_after_adjustments == Decimal("32727.27")
+    assert result.totals.payable == Decimal("32727.27")
+    assert result.warnings == ()
+
+
+def test_automatic_excess_rate_keeps_unrounded_excel_formula(period, rules):
+    proportional_rules = replace(
+        rules,
+        point_policy=PointPolicy.PROPORTIONAL_WITH_EXCESS,
+    )
+    request = make_request(
+        period,
+        base_accrual=Decimal("30000"),
+        point_base_accrual=Decimal("40000"),
+        target_points=Decimal("110"),
+        actual_points=Decimal("233"),
+        point_rate=Decimal("363.6364"),
+        point_rate_overridden=False,
+        lines=(input_line("bonus:1", "BONUS", LineKind.EARNING, "10000"),),
+    )
+
+    result = DeterministicPayrollCalculator().calculate(
+        request,
+        proportional_rules,
+    )
+
+    point_line = next(
+        line for line in result.lines if line.code == "POINT_ADJUSTMENT"
+    )
+    assert point_line.amount == Decimal("44727.27")
+    assert result.totals.gross_after_adjustments == Decimal("84727.27")
 
 
 def test_debit_deduction_and_advance_have_distinct_effects(period, rules):

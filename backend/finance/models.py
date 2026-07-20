@@ -231,7 +231,8 @@ class EmployeePayRate(DraftVersionedModel):
         "Цена балла сверх нормы",
         max_digits=19,
         decimal_places=4,
-        default=Decimal("0"),
+        null=True,
+        blank=True,
         validators=[MinValueValidator(Decimal("0"))],
     )
     currency = models.CharField(

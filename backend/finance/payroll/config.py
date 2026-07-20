@@ -13,7 +13,7 @@ from payroll_core import PayrollRules, PointPolicy, RoundingPolicy
 
 DEFAULT_CONFIG = {
     "RULESET_ID": "eusrr-standard",
-    "RULESET_VERSION": "2026.07.2",
+    "RULESET_VERSION": "2026.07.4",
     "EFFECTIVE_FROM": "2026-01-01",
     "EFFECTIVE_TO": None,
     "POINT_POLICY": PointPolicy.PROPORTIONAL_WITH_EXCESS.value,

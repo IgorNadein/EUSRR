@@ -13,6 +13,8 @@ from .admin_views import (
     EmployeePayRateReviseView,
     PayrollBulkPayRateView,
     PayrollBulkPointRateView,
+    PayrollBulkTargetPointsView,
+    PayrollComponentCellClearView,
     PayrollAdminComponentListView,
     PayrollAdminEmployeeListView,
     PayrollAdminPeriodDetailView,
@@ -23,6 +25,7 @@ from .admin_views import (
     PayrollInputLineDetailView,
     PayrollInputLineListCreateView,
     PayrollPeriodCalculateView,
+    PayrollPeriodApproveDraftsView,
     PayrollPeriodCloseView,
     PayrollPeriodTableView,
     PayrollRunApproveView,
@@ -70,6 +73,11 @@ urlpatterns = [
         name="admin-period-calculate",
     ),
     path(
+        "payroll/admin/periods/<int:pk>/approve-drafts/",
+        PayrollPeriodApproveDraftsView.as_view(),
+        name="admin-period-approve-drafts",
+    ),
+    path(
         "payroll/admin/periods/<int:pk>/table/",
         PayrollPeriodTableView.as_view(),
         name="admin-period-table",
@@ -88,6 +96,11 @@ urlpatterns = [
         "payroll/admin/periods/<int:pk>/bulk-point-rate/",
         PayrollBulkPointRateView.as_view(),
         name="admin-period-bulk-point-rate",
+    ),
+    path(
+        "payroll/admin/periods/<int:pk>/bulk-target-points/",
+        PayrollBulkTargetPointsView.as_view(),
+        name="admin-period-bulk-target-points",
     ),
     path(
         "payroll/admin/periods/<int:pk>/close/",
@@ -148,6 +161,11 @@ urlpatterns = [
         "payroll/admin/input-lines/<int:pk>/approve/",
         PayrollInputLineApproveView.as_view(),
         name="admin-input-line-approve",
+    ),
+    path(
+        "payroll/admin/periods/<int:pk>/component-cell/clear/",
+        PayrollComponentCellClearView.as_view(),
+        name="admin-component-cell-clear",
     ),
     path(
         "payroll/admin/runs/<int:pk>/",

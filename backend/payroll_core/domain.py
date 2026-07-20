@@ -141,9 +141,11 @@ class PayrollRequest:
     currency: str
     base_accrual: Decimal
     base_source_ref: str
+    point_base_accrual: Decimal | None = None
     target_points: Decimal | None = None
     actual_points: Decimal | None = None
     point_rate: Decimal = Decimal("0")
+    point_rate_overridden: bool = True
     lines: tuple[InputLine, ...] = dataclass_field(default_factory=tuple)
     expected_totals: ExpectedTotals | None = None
 
@@ -155,6 +157,11 @@ class PayrollRequest:
             "currency": self.currency,
             "base_accrual": decimal_text(self.base_accrual),
             "base_source_ref": self.base_source_ref,
+            "point_base_accrual": (
+                decimal_text(self.point_base_accrual)
+                if self.point_base_accrual is not None
+                else None
+            ),
             "target_points": (
                 decimal_text(self.target_points)
                 if self.target_points is not None
@@ -166,6 +173,7 @@ class PayrollRequest:
                 else None
             ),
             "point_rate": decimal_text(self.point_rate),
+            "point_rate_overridden": self.point_rate_overridden,
             "lines": [line.to_dict() for line in ordered_lines],
             "expected_totals": (
                 self.expected_totals.to_dict()

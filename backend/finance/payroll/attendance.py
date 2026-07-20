@@ -30,7 +30,12 @@ from finance.enums import (
     PayrollPeriodStatus,
     PayrollRunStatus,
 )
-from finance.models import PayrollAuditEvent, PayrollPeriod, PayrollWorkRecord
+from finance.models import (
+    PayrollAuditEvent,
+    PayrollPeriod,
+    PayrollWorkRecord,
+    PayrollWorkSettings,
+)
 
 from .access import has_payroll_permission, has_simple_admin_access
 from .config import build_rules
@@ -38,14 +43,15 @@ from .exceptions import PayrollOperationError, PayrollPermissionDenied
 
 Employee = get_user_model()
 
-ATTENDANCE_WORK_POLICY_CODE = "hours_as_work_units_v1"
+ATTENDANCE_WORK_POLICY_CODE = "attendance_to_daily_points_v2"
 ATTENDANCE_WORK_POLICY = {
     "code": ATTENDANCE_WORK_POLICY_CODE,
-    "label": "1 час = 1 единица выработки",
+    "label": "Посещаемость переводится в баллы дневной нормы",
     "description": (
-        "Норма равна сумме плановых часов, факт — сумме отработанных часов "
-        "по проверенным рабочим дням. Импорт создаёт только черновики."
+        "Полностью отработанный день даёт дневную норму баллов. Неполный день "
+        "и переработка рассчитываются пропорционально плановым часам."
     ),
+    "formula": ("Баллы дня = дневная норма × отработанные часы ÷ плановые часы"),
 }
 ATTENDANCE_IMPORT_MODES = {"missing_only", "replace_existing"}
 ACTION_KEYS = ("create", "update", "revise", "unchanged", "skip", "blocked")
@@ -86,6 +92,48 @@ def _is_explicit_absence(record: AttendanceRecord) -> bool:
         for value in values
         for marker in ABSENCE_ISSUE_MARKERS
     )
+
+
+def calculate_attendance_points_projection(
+    records: list[AttendanceRecord],
+    *,
+    daily_point_value: Decimal,
+) -> Decimal:
+    """Calculate a read-only point total from the available attendance rows.
+
+    This intentionally uses the same valid-day formula as the attendance import,
+    but does not require a complete period: the summary table can therefore show
+    the current projection while the month is still in progress.
+    """
+
+    actual_points = Decimal("0")
+    for record in records:
+        worked = _finite_decimal(record.work_hours)
+        expected = _finite_decimal(record.expected_hours)
+        if worked is not None and worked > 0 and not record.effective_is_workday:
+            continue
+        if not record.effective_is_workday or record.technical_issues:
+            continue
+        if record.personnel_status == ACTION_REMOTE and not (
+            record.is_manually_edited
+            and "work_hours" in (record.manual_edit_payload or {})
+        ):
+            continue
+        if bool(record.arrival_time) != bool(record.departure_time):
+            continue
+        if (
+            expected is None
+            or worked is None
+            or expected <= 0
+            or expected > 24
+            or worked < 0
+            or worked > 24
+        ):
+            continue
+        if worked == 0 and not record.arrival_time and not _is_explicit_absence(record):
+            continue
+        actual_points += daily_point_value * worked / expected
+    return actual_points.quantize(QUANTUM)
 
 
 def _employee_payload(employee) -> dict:
@@ -152,7 +200,12 @@ def _attendance_snapshot_hash(records: list[AttendanceRecord]) -> str:
     return hashlib.sha256(encoded.encode()).hexdigest()
 
 
-def _analyze_attendance(period: PayrollPeriod, records: list[AttendanceRecord]):
+def _analyze_attendance(
+    period: PayrollPeriod,
+    records: list[AttendanceRecord],
+    *,
+    daily_target_points: Decimal,
+):
     blockers: list[dict[str, str]] = []
     warnings: list[dict[str, str]] = []
     expected_dates = set(_date_range(period))
@@ -173,8 +226,10 @@ def _analyze_attendance(period: PayrollPeriod, records: list[AttendanceRecord]):
             )
         )
 
-    target = Decimal("0")
-    actual = Decimal("0")
+    target_points = Decimal("0")
+    actual_points = Decimal("0")
+    expected_hours = Decimal("0")
+    worked_hours = Decimal("0")
     effective_workdays = 0
     technical_issue_days = 0
     absence_days = 0
@@ -254,8 +309,10 @@ def _analyze_attendance(period: PayrollPeriod, records: list[AttendanceRecord]):
             )
             continue
 
-        target += expected
-        actual += worked
+        expected_hours += expected
+        worked_hours += worked
+        target_points += daily_target_points
+        actual_points += daily_target_points * worked / expected
         absence_days += int(explicit_absence)
         manual_days += int(record.is_manually_edited)
         overtime_days += int(record.is_overtime)
@@ -267,11 +324,11 @@ def _analyze_attendance(period: PayrollPeriod, records: list[AttendanceRecord]):
                 f"Технические проблемы обнаружены за {technical_issue_days} дн.",
             )
         )
-    if target <= 0:
+    if target_points <= 0:
         blockers.append(
             _issue(
-                "ZERO_TARGET_WORK_UNITS",
-                "По посещаемости не удалось получить положительную норму часов.",
+                "ZERO_TARGET_POINTS",
+                "По посещаемости не удалось получить положительную норму баллов.",
             )
         )
     if missing_schedule:
@@ -304,10 +361,11 @@ def _analyze_attendance(period: PayrollPeriod, records: list[AttendanceRecord]):
         )
 
     return {
-        "target_points": str(target.quantize(QUANTUM)),
-        "actual_points": str(actual.quantize(QUANTUM)),
-        "expected_hours": str(target.quantize(QUANTUM)),
-        "worked_hours": str(actual.quantize(QUANTUM)),
+        "target_points": str(target_points.quantize(QUANTUM)),
+        "actual_points": str(actual_points.quantize(QUANTUM)),
+        "daily_target_points": str(daily_target_points.quantize(QUANTUM)),
+        "expected_hours": str(expected_hours.quantize(QUANTUM)),
+        "worked_hours": str(worked_hours.quantize(QUANTUM)),
         "attendance_days": len(records),
         "effective_workdays": effective_workdays,
         "technical_issue_days": technical_issue_days,
@@ -433,8 +491,10 @@ def build_attendance_work_preview(
         "employee", "employee__position", "created_by"
     )
     if lock:
-        attendance = attendance.select_for_update()
-        work = work.select_for_update()
+        # Both projections contain nullable outer joins (analysis run and
+        # employee position).  Lock only the source rows being imported.
+        attendance = attendance.select_for_update(of=("self",))
+        work = work.select_for_update(of=("self",))
     attendance_records = list(attendance.order_by("employee_id", "date", "id"))
     work_records = list(work.order_by("employee_id", "revision", "id"))
 
@@ -451,11 +511,16 @@ def build_attendance_work_preview(
         .select_related("position")
         .prefetch_related("departments_links__department")
     }
+    daily_target_points = PayrollWorkSettings.get_daily_target_points()
 
     items = []
     for employee_id in employee_ids:
         records = attendance_by_employee[employee_id]
-        metrics = _analyze_attendance(period, records)
+        metrics = _analyze_attendance(
+            period,
+            records,
+            daily_target_points=daily_target_points,
+        )
         if not records:
             metrics["blockers"].append(
                 _issue(
@@ -526,7 +591,10 @@ def build_attendance_work_preview(
         "period_id": period.pk,
         "generated_at": timezone.now().isoformat(),
         "preview_token": token,
-        "policy": ATTENDANCE_WORK_POLICY,
+        "policy": {
+            **ATTENDANCE_WORK_POLICY,
+            "daily_target_points": str(daily_target_points.quantize(QUANTUM)),
+        },
         "summary": {
             "attendance_employees": len(attendance_by_employee),
             "existing": sum(item["existing_record"] is not None for item in items),
@@ -594,7 +662,7 @@ def apply_attendance_work_preview(
         )
 
     period = (
-        PayrollPeriod.objects.select_for_update()
+        PayrollPeriod.objects.select_for_update(of=("self",))
         .select_related("current_run")
         .get(pk=period_id)
     )
@@ -664,7 +732,7 @@ def apply_attendance_work_preview(
                 else prior_max + 1
             )
             source_ref = (
-                f"attendance-hours-v1:{period.pk}:{employee_id}:r{revision}:"
+                f"attendance-points-v2:{period.pk}:{employee_id}:r{revision}:"
                 f"{preview_token[:24]}"
             )
             metrics = {
@@ -681,6 +749,7 @@ def apply_attendance_work_preview(
                     status=ApprovalStatus.DRAFT,
                     source=InputSource.ATTENDANCE,
                     source_ref=source_ref,
+                    target_points_overridden=False,
                     reason=mutation_reason,
                     created_by=actor,
                     **metrics,
@@ -693,6 +762,7 @@ def apply_attendance_work_preview(
                 record = existing
                 record._expected_lock_version = record.lock_version
                 record.target_points = metrics["target_points"]
+                record.target_points_overridden = False
                 record.actual_points = metrics["actual_points"]
                 record.source = InputSource.ATTENDANCE
                 record.source_ref = source_ref
@@ -710,6 +780,7 @@ def apply_attendance_work_preview(
                     status=ApprovalStatus.DRAFT,
                     source=InputSource.ATTENDANCE,
                     source_ref=source_ref,
+                    target_points_overridden=False,
                     reason=mutation_reason,
                     created_by=actor,
                     expected_point_amount=existing.expected_point_amount,

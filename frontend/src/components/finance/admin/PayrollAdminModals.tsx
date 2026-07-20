@@ -15,6 +15,9 @@ import type {
   PayrollBulkPointRateMode,
   PayrollBulkPointRateResult,
   PayrollBulkPointRateWrite,
+  PayrollBulkTargetPointsMode,
+  PayrollBulkTargetPointsResult,
+  PayrollBulkTargetPointsWrite,
   PayrollComponent,
   PayrollInputLineWrite,
   PayrollPayRateWrite,
@@ -195,7 +198,7 @@ export function PayrollRateFormModal({
 }) {
   const [employeeId, setEmployeeId] = useState(() => rate ? String(rate.employee.id) : "");
   const [amount, setAmount] = useState(() => rate?.amount || "");
-  const [pointRate, setPointRate] = useState(() => rate?.point_rate || "0");
+  const [pointRate, setPointRate] = useState(() => rate?.point_rate ?? "");
   const [effectiveFrom, setEffectiveFrom] = useState(() => rate?.effective_from || period.date_from);
   const [reason, setReason] = useState(() => rate?.reason || "");
   const [busy, setBusy] = useState(false);
@@ -207,7 +210,7 @@ export function PayrollRateFormModal({
       employee_id: Number(employeeId),
       rate_code: "BASE",
       amount,
-      point_rate: pointRate || "0",
+      point_rate: pointRate.trim() || null,
       currency: period.currency,
       effective_from: effectiveFrom,
       reason,
@@ -237,8 +240,8 @@ export function PayrollRateFormModal({
           </label>
           <label>
             <span className="app-field-label">Цена балла сверх нормы</span>
-            <input type="number" className={inputClass} inputMode="decimal" min="0" step="0.01" value={pointRate} placeholder="0" onChange={(event) => setPointRate(event.target.value)} />
-            <span className="app-text-muted mt-1 block text-xs">Если оставить пустым, сверх нормы доплата не начисляется.</span>
+            <input type="number" className={inputClass} inputMode="decimal" min="0" step="0.01" value={pointRate} placeholder="Как в норме" onChange={(event) => setPointRate(event.target.value)} />
+            <span className="app-text-muted mt-1 block text-xs">Если оставить пустым, каждый балл сверх нормы оплачивается по цене балла в норме.</span>
           </label>
           <label>
             <span className="app-field-label">Действует с</span>
@@ -294,6 +297,7 @@ export function PayrollBulkPointRateModal({
       return {
         employee: current.employee,
         pointRate: pointRates.size === 1 ? current.point_rate : null,
+        mixedPointRates: pointRates.size > 1,
         hasDraft: records.some((record) => record.status === "draft"),
         rateCount: new Set(records.map((record) => record.effective_from)).size,
       };
@@ -323,8 +327,9 @@ export function PayrollBulkPointRateModal({
   const allSelected = employeeOptions.length > 0
     && employeeOptions.every(({ employee }) => selectedEmployeeIds.has(employee.id));
   const numericPointRate = Number(pointRate);
-  const fixedValueValid = pointRate.trim() === ""
-    || (Number.isFinite(numericPointRate) && numericPointRate >= 0);
+  const fixedValueValid = pointRate.trim() !== ""
+    && Number.isFinite(numericPointRate)
+    && numericPointRate >= 0;
   const canSubmit = selectedEmployeeIds.size > 0
     && (mode === "in_norm" || fixedValueValid)
     && reason.trim().length > 0;
@@ -346,7 +351,7 @@ export function PayrollBulkPointRateModal({
       result = await onSubmit({
         employee_ids: Array.from(selectedEmployeeIds),
         mode,
-        point_rate: mode === "fixed" ? pointRate.trim() || "0" : null,
+        point_rate: mode === "fixed" ? pointRate.trim() : null,
         reason: reason.trim(),
       });
     }, {
@@ -387,7 +392,7 @@ export function PayrollBulkPointRateModal({
                 <input type="radio" name="point-rate-mode" value="in_norm" checked={mode === "in_norm"} onChange={() => setMode("in_norm")} />
                 <span>
                   <span className="block text-sm font-semibold text-[var(--foreground)]">Как в пределах нормы</span>
-                  <span className="app-text-muted mt-1 block text-xs">Для каждого сотрудника: его оклад ÷ его норма баллов.</span>
+                  <span className="app-text-muted mt-1 block text-xs">Для каждого сотрудника: (оклад + премия) ÷ его норма баллов.</span>
                 </span>
               </span>
             </label>
@@ -396,7 +401,7 @@ export function PayrollBulkPointRateModal({
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label>
-            <span className="app-field-label">Цена сверх нормы</span>
+            <span className="app-field-label">Цена сверх нормы {mode === "fixed" ? "*" : ""}</span>
             <input
               type="number"
               className={inputClass}
@@ -404,11 +409,12 @@ export function PayrollBulkPointRateModal({
               min="0"
               step="0.01"
               value={pointRate}
+              required={mode === "fixed"}
               disabled={mode === "in_norm"}
-              placeholder={mode === "in_norm" ? "Рассчитается отдельно" : "0"}
+              placeholder={mode === "in_norm" ? "Как цена в норме" : "0"}
               onChange={(event) => setPointRate(event.target.value)}
             />
-            {mode === "fixed" ? <span className="app-text-muted mt-1 block text-xs">Пустое поле будет сохранено как 0.</span> : null}
+            {mode === "fixed" ? <span className="app-text-muted mt-1 block text-xs">Введите 0, если доплата сверх нормы не нужна.</span> : null}
           </label>
           <label>
             <span className="app-field-label">Выбрано сотрудников</span>
@@ -461,10 +467,14 @@ export function PayrollBulkPointRateModal({
                 </span>
                 <span className="shrink-0 text-right">
                   <span className="block text-xs font-medium text-[var(--foreground)]">
-                    {option.pointRate === null ? `${option.rateCount} ставки` : `${option.pointRate} ${period.currency}`}
+                    {option.mixedPointRates
+                      ? `${option.rateCount} ставки`
+                      : option.pointRate === null
+                        ? "Автоматически"
+                        : `${option.pointRate} ${period.currency}`}
                   </span>
                   <span className="app-text-muted mt-0.5 block text-[11px]">
-                    {mode === "in_norm" ? "Станет как цена в норме" : option.hasDraft ? "Обновится черновик" : "Новая версия"}
+                    {mode === "in_norm" ? "Будет считаться по цене в норме" : option.hasDraft ? "Обновится черновик" : "Новая версия"}
                   </span>
                 </span>
               </label>
@@ -491,6 +501,197 @@ export function PayrollBulkPointRateModal({
           onClose={onClose}
           submitLabel={`Применить к ${selectedEmployeeIds.size}`}
         />
+      </form>
+    </Modal>
+  );
+}
+
+export function PayrollBulkTargetPointsModal({
+  isOpen,
+  period,
+  employees,
+  records,
+  onClose,
+  onSubmit,
+  onSaved,
+  onStale,
+}: {
+  isOpen: boolean;
+  period: PayrollAdminPeriod;
+  employees: PayrollAdminEmployee[];
+  records: PayrollAdminWorkRecord[];
+  onClose: () => void;
+  onSubmit: (payload: PayrollBulkTargetPointsWrite) => Promise<PayrollBulkTargetPointsResult>;
+  onSaved: (result: PayrollBulkTargetPointsResult) => void | Promise<void>;
+  onStale?: () => void | Promise<void>;
+}) {
+  const employeeOptions = useMemo(() => employees.map((employee) => {
+    const current = records
+      .filter((record) => record.employee.id === employee.id && record.status !== "voided")
+      .sort((left, right) => right.revision - left.revision || right.id - left.id)[0];
+    return { employee, current };
+  }).sort((left, right) => (
+    left.employee.display_name.localeCompare(right.employee.display_name, "ru")
+  )), [employees, records]);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<number>>(
+    () => new Set(employeeOptions.map((option) => option.employee.id)),
+  );
+  const [search, setSearch] = useState("");
+  const [mode, setMode] = useState<PayrollBulkTargetPointsMode>("fixed");
+  const [targetPoints, setTargetPoints] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const filteredOptions = useMemo(() => {
+    const needle = search.trim().toLocaleLowerCase("ru-RU");
+    if (!needle) return employeeOptions;
+    return employeeOptions.filter(({ employee }) => (
+      `${employee.display_name} ${employee.position || ""} ${employee.department || ""}`
+        .toLocaleLowerCase("ru-RU")
+        .includes(needle)
+    ));
+  }, [employeeOptions, search]);
+  const allSelected = employeeOptions.length > 0
+    && employeeOptions.every(({ employee }) => selectedEmployeeIds.has(employee.id));
+  const numericTarget = Number(targetPoints);
+  const fixedValueValid = targetPoints.trim() !== ""
+    && Number.isFinite(numericTarget)
+    && numericTarget > 0;
+  const canSubmit = selectedEmployeeIds.size > 0
+    && (mode === "automatic" || fixedValueValid)
+    && reason.trim().length > 0;
+
+  const toggleEmployee = (employeeId: number) => {
+    setSelectedEmployeeIds((current) => {
+      const next = new Set(current);
+      if (next.has(employeeId)) next.delete(employeeId);
+      else next.add(employeeId);
+      return next;
+    });
+  };
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!canSubmit) return;
+    let result: PayrollBulkTargetPointsResult | null = null;
+    void submitModalForm(async () => {
+      result = await onSubmit({
+        employee_ids: Array.from(selectedEmployeeIds),
+        mode,
+        target_points: mode === "fixed" ? targetPoints.trim() : null,
+        reason: reason.trim(),
+      });
+    }, {
+      fallback: "Не удалось массово задать норму баллов.",
+      setBusy,
+      setError,
+      onSaved: async () => {
+        if (result) await onSaved(result);
+      },
+      onStale,
+    });
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Массовое заполнение нормы баллов" size="lg">
+      <form onSubmit={submit}>
+        <div className="app-selected rounded-xl px-4 py-3">
+          <p className="text-sm font-semibold text-[var(--foreground)]">{period.name || period.code}</p>
+          <p className="app-text-muted mt-1 text-xs leading-relaxed">
+            Черновики будут обновлены. Для утверждённой выработки система создаст новую черновую версию.
+          </p>
+        </div>
+
+        <fieldset className="mt-4">
+          <legend className="app-field-label">Как заполнить норму баллов</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className={`cursor-pointer rounded-xl border px-4 py-3 ${mode === "fixed" ? "app-selected" : "app-surface-muted border-[var(--border-subtle)]"}`}>
+              <span className="flex items-start gap-2.5">
+                <input type="radio" name="target-points-mode" value="fixed" checked={mode === "fixed"} onChange={() => setMode("fixed")} />
+                <span>
+                  <span className="block text-sm font-semibold text-[var(--foreground)]">Указать одну норму</span>
+                  <span className="app-text-muted mt-1 block text-xs">Одинаковое значение для выбранных сотрудников.</span>
+                </span>
+              </span>
+            </label>
+            <label className={`cursor-pointer rounded-xl border px-4 py-3 ${mode === "automatic" ? "app-selected" : "app-surface-muted border-[var(--border-subtle)]"}`}>
+              <span className="flex items-start gap-2.5">
+                <input type="radio" name="target-points-mode" value="automatic" checked={mode === "automatic"} onChange={() => setMode("automatic")} />
+                <span>
+                  <span className="block text-sm font-semibold text-[var(--foreground)]">Вернуть автоматическую</span>
+                  <span className="app-text-muted mt-1 block text-xs">По рабочему графику каждого сотрудника.</span>
+                </span>
+              </span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label>
+            <span className="app-field-label">Норма баллов {mode === "fixed" ? "*" : ""}</span>
+            <input
+              type="number"
+              className={inputClass}
+              inputMode="decimal"
+              min="0.0001"
+              step="0.0001"
+              value={targetPoints}
+              required={mode === "fixed"}
+              disabled={mode === "automatic"}
+              placeholder={mode === "automatic" ? "По рабочему графику" : "115"}
+              onChange={(event) => setTargetPoints(event.target.value)}
+            />
+          </label>
+          <label>
+            <span className="app-field-label">Выбрано сотрудников</span>
+            <div className="app-input flex min-h-10 items-center rounded-lg px-3 text-sm font-medium">
+              {selectedEmployeeIds.size} из {employeeOptions.length}
+            </div>
+          </label>
+        </div>
+
+        <div className="mt-4">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <span className="app-field-label mb-0">Сотрудники</span>
+            <button
+              type="button"
+              className="app-action-ghost rounded-md px-2 py-1 text-xs"
+              onClick={() => setSelectedEmployeeIds(
+                allSelected ? new Set() : new Set(employeeOptions.map((option) => option.employee.id)),
+              )}
+            >
+              {allSelected ? "Снять выбор" : "Выбрать всех"}
+            </button>
+          </div>
+          <label className="relative block">
+            <Search className="app-text-muted pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" size={15} />
+            <input className="app-input w-full rounded-lg py-2.5 pl-9 pr-3 text-sm" value={search} placeholder="Поиск по сотрудникам" onChange={(event) => setSearch(event.target.value)} />
+          </label>
+          <div className="app-surface-muted mt-2 max-h-64 overflow-y-auto rounded-xl border border-[var(--border-subtle)]">
+            {filteredOptions.length ? filteredOptions.map(({ employee, current }) => (
+              <label key={employee.id} className="flex cursor-pointer items-center gap-3 border-b border-[var(--border-subtle)] px-3 py-2.5 last:border-b-0 hover:bg-[var(--surface-secondary)]">
+                <input type="checkbox" checked={selectedEmployeeIds.has(employee.id)} onChange={() => toggleEmployee(employee.id)} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-[var(--foreground)]">{employee.display_name}</span>
+                  <span className="app-text-muted mt-0.5 block truncate text-xs">{employee.position || employee.department || "Сотрудник"}</span>
+                </span>
+                <span className="shrink-0 text-right">
+                  <span className="block text-xs font-medium text-[var(--foreground)]">{current ? current.target_points : "Автоматически"}</span>
+                  <span className="app-text-muted mt-0.5 block text-[11px]">
+                    {mode === "automatic" ? "Будет рассчитана по графику" : current?.status === "draft" ? "Обновится черновик" : current ? "Новая версия" : "Новый черновик"}
+                  </span>
+                </span>
+              </label>
+            )) : <p className="app-text-muted px-4 py-8 text-center text-sm">Сотрудники не найдены.</p>}
+          </div>
+        </div>
+
+        <label className="mt-4 block">
+          <span className="app-field-label">Основание изменения *</span>
+          <textarea className={`${inputClass} min-h-20 resize-y`} value={reason} required placeholder="Укажите основание массового изменения" onChange={(event) => setReason(event.target.value)} />
+        </label>
+        <FormError message={error} />
+        <ModalActions busy={busy} disabled={!canSubmit} onClose={onClose} submitLabel={`Применить к ${selectedEmployeeIds.size}`} />
       </form>
     </Modal>
   );
@@ -683,7 +884,9 @@ export function PayrollBulkPayRateModal({
                   </span>
                   <span className="shrink-0 text-right">
                     <span className="block text-xs font-medium text-[var(--foreground)]">
-                      {inherited ? `${inherited.point_rate} ${period.currency} / балл сверх нормы` : "Цена сверх нормы: 0"}
+                      {inherited?.point_rate == null
+                        ? "Сверх нормы: автоматически"
+                        : `${inherited.point_rate} ${period.currency} / балл сверх нормы`}
                     </span>
                     <span className="app-text-muted mt-0.5 block text-[11px]">{action}</span>
                   </span>
@@ -694,7 +897,7 @@ export function PayrollBulkPayRateModal({
             )}
           </div>
           <p className="app-text-muted mt-2 text-xs">
-            Цена балла сверх нормы наследуется из последней ставки сотрудника; если ставки ещё не было, будет установлено 0.
+            Цена балла сверх нормы наследуется из последней ставки сотрудника. Пустое значение означает автоматический расчёт по цене балла в норме.
           </p>
         </div>
 

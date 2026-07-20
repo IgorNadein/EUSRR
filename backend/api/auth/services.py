@@ -178,7 +178,7 @@ def create_qr_login_token(
 def exchange_qr_login_token(*, raw_token: str, request) -> tuple[str, str]:
     token_hash = hash_qr_login_token(raw_token)
     qr_token = (
-        QrLoginToken.objects.select_for_update()
+        QrLoginToken.objects.select_for_update(of=("self",))
         .select_related("user")
         .filter(token_hash=token_hash)
         .first()
@@ -330,7 +330,7 @@ def poll_qr_login_request(
     request,
 ) -> dict[str, str | None]:
     qr_request = (
-        QrLoginRequest.objects.select_for_update()
+        QrLoginRequest.objects.select_for_update(of=("self",))
         .select_related("approved_by")
         .filter(
             client_secret_hash=hash_qr_login_request_client_secret(raw_client_secret),

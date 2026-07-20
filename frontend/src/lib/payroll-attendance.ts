@@ -35,7 +35,7 @@ export function isAttendancePayrollWorkRecord(source?: string | null): boolean {
 }
 
 export function formatPayrollWorkMetric(value: string, source?: string | null): string {
-    return `${value}${isAttendancePayrollWorkRecord(source) ? " ч" : ""}`;
+    return `${value}${isAttendancePayrollWorkRecord(source) ? " балл." : ""}`;
 }
 
 function pluralize(count: number, one: string, few: string, many: string): string {

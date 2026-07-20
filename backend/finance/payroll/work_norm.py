@@ -8,6 +8,7 @@ from attendance.services import (
     get_standard_work_schedule,
     get_standard_work_schedule_payload,
 )
+from employees.services.personnel_state import resolve_employee_personnel_state
 
 from finance.models import PayrollPeriod, PayrollWorkSettings
 
@@ -44,7 +45,7 @@ def _override_date(value) -> date | None:
         return None
 
 
-def count_period_workdays(period: PayrollPeriod, schedule: dict) -> int:
+def period_workdates(period: PayrollPeriod, schedule: dict) -> list[date]:
     workdays = set(schedule.get("workdays") or WEEKDAY_NAMES[:5])
     overrides = {}
     for item in schedule.get("date_overrides") or []:
@@ -54,15 +55,20 @@ def count_period_workdays(period: PayrollPeriod, schedule: dict) -> int:
         if override_date is not None and "is_workday" in item:
             overrides[override_date] = bool(item["is_workday"])
 
-    total = 0
+    dates = []
     current = period.date_from
     while current <= period.date_to:
         is_workday = current.weekday() < len(WEEKDAY_NAMES) and (
             WEEKDAY_NAMES[current.weekday()] in workdays
         )
-        total += int(overrides.get(current, is_workday))
+        if overrides.get(current, is_workday):
+            dates.append(current)
         current += timedelta(days=1)
-    return total
+    return dates
+
+
+def count_period_workdays(period: PayrollPeriod, schedule: dict) -> int:
+    return len(period_workdates(period, schedule))
 
 
 def calculate_period_target_points(
@@ -84,3 +90,39 @@ def calculate_period_target_points(
     workdays_count = count_period_workdays(period, schedule)
     target_points = (daily_target * workdays_count).quantize(QUANTUM)
     return target_points, workdays_count, source
+
+
+def calculate_period_personnel_points(
+    period: PayrollPeriod,
+    *,
+    employee,
+    actions,
+    period_target_points: Decimal,
+    schedule: dict | None = None,
+) -> tuple[Decimal, int]:
+    """Project points from the work calendar and official personnel events.
+
+    A scheduled day is treated as attended unless the personnel state explicitly
+    says that attendance is not expected (leave, sick leave, day off, maternity
+    leave or dismissal). The result is a read-only projection and is not stored
+    in payroll models.
+    """
+
+    if schedule is None:
+        schedule, _ = resolve_employee_schedule(employee)
+    workdates = period_workdates(period, schedule)
+    attended_dates = [
+        workdate
+        for workdate in workdates
+        if resolve_employee_personnel_state(
+            employee,
+            workdate,
+            actions=actions,
+        ).expects_attendance
+    ]
+    points = (
+        period_target_points * Decimal(len(attended_dates)) / Decimal(len(workdates))
+        if workdates
+        else Decimal("0")
+    ).quantize(QUANTUM)
+    return points, len(attended_dates)

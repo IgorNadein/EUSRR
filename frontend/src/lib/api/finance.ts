@@ -241,6 +241,8 @@ export type PayrollPeriodTableRow = {
     target_points: string | null;
     target_points_automatic: boolean;
     target_points_source: string;
+    attendance_points: string | null;
+    personnel_points: string;
     actual_points: string | null;
     point_delta: string | null;
     point_amount: string | null;
@@ -258,6 +260,16 @@ export type PayrollPeriodTableRow = {
 export type PayrollPeriodTable = {
     period_id: number;
     currency: string;
+    calculation_rules: {
+        ruleset_id: string;
+        version: string;
+        effective_from: string;
+        effective_to: string | null;
+        point_policy: "disabled" | "excess_only" | "proportional_with_excess";
+        money_quantum: string;
+        rounding: "ROUND_HALF_UP" | "ROUND_HALF_EVEN" | "ROUND_DOWN";
+        allow_negative_payable: boolean;
+    };
     run: Pick<PayrollAdminRun, "id" | "revision" | "status"> | null;
     component_columns: PayrollPeriodTableComponent[];
     rows: PayrollPeriodTableRow[];
@@ -290,7 +302,7 @@ export type PayrollAdminPayRate = {
     employee: PayrollAdminEmployee;
     rate_code: string;
     amount: string;
-    point_rate: string;
+    point_rate: string | null;
     currency: string;
     effective_from: string;
     revision: number;
@@ -366,6 +378,7 @@ export type PayrollAttendanceWorkPreviewItem = {
     employee: PayrollAdminEmployee;
     target_points: string;
     actual_points: string;
+    daily_target_points: string;
     expected_hours: string;
     worked_hours: string;
     attendance_days: number;
@@ -385,6 +398,8 @@ export type PayrollAttendanceWorkPreview = {
         code: string;
         label: string;
         description: string;
+        formula: string;
+        daily_target_points: string;
     };
     summary: {
         attendance_employees: number;
@@ -455,7 +470,7 @@ export type PayrollPayRateWrite = {
     employee_id: number;
     rate_code: string;
     amount: string;
-    point_rate: string;
+    point_rate: string | null;
     currency: string;
     effective_from: string;
     reason: string;
@@ -499,6 +514,38 @@ export type PayrollBulkPayRateResult = {
         created_revisions: number;
         unchanged: number;
         skipped: number;
+    };
+};
+
+export type PayrollBulkTargetPointsMode = "fixed" | "automatic";
+
+export type PayrollBulkTargetPointsWrite = {
+    employee_ids: number[];
+    mode: PayrollBulkTargetPointsMode;
+    target_points?: string | null;
+    reason: string;
+};
+
+export type PayrollBulkTargetPointsResult = {
+    mode: PayrollBulkTargetPointsMode;
+    target_points: string | null;
+    summary: {
+        selected_employees: number;
+        created_drafts: number;
+        updated_drafts: number;
+        created_revisions: number;
+        unchanged: number;
+        skipped: number;
+    };
+};
+
+export type PayrollApproveDraftsResult = {
+    period_id: number;
+    summary: {
+        rates: number;
+        work_records: number;
+        input_lines: number;
+        total: number;
     };
 };
 
@@ -600,6 +647,13 @@ export function createFinanceApi(request: RequestFn) {
             payload: PayrollBulkPointRateWrite,
         ): Promise<PayrollBulkPointRateResult> =>
             request(`${adminPrefix}/periods/${periodId}/bulk-point-rate/`, jsonOptions("POST", payload)),
+        bulkSetPayrollAdminTargetPoints: (
+            periodId: number,
+            payload: PayrollBulkTargetPointsWrite,
+        ): Promise<PayrollBulkTargetPointsResult> =>
+            request(`${adminPrefix}/periods/${periodId}/bulk-target-points/`, jsonOptions("POST", payload)),
+        approveAllPayrollAdminDrafts: (periodId: number): Promise<PayrollApproveDraftsResult> =>
+            request(`${adminPrefix}/periods/${periodId}/approve-drafts/`, jsonOptions("POST")),
         getPayrollAdminWorkRecords: (params: PayrollAdminListParams = {}): Promise<PayrollAdminListPayload<PayrollAdminWorkRecord>> =>
             request(`${adminPrefix}/work-records/${buildQuery({ ...params, page_size: 200 })}`),
         createPayrollAdminWorkRecord: (payload: PayrollWorkRecordWrite): Promise<PayrollAdminWorkRecord> =>
@@ -632,6 +686,11 @@ export function createFinanceApi(request: RequestFn) {
             payload: Partial<Omit<PayrollInputLineWrite, "period_id" | "employee_id" | "component_id">> & { expected_lock_version: number },
         ): Promise<PayrollAdminInputLine> =>
             request(`${adminPrefix}/input-lines/${lineId}/`, jsonOptions("PATCH", payload)),
+        clearPayrollAdminComponentCell: (
+            periodId: number,
+            payload: { employee_id: number; component_id: number },
+        ): Promise<{ draft: number; approved: number; total: number }> =>
+            request(`${adminPrefix}/periods/${periodId}/component-cell/clear/`, jsonOptions("POST", payload)),
         approvePayrollAdminInputLine: (lineId: number, expectedLockVersion: number): Promise<PayrollAdminInputLine> =>
             request(`${adminPrefix}/input-lines/${lineId}/approve/`, jsonOptions("POST", { expected_lock_version: expectedLockVersion })),
         calculatePayrollAdminPeriod: (

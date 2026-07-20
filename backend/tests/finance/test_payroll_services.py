@@ -209,7 +209,7 @@ def test_excel_row_is_persisted_as_a_deterministic_statement(
     assert statement.result_snapshot["warnings"] == []
     assert list(statement.lines.values_list("code", flat=True)) == [
         "BASE",
-        "POINT_EXCESS",
+        "POINT_ADJUSTMENT",
         "BONUS",
         "CORRECTION_CREDIT",
     ]
@@ -217,6 +217,66 @@ def test_excel_row_is_persisted_as_a_deterministic_statement(
         action="payroll.calculated",
         object_id=str(run.pk),
     ).exists()
+
+
+def test_calculation_uses_excel_point_basis_with_bonus(
+    june_period,
+    payroll_users,
+):
+    operator = payroll_users["operator"]
+    approver = payroll_users["input_approver"]
+    employee = payroll_users["employee"]
+    rate = EmployeePayRate.objects.create(
+        employee=employee,
+        amount=Decimal("30000"),
+        point_rate=None,
+        currency="RUB",
+        effective_from=date(2026, 1, 1),
+        created_by=operator,
+    )
+    work = PayrollWorkRecord.objects.create(
+        period=june_period,
+        employee=employee,
+        target_points=Decimal("110"),
+        actual_points=Decimal("90"),
+        expected_point_amount=Decimal("-7272.73"),
+        expected_gross=Decimal("40000"),
+        expected_recalculated_gross=Decimal("32727.27"),
+        expected_payable=Decimal("32727.27"),
+        created_by=operator,
+    )
+    bonus = PayrollInputLine.objects.create(
+        period=june_period,
+        employee=employee,
+        component=PayrollComponent.objects.get(code="BONUS"),
+        amount=Decimal("10000"),
+        created_by=operator,
+    )
+    for instance, approve in (
+        (rate, approve_pay_rate),
+        (work, approve_work_record),
+        (bonus, approve_input_line),
+    ):
+        approve(
+            instance.pk,
+            actor=approver,
+            expected_lock_version=instance.lock_version,
+        )
+
+    run = calculate_period(june_period.pk, actor=operator)
+
+    statement = run.statements.get(employee=employee)
+    point_line = statement.lines.get(code="POINT_ADJUSTMENT")
+    assert statement.input_snapshot["point_base_accrual"] == "40000"
+    assert statement.input_snapshot["point_rate"] == "363.6364"
+    assert statement.input_snapshot["point_rate_overridden"] is False
+    assert point_line.kind == "adjustment_debit"
+    assert point_line.amount == Decimal("7272.73")
+    assert statement.gross_before_adjustments == Decimal("40000.00")
+    assert statement.adjustment_total == Decimal("-7272.73")
+    assert statement.gross_total == Decimal("32727.27")
+    assert statement.payable == Decimal("32727.27")
+    assert statement.result_snapshot["warnings"] == []
 
 
 def test_full_workflow_requires_a_second_person_and_employee_can_acknowledge(
@@ -441,7 +501,7 @@ def test_ruleset_not_effective_keeps_domain_code_and_localized_message(
     assert error.value.code == "RULESET_NOT_EFFECTIVE"
     assert error.value.message == (
         "Для выбранного периода нет действующих правил расчёта. "
-        "Набор eusrr-standard, версия 2026.07.2, применяется с 01.07.2026. "
+        "Набор eusrr-standard, версия 2026.07.4, применяется с 01.07.2026. "
         "Измените период или подключите историческую версию правил."
     )
     assert error.value.details["employee_id"] == payroll_users["employee"].pk
@@ -451,7 +511,7 @@ def test_ruleset_not_effective_keeps_domain_code_and_localized_message(
     }
     assert error.value.details["ruleset"] == {
         "id": "eusrr-standard",
-        "version": "2026.07.2",
+        "version": "2026.07.4",
         "effective_from": "2026-07-01",
     }
     assert {issue["code"] for issue in error.value.details["issues"]} == {

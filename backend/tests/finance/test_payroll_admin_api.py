@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -7,6 +8,8 @@ from django.db import IntegrityError, transaction
 from django.urls import reverse
 from django.utils import timezone
 
+from attendance.models import AttendanceAnalysisRun, AttendanceRecord
+from employees.models import EmployeeAction
 from finance.models import (
     EmployeePayRate,
     PayrollAuditEvent,
@@ -16,6 +19,8 @@ from finance.models import (
     PayrollRun,
     PayrollWorkRecord,
 )
+from requests_app.enums import RequestStatus, RequestType
+from requests_app.models import Request
 
 pytestmark = pytest.mark.django_db
 
@@ -229,6 +234,9 @@ def test_period_table_lists_all_employees_and_requires_view_all(
     assert_no_store(response)
     body = response.json()
     assert body["period_id"] == period.pk
+    assert body["calculation_rules"]["point_policy"] == "proportional_with_excess"
+    assert body["calculation_rules"]["money_quantum"] == "0.01"
+    assert body["calculation_rules"]["rounding"] == "ROUND_HALF_UP"
     assert body["run"] is None
     assert body["summary"]["employee_count"] >= 4
     assert {column["code"] for column in body["component_columns"]} == set(
@@ -240,8 +248,10 @@ def test_period_table_lists_all_employees_and_requires_view_all(
     assert row["employee"]["display_name"] == "Анна Итогова"
     assert row["status"] == "draft"
     assert row["rate_amount"] == "80000.0000"
-    assert row["in_norm_point_rate"] == "727.2727"
+    assert row["in_norm_point_rate"] == "736.3636"
     assert row["target_points"] == "110.0000"
+    assert row["attendance_points"] is None
+    assert row["personnel_points"] == "110.0000"
     assert row["actual_points"] == "115.0000"
     assert row["point_delta"] == "5.0000"
     assert row["point_amount"] == "750.00"
@@ -249,13 +259,9 @@ def test_period_table_lists_all_employees_and_requires_view_all(
     assert row["gross_total"] == "81750.00"
     assert row["payable"] == "81750.00"
     assert row["totals_preliminary"] is True
-    assert body["summary"]["preliminary_count"] == body["summary"][
-        "employee_count"
-    ]
+    assert body["summary"]["preliminary_count"] == body["summary"]["employee_count"]
     missing_row = next(
-        item
-        for item in body["rows"]
-        if item["employee"]["id"] == missing_employee.pk
+        item for item in body["rows"] if item["employee"]["id"] == missing_employee.pk
     )
     assert missing_row["status"] == "incomplete"
     assert missing_row["rate_amount"] is None
@@ -263,6 +269,170 @@ def test_period_table_lists_all_employees_and_requires_view_all(
     assert missing_row["target_points_automatic"] is True
     assert missing_row["actual_points"] is None
     assert missing_row["payable"] == "0.00"
+
+
+def test_period_table_projects_attendance_and_official_personnel_points(
+    user_factory,
+    auth_client_factory,
+):
+    manager = user_factory(email="table.projections.manager@example.test")
+    employee = user_factory(
+        email="table.projections.employee@example.test",
+        first_name="Иван",
+        last_name="Проекционный",
+    )
+    grant(manager, "view_all_payroll")
+    period = make_period(creator=manager)
+    attendance_run = AttendanceAnalysisRun.objects.create(
+        employee=employee,
+        period_start="2026-06-01",
+        period_end="2026-06-30",
+        status=AttendanceAnalysisRun.STATUS_SUCCESS,
+        schedule_payload={
+            "workdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+        },
+    )
+    AttendanceRecord.objects.create(
+        analysis_run=attendance_run,
+        employee=employee,
+        date="2026-06-01",
+        arrival_time="08:00",
+        departure_time="17:00",
+        work_hours=9,
+        expected_hours=9,
+        effective_is_workday=True,
+    )
+    PayrollWorkRecord.objects.create(
+        period=period,
+        employee=employee,
+        target_points="220",
+        target_points_overridden=True,
+        actual_points="0",
+        created_by=manager,
+    )
+    AttendanceRecord.objects.create(
+        analysis_run=attendance_run,
+        employee=employee,
+        date="2026-06-02",
+        arrival_time="08:00",
+        departure_time="12:30",
+        work_hours=4.5,
+        expected_hours=9,
+        effective_is_workday=True,
+    )
+
+    vacation = Request.objects.create(
+        employee=employee,
+        type=RequestType.VACATION,
+        date_from=date(2026, 6, 3),
+        date_to=date(2026, 6, 3),
+        status=RequestStatus.PENDING,
+    )
+    vacation.status = RequestStatus.APPROVED
+    vacation.approver = manager
+    vacation.decided_at = timezone.now()
+    vacation.save(update_fields=["status", "approver", "decided_at", "updated_at"])
+
+    action = EmployeeAction.objects.get(source_request=vacation)
+    assert action.date.date() == date(2026, 6, 3)
+
+    response = auth_client_factory(manager).get(
+        api_url("admin-period-table", pk=period.pk),
+    )
+
+    assert response.status_code == 200, response.content
+    row = next(
+        item
+        for item in response.json()["rows"]
+        if item["employee"]["id"] == employee.pk
+    )
+    assert row["target_points"] == "220.0000"
+    assert row["attendance_points"] == "15.0000"
+    assert row["personnel_points"] == "210.0000"
+
+
+def test_component_cell_can_be_cleared_and_voids_all_active_lines(
+    user_factory,
+    auth_client_factory,
+):
+    manager = user_factory(email="table.clear.manager@example.test")
+    employee = user_factory(email="table.clear.employee@example.test")
+    grant(manager, "manage_payroll_inputs", "view_all_payroll")
+    period = make_period(creator=manager)
+    bonus = PayrollComponent.objects.get(code="BONUS")
+    vacation = PayrollComponent.objects.get(code="VACATION_PAY")
+    draft = PayrollInputLine.objects.create(
+        period=period,
+        employee=employee,
+        component=bonus,
+        amount="3000",
+        reason="Черновая премия",
+        created_by=manager,
+    )
+    approved = PayrollInputLine.objects.create(
+        period=period,
+        employee=employee,
+        component=bonus,
+        amount="7000",
+        reason="Утверждённая премия",
+        status="approved",
+        created_by=manager,
+        approved_by=manager,
+        approved_at=timezone.now(),
+        self_approval_overridden=True,
+    )
+    unrelated = PayrollInputLine.objects.create(
+        period=period,
+        employee=employee,
+        component=vacation,
+        amount="500",
+        reason="Отпускные",
+        created_by=manager,
+    )
+    client = auth_client_factory(manager)
+
+    response = client.post(
+        api_url("admin-component-cell-clear", pk=period.pk),
+        {"employee_id": employee.pk, "component_id": bonus.pk},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.content
+    assert response.json() == {"draft": 1, "approved": 1, "total": 2}
+    draft.refresh_from_db()
+    approved.refresh_from_db()
+    unrelated.refresh_from_db()
+    for line in (draft, approved):
+        assert line.status == "voided"
+        assert line.voided_by_id == manager.pk
+        assert line.voided_at is not None
+        assert line.void_reason == "Значение очищено в итоговой таблице"
+    assert unrelated.status == "draft"
+    assert (
+        PayrollAuditEvent.objects.filter(
+            action="payroll.input_line_voided_from_table",
+            object_id__in=[str(draft.pk), str(approved.pk)],
+        ).count()
+        == 2
+    )
+
+    table_response = client.get(api_url("admin-period-table", pk=period.pk))
+    assert table_response.status_code == 200, table_response.content
+    row = next(
+        item
+        for item in table_response.json()["rows"]
+        if item["employee"]["id"] == employee.pk
+    )
+    assert "BONUS" not in row["component_amounts"]
+    assert row["component_amounts"] == {"VACATION_PAY": "500.00"}
+
+    repeated = client.post(
+        api_url("admin-component-cell-clear", pk=period.pk),
+        {"employee_id": employee.pk, "component_id": bonus.pk},
+        format="json",
+    )
+    assert repeated.status_code == 200
+    assert repeated.json() == {"draft": 0, "approved": 0, "total": 0}
 
 
 def test_period_table_includes_all_active_and_only_inactive_employees_with_work(
@@ -338,6 +508,55 @@ def test_period_table_includes_all_active_and_only_inactive_employees_with_work(
     assert inactive_with_zero_work.pk not in employee_ids
 
 
+def test_period_table_preview_matches_excel_point_formula_with_bonus(
+    user_factory,
+    auth_client_factory,
+):
+    manager = user_factory(email="table.excel.formula.manager@example.test")
+    employee = user_factory(email="table.excel.formula.employee@example.test")
+    grant(manager, "view_all_payroll")
+    period = make_period(creator=manager)
+    EmployeePayRate.objects.create(
+        employee=employee,
+        amount="30000",
+        point_rate=None,
+        effective_from=period.date_from,
+        created_by=manager,
+    )
+    PayrollWorkRecord.objects.create(
+        period=period,
+        employee=employee,
+        target_points="110",
+        actual_points="90",
+        created_by=manager,
+    )
+    PayrollInputLine.objects.create(
+        period=period,
+        employee=employee,
+        component=PayrollComponent.objects.get(code="BONUS"),
+        amount="10000",
+        created_by=manager,
+    )
+
+    response = auth_client_factory(manager).get(
+        api_url("admin-period-table", pk=period.pk),
+    )
+
+    assert response.status_code == 200, response.content
+    row = next(
+        item
+        for item in response.json()["rows"]
+        if item["employee"]["id"] == employee.pk
+    )
+    assert row["in_norm_point_rate"] == "363.6364"
+    assert row["point_rate"] is None
+    assert row["point_amount"] == "-7272.73"
+    assert row["gross_before_adjustments"] == "40000.00"
+    assert row["adjustment_total"] == "-7272.73"
+    assert row["gross_total"] == "32727.27"
+    assert row["payable"] == "32727.27"
+
+
 def test_staff_admin_gets_full_pilot_access_and_can_manage_any_draft(
     user_factory,
     auth_client_factory,
@@ -402,6 +621,102 @@ def test_staff_admin_gets_full_pilot_access_and_can_manage_any_draft(
     assert approved.status_code == 200
     assert approved.json()["approved_by_id"] == administrator.pk
     assert "self_approval_overridden" not in approved.json()
+
+
+def test_staff_admin_can_approve_all_period_drafts_atomically(
+    user_factory,
+    auth_client_factory,
+):
+    administrator = user_factory(email="bulk.approval.admin@example.test", staff=True)
+    employee = user_factory(email="bulk.approval.employee@example.test")
+    period = make_period(creator=administrator)
+    bonus = PayrollComponent.objects.get(code="BONUS")
+    client = auth_client_factory(administrator)
+
+    rate = EmployeePayRate.objects.create(
+        employee=employee,
+        amount="80000.0000",
+        point_rate=None,
+        effective_from=period.date_from,
+        created_by=administrator,
+    )
+    work_record = PayrollWorkRecord.objects.create(
+        period=period,
+        employee=employee,
+        target_points="110.0000",
+        actual_points="105.0000",
+        created_by=administrator,
+    )
+    input_line = PayrollInputLine.objects.create(
+        period=period,
+        employee=employee,
+        component=bonus,
+        amount="5000.00",
+        created_by=administrator,
+    )
+
+    response = client.post(
+        api_url("admin-period-approve-drafts", pk=period.pk),
+        {},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.content
+    assert response.json() == {
+        "period_id": period.pk,
+        "summary": {
+            "rates": 1,
+            "work_records": 1,
+            "input_lines": 1,
+            "total": 3,
+        },
+    }
+    rate.refresh_from_db()
+    work_record.refresh_from_db()
+    input_line.refresh_from_db()
+    assert rate.status == "approved"
+    assert work_record.status == "approved"
+    assert input_line.status == "approved"
+    assert rate.approved_by_id == administrator.pk
+    assert work_record.approved_by_id == administrator.pk
+    assert input_line.approved_by_id == administrator.pk
+    assert_no_store(response)
+
+
+def test_approve_all_period_drafts_rolls_back_when_one_draft_is_invalid(
+    user_factory,
+    auth_client_factory,
+):
+    administrator = user_factory(email="bulk.rollback.admin@example.test", staff=True)
+    employee = user_factory(email="bulk.rollback.employee@example.test")
+    period = make_period(creator=administrator)
+    bonus = PayrollComponent.objects.get(code="BONUS")
+    rate = EmployeePayRate.objects.create(
+        employee=employee,
+        amount="80000.0000",
+        effective_from=period.date_from,
+        created_by=administrator,
+    )
+    PayrollInputLine.objects.create(
+        period=period,
+        employee=employee,
+        component=bonus,
+        amount="5000.00",
+        created_by=administrator,
+    )
+    bonus.is_active = False
+    bonus.save(update_fields=["is_active"])
+
+    response = auth_client_factory(administrator).post(
+        api_url("admin-period-approve-drafts", pk=period.pk),
+        {},
+        format="json",
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "PAYROLL_COMPONENT_INACTIVE"
+    rate.refresh_from_db()
+    assert rate.status == "draft"
 
 
 def test_staff_without_finance_permissions_is_denied_when_simple_mode_is_disabled(
@@ -474,7 +789,7 @@ def test_workspace_blocks_period_outside_ruleset_effective_dates(
         "code": "RULESET_NOT_EFFECTIVE",
         "message": (
             "Для выбранного периода нет действующих правил расчёта. "
-                "Набор eusrr-standard, версия 2026.07.2, применяется с 01.07.2026. "
+            "Набор eusrr-standard, версия 2026.07.4, применяется с 01.07.2026. "
             "Измените период или подключите историческую версию правил."
         ),
         "details": {
@@ -484,7 +799,7 @@ def test_workspace_blocks_period_outside_ruleset_effective_dates(
             },
             "ruleset": {
                 "id": "eusrr-standard",
-                    "version": "2026.07.2",
+                "version": "2026.07.4",
                 "effective_from": "2026-07-01",
             },
         },
@@ -773,26 +1088,32 @@ def test_bulk_point_rate_updates_drafts_and_revises_approved_rates(
     assert revision.reason == "Единая цена балла на период"
     assert not EmployeePayRate.objects.filter(replaces=unchanged).exists()
 
-    assert PayrollAuditEvent.objects.filter(
-        action="payroll.rate_bulk_point_rate_updated",
-        object_id=str(draft.pk),
-        period=period,
-    ).count() == 1
-    assert PayrollAuditEvent.objects.filter(
-        action="payroll.rate_bulk_point_rate_revision_created",
-        object_id=str(revision.pk),
-        period=period,
-    ).count() == 1
+    assert (
+        PayrollAuditEvent.objects.filter(
+            action="payroll.rate_bulk_point_rate_updated",
+            object_id=str(draft.pk),
+            period=period,
+        ).count()
+        == 1
+    )
+    assert (
+        PayrollAuditEvent.objects.filter(
+            action="payroll.rate_bulk_point_rate_revision_created",
+            object_id=str(revision.pk),
+            period=period,
+        ).count()
+        == 1
+    )
 
 
-def test_bulk_point_rate_can_copy_each_employees_in_norm_price(
+def test_bulk_point_rate_uses_in_norm_price_without_persisting_derived_value(
     user_factory,
     auth_client_factory,
 ):
     manager = user_factory(email="bulk.point.in.norm.manager@example.test")
     first_employee = user_factory(email="bulk.point.in.norm.first@example.test")
     second_employee = user_factory(email="bulk.point.in.norm.second@example.test")
-    grant(manager, "manage_payroll_inputs")
+    grant(manager, "manage_payroll_inputs", "view_all_payroll")
     period = make_period(creator=manager)
     first_rate = EmployeePayRate.objects.create(
         employee=first_employee,
@@ -812,7 +1133,7 @@ def test_bulk_point_rate_can_copy_each_employees_in_norm_price(
         period=period,
         employee=first_employee,
         target_points="100",
-        actual_points="100",
+        actual_points="110",
         created_by=manager,
     )
     PayrollWorkRecord.objects.create(
@@ -847,11 +1168,27 @@ def test_bulk_point_rate_can_copy_each_employees_in_norm_price(
     }
     first_rate.refresh_from_db()
     second_rate.refresh_from_db()
-    assert first_rate.point_rate == Decimal("800.0000")
-    assert second_rate.point_rate == Decimal("750.0000")
+    assert first_rate.point_rate is None
+    assert second_rate.point_rate is None
+
+    table = auth_client_factory(manager).get(
+        api_url("admin-period-table", pk=period.pk),
+    )
+    assert table.status_code == 200, table.content
+    first_row = next(
+        row
+        for row in table.json()["rows"]
+        if row["employee"]["id"] == first_employee.pk
+    )
+    assert first_row["point_rate"] is None
+    assert first_row["in_norm_point_rate"] == "800.0000"
+    assert first_row["point_amount"] == "8000.00"
+    assert first_row["gross_total"] == "88000.00"
+    first_rate.refresh_from_db()
+    assert first_rate.point_rate is None
 
 
-def test_bulk_point_rate_defaults_an_empty_fixed_price_to_zero(
+def test_bulk_point_rate_defaults_an_omitted_price_to_automatic(
     user_factory,
     auth_client_factory,
 ):
@@ -871,16 +1208,16 @@ def test_bulk_point_rate_defaults_an_empty_fixed_price_to_zero(
         api_url("admin-period-bulk-point-rate", pk=period.pk),
         {
             "employee_ids": [employee.pk],
-            "reason": "Убрать доплату сверх нормы",
+            "reason": "Использовать автоматическую цену сверх нормы",
         },
         format="json",
     )
 
     assert response.status_code == 200, response.content
-    assert response.json()["mode"] == "fixed"
-    assert response.json()["point_rate"] == "0.0000"
+    assert response.json()["mode"] == "in_norm"
+    assert response.json()["point_rate"] is None
     rate.refresh_from_db()
-    assert rate.point_rate == Decimal("0.0000")
+    assert rate.point_rate is None
 
 
 def test_bulk_point_rate_rejects_locked_period_without_partial_changes(
@@ -916,6 +1253,144 @@ def test_bulk_point_rate_rejects_locked_period_without_partial_changes(
     rate.refresh_from_db()
     assert rate.point_rate == Decimal("10")
     assert rate.lock_version == 0
+
+
+def test_bulk_target_points_creates_updates_and_revises_work_records(
+    user_factory,
+    auth_client_factory,
+):
+    manager = user_factory(email="bulk.target.manager@example.test")
+    approver = user_factory(email="bulk.target.approver@example.test")
+    draft_employee = user_factory(email="bulk.target.draft@example.test")
+    approved_employee = user_factory(email="bulk.target.approved@example.test")
+    missing_employee = user_factory(email="bulk.target.missing@example.test")
+    unchanged_employee = user_factory(email="bulk.target.unchanged@example.test")
+    grant(manager, "manage_payroll_inputs")
+    period = make_period(creator=manager)
+    draft = PayrollWorkRecord.objects.create(
+        period=period,
+        employee=draft_employee,
+        target_points="100",
+        actual_points="80",
+        created_by=manager,
+    )
+    approved = PayrollWorkRecord.objects.create(
+        period=period,
+        employee=approved_employee,
+        target_points="120",
+        actual_points="90",
+        status="approved",
+        created_by=approver,
+        approved_by=manager,
+        approved_at=timezone.now(),
+    )
+    unchanged = PayrollWorkRecord.objects.create(
+        period=period,
+        employee=unchanged_employee,
+        target_points="115",
+        actual_points="70",
+        created_by=manager,
+    )
+
+    response = auth_client_factory(manager).post(
+        api_url("admin-period-bulk-target-points", pk=period.pk),
+        {
+            "employee_ids": [
+                draft_employee.pk,
+                approved_employee.pk,
+                missing_employee.pk,
+                unchanged_employee.pk,
+            ],
+            "mode": "fixed",
+            "target_points": "115.0000",
+            "reason": "Единая норма на период",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200, response.content
+    assert response.json() == {
+        "mode": "fixed",
+        "target_points": "115.0000",
+        "summary": {
+            "selected_employees": 4,
+            "created_drafts": 1,
+            "updated_drafts": 1,
+            "created_revisions": 1,
+            "unchanged": 1,
+            "skipped": 0,
+        },
+    }
+    draft.refresh_from_db()
+    unchanged.refresh_from_db()
+    assert draft.target_points == Decimal("115")
+    assert draft.target_points_overridden is True
+    assert draft.actual_points == Decimal("80")
+    assert draft.lock_version == 1
+    assert unchanged.lock_version == 0
+
+    revision = PayrollWorkRecord.objects.get(replaces=approved)
+    assert revision.target_points == Decimal("115")
+    assert revision.target_points_overridden is True
+    assert revision.actual_points == Decimal("90")
+    assert revision.status == "draft"
+    assert revision.reason == "Единая норма на период"
+
+    created = PayrollWorkRecord.objects.get(employee=missing_employee, period=period)
+    assert created.target_points == Decimal("115")
+    assert created.target_points_overridden is True
+    assert created.actual_points == Decimal("0")
+    assert created.status == "draft"
+
+
+def test_bulk_target_points_restores_automatic_norm_without_empty_records(
+    user_factory,
+    auth_client_factory,
+):
+    manager = user_factory(email="bulk.target.auto.manager@example.test")
+    employee = user_factory(email="bulk.target.auto.employee@example.test")
+    missing_employee = user_factory(email="bulk.target.auto.missing@example.test")
+    grant(manager, "manage_payroll_inputs")
+    period = make_period(creator=manager)
+    record = PayrollWorkRecord.objects.create(
+        period=period,
+        employee=employee,
+        target_points="77",
+        actual_points="50",
+        created_by=manager,
+    )
+
+    response = auth_client_factory(manager).post(
+        api_url("admin-period-bulk-target-points", pk=period.pk),
+        {
+            "employee_ids": [employee.pk, missing_employee.pk],
+            "mode": "automatic",
+            "reason": "Вернуть норму по рабочему графику",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200, response.content
+    assert response.json() == {
+        "mode": "automatic",
+        "target_points": None,
+        "summary": {
+            "selected_employees": 2,
+            "created_drafts": 0,
+            "updated_drafts": 1,
+            "created_revisions": 0,
+            "unchanged": 1,
+            "skipped": 0,
+        },
+    }
+    record.refresh_from_db()
+    assert record.target_points == Decimal("110")
+    assert record.target_points_overridden is False
+    assert record.actual_points == Decimal("50")
+    assert not PayrollWorkRecord.objects.filter(
+        employee=missing_employee,
+        period=period,
+    ).exists()
 
 
 def test_bulk_pay_rate_creates_updates_and_revises_selected_employee_rates(
@@ -1026,7 +1501,7 @@ def test_bulk_pay_rate_creates_updates_and_revises_selected_employee_rates(
     untouched.refresh_from_db()
 
     assert created.amount == Decimal("100000")
-    assert created.point_rate == Decimal("0")
+    assert created.point_rate is None
     assert created.status == "draft"
     assert inherited.amount == Decimal("100000")
     assert inherited.point_rate == Decimal("75")
@@ -1043,20 +1518,29 @@ def test_bulk_pay_rate_creates_updates_and_revises_selected_employee_rates(
     assert unchanged.status == "approved"
     assert untouched.amount == Decimal("70000")
 
-    assert PayrollAuditEvent.objects.filter(
-        action="payroll.rate_bulk_created",
-        period=period,
-    ).count() == 2
-    assert PayrollAuditEvent.objects.filter(
-        action="payroll.rate_bulk_amount_updated",
-        object_id=str(draft.pk),
-        period=period,
-    ).count() == 1
-    assert PayrollAuditEvent.objects.filter(
-        action="payroll.rate_bulk_amount_revision_created",
-        object_id=str(revision.pk),
-        period=period,
-    ).count() == 1
+    assert (
+        PayrollAuditEvent.objects.filter(
+            action="payroll.rate_bulk_created",
+            period=period,
+        ).count()
+        == 2
+    )
+    assert (
+        PayrollAuditEvent.objects.filter(
+            action="payroll.rate_bulk_amount_updated",
+            object_id=str(draft.pk),
+            period=period,
+        ).count()
+        == 1
+    )
+    assert (
+        PayrollAuditEvent.objects.filter(
+            action="payroll.rate_bulk_amount_revision_created",
+            object_id=str(revision.pk),
+            period=period,
+        ).count()
+        == 1
+    )
 
 
 def test_bulk_pay_rate_rejects_date_outside_selected_period(

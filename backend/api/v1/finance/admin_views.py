@@ -10,7 +10,7 @@ from __future__ import annotations
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import F, OuterRef, Q, Subquery
+from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
@@ -40,13 +40,17 @@ from finance.payroll.exceptions import PayrollOperationError, PayrollPermissionD
 from finance.payroll.services import (
     approve_input_line,
     approve_pay_rate,
+    approve_period_drafts,
     approve_run,
     approve_work_record,
     bulk_set_pay_rate,
     bulk_set_point_rate,
+    bulk_set_target_points,
     calculate_period,
+    clear_component_input_lines,
     close_period,
     publish_run,
+    pay_rates_relevant_to_period,
     return_run_for_correction,
     submit_run_for_review,
 )
@@ -61,7 +65,9 @@ from .admin_serializers import (
     ApprovalCommandSerializer,
     BulkPayRateCommandSerializer,
     BulkPointRateCommandSerializer,
+    BulkTargetPointsCommandSerializer,
     CalculatePayrollCommandSerializer,
+    ClearComponentCellCommandSerializer,
     EmployeePayRateRevisionSerializer,
     EmployeePayRateSerializer,
     EmployeePayRateWriteSerializer,
@@ -150,7 +156,9 @@ def _audit_api_mutation(*, actor, action, instance, period=None, metadata=None):
 
 def _lock_period_accepting_draft_edits(period_id):
     period = get_object_or_404(
-        PayrollPeriod.objects.select_for_update().select_related("current_run"),
+        PayrollPeriod.objects.select_for_update(of=("self",)).select_related(
+            "current_run"
+        ),
         pk=period_id,
     )
     if period.status == PayrollPeriodStatus.CLOSED:
@@ -586,6 +594,16 @@ class PayrollPeriodTableView(PayrollAdminAPIView):
         return Response(build_payroll_period_table(period))
 
 
+class PayrollPeriodApproveDraftsView(PayrollAdminAPIView):
+    allowed_permissions = (PAYROLL_PERMISSIONS["approve_inputs"],)
+
+    def post(self, request, pk):
+        if not PayrollPeriod.objects.filter(pk=pk).exists():
+            raise Http404
+        summary = approve_period_drafts(pk, actor=request.user)
+        return Response({"period_id": pk, "summary": summary})
+
+
 class DraftCollectionView(PayrollAdminAPIView):
     allowed_permissions = INPUT_VIEW_PERMISSIONS
     model = None
@@ -699,7 +717,12 @@ class DraftDetailView(PayrollAdminAPIView):
             period = _lock_period_accepting_draft_edits(reference.period_id)
         else:
             period = None
-        instance = get_object_or_404(scoped_queryset.select_for_update())
+        # Read serializers join nullable audit/revision relations.  PostgreSQL
+        # cannot apply FOR UPDATE to the nullable side of those outer joins,
+        # and only the draft itself needs to be locked here.
+        instance = get_object_or_404(
+            scoped_queryset.select_for_update(of=("self",))
+        )
         if period is not None:
             instance._state.fields_cache["period"] = period
             self.validate_period_update(instance, period)
@@ -759,24 +782,7 @@ class EmployeePayRateListCreateView(DraftCollectionView):
         if period_id is None:
             return queryset
         period = get_object_or_404(PayrollPeriod, pk=period_id)
-        latest_effective_date = (
-            EmployeePayRate.objects.filter(
-                employee_id=OuterRef("employee_id"),
-                rate_code=OuterRef("rate_code"),
-                effective_from__lte=period.date_from,
-            )
-            .order_by("-effective_from")
-            .values("effective_from")[:1]
-        )
-        return queryset.annotate(
-            _latest_effective_date=Subquery(latest_effective_date)
-        ).filter(
-            Q(effective_from=F("_latest_effective_date"))
-            | Q(
-                effective_from__gt=period.date_from,
-                effective_from__lte=period.date_to,
-            )
-        )
+        return pay_rates_relevant_to_period(period, queryset=queryset)
 
 
 class EmployeePayRateDetailView(DraftDetailView):
@@ -836,6 +842,31 @@ class PayrollBulkPayRateView(PayrollAdminAPIView):
             {
                 "amount": f"{result['amount']:.4f}",
                 "effective_from": result["effective_from"].isoformat(),
+                "summary": result["summary"],
+            }
+        )
+
+
+class PayrollBulkTargetPointsView(PayrollAdminAPIView):
+    allowed_permissions = (PAYROLL_PERMISSIONS["manage_inputs"],)
+
+    def post(self, request, pk):
+        get_object_or_404(PayrollPeriod.objects.only("id"), pk=pk)
+        command = BulkTargetPointsCommandSerializer(data=request.data)
+        command.is_valid(raise_exception=True)
+        result = bulk_set_target_points(
+            pk,
+            actor=request.user,
+            **command.validated_data,
+        )
+        return Response(
+            {
+                "mode": result["mode"],
+                "target_points": (
+                    f"{result['target_points']:.4f}"
+                    if result["target_points"] is not None
+                    else None
+                ),
                 "summary": result["summary"],
             }
         )
@@ -945,6 +976,21 @@ class PayrollInputLineDetailView(DraftDetailView):
         ).prefetch_related("employee__departments_links__department")
 
 
+class PayrollComponentCellClearView(PayrollAdminAPIView):
+    allowed_permissions = (PAYROLL_PERMISSIONS["manage_inputs"],)
+
+    def post(self, request, pk):
+        command = ClearComponentCellCommandSerializer(data=request.data)
+        command.is_valid(raise_exception=True)
+        summary = clear_component_input_lines(
+            pk,
+            employee_id=command.validated_data["employee_id"],
+            component_id=command.validated_data["component_id"],
+            actor=request.user,
+        )
+        return Response(summary)
+
+
 class DraftApprovalView(PayrollAdminAPIView):
     allowed_permissions = (PAYROLL_PERMISSIONS["approve_inputs"],)
     service = None
@@ -1001,7 +1047,9 @@ class EmployeePayRateReviseView(PayrollAdminAPIView):
     def post(self, request, pk):
         self.require_permission(request, PAYROLL_PERMISSIONS["manage_inputs"])
         source = get_object_or_404(
-            EmployeePayRate.objects.select_for_update().select_related("employee"),
+            EmployeePayRate.objects.select_for_update(of=("self",)).select_related(
+                "employee"
+            ),
             pk=pk,
             status=ApprovalStatus.APPROVED,
         )
@@ -1071,7 +1119,7 @@ class PayrollWorkRecordReviseView(PayrollAdminAPIView):
         )
         period = _lock_period_accepting_draft_edits(reference.period_id)
         source = get_object_or_404(
-            PayrollWorkRecord.objects.select_for_update().select_related(
+            PayrollWorkRecord.objects.select_for_update(of=("self",)).select_related(
                 "period", "employee"
             ),
             pk=pk,

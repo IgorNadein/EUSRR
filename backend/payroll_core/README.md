@@ -44,6 +44,7 @@ request = PayrollRequest(
     currency="RUB",
     base_accrual=Decimal("80000"),
     base_source_ref="rate:42:revision:1",
+    point_base_accrual=Decimal("95000"),
     target_points=Decimal("110"),
     actual_points=Decimal("110"),
     point_rate=Decimal("100"),
@@ -89,14 +90,19 @@ The initial `EXCESS_ONLY` point policy pays only points above the target:
 for a shortfall. This policy must remain in shadow/reconciliation mode until
 the company confirms how points work for other rows.
 
-`PROPORTIONAL_WITH_EXCESS` adjusts the base accrual by completion when actual
-points are below target:
-`base_accrual * min(actual / target, 1)`. When actual points exceed target, the
-full base accrual is retained and the excess is paid separately using
-`(actual - target) * point_rate`.
+`PROPORTIONAL_WITH_EXCESS` produces a signed point adjustment. Below target it
+uses the complete point basis supplied by the host:
+`point_base_accrual * actual / target - point_base_accrual`. Above target it
+uses `(actual - target) * point_rate`. Keeping the basis separate from the base
+accrual preserves the original input lines while making the adjustment visible.
 
 ## Host boundary
 
 The core knows an employee only as an opaque `employee_ref`. The host adapter
 is responsible for authorization, rate resolution, maker-checker approval,
 transactions, audit, publication, acknowledgements and notifications.
+EUSRR maps the spreadsheet point basis to base accrual plus bonus inputs. It
+keeps the configured excess point price nullable: when blank, the host supplies
+the current in-norm display price and marks it as automatic. The core then uses
+the unrounded `point_base_accrual / target_points` formula, without persisting
+the derived value.

@@ -58,7 +58,7 @@ def _is_finite_decimal(value: object) -> bool:
 class DeterministicPayrollCalculator:
     """Pure calculator with explicit Decimal and rounding semantics."""
 
-    CALCULATOR_VERSION = "1.0.0"
+    CALCULATOR_VERSION = "1.1.0"
     DECIMAL_PRECISION = 80
     MAX_DECIMAL_DIGITS = 30
     MAX_FRACTIONAL_PLACES = 12
@@ -79,20 +79,13 @@ class DeterministicPayrollCalculator:
         )
         with localcontext(decimal_context):
             quantize = self._quantizer(rules)
-            base_amount = request.base_accrual
-            if rules.point_policy is PointPolicy.PROPORTIONAL_WITH_EXCESS:
-                completion_ratio = min(
-                    request.actual_points / request.target_points,
-                    Decimal("1"),
-                )
-                base_amount *= completion_ratio
             lines: list[PayrollLine] = [
                 PayrollLine(
                     line_id="system:base",
                     code="BASE",
                     label="Base accrual",
                     kind=LineKind.EARNING,
-                    amount=quantize(base_amount),
+                    amount=quantize(request.base_accrual),
                     source_ref=request.base_source_ref,
                     calculated=True,
                 )
@@ -100,10 +93,37 @@ class DeterministicPayrollCalculator:
             warnings: list[CalculationWarning] = []
             point_delta: Decimal | None = None
 
-            if rules.point_policy in {
-                PointPolicy.EXCESS_ONLY,
-                PointPolicy.PROPORTIONAL_WITH_EXCESS,
-            }:
+            if rules.point_policy is PointPolicy.PROPORTIONAL_WITH_EXCESS:
+                point_delta = request.actual_points - request.target_points
+                point_base_accrual = (
+                    request.point_base_accrual
+                    if request.point_base_accrual is not None
+                    else request.base_accrual
+                )
+                raw_point_amount = (
+                    point_delta * request.point_rate
+                    if point_delta > 0 and request.point_rate_overridden
+                    else point_base_accrual
+                    * (request.actual_points / request.target_points)
+                    - point_base_accrual
+                )
+                point_kind = (
+                    LineKind.ADJUSTMENT_DEBIT
+                    if raw_point_amount < 0
+                    else LineKind.ADJUSTMENT_CREDIT
+                )
+                lines.append(
+                    PayrollLine(
+                        line_id="system:point-adjustment",
+                        code="POINT_ADJUSTMENT",
+                        label="Point-based recalculation",
+                        kind=point_kind,
+                        amount=quantize(abs(raw_point_amount)),
+                        source_ref="calculation:point-policy",
+                        calculated=True,
+                    )
+                )
+            elif rules.point_policy is PointPolicy.EXCESS_ONLY:
                 point_delta = request.actual_points - request.target_points
                 eligible_points = max(point_delta, Decimal("0"))
                 point_amount = quantize(eligible_points * request.point_rate)
@@ -118,10 +138,7 @@ class DeterministicPayrollCalculator:
                         calculated=True,
                     )
                 )
-                if (
-                    point_delta < 0
-                    and rules.point_policy is PointPolicy.EXCESS_ONLY
-                ):
+                if point_delta < 0:
                     warnings.append(
                         CalculationWarning(
                             code="POINTS_BELOW_TARGET_NO_DEDUCTION",
@@ -290,13 +307,29 @@ class DeterministicPayrollCalculator:
         if expected is None:
             return []
 
-        point_amount = next(
-            (line.amount for line in lines if line.line_id == "system:point-excess"),
-            Decimal("0"),
+        point_line = next(
+            (
+                line
+                for line in lines
+                if line.line_id
+                in {"system:point-excess", "system:point-adjustment"}
+            ),
+            None,
+        )
+        point_amount = (
+            -point_line.amount
+            if point_line is not None
+            and point_line.kind is LineKind.ADJUSTMENT_DEBIT
+            else point_line.amount
+            if point_line is not None
+            else Decimal("0")
+        )
+        gross_before_point_recalculation = (
+            totals.gross_after_adjustments - point_amount
         )
         checks = (
             ("point_amount", expected.point_amount, point_amount),
-            ("gross", expected.gross, totals.gross_after_adjustments),
+            ("gross", expected.gross, gross_before_point_recalculation),
             (
                 "recalculated_gross",
                 expected.recalculated_gross,
@@ -379,6 +412,13 @@ class DeterministicPayrollCalculator:
             issues,
             minimum=Decimal("0"),
         )
+        self._validate_decimal(
+            request.point_base_accrual,
+            "point_base_accrual",
+            issues,
+            minimum=Decimal("0"),
+            allow_none=True,
+        )
         if not self._is_nonempty_string(request.base_source_ref):
             issues.append(
                 PayrollIssue(
@@ -393,6 +433,14 @@ class DeterministicPayrollCalculator:
             issues,
             minimum=Decimal("0"),
         )
+        if not isinstance(request.point_rate_overridden, bool):
+            issues.append(
+                PayrollIssue(
+                    code="INVALID_POINT_RATE_MODE",
+                    field="point_rate_overridden",
+                    message="Point rate override marker must be boolean.",
+                )
+            )
 
         if not self._is_nonempty_string(rules.ruleset_id):
             issues.append(
@@ -722,7 +770,8 @@ class DeterministicPayrollCalculator:
                     issues,
                     minimum=(
                         None
-                        if field_name == "payable" and rules.allow_negative_payable
+                        if field_name == "point_amount"
+                        or field_name == "payable" and rules.allow_negative_payable
                         else Decimal("0")
                     ),
                     allow_none=True,
