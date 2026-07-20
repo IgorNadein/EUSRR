@@ -139,6 +139,57 @@ def test_points_below_target_do_not_silently_reduce_pay(period, rules):
     ]
 
 
+def test_proportional_policy_reduces_base_below_target(period, rules):
+    proportional_rules = replace(
+        rules,
+        point_policy=PointPolicy.PROPORTIONAL_WITH_EXCESS,
+    )
+    request = make_request(
+        period,
+        base_accrual=Decimal("90000"),
+        target_points=Decimal("115"),
+        actual_points=Decimal("100"),
+    )
+
+    result = DeterministicPayrollCalculator().calculate(
+        request,
+        proportional_rules,
+    )
+
+    base_line = next(line for line in result.lines if line.code == "BASE")
+    point_line = next(line for line in result.lines if line.code == "POINT_EXCESS")
+    assert base_line.amount == Decimal("78260.87")
+    assert point_line.amount == Decimal("0.00")
+    assert result.point_delta == Decimal("-15")
+    assert result.totals.payable == Decimal("78260.87")
+    assert result.warnings == ()
+
+
+def test_proportional_policy_keeps_full_base_and_pays_excess(period, rules):
+    proportional_rules = replace(
+        rules,
+        point_policy=PointPolicy.PROPORTIONAL_WITH_EXCESS,
+    )
+    request = make_request(
+        period,
+        base_accrual=Decimal("90000"),
+        target_points=Decimal("115"),
+        actual_points=Decimal("120"),
+        point_rate=Decimal("100"),
+    )
+
+    result = DeterministicPayrollCalculator().calculate(
+        request,
+        proportional_rules,
+    )
+
+    base_line = next(line for line in result.lines if line.code == "BASE")
+    point_line = next(line for line in result.lines if line.code == "POINT_EXCESS")
+    assert base_line.amount == Decimal("90000.00")
+    assert point_line.amount == Decimal("500.00")
+    assert result.totals.payable == Decimal("90500.00")
+
+
 def test_debit_deduction_and_advance_have_distinct_effects(period, rules):
     request = make_request(
         period,

@@ -32,6 +32,8 @@ component_code_validator = RegexValidator(
     message="Код должен начинаться с A-Z и содержать только A-Z, 0-9, _.-",
 )
 
+DEFAULT_DAILY_TARGET_POINTS = Decimal("5")
+
 
 class PayrollPeriod(models.Model):
     """A calculation and publication period controlled by one active run."""
@@ -383,12 +385,120 @@ class EmployeePayRate(DraftVersionedModel):
                 )
 
 
+class PayrollWorkSettings(models.Model):
+    """Global settings for employee-entered daily work metrics."""
+
+    singleton = models.BooleanField(default=True, unique=True, editable=False)
+    daily_target_points = models.DecimalField(
+        "Дневная норма баллов",
+        max_digits=19,
+        decimal_places=4,
+        default=DEFAULT_DAILY_TARGET_POINTS,
+        validators=[MinValueValidator(Decimal("0.0001"))],
+        help_text="Единая дневная норма для всех сотрудников.",
+    )
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+
+    class Meta:
+        verbose_name = "Настройки выработки"
+        verbose_name_plural = "Настройки выработки"
+
+    def save(self, *args, **kwargs):
+        self.singleton = True
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Дневная норма: {self.daily_target_points}"
+
+    @classmethod
+    def get_daily_target_points(cls):
+        value = (
+            cls.objects.filter(singleton=True)
+            .values_list("daily_target_points", flat=True)
+            .first()
+        )
+        return value if value is not None else DEFAULT_DAILY_TARGET_POINTS
+
+
+class PayrollDailyWorkEntry(models.Model):
+    """Employee-entered daily work metrics aggregated into a payroll period."""
+
+    period = models.ForeignKey(
+        PayrollPeriod,
+        on_delete=models.CASCADE,
+        related_name="daily_work_entries",
+        verbose_name="Период",
+    )
+    employee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="payroll_daily_work_entries",
+        verbose_name="Сотрудник",
+    )
+    work_date = models.DateField("Дата выработки")
+    target_points = models.DecimalField(
+        "Норма баллов за день",
+        max_digits=19,
+        decimal_places=4,
+        validators=[MinValueValidator(Decimal("0.0001"))],
+    )
+    actual_points = models.DecimalField(
+        "Фактические баллы за день",
+        max_digits=19,
+        decimal_places=4,
+        validators=[MinValueValidator(Decimal("0"))],
+    )
+    note = models.TextField("Комментарий", blank=True)
+    lock_version = models.PositiveIntegerField("Версия записи", default=0)
+    created_at = models.DateTimeField("Создана", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлена", auto_now=True)
+
+    class Meta:
+        verbose_name = "Ежедневная выработка"
+        verbose_name_plural = "Ежедневная выработка"
+        ordering = ["-work_date", "-id"]
+        indexes = [
+            models.Index(
+                fields=["period", "employee", "work_date"],
+                name="pay_daily_period_employee_idx",
+            )
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(target_points__gt=0),
+                name="pay_daily_target_positive",
+            ),
+            models.CheckConstraint(
+                condition=Q(actual_points__gte=0),
+                name="pay_daily_actual_nonnegative",
+            ),
+            models.UniqueConstraint(
+                fields=["period", "employee", "work_date"],
+                name="pay_daily_employee_date_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.work_date}: {self.employee} ({self.actual_points})"
+
+    def clean(self):
+        super().clean()
+        if (
+            self.period_id
+            and self.work_date
+            and not self.period.date_from <= self.work_date <= self.period.date_to
+        ):
+            raise ValidationError(
+                {"work_date": "Дата выработки должна входить в расчётный период."}
+            )
+
+
 class PayrollWorkRecord(DraftVersionedModel):
     """Approved monthly work metrics and optional Excel control totals."""
 
     period = models.ForeignKey(
         PayrollPeriod,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name="work_records",
         verbose_name="Период",
     )
@@ -403,6 +513,11 @@ class PayrollWorkRecord(DraftVersionedModel):
         max_digits=19,
         decimal_places=4,
         validators=[MinValueValidator(Decimal("0.0001"))],
+    )
+    target_points_overridden = models.BooleanField(
+        "Норма указана вручную",
+        default=True,
+        editable=False,
     )
     actual_points = models.DecimalField(
         "Фактические баллы",
@@ -447,7 +562,7 @@ class PayrollWorkRecord(DraftVersionedModel):
     )
     replaces = models.OneToOneField(
         "self",
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         null=True,
         blank=True,
         related_name="replaced_by",
@@ -636,7 +751,7 @@ class PayrollInputLine(DraftVersionedModel):
 
     period = models.ForeignKey(
         PayrollPeriod,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name="input_lines",
         verbose_name="Период выплаты",
     )
@@ -660,7 +775,7 @@ class PayrollInputLine(DraftVersionedModel):
     )
     relates_to_period = models.ForeignKey(
         PayrollPeriod,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         null=True,
         blank=True,
         related_name="retro_input_lines",
@@ -676,7 +791,7 @@ class PayrollInputLine(DraftVersionedModel):
     )
     reversal_of = models.OneToOneField(
         "self",
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         null=True,
         blank=True,
         related_name="reversed_by",
@@ -803,7 +918,7 @@ class PayrollRun(models.Model):
 
     period = models.ForeignKey(
         PayrollPeriod,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name="runs",
         verbose_name="Период",
     )
@@ -816,7 +931,7 @@ class PayrollRun(models.Model):
     )
     supersedes = models.ForeignKey(
         "self",
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         null=True,
         blank=True,
         related_name="superseded_by_runs",
@@ -975,7 +1090,7 @@ class PayrollStatement(models.Model):
 
     run = models.ForeignKey(
         PayrollRun,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name="statements",
         verbose_name="Запуск",
     )
@@ -993,7 +1108,7 @@ class PayrollStatement(models.Model):
     )
     supersedes = models.OneToOneField(
         "self",
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         null=True,
         blank=True,
         related_name="superseded_by_statement",
@@ -1114,7 +1229,7 @@ class PayrollStatementLine(models.Model):
 
     statement = models.ForeignKey(
         PayrollStatement,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name="lines",
         verbose_name="Расчётный листок",
     )
@@ -1175,7 +1290,7 @@ class PayrollStatementAcknowledgement(models.Model):
 
     statement = models.OneToOneField(
         PayrollStatement,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name="acknowledgement",
         verbose_name="Расчётный листок",
     )
@@ -1238,7 +1353,7 @@ class PayrollAuditEvent(models.Model):
     object_id = models.CharField("Идентификатор объекта", max_length=80)
     period = models.ForeignKey(
         PayrollPeriod,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         null=True,
         blank=True,
         related_name="audit_events",

@@ -7,6 +7,8 @@ by :mod:`finance.payroll.services`.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
@@ -20,6 +22,7 @@ from finance.models import (
     PayrollRun,
     PayrollWorkRecord,
 )
+from finance.payroll.work_norm import calculate_period_target_points
 
 Employee = get_user_model()
 
@@ -278,6 +281,56 @@ class EmployeePayRateRevisionSerializer(serializers.Serializer):
     reason = serializers.CharField(allow_blank=False, trim_whitespace=True)
 
 
+class BulkPointRateCommandSerializer(serializers.Serializer):
+    MODE_FIXED = "fixed"
+    MODE_IN_NORM = "in_norm"
+
+    employee_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+    )
+    mode = serializers.ChoiceField(
+        choices=(MODE_FIXED, MODE_IN_NORM),
+        default=MODE_FIXED,
+    )
+    point_rate = serializers.DecimalField(
+        max_digits=19,
+        decimal_places=4,
+        min_value=0,
+        required=False,
+        allow_null=True,
+    )
+    reason = serializers.CharField(allow_blank=False, trim_whitespace=True)
+
+    def validate_employee_ids(self, value):
+        return list(dict.fromkeys(value))
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if attrs["mode"] == self.MODE_FIXED and attrs.get("point_rate") is None:
+            attrs["point_rate"] = Decimal("0")
+        elif attrs["mode"] == self.MODE_IN_NORM:
+            attrs["point_rate"] = None
+        return attrs
+
+
+class BulkPayRateCommandSerializer(serializers.Serializer):
+    employee_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+    )
+    amount = serializers.DecimalField(
+        max_digits=19,
+        decimal_places=4,
+        min_value=Decimal("0.0001"),
+    )
+    effective_from = serializers.DateField()
+    reason = serializers.CharField(allow_blank=False, trim_whitespace=True)
+
+    def validate_employee_ids(self, value):
+        return list(dict.fromkeys(value))
+
+
 class PayrollWorkRecordSerializer(serializers.ModelSerializer):
     employee = PayrollEmployeeMiniSerializer(read_only=True)
     employee_id = serializers.IntegerField(read_only=True)
@@ -298,6 +351,7 @@ class PayrollWorkRecordSerializer(serializers.ModelSerializer):
             "employee_id",
             "employee",
             "target_points",
+            "target_points_overridden",
             "actual_points",
             "expected_point_amount",
             "expected_gross",
@@ -336,6 +390,13 @@ class PayrollWorkRecordWriteSerializer(
         source="employee",
         queryset=Employee.objects.filter(is_active=True),
     )
+    target_points = serializers.DecimalField(
+        max_digits=19,
+        decimal_places=4,
+        min_value=Decimal("0.0001"),
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = PayrollWorkRecord
@@ -351,6 +412,25 @@ class PayrollWorkRecordWriteSerializer(
             "reason",
             "expected_lock_version",
         ]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        target_was_sent = "target_points" in attrs
+        should_calculate = (
+            self.instance is None and not target_was_sent
+        ) or attrs.get("target_points") is None
+        if should_calculate:
+            period = attrs.get("period") or self.instance.period
+            employee = attrs.get("employee") or self.instance.employee
+            target_points, _, _ = calculate_period_target_points(
+                period,
+                employee=employee,
+            )
+            attrs["target_points"] = target_points
+            attrs["target_points_overridden"] = False
+        elif target_was_sent:
+            attrs["target_points_overridden"] = True
+        return attrs
 
 
 class PayrollWorkRecordRevisionSerializer(serializers.Serializer):

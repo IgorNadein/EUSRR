@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   canApprovePayrollDraft,
+  getDefaultPayrollPeriodForm,
   getPayrollAdminError,
   getPrimaryPayrollRunAction,
   isPayrollAdminStaleConflict,
@@ -26,6 +27,51 @@ test("payroll admin normalizes DRF and plain list payloads", () => {
   assert.deepEqual(
     normalizePayrollAdminList({ count: 1, next: null, previous: null, results: [3] }),
     [3],
+  );
+});
+
+test("new payroll period defaults cover the current month and next payment date", () => {
+  assert.deepEqual(
+    getDefaultPayrollPeriodForm([], new Date(2026, 6, 20, 12)),
+    {
+      code: "2026-07",
+      name: "Июль 2026",
+      date_from: "2026-07-01",
+      date_to: "2026-07-31",
+      pay_date: "2026-08-05",
+      currency: "RUB",
+    },
+  );
+});
+
+test("new payroll period skips occupied months and handles a year boundary", () => {
+  const periods = [
+    {
+      code: "2026-12",
+      name: "Декабрь 2026",
+      date_from: "2026-12-01",
+      date_to: "2026-12-31",
+      pay_date: "2027-01-05",
+    },
+    {
+      code: "2027-01",
+      name: "Январь 2027",
+      date_from: "2027-01-01",
+      date_to: "2027-01-31",
+      pay_date: "2027-02-05",
+    },
+  ];
+
+  assert.deepEqual(
+    getDefaultPayrollPeriodForm(periods, new Date(2026, 11, 15, 12)),
+    {
+      code: "2027-02",
+      name: "Февраль 2027",
+      date_from: "2027-02-01",
+      date_to: "2027-02-28",
+      pay_date: "2027-03-05",
+      currency: "RUB",
+    },
   );
 });
 

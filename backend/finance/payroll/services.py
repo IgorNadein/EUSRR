@@ -8,9 +8,10 @@ import uuid
 from collections import defaultdict
 from decimal import Decimal
 
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Max
+from django.db.models import Max, Sum
 from django.utils import timezone
 
 from payroll_core import (
@@ -20,6 +21,7 @@ from payroll_core import (
 
 from finance.enums import (
     ApprovalStatus,
+    InputSource,
     PayrollPeriodStatus,
     PayrollRunStatus,
 )
@@ -27,12 +29,14 @@ from finance.models import (
     EmployeePayRate,
     PayrollAuditEvent,
     PayrollComponent,
+    PayrollDailyWorkEntry,
     PayrollInputLine,
     PayrollPeriod,
     PayrollRun,
     PayrollStatement,
     PayrollStatementAcknowledgement,
     PayrollStatementLine,
+    PayrollWorkSettings,
     PayrollWorkRecord,
 )
 
@@ -50,6 +54,9 @@ from .config import (
     ruleset_period_details,
 )
 from .exceptions import PayrollOperationError, PayrollPermissionDenied
+from .work_norm import calculate_period_target_points
+
+Employee = get_user_model()
 
 
 def _require_permission(actor, permission: str) -> None:
@@ -730,6 +737,748 @@ def close_period(period_id: int, *, actor) -> PayrollPeriod:
     period.save(update_fields=["status", "updated_at"])
     _audit(actor=actor, action="payroll.period_closed", instance=period, period=period)
     return period
+
+
+@transaction.atomic
+def bulk_set_point_rate(
+    period_id: int,
+    *,
+    actor,
+    employee_ids: list[int],
+    mode: str = "fixed",
+    point_rate: Decimal | None = None,
+    reason: str,
+) -> dict[str, object]:
+    """Set a fixed excess price or copy each employee's in-norm point price."""
+
+    _require_permission(actor, "finance.manage_payroll_inputs")
+    period = PayrollPeriod.objects.select_for_update().get(pk=period_id)
+    _ensure_period_accepts_approvals(period)
+
+    selected_employee_ids = sorted(set(employee_ids))
+    rates = list(
+        EmployeePayRate.objects.select_for_update()
+        .filter(
+            employee_id__in=selected_employee_ids,
+            rate_code=base_rate_code(),
+            effective_from__lte=period.date_to,
+        )
+        .exclude(status=ApprovalStatus.VOIDED)
+        .select_related("employee", "replaces")
+        .order_by("employee_id", "effective_from", "revision", "pk")
+    )
+    rates_by_employee: dict[int, list[EmployeePayRate]] = defaultdict(list)
+    for rate in rates:
+        rates_by_employee[rate.employee_id].append(rate)
+
+    work_by_employee: dict[int, PayrollWorkRecord] = {}
+    for record in PayrollWorkRecord.objects.filter(
+        period=period,
+        employee_id__in=selected_employee_ids,
+        status__in=[ApprovalStatus.DRAFT, ApprovalStatus.APPROVED],
+    ).order_by("employee_id", "revision", "pk"):
+        work_by_employee[record.employee_id] = record
+
+    target_by_employee: dict[int, Decimal] = {}
+    if mode == "in_norm":
+        for employee_id in selected_employee_ids:
+            work = work_by_employee.get(employee_id)
+            if work is not None:
+                target_by_employee[employee_id] = work.target_points
+                continue
+            employee_rates = rates_by_employee.get(employee_id, [])
+            if not employee_rates:
+                continue
+            target_by_employee[employee_id] = calculate_period_target_points(
+                period,
+                employee=employee_rates[-1].employee,
+            )[0]
+
+    summary = {
+        "selected_employees": len(selected_employee_ids),
+        "updated_drafts": 0,
+        "created_revisions": 0,
+        "unchanged": 0,
+        "skipped": 0,
+    }
+    changed_records: list[EmployeePayRate] = []
+
+    for employee_id in selected_employee_ids:
+        employee_rates = rates_by_employee.get(employee_id, [])
+        period_start_dates = [
+            rate.effective_from
+            for rate in employee_rates
+            if rate.effective_from <= period.date_from
+        ]
+        relevant_dates = set()
+        if period_start_dates:
+            relevant_dates.add(max(period_start_dates))
+        relevant_dates.update(
+            rate.effective_from
+            for rate in employee_rates
+            if period.date_from < rate.effective_from <= period.date_to
+        )
+
+        if not relevant_dates:
+            summary["skipped"] += 1
+            continue
+
+        for effective_from in sorted(relevant_dates):
+            current = max(
+                (
+                    rate
+                    for rate in employee_rates
+                    if rate.effective_from == effective_from
+                ),
+                key=lambda rate: (rate.revision, rate.pk),
+            )
+            if mode == "in_norm":
+                target_points = target_by_employee[employee_id]
+                resolved_point_rate = (current.amount / target_points).quantize(
+                    Decimal("0.0001"),
+                    rounding=build_rules().rounding.value,
+                )
+            else:
+                resolved_point_rate = point_rate
+            if resolved_point_rate is None:
+                _operation_error(
+                    "POINT_RATE_REQUIRED",
+                    "Не задана фиксированная цена балла сверх нормы.",
+                )
+            if current.point_rate == resolved_point_rate:
+                summary["unchanged"] += 1
+                continue
+
+            if current.status == ApprovalStatus.DRAFT:
+                if (
+                    not has_simple_admin_access(actor)
+                    and current.created_by_id != actor.pk
+                ):
+                    summary["skipped"] += 1
+                    continue
+                previous_point_rate = current.point_rate
+                current.point_rate = resolved_point_rate
+                current._expected_lock_version = current.lock_version
+                try:
+                    current.full_clean()
+                    current.save()
+                except ValidationError as exc:
+                    _operation_error(
+                        "INPUT_VALIDATION_FAILED",
+                        "Цена балла не прошла проверку.",
+                        errors=(
+                            exc.message_dict
+                            if hasattr(exc, "message_dict")
+                            else exc.messages
+                        ),
+                    )
+                _audit(
+                    actor=actor,
+                    action="payroll.rate_bulk_point_rate_updated",
+                    instance=current,
+                    period=period,
+                    metadata={
+                        "previous_point_rate": str(previous_point_rate),
+                        "point_rate": str(resolved_point_rate),
+                        "point_rate_mode": mode,
+                        "reason": reason,
+                    },
+                )
+                summary["updated_drafts"] += 1
+                changed_records.append(current)
+                continue
+
+            if current.status != ApprovalStatus.APPROVED:
+                summary["skipped"] += 1
+                continue
+
+            revision = EmployeePayRate(
+                employee=current.employee,
+                rate_code=current.rate_code,
+                amount=current.amount,
+                point_rate=resolved_point_rate,
+                currency=current.currency,
+                effective_from=current.effective_from,
+                revision=current.revision + 1,
+                replaces=current,
+                reason=reason,
+                status=ApprovalStatus.DRAFT,
+                source=InputSource.MANUAL,
+                created_by=actor,
+            )
+            try:
+                revision.full_clean()
+                revision.save(force_insert=True)
+            except ValidationError as exc:
+                _operation_error(
+                    "INPUT_VALIDATION_FAILED",
+                    "Новая версия ставки не прошла проверку.",
+                    errors=(
+                        exc.message_dict
+                        if hasattr(exc, "message_dict")
+                        else exc.messages
+                    ),
+                )
+            except IntegrityError:
+                _operation_error(
+                    "RATE_REVISION_CONFLICT",
+                    (
+                        "Для одной из ставок уже создана новая версия; "
+                        "обновите данные."
+                    ),
+                    rate_id=current.pk,
+                )
+            _audit(
+                actor=actor,
+                action="payroll.rate_bulk_point_rate_revision_created",
+                instance=revision,
+                period=period,
+                metadata={
+                    "replaces_id": current.pk,
+                    "previous_point_rate": str(current.point_rate),
+                    "point_rate": str(resolved_point_rate),
+                    "point_rate_mode": mode,
+                    "reason": reason,
+                },
+            )
+            summary["created_revisions"] += 1
+            changed_records.append(revision)
+
+    return {
+        "mode": mode,
+        "point_rate": point_rate,
+        "summary": summary,
+        "records": changed_records,
+    }
+
+
+@transaction.atomic
+def bulk_set_pay_rate(
+    period_id: int,
+    *,
+    actor,
+    employee_ids: list[int],
+    amount: Decimal,
+    effective_from,
+    reason: str,
+) -> dict[str, object]:
+    """Create or revise one base rate for each selected employee."""
+
+    _require_permission(actor, "finance.manage_payroll_inputs")
+    period = PayrollPeriod.objects.select_for_update().get(pk=period_id)
+    _ensure_period_accepts_approvals(period)
+    if not period.date_from <= effective_from <= period.date_to:
+        _operation_error(
+            "RATE_DATE_OUTSIDE_PERIOD",
+            "Дата начала ставки должна входить в выбранный расчётный период.",
+            period_date_from=str(period.date_from),
+            period_date_to=str(period.date_to),
+        )
+
+    selected_employee_ids = sorted(set(employee_ids))
+    employees = {
+        employee.pk: employee
+        for employee in Employee.objects.filter(
+            pk__in=selected_employee_ids,
+            is_active=True,
+        ).order_by("pk")
+    }
+    rates = list(
+        EmployeePayRate.objects.select_for_update()
+        .filter(
+            employee_id__in=employees,
+            rate_code=base_rate_code(),
+            effective_from__lte=effective_from,
+        )
+        .select_related("employee", "replaces")
+        .order_by("employee_id", "effective_from", "revision", "pk")
+    )
+    rates_by_employee: dict[int, list[EmployeePayRate]] = defaultdict(list)
+    for rate in rates:
+        rates_by_employee[rate.employee_id].append(rate)
+
+    summary = {
+        "selected_employees": len(selected_employee_ids),
+        "created_drafts": 0,
+        "updated_drafts": 0,
+        "created_revisions": 0,
+        "unchanged": 0,
+        "skipped": 0,
+    }
+    changed_records: list[EmployeePayRate] = []
+
+    for employee_id in selected_employee_ids:
+        employee = employees.get(employee_id)
+        if employee is None:
+            summary["skipped"] += 1
+            continue
+
+        employee_rates = rates_by_employee.get(employee_id, [])
+        exact_rates = [
+            rate
+            for rate in employee_rates
+            if rate.effective_from == effective_from
+        ]
+        current_rates = [
+            rate for rate in exact_rates if rate.status != ApprovalStatus.VOIDED
+        ]
+        current = (
+            max(current_rates, key=lambda rate: (rate.revision, rate.pk))
+            if current_rates
+            else None
+        )
+
+        if current is not None and current.amount == amount:
+            summary["unchanged"] += 1
+            continue
+
+        if current is not None and current.status == ApprovalStatus.DRAFT:
+            if (
+                not has_simple_admin_access(actor)
+                and current.created_by_id != actor.pk
+            ):
+                summary["skipped"] += 1
+                continue
+            previous_amount = current.amount
+            current.amount = amount
+            current._expected_lock_version = current.lock_version
+            try:
+                current.full_clean()
+                current.save()
+            except ValidationError as exc:
+                _operation_error(
+                    "INPUT_VALIDATION_FAILED",
+                    "Ставка не прошла проверку.",
+                    errors=(
+                        exc.message_dict
+                        if hasattr(exc, "message_dict")
+                        else exc.messages
+                    ),
+                )
+            _audit(
+                actor=actor,
+                action="payroll.rate_bulk_amount_updated",
+                instance=current,
+                period=period,
+                metadata={
+                    "previous_amount": str(previous_amount),
+                    "amount": str(amount),
+                    "reason": reason,
+                },
+            )
+            summary["updated_drafts"] += 1
+            changed_records.append(current)
+            continue
+
+        if current is not None and current.status == ApprovalStatus.APPROVED:
+            rate = EmployeePayRate(
+                employee=current.employee,
+                rate_code=current.rate_code,
+                amount=amount,
+                point_rate=current.point_rate,
+                currency=current.currency,
+                effective_from=current.effective_from,
+                revision=current.revision + 1,
+                replaces=current,
+                reason=reason,
+                status=ApprovalStatus.DRAFT,
+                source=InputSource.MANUAL,
+                created_by=actor,
+            )
+            action = "payroll.rate_bulk_amount_revision_created"
+            metadata = {
+                "replaces_id": current.pk,
+                "previous_amount": str(current.amount),
+                "amount": str(amount),
+                "reason": reason,
+            }
+            summary_key = "created_revisions"
+        else:
+            previous_rates = [
+                rate
+                for rate in employee_rates
+                if rate.status != ApprovalStatus.VOIDED
+                and rate.effective_from < effective_from
+            ]
+            previous = (
+                max(
+                    previous_rates,
+                    key=lambda rate: (
+                        rate.effective_from,
+                        rate.revision,
+                        rate.pk,
+                    ),
+                )
+                if previous_rates
+                else None
+            )
+            rate = EmployeePayRate(
+                employee=employee,
+                rate_code=base_rate_code(),
+                amount=amount,
+                point_rate=(previous.point_rate if previous else Decimal("0")),
+                currency=period.currency,
+                effective_from=effective_from,
+                revision=max((item.revision for item in exact_rates), default=0) + 1,
+                reason=reason,
+                status=ApprovalStatus.DRAFT,
+                source=InputSource.MANUAL,
+                created_by=actor,
+            )
+            action = "payroll.rate_bulk_created"
+            metadata = {
+                "amount": str(amount),
+                "point_rate": str(rate.point_rate),
+                "reason": reason,
+            }
+            summary_key = "created_drafts"
+
+        try:
+            rate.full_clean()
+            rate.save(force_insert=True)
+        except ValidationError as exc:
+            _operation_error(
+                "INPUT_VALIDATION_FAILED",
+                "Новая ставка не прошла проверку.",
+                errors=(
+                    exc.message_dict
+                    if hasattr(exc, "message_dict")
+                    else exc.messages
+                ),
+            )
+        except IntegrityError:
+            _operation_error(
+                "RATE_BULK_CONFLICT",
+                "Одна из ставок уже изменена; обновите экран и повторите.",
+                employee_id=employee_id,
+            )
+        _audit(
+            actor=actor,
+            action=action,
+            instance=rate,
+            period=period,
+            metadata=metadata,
+        )
+        summary[summary_key] += 1
+        changed_records.append(rate)
+
+    return {
+        "amount": amount,
+        "effective_from": effective_from,
+        "summary": summary,
+        "records": changed_records,
+    }
+
+
+def _sync_daily_work_record(
+    *,
+    period: PayrollPeriod,
+    actor,
+) -> PayrollWorkRecord:
+    totals = PayrollDailyWorkEntry.objects.filter(
+        period=period,
+        employee=actor,
+    ).aggregate(
+        actual_points=Sum("actual_points"),
+    )
+    actual_points = totals["actual_points"] or Decimal("0")
+
+    records = list(
+        PayrollWorkRecord.objects.select_for_update()
+        .filter(period=period, employee=actor)
+        .order_by("revision", "pk")
+    )
+    active_records = [
+        record for record in records if record.status != ApprovalStatus.VOIDED
+    ]
+    current = (
+        max(active_records, key=lambda record: (record.revision, record.pk))
+        if active_records
+        else None
+    )
+    calculated_target, workdays_count, target_source = (
+        calculate_period_target_points(period, employee=actor)
+    )
+    uses_saved_target = (
+        current is not None and current.target_points_overridden
+    )
+    target_points = current.target_points if uses_saved_target else calculated_target
+    if target_points <= 0:
+        _operation_error(
+            "DAILY_WORK_EMPTY",
+            "Для периода не удалось определить положительную норму выработки.",
+        )
+    if (
+        current is not None
+        and current.target_points == target_points
+        and current.actual_points == actual_points
+    ):
+        return current
+
+    reason = "Агрегация ежедневной выработки сотрудника"
+    if current is not None and current.status == ApprovalStatus.DRAFT:
+        previous_target = current.target_points
+        previous_actual = current.actual_points
+        current.target_points = target_points
+        current.actual_points = actual_points
+        current.expected_point_amount = None
+        current.expected_gross = None
+        current.expected_recalculated_gross = None
+        current.expected_payable = None
+        if not uses_saved_target:
+            current.reason = reason
+            current.source = InputSource.API
+            current.source_ref = (
+                f"daily-work:{period.pk}:{actor.pk}:r{current.revision}"
+            )
+            current.target_points_overridden = False
+        current._expected_lock_version = current.lock_version
+        try:
+            current.full_clean()
+            current.save()
+        except ValidationError as exc:
+            _operation_error(
+                "INPUT_VALIDATION_FAILED",
+                "Итоговая выработка не прошла проверку.",
+                errors=(
+                    exc.message_dict
+                    if hasattr(exc, "message_dict")
+                    else exc.messages
+                ),
+            )
+        _audit(
+            actor=actor,
+            action="payroll.daily_work_aggregate_updated",
+            instance=current,
+            period=period,
+            metadata={
+                "channel": "employee_api",
+                "previous_target_points": str(previous_target),
+                "previous_actual_points": str(previous_actual),
+                "target_points": str(target_points),
+                "actual_points": str(actual_points),
+                "target_source": (
+                    "saved_record" if uses_saved_target else target_source
+                ),
+                "workdays_count": workdays_count,
+            },
+        )
+        return current
+
+    if current is not None and current.status == ApprovalStatus.APPROVED:
+        if PayrollWorkRecord.objects.filter(replaces=current).exists():
+            _operation_error(
+                "WORK_REVISION_CONFLICT",
+                "Для итоговой выработки уже создавалась новая версия.",
+                record_id=current.pk,
+            )
+        revision = current.revision + 1
+        record = PayrollWorkRecord(
+            period=period,
+            employee=actor,
+            target_points=target_points,
+            target_points_overridden=uses_saved_target,
+            actual_points=actual_points,
+            revision=revision,
+            replaces=current,
+            reason=reason,
+            status=ApprovalStatus.DRAFT,
+            source=(current.source if uses_saved_target else InputSource.API),
+            source_ref=f"daily-work:{period.pk}:{actor.pk}:r{revision}",
+            created_by=actor,
+        )
+        action = "payroll.daily_work_aggregate_revision_created"
+        metadata = {
+            "channel": "employee_api",
+            "replaces_id": current.pk,
+            "target_points": str(target_points),
+            "actual_points": str(actual_points),
+            "target_source": (
+                "saved_record" if uses_saved_target else target_source
+            ),
+            "workdays_count": workdays_count,
+        }
+    elif current is None:
+        revision = max((record.revision for record in records), default=0) + 1
+        record = PayrollWorkRecord(
+            period=period,
+            employee=actor,
+            target_points=target_points,
+            target_points_overridden=False,
+            actual_points=actual_points,
+            revision=revision,
+            reason=reason,
+            status=ApprovalStatus.DRAFT,
+            source=InputSource.API,
+            source_ref=f"daily-work:{period.pk}:{actor.pk}:r{revision}",
+            created_by=actor,
+        )
+        action = "payroll.daily_work_aggregate_created"
+        metadata = {
+            "channel": "employee_api",
+            "target_points": str(target_points),
+            "actual_points": str(actual_points),
+            "target_source": target_source,
+            "workdays_count": workdays_count,
+        }
+    else:
+        _operation_error(
+            "WORK_RECORD_STATE_INVALID",
+            "Итоговую запись выработки нельзя изменить.",
+            record_status=current.status,
+        )
+
+    try:
+        record.full_clean()
+        record.save(force_insert=True)
+    except ValidationError as exc:
+        _operation_error(
+            "INPUT_VALIDATION_FAILED",
+            "Итоговая выработка не прошла проверку.",
+            errors=(
+                exc.message_dict
+                if hasattr(exc, "message_dict")
+                else exc.messages
+            ),
+        )
+    except IntegrityError:
+        _operation_error(
+            "WORK_RECORD_CONFLICT",
+            "Итоговая выработка уже изменена; обновите данные и повторите.",
+        )
+    _audit(
+        actor=actor,
+        action=action,
+        instance=record,
+        period=period,
+        metadata=metadata,
+    )
+    return record
+
+
+@transaction.atomic
+def save_own_daily_work_entry(
+    period_id: int,
+    *,
+    actor,
+    work_date,
+    actual_points: Decimal,
+    note: str = "",
+    expected_lock_version: int | None = None,
+) -> tuple[PayrollDailyWorkEntry, PayrollWorkRecord, str]:
+    """Upsert one daily entry and refresh the employee's period aggregate."""
+
+    if actor is None or not getattr(actor, "is_authenticated", False):
+        _operation_error(
+            "AUTHENTICATION_REQUIRED",
+            "Для сохранения выработки необходимо войти в систему.",
+        )
+    period = (
+        PayrollPeriod.objects.select_for_update()
+        .select_related("current_run")
+        .get(pk=period_id)
+    )
+    if period.status != PayrollPeriodStatus.OPEN:
+        _operation_error(
+            "WORK_PERIOD_LOCKED",
+            "Выработка за этот период уже закрыта для изменений.",
+            period_status=period.status,
+        )
+    if not period.date_from <= work_date <= period.date_to:
+        _operation_error(
+            "WORK_DATE_OUTSIDE_PERIOD",
+            "Дата выработки должна входить в выбранный расчётный период.",
+            period_date_from=str(period.date_from),
+            period_date_to=str(period.date_to),
+        )
+    if work_date > timezone.localdate():
+        _operation_error(
+            "WORK_DATE_IN_FUTURE",
+            "Нельзя указать выработку за будущую дату.",
+        )
+
+    entry = (
+        PayrollDailyWorkEntry.objects.select_for_update()
+        .filter(period=period, employee=actor, work_date=work_date)
+        .first()
+    )
+    note = note.strip()
+    if entry is not None:
+        if expected_lock_version is None:
+            _operation_error(
+                "DAILY_WORK_VERSION_REQUIRED",
+                "Обновите данные и повторите сохранение.",
+            )
+        if entry.lock_version != expected_lock_version:
+            _operation_error(
+                "STALE_DAILY_WORK_ENTRY",
+                "Запись уже изменена; обновите данные и повторите.",
+                expected_lock_version=expected_lock_version,
+                actual_lock_version=entry.lock_version,
+            )
+        if entry.actual_points == actual_points and entry.note == note:
+            aggregate = _sync_daily_work_record(period=period, actor=actor)
+            return entry, aggregate, "unchanged"
+
+        previous_actual = entry.actual_points
+        entry.actual_points = actual_points
+        entry.note = note
+        entry.lock_version += 1
+        operation = "updated"
+        action = "payroll.daily_work_entry_updated"
+        metadata = {
+            "channel": "employee_api",
+            "work_date": str(work_date),
+            "previous_actual_points": str(previous_actual),
+            "target_points": str(entry.target_points),
+            "actual_points": str(actual_points),
+        }
+    else:
+        target_points = PayrollWorkSettings.get_daily_target_points()
+        entry = PayrollDailyWorkEntry(
+            period=period,
+            employee=actor,
+            work_date=work_date,
+            target_points=target_points,
+            actual_points=actual_points,
+            note=note,
+        )
+        operation = "created"
+        action = "payroll.daily_work_entry_created"
+        metadata = {
+            "channel": "employee_api",
+            "work_date": str(work_date),
+            "target_points": str(target_points),
+            "actual_points": str(actual_points),
+        }
+
+    try:
+        entry.full_clean()
+        entry.save()
+    except ValidationError as exc:
+        _operation_error(
+            "INPUT_VALIDATION_FAILED",
+            "Ежедневная выработка не прошла проверку.",
+            errors=(
+                exc.message_dict
+                if hasattr(exc, "message_dict")
+                else exc.messages
+            ),
+        )
+    except IntegrityError:
+        _operation_error(
+            "DAILY_WORK_ENTRY_CONFLICT",
+            "Запись за эту дату уже создана; обновите данные.",
+        )
+    _audit(
+        actor=actor,
+        action=action,
+        instance=entry,
+        period=period,
+        metadata=metadata,
+    )
+    aggregate = _sync_daily_work_record(period=period, actor=actor)
+    return entry, aggregate, operation
 
 
 def _approve_record(

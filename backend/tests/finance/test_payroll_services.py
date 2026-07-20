@@ -200,7 +200,7 @@ def test_excel_row_is_persisted_as_a_deterministic_statement(
 
     assert statement.gross_before_adjustments == Decimal("95000.00")
     assert statement.adjustment_total == Decimal("20000.00")
-    assert statement.point_delta is None
+    assert statement.point_delta == Decimal("0.0000")
     assert statement.gross_total == Decimal("115000.00")
     assert statement.net_pay == Decimal("115000.00")
     assert statement.payable == Decimal("115000.00")
@@ -209,6 +209,7 @@ def test_excel_row_is_persisted_as_a_deterministic_statement(
     assert statement.result_snapshot["warnings"] == []
     assert list(statement.lines.values_list("code", flat=True)) == [
         "BASE",
+        "POINT_EXCESS",
         "BONUS",
         "CORRECTION_CREDIT",
     ]
@@ -440,7 +441,7 @@ def test_ruleset_not_effective_keeps_domain_code_and_localized_message(
     assert error.value.code == "RULESET_NOT_EFFECTIVE"
     assert error.value.message == (
         "Для выбранного периода нет действующих правил расчёта. "
-        "Набор eusrr-standard, версия 2026.07.1, применяется с 01.07.2026. "
+        "Набор eusrr-standard, версия 2026.07.2, применяется с 01.07.2026. "
         "Измените период или подключите историческую версию правил."
     )
     assert error.value.details["employee_id"] == payroll_users["employee"].pk
@@ -450,7 +451,7 @@ def test_ruleset_not_effective_keeps_domain_code_and_localized_message(
     }
     assert error.value.details["ruleset"] == {
         "id": "eusrr-standard",
-        "version": "2026.07.1",
+        "version": "2026.07.2",
         "effective_from": "2026-07-01",
     }
     assert {issue["code"] for issue in error.value.details["issues"]} == {
@@ -644,7 +645,7 @@ def test_employee_api_only_returns_own_published_statement_and_no_stores_it(
     assert stranger_client.get(detail_url).status_code == 404
     detail_response = employee_client.get(detail_url)
     assert detail_response.status_code == 200
-    assert len(detail_response.json()["lines"]) == 3
+    assert len(detail_response.json()["lines"]) == 4
     assert PayrollAuditEvent.objects.filter(
         action="payroll.statement_viewed",
         actor=payroll_users["employee"],

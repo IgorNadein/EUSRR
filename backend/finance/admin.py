@@ -12,12 +12,14 @@ from .models import (
     EmployeePayRate,
     PayrollAuditEvent,
     PayrollComponent,
+    PayrollDailyWorkEntry,
     PayrollInputLine,
     PayrollPeriod,
     PayrollRun,
     PayrollStatement,
     PayrollStatementAcknowledgement,
     PayrollStatementLine,
+    PayrollWorkSettings,
     PayrollWorkRecord,
 )
 from .payroll.access import has_payroll_permission, has_simple_admin_access
@@ -110,6 +112,8 @@ class PayrollSensitiveAdminMixin:
     view_permissions = ()
 
     def _has_payroll_access(self, request):
+        if request.user.is_superuser:
+            return True
         return any(
             has_payroll_permission(request.user, permission)
             for permission in self.view_permissions
@@ -157,7 +161,7 @@ class ImmutableApprovedAdminMixin(PayrollSensitiveAdminMixin):
         return readonly
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        return request.user.is_superuser
 
     def has_add_permission(self, request):
         return has_payroll_permission(
@@ -226,7 +230,7 @@ class PayrollComponentAdmin(PayrollSensitiveAdminMixin, admin.ModelAdmin):
         )
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        return request.user.is_superuser
 
     def get_readonly_fields(self, request, obj=None):
         if obj is None:
@@ -283,7 +287,7 @@ class PayrollPeriodAdmin(PayrollSensitiveAdminMixin, admin.ModelAdmin):
         )
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        return request.user.is_superuser
 
     @admin.action(description="Рассчитать выбранные периоды")
     def calculate_selected(self, request, queryset):
@@ -470,6 +474,41 @@ class PayrollWorkRecordAdmin(ImmutableApprovedAdminMixin, admin.ModelAdmin):
         )
 
 
+@admin.register(PayrollDailyWorkEntry)
+class PayrollDailyWorkEntryAdmin(admin.ModelAdmin):
+    list_display = [
+        "work_date",
+        "employee",
+        "target_points",
+        "actual_points",
+        "period",
+        "updated_at",
+    ]
+    list_filter = ["period", "work_date"]
+    search_fields = [
+        "employee__last_name",
+        "employee__first_name",
+        "employee__email",
+        "note",
+    ]
+    readonly_fields = ["lock_version", "created_at", "updated_at"]
+
+
+@admin.register(PayrollWorkSettings)
+class PayrollWorkSettingsAdmin(admin.ModelAdmin):
+    fields = ["daily_target_points", "updated_at"]
+    list_display = ["daily_target_points", "updated_at"]
+    readonly_fields = ["updated_at"]
+
+    def has_add_permission(self, request):
+        if PayrollWorkSettings.objects.exists():
+            return False
+        return super().has_add_permission(request)
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+
 @admin.register(PayrollInputLine)
 class PayrollInputLineAdmin(ImmutableApprovedAdminMixin, admin.ModelAdmin):
     exclude = ["reversal_of", "self_approval_overridden"]
@@ -525,7 +564,10 @@ class PayrollStatementLineInline(admin.TabularInline):
     readonly_fields = fields
 
     def has_add_permission(self, request, obj=None):
-        return False
+        return request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
 
 
 @admin.register(PayrollRun)
@@ -561,10 +603,10 @@ class PayrollRunAdmin(PayrollSensitiveAdminMixin, admin.ModelAdmin):
     ]
 
     def has_add_permission(self, request):
-        return False
+        return request.user.is_superuser
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        return request.user.is_superuser
 
     def has_change_permission(self, request, obj=None):
         return self._has_payroll_access(request)
@@ -649,10 +691,10 @@ class PayrollStatementAdmin(PayrollSensitiveAdminMixin, admin.ModelAdmin):
     inlines = [PayrollStatementLineInline]
 
     def has_add_permission(self, request):
-        return False
+        return request.user.is_superuser
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        return request.user.is_superuser
 
     def has_change_permission(self, request, obj=None):
         return self._has_payroll_access(request)
@@ -685,13 +727,13 @@ class PayrollStatementAcknowledgementAdmin(
     ]
 
     def has_add_permission(self, request):
-        return False
+        return request.user.is_superuser
 
     def has_change_permission(self, request, obj=None):
         return self._has_payroll_access(request)
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        return request.user.is_superuser
 
 
 @admin.register(PayrollAuditEvent)
@@ -710,10 +752,10 @@ class PayrollAuditEventAdmin(PayrollSensitiveAdminMixin, admin.ModelAdmin):
     readonly_fields = [field.name for field in PayrollAuditEvent._meta.concrete_fields]
 
     def has_add_permission(self, request):
-        return False
+        return request.user.is_superuser
 
     def has_change_permission(self, request, obj=None):
         return has_payroll_permission(request.user, "finance.audit_payroll")
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        return request.user.is_superuser

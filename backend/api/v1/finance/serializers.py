@@ -1,9 +1,13 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from finance.models import (
     PayrollStatement,
     PayrollStatementAcknowledgement,
     PayrollStatementLine,
+    PayrollDailyWorkEntry,
+    PayrollWorkRecord,
 )
 
 
@@ -114,3 +118,64 @@ class OwnPayrollStatementSerializer(serializers.ModelSerializer):
 
     def get_acknowledgement(self, obj):
         return acknowledgement_payload(obj)
+
+
+class OwnPayrollWorkRecordSerializer(serializers.ModelSerializer):
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = PayrollWorkRecord
+        fields = [
+            "id",
+            "period_id",
+            "target_points",
+            "target_points_overridden",
+            "actual_points",
+            "revision",
+            "status",
+            "status_label",
+            "lock_version",
+            "replaces_id",
+            "reason",
+            "source",
+            "created_at",
+            "updated_at",
+            "approved_at",
+        ]
+        read_only_fields = fields
+
+
+class OwnPayrollDailyWorkEntrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PayrollDailyWorkEntry
+        fields = [
+            "id",
+            "period_id",
+            "work_date",
+            "target_points",
+            "actual_points",
+            "note",
+            "lock_version",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class OwnPayrollDailyWorkEntryWriteSerializer(serializers.Serializer):
+    period_id = serializers.IntegerField(min_value=1)
+    work_date = serializers.DateField()
+    actual_points = serializers.DecimalField(
+        max_digits=19,
+        decimal_places=4,
+        min_value=Decimal("0"),
+    )
+    note = serializers.CharField(
+        allow_blank=True,
+        required=False,
+        trim_whitespace=True,
+    )
+    expected_lock_version = serializers.IntegerField(
+        min_value=0,
+        required=False,
+    )

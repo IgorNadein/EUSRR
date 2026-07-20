@@ -130,14 +130,14 @@ export function PayrollRatesTable({
     <div className="overflow-hidden rounded-xl border border-[var(--border-subtle)] md:overflow-x-auto">
       <div className="md:min-w-[900px]">
       <div className="app-surface-muted hidden grid-cols-[minmax(180px,1.5fr)_minmax(100px,.8fr)_minmax(105px,.8fr)_120px_115px_minmax(150px,1fr)] gap-3 border-0 border-b border-[var(--border-subtle)] px-4 py-2.5 text-xs font-medium text-[var(--muted-foreground)] md:grid">
-        <span>Сотрудник</span><span>Оклад</span><span>Цена балла</span><span>Действует с</span><span>Статус</span><span className="text-right">Действия</span>
+        <span>Сотрудник</span><span>Оклад</span><span>Цена сверх нормы</span><span>Действует с</span><span>Статус</span><span className="text-right">Действия</span>
       </div>
       <div className="divide-y divide-[var(--border-subtle)]">
         {records.map((record) => (
           <div key={record.id} className="grid gap-3 bg-[var(--surface-primary)] px-4 py-3 md:grid-cols-[minmax(180px,1.5fr)_minmax(100px,.8fr)_minmax(105px,.8fr)_120px_115px_minmax(150px,1fr)] md:items-center">
             <div className="min-w-0"><p className="truncate text-sm font-semibold text-[var(--foreground)]">{record.employee.display_name}</p><p className="app-text-muted mt-0.5 truncate text-xs">{record.employee.position || record.employee.department || "Сотрудник"}</p></div>
             <div><span className="app-text-muted mr-2 text-xs md:hidden">Оклад</span><span className="text-sm font-medium text-[var(--foreground)]">{formatPayrollMoney(record.amount, record.currency)}</span></div>
-            <div><span className="app-text-muted mr-2 text-xs md:hidden">Цена балла</span><span className="text-sm text-[var(--foreground)]">{formatPayrollMoney(record.point_rate, record.currency)}</span></div>
+            <div><span className="app-text-muted mr-2 text-xs md:hidden">Цена сверх нормы</span><span className="text-sm text-[var(--foreground)]">{formatPayrollMoney(record.point_rate, record.currency)}</span></div>
             <div><span className="app-text-muted mr-2 text-xs md:hidden">С</span><span className="text-sm text-[var(--foreground)]">{formatPayrollDate(record.effective_from)}</span></div>
             <RecordStatus status={record.status} />
             <RecordActions status={record.status} isAuthor={record.created_by.id === currentUserId} canManage={canManage} canApprove={canApprove} canOverrideApproval={canOverrideApproval} fullAccess={fullAccess} onEdit={() => onEdit(record)} onApprove={() => onApprove(record)} onRevise={() => onRevise(record)} />

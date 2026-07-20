@@ -60,6 +60,71 @@ export type PayrollStatementPage = {
     results: PayrollStatementSummary[];
 };
 
+export type PayrollOwnWorkRecord = {
+    id: number;
+    period_id: number;
+    target_points: string;
+    target_points_overridden: boolean;
+    actual_points: string;
+    revision: number;
+    status: PayrollApprovalStatus;
+    status_label: string;
+    lock_version: number;
+    replaces_id: number | null;
+    reason: string;
+    source: string;
+    created_at: string;
+    updated_at: string;
+    approved_at: string | null;
+};
+
+export type PayrollOwnDailyWorkEntry = {
+    id: number;
+    period_id: number;
+    work_date: string;
+    target_points: string;
+    actual_points: string;
+    note: string;
+    lock_version: number;
+    created_at: string;
+    updated_at: string;
+};
+
+export type PayrollOwnWorkPeriod = PayrollPeriodSummary & {
+    id: number;
+    status: PayrollPeriodStatus;
+    status_label: string;
+    editable: boolean;
+    record: PayrollOwnWorkRecord | null;
+    summary: {
+        target_points: string;
+        actual_points: string;
+        target_source: "saved_record" | "individual_schedule" | "standard_schedule" | "default_schedule";
+        workdays_count: number;
+    };
+};
+
+export type PayrollOwnDailyWorkWorkspace = {
+    daily_target_points: string;
+    selected_period_id: number | null;
+    periods: PayrollOwnWorkPeriod[];
+    entries: PayrollOwnDailyWorkEntry[];
+};
+
+export type PayrollOwnDailyWorkWrite = {
+    period_id: number;
+    work_date: string;
+    actual_points: string;
+    note: string;
+    expected_lock_version?: number;
+};
+
+export type PayrollOwnDailyWorkSaveResult = {
+    operation: "created" | "updated" | "unchanged";
+    entry: PayrollOwnDailyWorkEntry;
+    record: PayrollOwnWorkRecord;
+};
+
 export type PayrollApprovalStatus = "draft" | "approved" | "voided";
 export type PayrollPeriodStatus = "open" | "calculated" | "review" | "approved" | "published" | "closed";
 export type PayrollRunStatus = "calculated" | "review" | "approved" | "published" | "returned" | "superseded";
@@ -156,6 +221,59 @@ export type PayrollAdminWorkspace = {
     };
 };
 
+export type PayrollPeriodTableStatus = "calculated" | "ready" | "draft" | "incomplete";
+
+export type PayrollPeriodTableComponent = {
+    code: string;
+    label: string;
+    kind: PayrollLineKind;
+    display_order: number;
+};
+
+export type PayrollPeriodTableRow = {
+    employee: PayrollAdminEmployee & { is_active: boolean };
+    status: PayrollPeriodTableStatus;
+    rate_status: PayrollApprovalStatus | null;
+    work_status: PayrollApprovalStatus | null;
+    rate_amount: string | null;
+    in_norm_point_rate: string | null;
+    point_rate: string | null;
+    target_points: string | null;
+    target_points_automatic: boolean;
+    target_points_source: string;
+    actual_points: string | null;
+    point_delta: string | null;
+    point_amount: string | null;
+    component_amounts: Record<string, string>;
+    totals_preliminary: boolean;
+    gross_before_adjustments: string | null;
+    adjustment_total: string | null;
+    gross_total: string | null;
+    deduction_total: string | null;
+    net_pay: string | null;
+    payment_total: string | null;
+    payable: string | null;
+};
+
+export type PayrollPeriodTable = {
+    period_id: number;
+    currency: string;
+    run: Pick<PayrollAdminRun, "id" | "revision" | "status"> | null;
+    component_columns: PayrollPeriodTableComponent[];
+    rows: PayrollPeriodTableRow[];
+    summary: {
+        employee_count: number;
+        calculated_count: number;
+        ready_count: number;
+        draft_count: number;
+        incomplete_count: number;
+        preliminary_count: number;
+        gross_total: string | null;
+        deduction_total: string | null;
+        payable_total: string | null;
+    };
+};
+
 export type PayrollComponent = {
     id: number;
     code: string;
@@ -191,6 +309,7 @@ export type PayrollAdminWorkRecord = {
     employee_id?: number;
     employee: PayrollAdminEmployee;
     target_points: string;
+    target_points_overridden: boolean;
     actual_points: string;
     expected_point_amount: string | null;
     expected_gross: string | null;
@@ -342,10 +461,51 @@ export type PayrollPayRateWrite = {
     reason: string;
 };
 
+export type PayrollBulkPointRateMode = "fixed" | "in_norm";
+
+export type PayrollBulkPointRateWrite = {
+    employee_ids: number[];
+    mode: PayrollBulkPointRateMode;
+    point_rate?: string | null;
+    reason: string;
+};
+
+export type PayrollBulkPointRateResult = {
+    mode: PayrollBulkPointRateMode;
+    point_rate: string | null;
+    summary: {
+        selected_employees: number;
+        updated_drafts: number;
+        created_revisions: number;
+        unchanged: number;
+        skipped: number;
+    };
+};
+
+export type PayrollBulkPayRateWrite = {
+    employee_ids: number[];
+    amount: string;
+    effective_from: string;
+    reason: string;
+};
+
+export type PayrollBulkPayRateResult = {
+    amount: string;
+    effective_from: string;
+    summary: {
+        selected_employees: number;
+        created_drafts: number;
+        updated_drafts: number;
+        created_revisions: number;
+        unchanged: number;
+        skipped: number;
+    };
+};
+
 export type PayrollWorkRecordWrite = {
     period_id: number;
     employee_id: number;
-    target_points: string;
+    target_points?: string | null;
     actual_points: string;
     expected_point_amount?: string | null;
     expected_gross?: string | null;
@@ -395,10 +555,21 @@ export function createFinanceApi(request: RequestFn) {
                 `/api/v1/finance/payroll/me/statements/${encodeURIComponent(publicId)}/acknowledge/`,
                 { method: "POST" },
             ),
+        getMyPayrollDailyWork: (periodId?: number): Promise<PayrollOwnDailyWorkWorkspace> =>
+            request(`/api/v1/finance/payroll/me/work-records/${buildQuery({ period_id: periodId })}`),
+        saveMyPayrollDailyWorkEntry: (
+            payload: PayrollOwnDailyWorkWrite,
+        ): Promise<PayrollOwnDailyWorkSaveResult> =>
+            request(
+                "/api/v1/finance/payroll/me/work-records/",
+                jsonOptions("POST", payload),
+            ),
         getPayrollAdminWorkspace: (periodId?: number): Promise<PayrollAdminWorkspace> =>
             request(`${adminPrefix}/workspace/${buildQuery({ period_id: periodId })}`),
         getPayrollAdminPeriods: (): Promise<PayrollAdminListPayload<PayrollAdminPeriod>> =>
             request(`${adminPrefix}/periods/`),
+        getPayrollAdminPeriodTable: (periodId: number): Promise<PayrollPeriodTable> =>
+            request(`${adminPrefix}/periods/${periodId}/table/`),
         createPayrollAdminPeriod: (payload: PayrollPeriodWrite): Promise<PayrollAdminPeriod> =>
             request(`${adminPrefix}/periods/`, jsonOptions("POST", payload)),
         updatePayrollAdminPeriod: (
@@ -419,6 +590,16 @@ export function createFinanceApi(request: RequestFn) {
             request(`${adminPrefix}/pay-rates/${rateId}/approve/`, jsonOptions("POST", { expected_lock_version: expectedLockVersion })),
         revisePayrollAdminPayRate: (rateId: number, reason: string): Promise<PayrollAdminPayRate> =>
             request(`${adminPrefix}/pay-rates/${rateId}/revise/`, jsonOptions("POST", { reason })),
+        bulkCreatePayrollAdminPayRates: (
+            periodId: number,
+            payload: PayrollBulkPayRateWrite,
+        ): Promise<PayrollBulkPayRateResult> =>
+            request(`${adminPrefix}/periods/${periodId}/bulk-pay-rate/`, jsonOptions("POST", payload)),
+        bulkSetPayrollAdminPointRate: (
+            periodId: number,
+            payload: PayrollBulkPointRateWrite,
+        ): Promise<PayrollBulkPointRateResult> =>
+            request(`${adminPrefix}/periods/${periodId}/bulk-point-rate/`, jsonOptions("POST", payload)),
         getPayrollAdminWorkRecords: (params: PayrollAdminListParams = {}): Promise<PayrollAdminListPayload<PayrollAdminWorkRecord>> =>
             request(`${adminPrefix}/work-records/${buildQuery({ ...params, page_size: 200 })}`),
         createPayrollAdminWorkRecord: (payload: PayrollWorkRecordWrite): Promise<PayrollAdminWorkRecord> =>

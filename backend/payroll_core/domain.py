@@ -23,6 +23,7 @@ class PointPolicy(str, Enum):
 
     DISABLED = "disabled"
     EXCESS_ONLY = "excess_only"
+    PROPORTIONAL_WITH_EXCESS = "proportional_with_excess"
 
 
 class RoundingPolicy(str, Enum):
