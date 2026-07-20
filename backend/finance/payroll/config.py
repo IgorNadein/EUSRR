@@ -13,12 +13,10 @@ from payroll_core import PayrollRules, PointPolicy, RoundingPolicy
 
 DEFAULT_CONFIG = {
     "RULESET_ID": "eusrr-standard",
-    "RULESET_VERSION": "2026.07.1",
+    "RULESET_VERSION": "2026.07.2",
     "EFFECTIVE_FROM": "2026-01-01",
     "EFFECTIVE_TO": None,
-    # The spreadsheet screenshot is not enough to prove the point formula.
-    # Production must opt in after reconciliation against representative rows.
-    "POINT_POLICY": PointPolicy.DISABLED.value,
+    "POINT_POLICY": PointPolicy.PROPORTIONAL_WITH_EXCESS.value,
     "MONEY_QUANTUM": "0.01",
     "ROUNDING": RoundingPolicy.HALF_UP.value,
     "ALLOW_NEGATIVE_PAYABLE": False,
@@ -88,7 +86,8 @@ def _parse_point_policy(value) -> PointPolicy:
         return PointPolicy(str(value).strip().lower())
     except ValueError as exc:
         raise ImproperlyConfigured(
-            "FINANCE_PAYROLL['POINT_POLICY'] must be disabled or excess_only"
+            "FINANCE_PAYROLL['POINT_POLICY'] must be disabled, excess_only "
+            "or proportional_with_excess"
         ) from exc
 
 

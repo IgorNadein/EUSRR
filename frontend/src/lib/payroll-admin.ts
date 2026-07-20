@@ -3,17 +3,23 @@ import type {
     PayrollAdminPermissions,
     PayrollAdminRun,
     PayrollApprovalStatus,
+    PayrollPeriodSummary,
+    PayrollPeriodWrite,
     PayrollPeriodStatus,
     PayrollRunStatus,
 } from "@/lib/api/finance";
 
-export type PayrollAdminTab = "readiness" | "rates" | "work" | "inputs" | "approval";
+export const PAYROLL_DESKTOP_WIDE_MODE_STORAGE_PREFIX = "finances.payroll.desktop-wide-mode";
+export const PAYROLL_SELECTED_PERIOD_STORAGE_PREFIX = "finances.payroll.selected-period";
+
+export type PayrollAdminTab = "readiness" | "rates" | "work" | "inputs" | "summary" | "approval";
 
 export const PAYROLL_ADMIN_TABS: Array<{ value: PayrollAdminTab; label: string }> = [
     { value: "readiness", label: "Готовность" },
     { value: "rates", label: "Ставки" },
     { value: "work", label: "Выработка" },
     { value: "inputs", label: "Начисления и выплаты" },
+    { value: "summary", label: "Итоговая таблица" },
     { value: "approval", label: "Проверка" },
 ];
 
@@ -43,6 +49,63 @@ export const runStatusMeta: Record<PayrollRunStatus, { label: string; className:
 
 export function normalizePayrollAdminList<T>(payload: PayrollAdminListPayload<T>): T[] {
     return Array.isArray(payload) ? payload : payload.results || [];
+}
+
+const RUSSIAN_MONTH_NAMES = [
+    "Январь",
+    "Февраль",
+    "Март",
+    "Апрель",
+    "Май",
+    "Июнь",
+    "Июль",
+    "Август",
+    "Сентябрь",
+    "Октябрь",
+    "Ноябрь",
+    "Декабрь",
+];
+
+function formatDateInput(year: number, monthIndex: number, day: number): string {
+    const date = new Date(year, monthIndex, day);
+    return [
+        String(date.getFullYear()).padStart(4, "0"),
+        String(date.getMonth() + 1).padStart(2, "0"),
+        String(date.getDate()).padStart(2, "0"),
+    ].join("-");
+}
+
+export function getDefaultPayrollPeriodForm(
+    periods: PayrollPeriodSummary[],
+    referenceDate = new Date(),
+): PayrollPeriodWrite {
+    let year = referenceDate.getFullYear();
+    let monthIndex = referenceDate.getMonth();
+
+    while (true) {
+        const code = `${String(year).padStart(4, "0")}-${String(monthIndex + 1).padStart(2, "0")}`;
+        const dateFrom = formatDateInput(year, monthIndex, 1);
+        const dateTo = formatDateInput(year, monthIndex + 1, 0);
+        const conflicts = periods.some((period) => (
+            period.code === code
+            || (period.date_from <= dateTo && period.date_to >= dateFrom)
+        ));
+
+        if (!conflicts) {
+            return {
+                code,
+                name: `${RUSSIAN_MONTH_NAMES[monthIndex]} ${year}`,
+                date_from: dateFrom,
+                date_to: dateTo,
+                pay_date: formatDateInput(year, monthIndex + 1, 5),
+                currency: "RUB",
+            };
+        }
+
+        const nextMonth = new Date(year, monthIndex + 1, 1);
+        year = nextMonth.getFullYear();
+        monthIndex = nextMonth.getMonth();
+    }
 }
 
 type ParsedPayrollAdminError = {

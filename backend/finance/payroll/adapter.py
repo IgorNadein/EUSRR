@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from payroll_core import (
     ExpectedTotals,
     InputLine,
@@ -39,14 +41,7 @@ def _expected_totals(work_record: PayrollWorkRecord) -> ExpectedTotals | None:
     )
 
 
-def build_core_request(
-    *,
-    period: PayrollPeriod,
-    rate: EmployeePayRate,
-    work_record: PayrollWorkRecord | None,
-    input_lines: list[PayrollInputLine],
-) -> PayrollRequest:
-    core_period = _core_period(period)
+def _mapped_input_lines(input_lines: list[PayrollInputLine]) -> tuple[InputLine, ...]:
     mapped_lines = []
     for record in input_lines:
         source_period = None
@@ -67,20 +62,58 @@ def build_core_request(
                 is_retro=source_period is not None,
             )
         )
+    return tuple(mapped_lines)
 
+
+def build_core_request(
+    *,
+    period: PayrollPeriod,
+    rate: EmployeePayRate,
+    work_record: PayrollWorkRecord | None,
+    input_lines: list[PayrollInputLine],
+) -> PayrollRequest:
     return PayrollRequest(
         employee_ref=f"employee:{rate.employee_id}",
-        period=core_period,
+        period=_core_period(period),
         currency=period.currency,
         base_accrual=rate.amount,
         base_source_ref=f"pay-rate:{rate.pk}:revision:{rate.revision}",
         target_points=(work_record.target_points if work_record else None),
         actual_points=(work_record.actual_points if work_record else None),
         point_rate=rate.point_rate,
-        lines=tuple(mapped_lines),
+        lines=_mapped_input_lines(input_lines),
         expected_totals=(
             _expected_totals(work_record) if work_record is not None else None
         ),
+    )
+
+
+def build_core_preview_request(
+    *,
+    period: PayrollPeriod,
+    employee_id: int,
+    rate: EmployeePayRate | None,
+    target_points: Decimal,
+    actual_points: Decimal,
+    input_lines: list[PayrollInputLine],
+) -> PayrollRequest:
+    """Build a non-persisted calculation request from draft or partial inputs."""
+
+    return PayrollRequest(
+        employee_ref=f"employee:{employee_id}",
+        period=_core_period(period),
+        currency=period.currency,
+        base_accrual=rate.amount if rate is not None else Decimal("0"),
+        base_source_ref=(
+            f"pay-rate:{rate.pk}:revision:{rate.revision}"
+            if rate is not None
+            else "preview:missing-pay-rate"
+        ),
+        target_points=target_points,
+        actual_points=actual_points,
+        point_rate=rate.point_rate if rate is not None else Decimal("0"),
+        lines=_mapped_input_lines(input_lines),
+        expected_totals=None,
     )
 
 

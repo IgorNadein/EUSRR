@@ -416,10 +416,13 @@ def build_attendance_work_preview(
 ) -> dict:
     """Build a deterministic, non-mutating attendance import preview."""
 
-    if build_rules().point_policy != PointPolicy.DISABLED:
+    if build_rules().point_policy not in {
+        PointPolicy.DISABLED,
+        PointPolicy.PROPORTIONAL_WITH_EXCESS,
+    }:
         _operation_error(
             "ATTENDANCE_UNIT_POLICY_CONFLICT",
-            "Импорт часов доступен только пока начисление по баллам отключено.",
+            "Текущая политика начисления несовместима с импортом часов.",
         )
 
     attendance = AttendanceRecord.objects.filter(

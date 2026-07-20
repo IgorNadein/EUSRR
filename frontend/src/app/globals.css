@@ -907,6 +907,32 @@ html[data-bs-theme="dark"] .shadow-xl {
   background: var(--accent-primary);
 }
 
+.app-table-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent-primary) 48%, var(--surface-tertiary)) var(--surface-secondary);
+  -ms-overflow-style: auto;
+}
+
+.app-table-scroll::-webkit-scrollbar {
+  display: block;
+  width: 8px;
+  height: 8px;
+}
+
+.app-table-scroll::-webkit-scrollbar-track {
+  background: var(--surface-secondary);
+}
+
+.app-table-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid var(--surface-secondary);
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--accent-primary) 48%, var(--surface-tertiary));
+}
+
+.app-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-primary);
+}
+
 .tasks-board-scroll,
 .tasks-column-scroll {
   scrollbar-width: thin;

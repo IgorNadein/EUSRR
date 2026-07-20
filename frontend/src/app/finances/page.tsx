@@ -14,9 +14,12 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { PayrollDailyWorkSection } from "@/components/finance/PayrollDailyWorkSection";
 import { PayrollStatementDetailModal } from "@/components/finance/PayrollStatementDetailModal";
 import { PayrollAdminWorkspace } from "@/components/finance/admin/PayrollAdminWorkspace";
 import { useUser } from "@/contexts/UserContext";
+import { usePayrollDesktopWideMode } from "@/hooks/usePayrollDesktopWideMode";
+import { usePayrollFinanceTab } from "@/hooks/usePayrollTabs";
 import { apiClient } from "@/lib/api";
 import type { PayrollAcknowledgement, PayrollStatementSummary } from "@/lib/api/finance";
 import { canOpenPayrollAdmin } from "@/lib/permissions";
@@ -72,12 +75,14 @@ function EmptyPayroll() {
 
 export default function FinancesPage() {
   const { user } = useUser();
-  const [activeTab, setActiveTab] = useState<"statement" | "management">("statement");
+  const showPayrollAdmin = canOpenPayrollAdmin(user);
+  const [activeTab, setActiveTab] = usePayrollFinanceTab(user?.id, showPayrollAdmin);
   const [statements, setStatements] = useState<PayrollStatementSummary[]>([]);
   const [selectedStatement, setSelectedStatement] = useState<PayrollStatementSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [desktopWideMode, changeDesktopWideMode] = usePayrollDesktopWideMode(user?.id);
 
   const loadStatements = useCallback(async () => {
     setLoading(true);
@@ -102,8 +107,6 @@ export default function FinancesPage() {
     [statements],
   );
   const previousStatements = statements.slice(1);
-  const showPayrollAdmin = canOpenPayrollAdmin(user);
-
   const handleAcknowledged = (publicId: string, acknowledgement: PayrollAcknowledgement) => {
     setStatements((current) => current.map((statement) => (
       statement.public_id === publicId ? { ...statement, acknowledgement } : statement
@@ -114,8 +117,12 @@ export default function FinancesPage() {
   };
 
   return (
-    <AppShell desktopWideMode={activeTab === "management"}>
-      <section className="app-surface rounded-2xl p-4 sm:p-5">
+    <AppShell
+      desktopWideMode={activeTab === "management" && desktopWideMode}
+      onDesktopWideModeChange={changeDesktopWideMode}
+    >
+      <div className={`min-w-0 space-y-6 ${activeTab === "management" && desktopWideMode ? "lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1" : ""}`}>
+        <section className="app-surface rounded-2xl p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <p className="app-card-caption">Финансы</p>
           {activeTab === "management" && showPayrollAdmin ? (
@@ -135,6 +142,16 @@ export default function FinancesPage() {
           >
             Расчётный лист
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedStatement(null);
+              setActiveTab("work");
+            }}
+            className={`inline-flex h-10 items-center rounded-full px-4 text-sm font-medium transition ${activeTab === "work" ? "app-pill-active" : "app-pill"}`}
+          >
+            Выработка
+          </button>
           {showPayrollAdmin ? (
             <button
               type="button"
@@ -148,14 +165,18 @@ export default function FinancesPage() {
             </button>
           ) : null}
         </div>
-      </section>
+        </section>
 
       {activeTab === "management" && showPayrollAdmin ? (
         <PayrollAdminWorkspace
           embedded
           actionsTargetId="finance-management-actions"
+          desktopWideMode={desktopWideMode}
           headerTargetId="finance-management-header"
+          onDesktopWideModeChange={changeDesktopWideMode}
         />
+      ) : activeTab === "work" ? (
+        <PayrollDailyWorkSection />
       ) : (
         <>
       {loading ? (
@@ -278,14 +299,15 @@ export default function FinancesPage() {
         </>
       )}
 
-      <PayrollStatementDetailModal
-        isOpen={Boolean(selectedStatement)}
-        statement={selectedStatement}
-        onClose={() => setSelectedStatement(null)}
-        onAcknowledged={handleAcknowledged}
-      />
+        <PayrollStatementDetailModal
+          isOpen={Boolean(selectedStatement)}
+          statement={selectedStatement}
+          onClose={() => setSelectedStatement(null)}
+          onAcknowledged={handleAcknowledged}
+        />
         </>
       )}
+      </div>
     </AppShell>
   );
 }

@@ -847,12 +847,15 @@ COMMUNICATIONS_PARTICIPANT_RESOLVER = (
 # version after changing calculation semantics.
 FINANCE_PAYROLL = {
     "RULESET_ID": os.getenv("PAYROLL_RULESET_ID", "eusrr-standard"),
-    "RULESET_VERSION": os.getenv("PAYROLL_RULESET_VERSION", "2026.07.1"),
+    "RULESET_VERSION": os.getenv("PAYROLL_RULESET_VERSION", "2026.07.2"),
     "EFFECTIVE_FROM": os.getenv("PAYROLL_EFFECTIVE_FROM", "2026-01-01"),
     "EFFECTIVE_TO": os.getenv("PAYROLL_EFFECTIVE_TO") or None,
-    # Disabled until the point formula is confirmed against representative
-    # rows from the company's actual spreadsheets.
-    "POINT_POLICY": os.getenv("PAYROLL_POINT_POLICY", "disabled"),
+    # Below target the base accrual follows completion percentage; above target
+    # the full base is retained and excess points use the configured point rate.
+    "POINT_POLICY": os.getenv(
+        "PAYROLL_POINT_POLICY",
+        "proportional_with_excess",
+    ),
     "MONEY_QUANTUM": os.getenv("PAYROLL_MONEY_QUANTUM", "0.01"),
     "ROUNDING": os.getenv("PAYROLL_ROUNDING", "half_up"),
     "ALLOW_NEGATIVE_PAYABLE": os.getenv(

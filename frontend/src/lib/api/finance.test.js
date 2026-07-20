@@ -54,6 +54,7 @@ test("finance API keeps payroll management inside the native admin REST namespac
   });
 
   await finance.getPayrollAdminWorkspace(17);
+  await finance.getPayrollAdminPeriodTable(17);
   await finance.getPayrollAdminPayRates({ period_id: 17, status: "draft" });
   await finance.updatePayrollAdminPayRate(21, {
     amount: "115000.00",
@@ -71,6 +72,10 @@ test("finance API keeps payroll management inside the native admin REST namespac
   assert.deepEqual(calls, [
     {
       endpoint: "/api/v1/finance/payroll/admin/workspace/?period_id=17",
+      options: undefined,
+    },
+    {
+      endpoint: "/api/v1/finance/payroll/admin/periods/17/table/",
       options: undefined,
     },
     {

@@ -9,9 +9,18 @@ from django.urls import reverse
 from finance.admin import (
     EmployeePayRateAdmin,
     PayrollAuditEventAdmin,
+    PayrollPeriodAdmin,
     PayrollStatementAdmin,
 )
-from finance.models import EmployeePayRate, PayrollAuditEvent, PayrollStatement
+from finance.models import (
+    EmployeePayRate,
+    PayrollAuditEvent,
+    PayrollDailyWorkEntry,
+    PayrollPeriod,
+    PayrollRun,
+    PayrollStatement,
+    PayrollWorkRecord,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -39,6 +48,142 @@ def admin_request(user):
     request = RequestFactory().get("/admin/finance/")
     request.user = user
     return request
+
+
+def test_superuser_has_unrestricted_finance_admin_permissions(user_factory):
+    superuser = user_factory(
+        email="payroll.superuser@example.test",
+        staff=True,
+        superuser=True,
+    )
+    manager = user_factory(email="payroll.manager@example.test", staff=True)
+    grant(manager, "manage_payroll_inputs")
+    superuser_request = admin_request(superuser)
+    manager_request = admin_request(manager)
+    period_admin = PayrollPeriodAdmin(PayrollPeriod, admin.site)
+
+    assert period_admin.has_module_permission(superuser_request) is True
+    assert period_admin.has_view_permission(superuser_request) is True
+    assert period_admin.has_add_permission(superuser_request) is True
+    assert period_admin.has_change_permission(superuser_request) is True
+    assert period_admin.has_delete_permission(superuser_request) is True
+    assert "delete_selected" in period_admin.get_actions(superuser_request)
+
+    assert period_admin.has_delete_permission(manager_request) is False
+    assert "delete_selected" not in period_admin.get_actions(manager_request)
+    assert EmployeePayRateAdmin(
+        EmployeePayRate,
+        admin.site,
+    ).has_delete_permission(superuser_request) is True
+    assert PayrollStatementAdmin(
+        PayrollStatement,
+        admin.site,
+    ).has_delete_permission(superuser_request) is True
+    assert PayrollAuditEventAdmin(
+        PayrollAuditEvent,
+        admin.site,
+    ).has_delete_permission(superuser_request) is True
+
+
+def test_period_admin_confirms_and_cascades_related_payroll_objects(user_factory):
+    superuser = user_factory(
+        email="payroll.delete@example.test",
+        staff=True,
+        superuser=True,
+    )
+    employee = user_factory(email="payroll.delete.employee@example.test")
+    period = PayrollPeriod.objects.create(
+        code="2026-03",
+        name="Март 2026",
+        date_from="2026-03-01",
+        date_to="2026-03-31",
+        pay_date="2026-04-05",
+        created_by=superuser,
+    )
+    daily_entry = PayrollDailyWorkEntry.objects.create(
+        period=period,
+        employee=employee,
+        work_date="2026-03-02",
+        target_points="5",
+        actual_points="4",
+    )
+    work_record = PayrollWorkRecord.objects.create(
+        period=period,
+        employee=employee,
+        target_points="105",
+        actual_points="84",
+        created_by=superuser,
+    )
+    replacement_work_record = PayrollWorkRecord.objects.create(
+        period=period,
+        employee=employee,
+        target_points="105",
+        actual_points="90",
+        revision=2,
+        replaces=work_record,
+        reason="Уточнение выработки",
+        created_by=superuser,
+    )
+    run = PayrollRun.objects.create(
+        period=period,
+        revision=1,
+        ruleset_id="test",
+        ruleset_version="1",
+        ruleset_hash="rules",
+        calculator_version="test",
+        input_hash="input",
+        result_hash="result",
+        requested_by=superuser,
+    )
+    replacement_run = PayrollRun.objects.create(
+        period=period,
+        revision=2,
+        supersedes=run,
+        recalculation_reason="Уточнение исходных данных",
+        ruleset_id="test",
+        ruleset_version="1",
+        ruleset_hash="rules",
+        calculator_version="test",
+        input_hash="input-2",
+        result_hash="result-2",
+        requested_by=superuser,
+    )
+    period.refresh_from_db()
+    period.current_run = replacement_run
+    period.save(update_fields=["current_run"])
+    audit_event = PayrollAuditEvent.objects.create(
+        actor=superuser,
+        action="payroll.period_created",
+        object_type="finance.payrollperiod",
+        object_id=str(period.pk),
+        period=period,
+    )
+
+    model_admin = PayrollPeriodAdmin(PayrollPeriod, admin.site)
+    request = admin_request(superuser)
+    deleted_objects, model_count, perms_needed, protected = (
+        model_admin.get_deleted_objects([period], request)
+    )
+
+    assert deleted_objects
+    assert model_count[PayrollDailyWorkEntry._meta.verbose_name_plural] == 1
+    assert model_count[PayrollWorkRecord._meta.verbose_name_plural] == 2
+    assert model_count[PayrollRun._meta.verbose_name_plural] == 2
+    assert model_count[PayrollAuditEvent._meta.verbose_name_plural] == 1
+    assert perms_needed == set()
+    assert protected == []
+
+    period.delete()
+
+    assert not PayrollPeriod.objects.filter(pk=period.pk).exists()
+    assert not PayrollDailyWorkEntry.objects.filter(pk=daily_entry.pk).exists()
+    assert not PayrollWorkRecord.objects.filter(pk=work_record.pk).exists()
+    assert not PayrollWorkRecord.objects.filter(
+        pk=replacement_work_record.pk,
+    ).exists()
+    assert not PayrollRun.objects.filter(pk=run.pk).exists()
+    assert not PayrollRun.objects.filter(pk=replacement_run.pk).exists()
+    assert not PayrollAuditEvent.objects.filter(pk=audit_event.pk).exists()
 
 
 def test_simple_mode_staff_can_open_and_edit_any_payroll_draft(

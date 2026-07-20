@@ -81,6 +81,10 @@ type PaginatedResponse<T> = { results: T[]; next?: string | null };
 type DocumentSection = "folders" | "regulations";
 const DOCUMENTS_PAGE_SIZE = 10000;
 
+function documentSectionFromParam(value: string | null): DocumentSection {
+  return value === "regulations" ? "regulations" : "folders";
+}
+
 function isPaginatedResponse<T>(value: unknown): value is PaginatedResponse<T> {
   if (typeof value !== "object" || value === null) return false;
   return Array.isArray((value as { results?: unknown }).results);
@@ -136,11 +140,12 @@ function DocumentsPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const requestedSection = documentSectionFromParam(searchParams.get("section"));
   // State
   const [documents, setDocuments] = useState<Document[]>([]);
   const [folders, setFolders] = useState<FolderNode[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
-  const [activeSection, setActiveSection] = useState<DocumentSection>("regulations");
+  const [activeSection, setActiveSection] = useState<DocumentSection>(requestedSection);
   const [search, setSearch] = useState("");
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [availableTags, setAvailableTags] = useState<DocumentTagOption[]>([]);
@@ -181,6 +186,24 @@ function DocumentsPageContent() {
   
   // Bulk selection
   const linkedDocumentId = Number(searchParams.get("document") || "");
+
+  const selectDocumentSection = useCallback((section: DocumentSection) => {
+    setActiveSection(section);
+    if (section === "regulations") {
+      setSelectedFolderId(null);
+    }
+
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.set("section", section);
+    router.replace(`${pathname}?${nextParams.toString()}`, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    setActiveSection(requestedSection);
+    if (requestedSection === "regulations") {
+      setSelectedFolderId(null);
+    }
+  }, [requestedSection]);
 
   const clearDocumentParam = () => {
     if (!searchParams.get("document")) return;
@@ -736,7 +759,7 @@ function DocumentsPageContent() {
                 <button
                   type="button"
                   onClick={() => {
-                    setActiveSection("folders");
+                    selectDocumentSection("folders");
                     setShowFolderDropdown(false);
                   }}
                   className="inline-flex min-w-0 items-center gap-1.5 py-1.5 pl-3 pr-1.5 transition hover:opacity-85"
@@ -752,7 +775,7 @@ function DocumentsPageContent() {
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelectedFolderId(null);
-                      setActiveSection("folders");
+                      selectDocumentSection("folders");
                     }}
                     className="flex h-7 w-6 shrink-0 items-center justify-center transition hover:bg-sky-500"
                     title="Сбросить фильтр"
@@ -764,7 +787,7 @@ function DocumentsPageContent() {
                 <button
                   type="button"
                   onClick={() => {
-                    setActiveSection("folders");
+                    selectDocumentSection("folders");
                     setShowFolderDropdown((prev) => !prev);
                   }}
                   className="flex h-7 w-7 shrink-0 items-center justify-center transition hover:bg-[var(--surface-tertiary)]"
@@ -799,7 +822,7 @@ function DocumentsPageContent() {
                       selectedFolderId={selectedFolderId}
                       onSelectFolder={(id) => {
                         console.log("🗂️ Выбрана папка:", id);
-                        setActiveSection("folders");
+                        selectDocumentSection("folders");
                         setSelectedFolderId(id);
                         setShowFolderDropdown(false);
                       }}
@@ -811,7 +834,7 @@ function DocumentsPageContent() {
             <button
               type="button"
               onClick={() => {
-                setActiveSection("regulations");
+                selectDocumentSection("regulations");
                 setSelectedFolderId(null);
                 setShowFolderDropdown(false);
               }}
@@ -1034,7 +1057,7 @@ function DocumentsPageContent() {
                     <nav className="flex items-center gap-1">
                       <button
                         onClick={() => {
-                          setActiveSection("folders");
+                          selectDocumentSection("folders");
                           setSelectedFolderId(null);
                         }}
                         className="app-link-accent"
@@ -1055,7 +1078,7 @@ function DocumentsPageContent() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setActiveSection("folders");
+                                  selectDocumentSection("folders");
                                   setSelectedFolderId(crumb.id);
                                 }}
                                 className="app-link-accent"

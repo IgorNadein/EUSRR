@@ -373,8 +373,8 @@ class DocumentAcknowledgementAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         """Запрещаем ручное добавление ознакомлений."""
-        return False
+        return request.user.is_superuser
 
     def has_delete_permission(self, request, obj=None):
         """Запрещаем удаление ознакомлений (для аудита)."""
-        return False
+        return request.user.is_superuser

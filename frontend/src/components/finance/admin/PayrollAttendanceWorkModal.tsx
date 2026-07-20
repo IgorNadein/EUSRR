@@ -308,7 +308,7 @@ export function PayrollAttendanceWorkModal({
                   {preview.policy.description || preview.policy.label}
                 </p>
                 <p className="mt-2 text-xs font-medium text-[var(--foreground)]">
-                  Часы попадут в норму и факт выработки, но при текущей политике не изменяют начисление по баллам.
+                  Часы попадут в норму и факт выработки: до нормы они пропорционально формируют оклад, сверх нормы — доплату по заданной цене.
                 </p>
               </div>
             </div>

@@ -1,9 +1,9 @@
 "use client";
 
-import { AlertTriangle, Building2, CalendarCheck, CalendarDays, Download, FileSignature, FileText, Home as HomeIcon, Kanban, Loader2, Menu, MessageSquare, Search, Send, ShoppingCart, UserRoundPlus, Users, Wallet } from "lucide-react";
+import { AlertTriangle, Building2, CalendarCheck, CalendarDays, Download, FileSignature, FileText, Home as HomeIcon, Kanban, Loader2, Menu, MessageSquare, ScrollText, Search, Send, ShoppingCart, UserRoundPlus, Users, Wallet } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ReactNode, Suspense, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMobileNavPlacement } from "@/contexts/MobileNavPlacementContext";
 import { useUser } from "@/contexts/UserContext";
 import { useNotifications } from "@/hooks/useApi";
@@ -42,6 +42,7 @@ type HeaderProps = {
 type LeftNavContentProps = {
   onNavigate?: () => void;
   compact?: boolean;
+  documentSection?: "folders" | "regulations";
 };
 
 type PaginatedResponse<T> = {
@@ -61,7 +62,8 @@ const navItems = [
   // { href: "/equipment", label: "Оборудование", icon: Monitor },
   { href: "/procurement", label: "Закупки", icon: ShoppingCart, category: NAV_NOTIFICATION_CATEGORIES.procurement, autoReadOnNavigate: false },
   { href: "/tasks", label: "Доска", icon: Kanban, category: NAV_NOTIFICATION_CATEGORIES.tasks },
-  { href: "/documents", label: "Документы", icon: FileText, category: NAV_NOTIFICATION_CATEGORIES.documents },
+  { href: "/documents?section=folders", label: "Документы", icon: FileText, category: NAV_NOTIFICATION_CATEGORIES.documents, documentSection: "folders" as const },
+  { href: "/documents?section=regulations", label: "Регламенты", icon: ScrollText, documentSection: "regulations" as const },
   { href: "/finances", label: "Финансы", icon: Wallet },
 ];
 
@@ -329,7 +331,7 @@ function Header({ mobileNavPlacement, suppressMobileChrome = false, onOpenLeftNa
   );
 }
 
-function LeftNavContent({ onNavigate, compact = false }: LeftNavContentProps) {
+function LeftNavContent({ onNavigate, compact = false, documentSection = "folders" }: LeftNavContentProps) {
   const pathname = usePathname();
   const { user } = useUser();
   const { unreadCategoryCounts, markCategoryAsRead } = useNotifications();
@@ -351,30 +353,37 @@ function LeftNavContent({ onNavigate, compact = false }: LeftNavContentProps) {
     }
   };
 
-  const isNavItemActive = (href: string) => pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
+  const isNavItemActive = (href: string, itemDocumentSection?: "folders" | "regulations") => {
+    const hrefPath = href.split("?", 1)[0];
+    if (hrefPath === "/documents" && itemDocumentSection) {
+      const isDocumentsPath = pathname === "/documents" || pathname.startsWith("/documents/");
+      return isDocumentsPath && documentSection === itemDocumentSection;
+    }
+    return pathname === hrefPath || (hrefPath !== "/" && pathname.startsWith(`${hrefPath}/`));
+  };
 
-  const navLinkClass = (href: string) =>
-    `relative flex items-center rounded-lg transition ${compact ? "h-10 w-10 justify-center p-0" : "gap-3 px-3 py-2"} ${isNavItemActive(href) ? "app-selected" : "text-[var(--foreground)] hover:bg-[var(--surface-secondary)]"
+  const navLinkClass = (href: string, itemDocumentSection?: "folders" | "regulations") =>
+    `relative flex items-center rounded-lg transition ${compact ? "h-10 w-10 justify-center p-0" : "gap-3 px-3 py-2"} ${isNavItemActive(href, itemDocumentSection) ? "app-selected" : "text-[var(--foreground)] hover:bg-[var(--surface-secondary)]"
     }`;
 
-  const navIconClass = (href: string) => (isNavItemActive(href) ? "app-accent-text" : "app-text-muted");
+  const navIconClass = (href: string, itemDocumentSection?: "folders" | "regulations") => (isNavItemActive(href, itemDocumentSection) ? "app-accent-text" : "app-text-muted");
 
   return (
     <div className={`app-surface rounded-2xl ${compact ? "p-2" : "p-5"}`}>
       <div className="space-y-2 text-sm">
-        {visibleNavItems.map(({ href, label, icon: Icon, category, autoReadOnNavigate }) => {
+        {visibleNavItems.map(({ href, label, icon: Icon, category, autoReadOnNavigate, documentSection: itemDocumentSection }) => {
           const count = category ? unreadCategoryCounts[category] || 0 : 0;
           
           return (
             <Link 
               key={href} 
               href={href} 
-              className={navLinkClass(href)} 
+              className={navLinkClass(href, itemDocumentSection)}
               onClick={() => handleNavClick(category, autoReadOnNavigate)}
               title={compact ? label : undefined}
               aria-label={compact ? label : undefined}
             >
-              <Icon size={18} className={navIconClass(href)} />
+              <Icon size={18} className={navIconClass(href, itemDocumentSection)} />
               <span className={compact ? "sr-only" : "flex-1"}>{label}</span>
               {count > 0 && (
                 <span className={`flex items-center justify-center rounded-full bg-sky-500 text-[10px] font-bold text-white ${compact ? "absolute -right-1 -top-1 h-4 min-w-4 px-1" : "h-5 min-w-[20px] px-1.5"}`}>
@@ -389,6 +398,20 @@ function LeftNavContent({ onNavigate, compact = false }: LeftNavContentProps) {
   );
 }
 
+function SearchAwareLeftNavContent(props: Omit<LeftNavContentProps, "documentSection">) {
+  const searchParams = useSearchParams();
+  const documentSection = searchParams.get("section") === "regulations" ? "regulations" : "folders";
+  return <LeftNavContent {...props} documentSection={documentSection} />;
+}
+
+function RoutedLeftNavContent(props: Omit<LeftNavContentProps, "documentSection">) {
+  return (
+    <Suspense fallback={<LeftNavContent {...props} />}>
+      <SearchAwareLeftNavContent {...props} />
+    </Suspense>
+  );
+}
+
 function LeftNav({ fixedDesktop = false, compact = false }: { fixedDesktop?: boolean; compact?: boolean }) {
   return (
     <aside className={`hidden flex-shrink-0 transition-[width] duration-200 lg:block ${compact ? "w-14" : "w-64"}`}>
@@ -399,7 +422,7 @@ function LeftNav({ fixedDesktop = false, compact = false }: { fixedDesktop?: boo
             : "lg:sticky lg:top-8 lg:max-h-[calc(100dvh-7.5rem)] lg:pb-2"
         }`}
       >
-        <LeftNavContent compact={compact} />
+        <RoutedLeftNavContent compact={compact} />
       </div>
     </aside>
   );
@@ -679,7 +702,7 @@ export function AppShell({ children, desktopWideMode = false, onDesktopWideModeC
           isOpen={isMobileLeftNavOpen}
           onClose={() => setIsMobileLeftNavOpen(false)}
         >
-          <LeftNavContent onNavigate={() => setIsMobileLeftNavOpen(false)} />
+          <RoutedLeftNavContent onNavigate={() => setIsMobileLeftNavOpen(false)} />
         </MobileLeftDrawer>
 
         <MobileCalendarDrawer

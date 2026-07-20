@@ -129,7 +129,7 @@ class ProcurementSettingsAdmin(admin.ModelAdmin):
         return super().has_add_permission(request)
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        return request.user.is_superuser
 
     def available_processing_departments_count(self, obj):
         count = obj.available_processing_departments.count()

@@ -4,12 +4,15 @@ from .views import (
     OwnPayrollStatementAcknowledgeView,
     OwnPayrollStatementDetailView,
     OwnPayrollStatementListView,
+    OwnPayrollWorkRecordView,
 )
 from .admin_views import (
     EmployeePayRateApproveView,
     EmployeePayRateDetailView,
     EmployeePayRateListCreateView,
     EmployeePayRateReviseView,
+    PayrollBulkPayRateView,
+    PayrollBulkPointRateView,
     PayrollAdminComponentListView,
     PayrollAdminEmployeeListView,
     PayrollAdminPeriodDetailView,
@@ -21,6 +24,7 @@ from .admin_views import (
     PayrollInputLineListCreateView,
     PayrollPeriodCalculateView,
     PayrollPeriodCloseView,
+    PayrollPeriodTableView,
     PayrollRunApproveView,
     PayrollRunDetailView,
     PayrollRunPublishView,
@@ -66,9 +70,24 @@ urlpatterns = [
         name="admin-period-calculate",
     ),
     path(
+        "payroll/admin/periods/<int:pk>/table/",
+        PayrollPeriodTableView.as_view(),
+        name="admin-period-table",
+    ),
+    path(
         "payroll/admin/periods/<int:pk>/attendance-work-records/",
         PayrollAttendanceWorkRecordsView.as_view(),
         name="admin-period-attendance-work-records",
+    ),
+    path(
+        "payroll/admin/periods/<int:pk>/bulk-pay-rate/",
+        PayrollBulkPayRateView.as_view(),
+        name="admin-period-bulk-pay-rate",
+    ),
+    path(
+        "payroll/admin/periods/<int:pk>/bulk-point-rate/",
+        PayrollBulkPointRateView.as_view(),
+        name="admin-period-bulk-point-rate",
     ),
     path(
         "payroll/admin/periods/<int:pk>/close/",
@@ -154,6 +173,11 @@ urlpatterns = [
         "payroll/admin/runs/<int:pk>/publish/",
         PayrollRunPublishView.as_view(),
         name="admin-run-publish",
+    ),
+    path(
+        "payroll/me/work-records/",
+        OwnPayrollWorkRecordView.as_view(),
+        name="own-work-records",
     ),
     path(
         "payroll/me/statements/",

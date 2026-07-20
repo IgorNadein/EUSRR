@@ -89,6 +89,12 @@ The initial `EXCESS_ONLY` point policy pays only points above the target:
 for a shortfall. This policy must remain in shadow/reconciliation mode until
 the company confirms how points work for other rows.
 
+`PROPORTIONAL_WITH_EXCESS` adjusts the base accrual by completion when actual
+points are below target:
+`base_accrual * min(actual / target, 1)`. When actual points exceed target, the
+full base accrual is retained and the excess is paid separately using
+`(actual - target) * point_rate`.
+
 ## Host boundary
 
 The core knows an employee only as an opaque `employee_ref`. The host adapter

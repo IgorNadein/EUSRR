@@ -42,12 +42,15 @@ from finance.payroll.services import (
     approve_pay_rate,
     approve_run,
     approve_work_record,
+    bulk_set_pay_rate,
+    bulk_set_point_rate,
     calculate_period,
     close_period,
     publish_run,
     return_run_for_correction,
     submit_run_for_review,
 )
+from finance.payroll.reporting import build_payroll_period_table
 from finance.payroll.attendance import (
     apply_attendance_work_preview,
     build_attendance_work_preview,
@@ -56,6 +59,8 @@ from finance.payroll.attendance import (
 from .admin_serializers import (
     AttendanceWorkImportCommandSerializer,
     ApprovalCommandSerializer,
+    BulkPayRateCommandSerializer,
+    BulkPointRateCommandSerializer,
     CalculatePayrollCommandSerializer,
     EmployeePayRateRevisionSerializer,
     EmployeePayRateSerializer,
@@ -570,6 +575,17 @@ class PayrollAdminPeriodDetailView(PayrollAdminAPIView):
         return Response(PayrollPeriodSerializer(period).data)
 
 
+class PayrollPeriodTableView(PayrollAdminAPIView):
+    allowed_permissions = (PAYROLL_PERMISSIONS["view_all"],)
+
+    def get(self, request, pk):
+        period = get_object_or_404(
+            PayrollPeriod.objects.select_related("current_run"),
+            pk=pk,
+        )
+        return Response(build_payroll_period_table(period))
+
+
 class DraftCollectionView(PayrollAdminAPIView):
     allowed_permissions = INPUT_VIEW_PERMISSIONS
     model = None
@@ -777,6 +793,52 @@ class EmployeePayRateDetailView(DraftDetailView):
             "created_by",
             "approved_by",
         ).prefetch_related("employee__departments_links__department")
+
+
+class PayrollBulkPointRateView(PayrollAdminAPIView):
+    allowed_permissions = (PAYROLL_PERMISSIONS["manage_inputs"],)
+
+    def post(self, request, pk):
+        get_object_or_404(PayrollPeriod.objects.only("id"), pk=pk)
+        command = BulkPointRateCommandSerializer(data=request.data)
+        command.is_valid(raise_exception=True)
+        result = bulk_set_point_rate(
+            pk,
+            actor=request.user,
+            **command.validated_data,
+        )
+        return Response(
+            {
+                "mode": result["mode"],
+                "point_rate": (
+                    f"{result['point_rate']:.4f}"
+                    if result["point_rate"] is not None
+                    else None
+                ),
+                "summary": result["summary"],
+            }
+        )
+
+
+class PayrollBulkPayRateView(PayrollAdminAPIView):
+    allowed_permissions = (PAYROLL_PERMISSIONS["manage_inputs"],)
+
+    def post(self, request, pk):
+        get_object_or_404(PayrollPeriod.objects.only("id"), pk=pk)
+        command = BulkPayRateCommandSerializer(data=request.data)
+        command.is_valid(raise_exception=True)
+        result = bulk_set_pay_rate(
+            pk,
+            actor=request.user,
+            **command.validated_data,
+        )
+        return Response(
+            {
+                "amount": f"{result['amount']:.4f}",
+                "effective_from": result["effective_from"].isoformat(),
+                "summary": result["summary"],
+            }
+        )
 
 
 class PayrollWorkRecordListCreateView(DraftCollectionView):
@@ -1025,6 +1087,7 @@ class PayrollWorkRecordReviseView(PayrollAdminAPIView):
         command.is_valid(raise_exception=True)
         values = {
             "target_points": source.target_points,
+            "target_points_overridden": source.target_points_overridden,
             "actual_points": source.actual_points,
             "expected_point_amount": source.expected_point_amount,
             "expected_gross": source.expected_gross,
@@ -1032,6 +1095,8 @@ class PayrollWorkRecordReviseView(PayrollAdminAPIView):
             "expected_payable": source.expected_payable,
             **command.validated_data,
         }
+        if "target_points" in command.validated_data:
+            values["target_points_overridden"] = True
         revision = PayrollWorkRecord(
             period=source.period,
             employee=source.employee,

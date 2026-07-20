@@ -79,13 +79,20 @@ class DeterministicPayrollCalculator:
         )
         with localcontext(decimal_context):
             quantize = self._quantizer(rules)
+            base_amount = request.base_accrual
+            if rules.point_policy is PointPolicy.PROPORTIONAL_WITH_EXCESS:
+                completion_ratio = min(
+                    request.actual_points / request.target_points,
+                    Decimal("1"),
+                )
+                base_amount *= completion_ratio
             lines: list[PayrollLine] = [
                 PayrollLine(
                     line_id="system:base",
                     code="BASE",
                     label="Base accrual",
                     kind=LineKind.EARNING,
-                    amount=quantize(request.base_accrual),
+                    amount=quantize(base_amount),
                     source_ref=request.base_source_ref,
                     calculated=True,
                 )
@@ -93,7 +100,10 @@ class DeterministicPayrollCalculator:
             warnings: list[CalculationWarning] = []
             point_delta: Decimal | None = None
 
-            if rules.point_policy is PointPolicy.EXCESS_ONLY:
+            if rules.point_policy in {
+                PointPolicy.EXCESS_ONLY,
+                PointPolicy.PROPORTIONAL_WITH_EXCESS,
+            }:
                 point_delta = request.actual_points - request.target_points
                 eligible_points = max(point_delta, Decimal("0"))
                 point_amount = quantize(eligible_points * request.point_rate)
@@ -108,7 +118,10 @@ class DeterministicPayrollCalculator:
                         calculated=True,
                     )
                 )
-                if point_delta < 0:
+                if (
+                    point_delta < 0
+                    and rules.point_policy is PointPolicy.EXCESS_ONLY
+                ):
                     warnings.append(
                         CalculationWarning(
                             code="POINTS_BELOW_TARGET_NO_DEDUCTION",
@@ -481,7 +494,10 @@ class DeterministicPayrollCalculator:
             exclusive_minimum=True,
         )
 
-        if rules.point_policy is PointPolicy.EXCESS_ONLY:
+        if rules.point_policy in {
+            PointPolicy.EXCESS_ONLY,
+            PointPolicy.PROPORTIONAL_WITH_EXCESS,
+        }:
             self._validate_decimal(
                 request.target_points,
                 "target_points",

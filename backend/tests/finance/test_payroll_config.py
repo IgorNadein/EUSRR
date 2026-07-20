@@ -35,7 +35,7 @@ def test_payroll_adapter_is_safe_by_default(settings):
 
     rules = build_rules()
 
-    assert rules.point_policy is PointPolicy.DISABLED
+    assert rules.point_policy is PointPolicy.PROPORTIONAL_WITH_EXCESS
     assert rules.money_quantum == Decimal("0.01")
     assert rules.allow_negative_payable is False
 
