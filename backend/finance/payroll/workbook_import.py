@@ -486,6 +486,15 @@ def _ensure_import_allowed(period: PayrollPeriod):
         _error("PERIOD_INPUTS_LOCKED", "Сначала верните текущий расчёт на исправление.")
 
 
+def _period_import_lock_queryset():
+    # current_run is nullable, so PostgreSQL must lock only the period table.
+    # Locking every joined table raises an error for the outer join when a
+    # period has no current run.
+    return PayrollPeriod.objects.select_for_update(of=("self",)).select_related(
+        "current_run"
+    )
+
+
 @transaction.atomic
 def apply_workbook_import(
     period_id: int,
@@ -515,11 +524,7 @@ def apply_workbook_import(
             "WORKBOOK_CHANGED",
             "После предпросмотра выбран другой файл. Повторите проверку.",
         )
-    period = (
-        PayrollPeriod.objects.select_for_update()
-        .select_related("current_run")
-        .get(pk=period_id)
-    )
+    period = _period_import_lock_queryset().get(pk=period_id)
     _ensure_import_allowed(period)
     if period.lock_version != expected_period_lock_version:
         _error("STALE_PERIOD", "Период уже изменён; повторите предпросмотр.")
