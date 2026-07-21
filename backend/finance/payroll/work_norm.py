@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.utils import timezone
+
 from attendance.services import (
     get_employee_work_schedule_payload,
     get_standard_work_schedule,
@@ -102,18 +104,20 @@ def calculate_period_personnel_points(
 ) -> tuple[Decimal, int]:
     """Project points from the work calendar and official personnel events.
 
-    A scheduled day is treated as attended unless the personnel state explicitly
-    says that attendance is not expected (leave, sick leave, day off, maternity
-    leave or dismissal). The result is a read-only projection and is not stored
-    in payroll models.
+    Only completed scheduled days before today participate in the projection.
+    Such a day is treated as attended unless the personnel state explicitly says
+    that attendance is not expected (leave, sick leave, day off, maternity leave
+    or dismissal). The result is read-only and is not stored in payroll models.
     """
 
     if schedule is None:
         schedule, _ = resolve_employee_schedule(employee)
     workdates = period_workdates(period, schedule)
+    today = timezone.localdate()
+    completed_workdates = [workdate for workdate in workdates if workdate < today]
     attended_dates = [
         workdate
-        for workdate in workdates
+        for workdate in completed_workdates
         if resolve_employee_personnel_state(
             employee,
             workdate,
