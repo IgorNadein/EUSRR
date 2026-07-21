@@ -101,13 +101,24 @@ def _calculate_attendance_day_points(
 ) -> Decimal | None:
     worked = _finite_decimal(record.work_hours)
     expected = _finite_decimal(record.expected_hours)
-    if worked is not None and worked > 0 and not record.effective_is_workday:
-        return None
-    if not record.effective_is_workday or record.technical_issues:
+    # Attendance and personnel projections are deliberately independent.
+    # A vacation/dismissal makes ``effective_is_workday`` false, but verified
+    # entrance/exit events on an underlying scheduled day still earn
+    # attendance points. The personnel column represents the conflicting
+    # personnel state separately.
+    if not record.is_workday or record.technical_issues:
         return None
     if record.personnel_status == ACTION_REMOTE and not (
-        record.is_manually_edited
-        and "work_hours" in (record.manual_edit_payload or {})
+        (
+            record.is_manually_edited
+            and "work_hours" in (record.manual_edit_payload or {})
+        )
+        or (
+            worked is not None
+            and worked > 0
+            and record.arrival_time
+            and record.departure_time
+        )
     ):
         return None
     if bool(record.arrival_time) != bool(record.departure_time):
@@ -262,6 +273,7 @@ def _analyze_attendance(
     absence_days = 0
     manual_days = 0
     overtime_days = 0
+    personnel_conflict_days = 0
     missing_schedule = False
 
     for record in records:
@@ -277,7 +289,7 @@ def _analyze_attendance(
 
         worked = _finite_decimal(record.work_hours)
         expected = _finite_decimal(record.expected_hours)
-        if worked is not None and worked > 0 and not record.effective_is_workday:
+        if worked is not None and worked > 0 and not record.is_workday:
             blockers.append(
                 _issue(
                     "OUTSIDE_SCHEDULE_WORK_REQUIRES_REVIEW",
@@ -285,7 +297,7 @@ def _analyze_attendance(
                 )
             )
             continue
-        if not record.effective_is_workday:
+        if not record.is_workday:
             continue
 
         effective_workdays += 1
@@ -293,8 +305,16 @@ def _analyze_attendance(
             technical_issue_days += 1
             continue
         if record.personnel_status == ACTION_REMOTE and not (
-            record.is_manually_edited
-            and "work_hours" in (record.manual_edit_payload or {})
+            (
+                record.is_manually_edited
+                and "work_hours" in (record.manual_edit_payload or {})
+            )
+            or (
+                worked is not None
+                and worked > 0
+                and record.arrival_time
+                and record.departure_time
+            )
         ):
             blockers.append(
                 _issue(
@@ -343,6 +363,7 @@ def _analyze_attendance(
         absence_days += int(explicit_absence)
         manual_days += int(record.is_manually_edited)
         overtime_days += int(record.is_overtime)
+        personnel_conflict_days += int(not record.effective_is_workday and worked > 0)
 
     if technical_issue_days:
         blockers.append(
@@ -384,6 +405,14 @@ def _analyze_attendance(
             _issue(
                 "ATTENDANCE_OVERTIME_INCLUDED",
                 f"Факт включает переработку в рабочие дни: {overtime_days} дн.",
+            )
+        )
+    if personnel_conflict_days:
+        warnings.append(
+            _issue(
+                "ATTENDANCE_PERSONNEL_CONFLICT_INCLUDED",
+                "Фактическая работа в кадрово нерабочие дни учтена в баллах: "
+                f"{personnel_conflict_days} дн.",
             )
         )
 
