@@ -4,6 +4,7 @@ import { CircleHelp, Eye, EyeOff, Loader2, Pencil, Search, X } from "lucide-reac
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
+import { PayrollPointBreakdownModal } from "@/components/finance/admin/PayrollPointBreakdownModal";
 import type {
   PayrollPeriodTable,
   PayrollPeriodTableComponent,
@@ -12,6 +13,7 @@ import type {
 } from "@/lib/api/finance";
 import { formatPayrollMoney } from "@/lib/payroll";
 import { getPayrollAdminError } from "@/lib/payroll-admin";
+import { comparePayrollProjection, type PayrollProjectionDifference } from "@/lib/payroll-projection";
 
 const statusMeta: Record<PayrollPeriodTableStatus, { label: string; className: string }> = {
   calculated: { label: "Рассчитано", className: "app-feedback-success" },
@@ -293,7 +295,7 @@ function calculationHelps(pointPolicy: PayrollPeriodTable["calculation_rules"]["
     },
     personnelPoints: {
       title: "Баллы по кадровым событиям",
-      logic: "Это накопительный показатель на начало текущего дня. Он вычисляется на ходу от нормы баллов сотрудника, рабочего графика и официальных кадровых событий. Текущий и будущие дни не учитываются. Каждый завершённый плановый рабочий день считается отработанным полностью, пока одобренное заявление или кадровое событие не подтверждает отсутствие. Отпуск, больничный, отгул, декрет и увольнение дают 0 баллов; удалённая работа считается присутствием.",
+      logic: "Это накопительный показатель на начало текущего дня. Он вычисляется на ходу от нормы баллов сотрудника, рабочего графика и официальных кадровых событий. До первого приёма, после увольнения и до повторного приёма баллы не начисляются; день приёма или восстановления уже учитывается. Текущий и будущие дни не входят в расчёт. Отпуск, больничный, отгул и декрет дают 0 баллов; удалённая работа считается присутствием.",
       formula: "Баллы по кадровым событиям = Норма баллов × Завершённые рабочие дни без подтверждённого отсутствия ÷ Все плановые рабочие дни периода",
       manual: "Нет. Значение меняется через норму баллов, заявление, кадровое событие или рабочий график.",
     },
@@ -397,6 +399,48 @@ function CalculatedMoney({ value, currency, preliminary }: { value: string | nul
     >
       {formatMoney(value, currency)}
     </span>
+  );
+}
+
+const projectionDifferenceClasses: Record<PayrollProjectionDifference["color"], string> = {
+  green: "text-emerald-300 font-medium",
+  orange: "text-orange-400 font-medium",
+  red: "text-red-400 font-medium",
+};
+
+function ProjectionPointsCell({
+  value,
+  actualPoints,
+  label,
+  onOpen,
+}: {
+  value: string | null;
+  actualPoints: string | null;
+  label: string;
+  onOpen: () => void;
+}) {
+  const difference = comparePayrollProjection(value, actualPoints);
+  const className = difference
+    ? projectionDifferenceClasses[difference.color]
+    : "text-[var(--muted-foreground)]";
+  const directionLabel = difference?.direction === "higher" ? "выше" : "ниже";
+  const differenceLabel = difference?.percentage == null
+    ? "выработка равна нулю"
+    : `расхождение ${difference.percentage.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`;
+  const title = difference
+    ? `${label}: значение ${directionLabel} выработки, ${differenceLabel}. Нажмите для детализации по дням.`
+    : `${label}. Нажмите для детализации по дням.`;
+  return (
+    <td className={`${bodyCellClass} p-0`} title={title}>
+      <button
+        type="button"
+        className={`min-h-10 w-full px-1.5 py-2 text-right text-[11px] tabular-nums transition-colors hover:bg-[var(--surface-tertiary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent-primary)] ${className}`}
+        onClick={onOpen}
+        aria-label={`${label}. Открыть детализацию по дням`}
+      >
+        {formatPoints(value)}
+      </button>
+    </td>
   );
 }
 
@@ -526,6 +570,10 @@ export function PayrollPeriodTableView({
     ));
   }, [data?.rows, search]);
   const [activeHelp, setActiveHelp] = useState<CalculationHelp | null>(null);
+  const [breakdownEmployee, setBreakdownEmployee] = useState<{
+    id: number;
+    displayName: string;
+  } | null>(null);
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
   const columnsMenuRef = useRef<HTMLDivElement>(null);
   const [hiddenColumns, setHiddenColumns] = useHiddenPayrollColumns(storageUserId);
@@ -678,6 +726,9 @@ export function PayrollPeriodTableView({
       <div className="app-text-muted mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
         {canEdit ? <span>Enter или переход в другую ячейку — сохранить, Esc — отменить.</span> : null}
         <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[var(--muted-foreground)]" aria-hidden="true" />Серый текст — заполнено автоматически</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-300" aria-hidden="true" />Зелёный — значение выше выработки больше чем на 25%</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-orange-400" aria-hidden="true" />Оранжевый — ниже на 5–25%</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-red-400" aria-hidden="true" />Красный — ниже больше чем на 25%</span>
         <span className="inline-flex items-center gap-1.5"><CircleHelp className="app-accent-text" size={13} />Знак вопроса — логика и формула расчёта</span>
       </div>
 
@@ -750,8 +801,8 @@ export function PayrollPeriodTableView({
                   {isVisible(columnIds.inNormPointRate) ? <InlineEditableCell value={row.in_norm_point_rate} formattedValue={formatMoney(row.in_norm_point_rate, data.currency)} label={`Цена балла в пределах нормы: ${row.employee.display_name}`} automatic /> : null}
                   {isVisible(columnIds.excessPointRate) ? <InlineEditableCell value={row.point_rate ?? row.in_norm_point_rate} formattedValue={formatMoney(row.point_rate ?? row.in_norm_point_rate, data.currency)} onSave={canEdit && onSaveRate ? (value) => onSaveRate(row, "point_rate", value) : undefined} label={`Цена балла сверх нормы: ${row.employee.display_name}`} automatic={row.point_rate === null} /> : null}
                   {isVisible(columnIds.targetPoints) ? <InlineEditableCell value={row.target_points} formattedValue={formatPoints(row.target_points)} onSave={canEdit && onSaveWork ? (value) => onSaveWork(row, "target_points", value) : undefined} label={`Норма: ${row.employee.display_name}`} automatic={row.target_points_automatic} /> : null}
-                  {isVisible(columnIds.attendancePoints) ? <InlineEditableCell value={row.attendance_points} formattedValue={formatPoints(row.attendance_points)} label={`Баллы по посещаемости: ${row.employee.display_name}`} automatic /> : null}
-                  {isVisible(columnIds.personnelPoints) ? <InlineEditableCell value={row.personnel_points} formattedValue={formatPoints(row.personnel_points)} label={`Баллы по кадровым событиям: ${row.employee.display_name}`} automatic /> : null}
+                  {isVisible(columnIds.attendancePoints) ? <ProjectionPointsCell value={row.attendance_points} actualPoints={row.actual_points} label={`Баллы по посещаемости: ${row.employee.display_name}`} onOpen={() => setBreakdownEmployee({ id: row.employee.id, displayName: row.employee.display_name })} /> : null}
+                  {isVisible(columnIds.personnelPoints) ? <ProjectionPointsCell value={row.personnel_points} actualPoints={row.actual_points} label={`Баллы по кадровым событиям: ${row.employee.display_name}`} onOpen={() => setBreakdownEmployee({ id: row.employee.id, displayName: row.employee.display_name })} /> : null}
                   {isVisible(columnIds.actualPoints) ? <InlineEditableCell value={row.actual_points} formattedValue={formatPoints(row.actual_points)} onSave={canEdit && onSaveWork ? (value) => onSaveWork(row, "actual_points", value) : undefined} label={`Баллы: ${row.employee.display_name}`} /> : null}
                   {isVisible(columnIds.pointDelta) ? <td className={bodyCellClass}>{formatPoints(row.point_delta)}</td> : null}
                   {isVisible(columnIds.pointAmount) ? <td className={bodyCellClass}><CalculatedMoney value={row.point_amount} currency={data.currency} preliminary={row.totals_preliminary} /></td> : null}
@@ -802,6 +853,14 @@ export function PayrollPeriodTableView({
         </table>
       </div>
       {activeHelp ? <CalculationHelpModal help={activeHelp} rules={data.calculation_rules} onClose={() => setActiveHelp(null)} /> : null}
+      {breakdownEmployee ? (
+        <PayrollPointBreakdownModal
+          periodId={data.period_id}
+          employeeId={breakdownEmployee.id}
+          employeeName={breakdownEmployee.displayName}
+          onClose={() => setBreakdownEmployee(null)}
+        />
+      ) : null}
     </div>
   );
 }

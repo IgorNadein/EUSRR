@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import replace
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -18,6 +19,7 @@ from finance.enums import ApprovalStatus
 from finance.models import (
     EmployeePayRate,
     PayrollComponent,
+    PayrollDailyWorkEntry,
     PayrollInputLine,
     PayrollPeriod,
     PayrollWorkRecord,
@@ -25,11 +27,16 @@ from finance.models import (
 )
 
 from .adapter import POINT_BASE_COMPONENT_CODES, build_core_preview_request
-from .attendance import calculate_attendance_points_projection
+from .attendance import (
+    calculate_attendance_day_points,
+    calculate_attendance_points_projection,
+)
 from .config import base_rate_code, build_rules
 from .work_norm import (
     calculate_period_personnel_points,
+    calculate_period_personnel_daily_points,
     calculate_period_target_points,
+    period_workdates,
     resolve_employee_schedule,
 )
 
@@ -240,7 +247,6 @@ def build_payroll_period_table(period: PayrollPeriod):
                 queryset=EmployeeAction.objects.filter(
                     Q(source_request__isnull=True)
                     | Q(source_request__status=RequestStatus.APPROVED),
-                    date__date__lte=period.date_to,
                 ).select_related("source_request"),
                 to_attr="payroll_personnel_actions",
             ),
@@ -467,4 +473,120 @@ def build_payroll_period_table(period: PayrollPeriod):
             "deduction_total": _row_money_total(rows, "deduction_total"),
             "payable_total": _row_money_total(rows, "payable"),
         },
+    }
+
+
+def build_payroll_employee_point_breakdown(
+    period: PayrollPeriod,
+    employee,
+):
+    """Build a read-only day-by-day comparison of the three point sources."""
+
+    actions = list(
+        EmployeeAction.objects.filter(employee=employee)
+        .filter(
+            Q(source_request__isnull=True)
+            | Q(source_request__status=RequestStatus.APPROVED)
+        )
+        .select_related("source_request")
+        .order_by("date", "id")
+    )
+    schedule, _ = resolve_employee_schedule(employee)
+    workdates = period_workdates(period, schedule)
+    workdate_set = set(workdates)
+    automatic_target_points, _, _ = calculate_period_target_points(
+        period,
+        employee=employee,
+        schedule=schedule,
+    )
+    work = _latest_work_by_employee(period, [employee.pk]).get(employee.pk)
+    statement = None
+    if period.current_run_id:
+        statement = period.current_run.statements.filter(employee=employee).first()
+
+    if statement is not None:
+        snapshot = statement.input_snapshot or {}
+        target_points = Decimal(
+            str(snapshot.get("target_points", automatic_target_points))
+        )
+        actual_points = Decimal(str(snapshot.get("actual_points", "0")))
+    else:
+        target_points = work.target_points if work else automatic_target_points
+        actual_points = work.actual_points if work else None
+
+    daily_target_points = (
+        target_points / Decimal(len(workdates)) if workdates else Decimal("0")
+    )
+    attendance_records = {
+        record.date: record
+        for record in AttendanceRecord.objects.filter(
+            employee=employee,
+            date__range=(period.date_from, period.date_to),
+        ).select_related("analysis_run")
+    }
+    personnel_points = calculate_period_personnel_daily_points(
+        period,
+        employee=employee,
+        actions=actions,
+        period_target_points=target_points,
+        schedule=schedule,
+    )
+    work_entries = {
+        entry.work_date: entry.actual_points
+        for entry in PayrollDailyWorkEntry.objects.filter(
+            period=period,
+            employee=employee,
+        )
+    }
+    dated_work_points_total = sum(work_entries.values(), Decimal("0"))
+    undated_work_points = (
+        (actual_points - dated_work_points_total).quantize(Decimal("0.0001"))
+        if actual_points is not None
+        else None
+    )
+    if undated_work_points == 0:
+        undated_work_points = None
+    if work_entries:
+        work_points_mode = "daily_entries"
+        work_points = work_entries
+    else:
+        work_points_mode = "unavailable"
+        work_points = {}
+
+    dates = []
+    current = period.date_from
+    while current <= period.date_to:
+        attendance_record = attendance_records.get(current)
+        attendance_day_points = (
+            calculate_attendance_day_points(
+                attendance_record,
+                daily_point_value=daily_target_points,
+            )
+            if attendance_record is not None
+            else None
+        )
+        dates.append(
+            {
+                "date": current.isoformat(),
+                "is_workday": current in workdate_set,
+                "attendance_points": _decimal_text(attendance_day_points),
+                "personnel_points": _decimal_text(personnel_points.get(current)),
+                "work_points": _decimal_text(work_points.get(current)),
+            }
+        )
+        current += timedelta(days=1)
+
+    return {
+        "period": {
+            "id": period.pk,
+            "name": period.name,
+            "date_from": period.date_from.isoformat(),
+            "date_to": period.date_to.isoformat(),
+        },
+        "employee": _employee_payload(employee),
+        "target_points": _decimal_text(target_points),
+        "actual_points": _decimal_text(actual_points),
+        "undated_work_points": _decimal_text(undated_work_points),
+        "work_points_mode": work_points_mode,
+        "dates": dates,
     }

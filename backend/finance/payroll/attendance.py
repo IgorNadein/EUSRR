@@ -94,6 +94,52 @@ def _is_explicit_absence(record: AttendanceRecord) -> bool:
     )
 
 
+def _calculate_attendance_day_points(
+    record: AttendanceRecord,
+    *,
+    daily_point_value: Decimal,
+) -> Decimal | None:
+    worked = _finite_decimal(record.work_hours)
+    expected = _finite_decimal(record.expected_hours)
+    if worked is not None and worked > 0 and not record.effective_is_workday:
+        return None
+    if not record.effective_is_workday or record.technical_issues:
+        return None
+    if record.personnel_status == ACTION_REMOTE and not (
+        record.is_manually_edited
+        and "work_hours" in (record.manual_edit_payload or {})
+    ):
+        return None
+    if bool(record.arrival_time) != bool(record.departure_time):
+        return None
+    if (
+        expected is None
+        or worked is None
+        or expected <= 0
+        or expected > 24
+        or worked < 0
+        or worked > 24
+    ):
+        return None
+    if worked == 0 and not record.arrival_time and not _is_explicit_absence(record):
+        return None
+    return daily_point_value * worked / expected
+
+
+def calculate_attendance_day_points(
+    record: AttendanceRecord,
+    *,
+    daily_point_value: Decimal,
+) -> Decimal | None:
+    """Return a comparable daily projection or ``None`` for unusable data."""
+
+    points = _calculate_attendance_day_points(
+        record,
+        daily_point_value=daily_point_value,
+    )
+    return points.quantize(QUANTUM) if points is not None else None
+
+
 def calculate_attendance_points_projection(
     records: list[AttendanceRecord],
     *,
@@ -108,31 +154,12 @@ def calculate_attendance_points_projection(
 
     actual_points = Decimal("0")
     for record in records:
-        worked = _finite_decimal(record.work_hours)
-        expected = _finite_decimal(record.expected_hours)
-        if worked is not None and worked > 0 and not record.effective_is_workday:
-            continue
-        if not record.effective_is_workday or record.technical_issues:
-            continue
-        if record.personnel_status == ACTION_REMOTE and not (
-            record.is_manually_edited
-            and "work_hours" in (record.manual_edit_payload or {})
-        ):
-            continue
-        if bool(record.arrival_time) != bool(record.departure_time):
-            continue
-        if (
-            expected is None
-            or worked is None
-            or expected <= 0
-            or expected > 24
-            or worked < 0
-            or worked > 24
-        ):
-            continue
-        if worked == 0 and not record.arrival_time and not _is_explicit_absence(record):
-            continue
-        actual_points += daily_point_value * worked / expected
+        day_points = _calculate_attendance_day_points(
+            record,
+            daily_point_value=daily_point_value,
+        )
+        if day_points is not None:
+            actual_points += day_points
     return actual_points.quantize(QUANTUM)
 
 

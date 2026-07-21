@@ -54,7 +54,10 @@ from finance.payroll.services import (
     return_run_for_correction,
     submit_run_for_review,
 )
-from finance.payroll.reporting import build_payroll_period_table
+from finance.payroll.reporting import (
+    build_payroll_employee_point_breakdown,
+    build_payroll_period_table,
+)
 from finance.payroll.attendance import (
     apply_attendance_work_preview,
     build_attendance_work_preview,
@@ -592,6 +595,23 @@ class PayrollPeriodTableView(PayrollAdminAPIView):
             pk=pk,
         )
         return Response(build_payroll_period_table(period))
+
+
+class PayrollPeriodPointBreakdownView(PayrollAdminAPIView):
+    allowed_permissions = (PAYROLL_PERMISSIONS["view_all"],)
+
+    def get(self, request, pk, employee_id):
+        period = get_object_or_404(
+            PayrollPeriod.objects.select_related("current_run"),
+            pk=pk,
+        )
+        employee = get_object_or_404(
+            Employee.objects.select_related("position").prefetch_related(
+                "departments_links__department"
+            ),
+            pk=employee_id,
+        )
+        return Response(build_payroll_employee_point_breakdown(period, employee))
 
 
 class PayrollPeriodApproveDraftsView(PayrollAdminAPIView):

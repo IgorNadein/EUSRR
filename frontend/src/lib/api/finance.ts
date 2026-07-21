@@ -286,6 +286,29 @@ export type PayrollPeriodTable = {
     };
 };
 
+export type PayrollPointBreakdownDay = {
+    date: string;
+    is_workday: boolean;
+    attendance_points: string | null;
+    personnel_points: string | null;
+    work_points: string | null;
+};
+
+export type PayrollPointBreakdown = {
+    period: {
+        id: number;
+        name: string;
+        date_from: string;
+        date_to: string;
+    };
+    employee: PayrollAdminEmployee & { is_active: boolean };
+    target_points: string | null;
+    actual_points: string | null;
+    undated_work_points: string | null;
+    work_points_mode: "daily_entries" | "unavailable";
+    dates: PayrollPointBreakdownDay[];
+};
+
 export type PayrollComponent = {
     id: number;
     code: string;
@@ -617,6 +640,11 @@ export function createFinanceApi(request: RequestFn) {
             request(`${adminPrefix}/periods/`),
         getPayrollAdminPeriodTable: (periodId: number): Promise<PayrollPeriodTable> =>
             request(`${adminPrefix}/periods/${periodId}/table/`),
+        getPayrollAdminPointBreakdown: (
+            periodId: number,
+            employeeId: number,
+        ): Promise<PayrollPointBreakdown> =>
+            request(`${adminPrefix}/periods/${periodId}/employees/${employeeId}/point-breakdown/`),
         createPayrollAdminPeriod: (payload: PayrollPeriodWrite): Promise<PayrollAdminPeriod> =>
             request(`${adminPrefix}/periods/`, jsonOptions("POST", payload)),
         updatePayrollAdminPeriod: (
