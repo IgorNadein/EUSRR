@@ -106,19 +106,20 @@ def _calculate_attendance_day_points(
     # entrance/exit events on an underlying scheduled day still earn
     # attendance points. The personnel column represents the conflicting
     # personnel state separately.
-    if not record.is_workday or record.technical_issues:
+    has_verified_shift = bool(
+        worked is not None
+        and worked > 0
+        and record.arrival_time
+        and record.departure_time
+    )
+    if (not record.is_workday and not has_verified_shift) or record.technical_issues:
         return None
     if record.personnel_status == ACTION_REMOTE and not (
         (
             record.is_manually_edited
             and "work_hours" in (record.manual_edit_payload or {})
         )
-        or (
-            worked is not None
-            and worked > 0
-            and record.arrival_time
-            and record.departure_time
-        )
+        or has_verified_shift
     ):
         return None
     if bool(record.arrival_time) != bool(record.departure_time):
@@ -274,6 +275,7 @@ def _analyze_attendance(
     manual_days = 0
     overtime_days = 0
     personnel_conflict_days = 0
+    outside_schedule_days = 0
     missing_schedule = False
 
     for record in records:
@@ -289,18 +291,16 @@ def _analyze_attendance(
 
         worked = _finite_decimal(record.work_hours)
         expected = _finite_decimal(record.expected_hours)
-        if worked is not None and worked > 0 and not record.is_workday:
-            blockers.append(
-                _issue(
-                    "OUTSIDE_SCHEDULE_WORK_REQUIRES_REVIEW",
-                    "Есть работа вне рабочего графика; её нужно проверить вручную.",
-                )
-            )
-            continue
-        if not record.is_workday:
+        has_verified_shift = bool(
+            worked is not None
+            and worked > 0
+            and record.arrival_time
+            and record.departure_time
+        )
+        if not record.is_workday and not has_verified_shift:
             continue
 
-        effective_workdays += 1
+        effective_workdays += int(record.is_workday)
         if record.technical_issues:
             technical_issue_days += 1
             continue
@@ -309,12 +309,7 @@ def _analyze_attendance(
                 record.is_manually_edited
                 and "work_hours" in (record.manual_edit_payload or {})
             )
-            or (
-                worked is not None
-                and worked > 0
-                and record.arrival_time
-                and record.departure_time
-            )
+            or has_verified_shift
         ):
             blockers.append(
                 _issue(
@@ -358,12 +353,14 @@ def _analyze_attendance(
 
         expected_hours += expected
         worked_hours += worked
-        target_points += daily_target_points
+        if record.is_workday:
+            target_points += daily_target_points
         actual_points += daily_target_points * worked / expected
         absence_days += int(explicit_absence)
         manual_days += int(record.is_manually_edited)
         overtime_days += int(record.is_overtime)
         personnel_conflict_days += int(not record.effective_is_workday and worked > 0)
+        outside_schedule_days += int(not record.is_workday and worked > 0)
 
     if technical_issue_days:
         blockers.append(
@@ -413,6 +410,14 @@ def _analyze_attendance(
                 "ATTENDANCE_PERSONNEL_CONFLICT_INCLUDED",
                 "Фактическая работа в кадрово нерабочие дни учтена в баллах: "
                 f"{personnel_conflict_days} дн.",
+            )
+        )
+    if outside_schedule_days:
+        warnings.append(
+            _issue(
+                "ATTENDANCE_OUTSIDE_SCHEDULE_INCLUDED",
+                "Фактическая работа в выходные учтена сверх нормы периода: "
+                f"{outside_schedule_days} дн.",
             )
         )
 
