@@ -9,6 +9,7 @@ from django.utils import timezone
 from attendance.models import AttendanceAnalysisRun, AttendanceRecord
 from finance.enums import ApprovalStatus, InputSource
 from finance.models import PayrollAuditEvent, PayrollPeriod, PayrollWorkRecord
+from finance.payroll.attendance import calculate_attendance_day_points
 
 pytestmark = pytest.mark.django_db
 
@@ -123,9 +124,7 @@ def test_attendance_preview_and_missing_only_create_audited_draft(
             "Неполный день и переработка рассчитываются пропорционально "
             "плановым часам."
         ),
-        "formula": (
-            "Баллы дня = дневная норма × отработанные часы ÷ плановые часы"
-        ),
+        "formula": ("Баллы дня = дневная норма × отработанные часы ÷ плановые часы"),
         "daily_target_points": "5.0000",
     }
     assert preview["summary"] == {
@@ -192,6 +191,42 @@ def test_attendance_preview_and_missing_only_create_audited_draft(
         action="payroll.work_record_attendance_draft_created",
         object_id=str(record.pk),
     ).exists()
+
+
+def test_personnel_non_working_day_keeps_verified_attendance_points(
+    user_factory,
+    auth_client_factory,
+):
+    manager = user_factory(email="attendance.personnel.manager@example.test")
+    employee = user_factory(email="attendance.personnel.employee@example.test")
+    grant(manager, "manage_payroll_inputs")
+    period = make_period(manager, suffix="personnel-separation")
+    records = make_attendance(employee)
+    worked_record = records[0]
+    worked_record.effective_is_workday = False
+    worked_record.personnel_status = "on_leave"
+    worked_record.personnel_status_label = "В отпуске"
+    worked_record.statuses = ["work_outside_personnel_schedule"]
+    worked_record.is_overtime = True
+    worked_record.overtime_hours = worked_record.work_hours
+    worked_record.save()
+
+    assert calculate_attendance_day_points(
+        worked_record,
+        daily_point_value=Decimal("5"),
+    ) == Decimal("5.0000")
+
+    preview_response = auth_client_factory(manager).get(endpoint(period))
+
+    assert preview_response.status_code == 200
+    item = preview_response.json()["items"][0]
+    assert item["target_points"] == "10.0000"
+    assert item["actual_points"] == "5.0000"
+    assert item["blockers"] == []
+    assert {warning["code"] for warning in item["warnings"]} >= {
+        "ATTENDANCE_OVERTIME_INCLUDED",
+        "ATTENDANCE_PERSONNEL_CONFLICT_INCLUDED",
+    }
 
 
 def test_replace_mode_revises_approved_and_preserves_excel_controls(
