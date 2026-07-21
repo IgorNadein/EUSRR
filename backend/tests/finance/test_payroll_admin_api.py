@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
@@ -9,11 +9,13 @@ from django.urls import reverse
 from django.utils import timezone
 
 from attendance.models import AttendanceAnalysisRun, AttendanceRecord
+from employees.constants import ACTION_DISMISSED, ACTION_HIRED, ACTION_REHIRED
 from employees.models import EmployeeAction
 from finance.models import (
     EmployeePayRate,
     PayrollAuditEvent,
     PayrollComponent,
+    PayrollDailyWorkEntry,
     PayrollInputLine,
     PayrollPeriod,
     PayrollRun,
@@ -251,7 +253,7 @@ def test_period_table_lists_all_employees_and_requires_view_all(
     assert row["in_norm_point_rate"] == "736.3636"
     assert row["target_points"] == "110.0000"
     assert row["attendance_points"] is None
-    assert row["personnel_points"] == "110.0000"
+    assert row["personnel_points"] == "0.0000"
     assert row["actual_points"] == "115.0000"
     assert row["point_delta"] == "5.0000"
     assert row["point_amount"] == "750.00"
@@ -311,6 +313,11 @@ def test_period_table_projects_attendance_and_official_personnel_points(
         actual_points="0",
         created_by=manager,
     )
+    EmployeeAction.objects.create(
+        employee=employee,
+        action=ACTION_HIRED,
+        date=timezone.make_aware(datetime(2026, 6, 1)),
+    )
     AttendanceRecord.objects.create(
         analysis_run=attendance_run,
         employee=employee,
@@ -354,6 +361,218 @@ def test_period_table_projects_attendance_and_official_personnel_points(
     assert row["target_points"] == "220.0000"
     assert row["attendance_points"] == "15.0000"
     assert row["personnel_points"] == "20.0000"
+
+
+def test_period_table_personnel_points_respect_employment_boundaries(
+    user_factory,
+    auth_client_factory,
+    monkeypatch,
+):
+    manager = user_factory(email="table.employment.manager@example.test")
+    employee = user_factory(email="table.employment.employee@example.test")
+    grant(manager, "view_all_payroll")
+    period = make_period(creator=manager)
+    PayrollWorkRecord.objects.create(
+        period=period,
+        employee=employee,
+        target_points="220",
+        target_points_overridden=True,
+        actual_points="0",
+        created_by=manager,
+    )
+    for action, action_date in (
+        (ACTION_HIRED, datetime(2026, 6, 5)),
+        (ACTION_DISMISSED, datetime(2026, 6, 10)),
+        (ACTION_REHIRED, datetime(2026, 6, 15)),
+    ):
+        EmployeeAction.objects.create(
+            employee=employee,
+            action=action,
+            date=timezone.make_aware(action_date),
+        )
+    monkeypatch.setattr(
+        "finance.payroll.work_norm.timezone.localdate",
+        lambda: date(2026, 7, 1),
+    )
+
+    response = auth_client_factory(manager).get(
+        api_url("admin-period-table", pk=period.pk),
+    )
+
+    assert response.status_code == 200, response.content
+    row = next(
+        item
+        for item in response.json()["rows"]
+        if item["employee"]["id"] == employee.pk
+    )
+    assert row["personnel_points"] == "150.0000"
+
+
+def test_period_point_breakdown_returns_daily_sources(
+    user_factory,
+    auth_client_factory,
+    monkeypatch,
+):
+    viewer = user_factory(email="point.breakdown.viewer@example.test")
+    employee = user_factory(
+        email="point.breakdown.employee@example.test",
+        first_name="Ирина",
+        last_name="Подневная",
+    )
+    grant(viewer, "view_all_payroll")
+    period = make_period(creator=viewer)
+    attendance_run = AttendanceAnalysisRun.objects.create(
+        employee=employee,
+        period_start="2026-06-01",
+        period_end="2026-06-30",
+        status=AttendanceAnalysisRun.STATUS_SUCCESS,
+        schedule_payload={
+            "workdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+        },
+    )
+    for day, worked in ((date(2026, 6, 1), 9), (date(2026, 6, 2), 4.5)):
+        AttendanceRecord.objects.create(
+            analysis_run=attendance_run,
+            employee=employee,
+            date=day,
+            arrival_time="08:00",
+            departure_time="17:00" if worked == 9 else "12:30",
+            work_hours=worked,
+            expected_hours=9,
+            effective_is_workday=True,
+        )
+    PayrollWorkRecord.objects.create(
+        period=period,
+        employee=employee,
+        target_points="220",
+        target_points_overridden=True,
+        actual_points="15",
+        created_by=viewer,
+    )
+    PayrollDailyWorkEntry.objects.create(
+        period=period,
+        employee=employee,
+        work_date=date(2026, 6, 1),
+        target_points="10",
+        actual_points="15",
+    )
+    EmployeeAction.objects.create(
+        employee=employee,
+        action=ACTION_HIRED,
+        date=timezone.make_aware(datetime(2026, 6, 1)),
+    )
+    vacation = Request.objects.create(
+        employee=employee,
+        type=RequestType.VACATION,
+        date_from=date(2026, 6, 2),
+        date_to=date(2026, 6, 2),
+        status=RequestStatus.PENDING,
+    )
+    vacation.status = RequestStatus.APPROVED
+    vacation.approver = viewer
+    vacation.decided_at = timezone.now()
+    vacation.save(update_fields=["status", "approver", "decided_at", "updated_at"])
+    assert EmployeeAction.objects.filter(source_request=vacation).exists()
+    monkeypatch.setattr(
+        "finance.payroll.work_norm.timezone.localdate",
+        lambda: date(2026, 6, 3),
+    )
+
+    response = auth_client_factory(viewer).get(
+        api_url(
+            "admin-period-point-breakdown",
+            pk=period.pk,
+            employee_id=employee.pk,
+        )
+    )
+
+    assert response.status_code == 200, response.content
+    assert_no_store(response)
+    body = response.json()
+    assert body["employee"]["display_name"] == "Ирина Подневная"
+    assert body["target_points"] == "220.0000"
+    assert body["actual_points"] == "15.0000"
+    assert body["undated_work_points"] is None
+    assert body["work_points_mode"] == "daily_entries"
+    june_first = next(item for item in body["dates"] if item["date"] == "2026-06-01")
+    june_second = next(item for item in body["dates"] if item["date"] == "2026-06-02")
+    weekend = next(item for item in body["dates"] if item["date"] == "2026-06-06")
+    assert {key: june_first[key] for key in (
+        "date",
+        "is_workday",
+        "attendance_points",
+        "personnel_points",
+        "work_points",
+    )} == {
+        "date": "2026-06-01",
+        "is_workday": True,
+        "attendance_points": "10.0000",
+        "personnel_points": "10.0000",
+        "work_points": "15.0000",
+    }
+    assert june_first["attendance_record"]["id"] == AttendanceRecord.objects.get(
+        employee=employee,
+        date="2026-06-01",
+    ).pk
+    assert june_first["work_entry"]["actual_points"] == "15.0000"
+    assert june_first["work_entry"]["note"] == ""
+    assert [item["action"] for item in june_first["personnel_detail"]["actions"]] == [
+        ACTION_HIRED
+    ]
+    assert {key: june_second[key] for key in (
+        "date",
+        "is_workday",
+        "attendance_points",
+        "personnel_points",
+        "work_points",
+    )} == {
+        "date": "2026-06-02",
+        "is_workday": True,
+        "attendance_points": "5.0000",
+        "personnel_points": "0.0000",
+        "work_points": None,
+    }
+    assert june_second["work_entry"] is None
+    assert [item["id"] for item in june_second["personnel_detail"]["requests"]] == [
+        vacation.pk
+    ]
+    assert june_second["personnel_detail"]["requests"][0]["status"] == "approved"
+    assert {key: weekend[key] for key in (
+        "date",
+        "is_workday",
+        "attendance_points",
+        "personnel_points",
+        "work_points",
+    )} == {
+        "date": "2026-06-06",
+        "is_workday": False,
+        "attendance_points": None,
+        "personnel_points": None,
+        "work_points": None,
+    }
+
+    undated_employee = user_factory(email="point.breakdown.undated@example.test")
+    PayrollWorkRecord.objects.create(
+        period=period,
+        employee=undated_employee,
+        target_points="220",
+        target_points_overridden=True,
+        actual_points="42",
+        created_by=viewer,
+    )
+    undated_response = auth_client_factory(viewer).get(
+        api_url(
+            "admin-period-point-breakdown",
+            pk=period.pk,
+            employee_id=undated_employee.pk,
+        )
+    )
+    assert undated_response.status_code == 200, undated_response.content
+    undated_body = undated_response.json()
+    assert undated_body["undated_work_points"] == "42.0000"
+    assert undated_body["undated_work_record"]["actual_points"] == "42.0000"
+    assert undated_body["work_points_mode"] == "unavailable"
+    assert all(item["work_points"] is None for item in undated_body["dates"])
 
 
 def test_component_cell_can_be_cleared_and_voids_all_active_lines(

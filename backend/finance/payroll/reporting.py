@@ -4,20 +4,26 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import replace
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.db.models import Prefetch, Q
+from django.utils import timezone
 from payroll_core import DeterministicPayrollCalculator
 
 from attendance.models import AttendanceRecord
+from employees.constants import ACTIVATING_MARKER_ACTIONS
 from employees.models import EmployeeAction
+from employees.services.personnel_state import resolve_employee_personnel_state
 from requests_app.enums import RequestStatus
+from requests_app.models import Request
 
 from finance.enums import ApprovalStatus
 from finance.models import (
     EmployeePayRate,
     PayrollComponent,
+    PayrollDailyWorkEntry,
     PayrollInputLine,
     PayrollPeriod,
     PayrollWorkRecord,
@@ -25,11 +31,16 @@ from finance.models import (
 )
 
 from .adapter import POINT_BASE_COMPONENT_CODES, build_core_preview_request
-from .attendance import calculate_attendance_points_projection
+from .attendance import (
+    calculate_attendance_day_points,
+    calculate_attendance_points_projection,
+)
 from .config import base_rate_code, build_rules
 from .work_norm import (
     calculate_period_personnel_points,
+    calculate_period_personnel_daily_points,
     calculate_period_target_points,
+    period_workdates,
     resolve_employee_schedule,
 )
 
@@ -240,7 +251,6 @@ def build_payroll_period_table(period: PayrollPeriod):
                 queryset=EmployeeAction.objects.filter(
                     Q(source_request__isnull=True)
                     | Q(source_request__status=RequestStatus.APPROVED),
-                    date__date__lte=period.date_to,
                 ).select_related("source_request"),
                 to_attr="payroll_personnel_actions",
             ),
@@ -467,4 +477,289 @@ def build_payroll_period_table(period: PayrollPeriod):
             "deduction_total": _row_money_total(rows, "deduction_total"),
             "payable_total": _row_money_total(rows, "payable"),
         },
+    }
+
+
+def build_payroll_employee_point_breakdown(
+    period: PayrollPeriod,
+    employee,
+):
+    """Build a read-only day-by-day comparison of the three point sources."""
+
+    actions = list(
+        EmployeeAction.objects.filter(employee=employee)
+        .filter(
+            Q(source_request__isnull=True)
+            | Q(source_request__status=RequestStatus.APPROVED)
+        )
+        .select_related("source_request")
+        .order_by("date", "id")
+    )
+    employment_start_dates = [
+        timezone.localtime(action.date).date()
+        for action in actions
+        if action.action in ACTIVATING_MARKER_ACTIONS and action.date
+    ]
+    first_employment_date = (
+        min(employment_start_dates) if employment_start_dates else None
+    )
+    requests = list(
+        Request.objects.filter(employee=employee)
+        .filter(
+            Q(
+                date_from__lte=period.date_to,
+                date_to__gte=period.date_from,
+            )
+            | Q(
+                date_from__range=(period.date_from, period.date_to),
+                date_to__isnull=True,
+            )
+            | Q(
+                date_from__isnull=True,
+                created_at__date__range=(period.date_from, period.date_to),
+            )
+        )
+        .select_related("approver")
+        .order_by("date_from", "created_at", "id")
+    )
+    schedule, _ = resolve_employee_schedule(employee)
+    workdates = period_workdates(period, schedule)
+    workdate_set = set(workdates)
+    automatic_target_points, _, _ = calculate_period_target_points(
+        period,
+        employee=employee,
+        schedule=schedule,
+    )
+    work = _latest_work_by_employee(period, [employee.pk]).get(employee.pk)
+    statement = None
+    if period.current_run_id:
+        statement = period.current_run.statements.filter(employee=employee).first()
+
+    if statement is not None:
+        snapshot = statement.input_snapshot or {}
+        target_points = Decimal(
+            str(snapshot.get("target_points", automatic_target_points))
+        )
+        actual_points = Decimal(str(snapshot.get("actual_points", "0")))
+    else:
+        target_points = work.target_points if work else automatic_target_points
+        actual_points = work.actual_points if work else None
+
+    daily_target_points = (
+        target_points / Decimal(len(workdates)) if workdates else Decimal("0")
+    )
+    attendance_records = {
+        record.date: record
+        for record in AttendanceRecord.objects.filter(
+            employee=employee,
+            date__range=(period.date_from, period.date_to),
+        ).select_related("analysis_run")
+    }
+    personnel_points = calculate_period_personnel_daily_points(
+        period,
+        employee=employee,
+        actions=actions,
+        period_target_points=target_points,
+        schedule=schedule,
+    )
+    work_entries = {
+        entry.work_date: entry
+        for entry in PayrollDailyWorkEntry.objects.filter(
+            period=period,
+            employee=employee,
+        )
+    }
+    dated_work_points_total = sum(
+        (entry.actual_points for entry in work_entries.values()),
+        Decimal("0"),
+    )
+    undated_work_points = (
+        (actual_points - dated_work_points_total).quantize(Decimal("0.0001"))
+        if actual_points is not None
+        else None
+    )
+    if undated_work_points == 0:
+        undated_work_points = None
+    if work_entries:
+        work_points_mode = "daily_entries"
+        work_points = {
+            workdate: entry.actual_points
+            for workdate, entry in work_entries.items()
+        }
+    else:
+        work_points_mode = "unavailable"
+        work_points = {}
+
+    dates = []
+    current = period.date_from
+    while current <= period.date_to:
+        attendance_record = attendance_records.get(current)
+        attendance_day_points = (
+            calculate_attendance_day_points(
+                attendance_record,
+                daily_point_value=daily_target_points,
+            )
+            if attendance_record is not None
+            else None
+        )
+        personnel_state = resolve_employee_personnel_state(
+            employee,
+            current,
+            actions=actions,
+        )
+        related_actions = []
+        for action in actions:
+            action_date = (
+                timezone.localtime(action.date).date() if action.date else None
+            )
+            if action_date is None:
+                continue
+            action_is_related = action_date == current or (
+                action.date_to is not None
+                and action_date <= current <= action.date_to
+            )
+            if personnel_state.action_id == action.pk:
+                action_is_related = True
+            if not action_is_related:
+                continue
+            related_actions.append(
+                {
+                    "id": action.pk,
+                    "action": action.action,
+                    "label": action.get_action_display(),
+                    "date": action_date.isoformat(),
+                    "date_to": action.date_to.isoformat() if action.date_to else None,
+                    "comment": action.comment,
+                    "source_request_id": action.source_request_id,
+                }
+            )
+        related_requests = []
+        for personnel_request in requests:
+            request_date_from = personnel_request.date_from
+            request_date_to = personnel_request.date_to or request_date_from
+            request_is_related = bool(
+                request_date_from
+                and request_date_to
+                and request_date_from <= current <= request_date_to
+            )
+            if request_date_from is None:
+                request_is_related = (
+                    timezone.localtime(personnel_request.created_at).date() == current
+                )
+            if not request_is_related:
+                continue
+            related_requests.append(
+                {
+                    "id": personnel_request.pk,
+                    "type": personnel_request.type,
+                    "type_label": personnel_request.get_type_display(),
+                    "title": personnel_request.display_title,
+                    "status": personnel_request.status,
+                    "status_label": personnel_request.get_status_display(),
+                    "date_from": (
+                        personnel_request.date_from.isoformat()
+                        if personnel_request.date_from
+                        else None
+                    ),
+                    "date_to": (
+                        personnel_request.date_to.isoformat()
+                        if personnel_request.date_to
+                        else None
+                    ),
+                    "comment": personnel_request.comment,
+                }
+            )
+        attendance_payload = None
+        if attendance_record is not None:
+            attendance_payload = {
+                "id": attendance_record.pk,
+                "arrival_time": attendance_record.arrival_time,
+                "departure_time": attendance_record.departure_time,
+                "work_hours": attendance_record.work_hours,
+                "expected_hours": attendance_record.expected_hours,
+                "status_label": (
+                    attendance_record.personnel_status_label
+                    or ("Отсутствие" if attendance_record.is_absent else "Рабочий день")
+                ),
+                "issues": list(
+                    dict.fromkeys(
+                        str(item)
+                        for item in [
+                            *(attendance_record.statuses or []),
+                            *(attendance_record.employee_issues or []),
+                            *(attendance_record.technical_issues or []),
+                        ]
+                        if str(item).strip()
+                    )
+                ),
+                "is_manually_edited": attendance_record.is_manually_edited,
+            }
+        work_entry = work_entries.get(current)
+        dates.append(
+            {
+                "date": current.isoformat(),
+                "is_workday": current in workdate_set,
+                "attendance_points": _decimal_text(attendance_day_points),
+                "personnel_points": _decimal_text(personnel_points.get(current)),
+                "work_points": _decimal_text(work_points.get(current)),
+                "attendance_record": attendance_payload,
+                "personnel_detail": {
+                    "state": (
+                        {
+                            "status": "before_employment",
+                            "label": "До приёма на работу",
+                            "expects_attendance": False,
+                        }
+                        if first_employment_date is not None
+                        and current < first_employment_date
+                        else {
+                            "status": personnel_state.status,
+                            "label": personnel_state.label
+                            or "Обычный рабочий день",
+                            "expects_attendance": personnel_state.expects_attendance,
+                        }
+                    ),
+                    "actions": related_actions,
+                    "requests": related_requests,
+                },
+                "work_entry": (
+                    {
+                        "id": work_entry.pk,
+                        "target_points": _decimal_text(work_entry.target_points),
+                        "actual_points": _decimal_text(work_entry.actual_points),
+                        "note": work_entry.note,
+                        "created_at": work_entry.created_at.isoformat(),
+                        "updated_at": work_entry.updated_at.isoformat(),
+                    }
+                    if work_entry is not None
+                    else None
+                ),
+            }
+        )
+        current += timedelta(days=1)
+
+    return {
+        "period": {
+            "id": period.pk,
+            "name": period.name,
+            "date_from": period.date_from.isoformat(),
+            "date_to": period.date_to.isoformat(),
+        },
+        "employee": _employee_payload(employee),
+        "target_points": _decimal_text(target_points),
+        "actual_points": _decimal_text(actual_points),
+        "undated_work_points": _decimal_text(undated_work_points),
+        "undated_work_record": (
+            {
+                "id": work.pk,
+                "actual_points": _decimal_text(undated_work_points),
+                "note": work.reason,
+                "created_at": work.created_at.isoformat(),
+                "updated_at": work.updated_at.isoformat(),
+            }
+            if undated_work_points is not None and work is not None
+            else None
+        ),
+        "work_points_mode": work_points_mode,
+        "dates": dates,
     }

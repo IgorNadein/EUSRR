@@ -10,6 +10,7 @@ from attendance.services import (
     get_standard_work_schedule,
     get_standard_work_schedule_payload,
 )
+from employees.constants import ACTIVATING_MARKER_ACTIONS
 from employees.services.personnel_state import resolve_employee_personnel_state
 
 from finance.models import PayrollPeriod, PayrollWorkSettings
@@ -112,16 +113,26 @@ def calculate_period_personnel_points(
 
     if schedule is None:
         schedule, _ = resolve_employee_schedule(employee)
+    personnel_actions = list(actions)
+    employment_start_dates = [
+        timezone.localtime(action.date).date()
+        for action in personnel_actions
+        if action.action in ACTIVATING_MARKER_ACTIONS and action.date
+    ]
+    first_employment_date = (
+        min(employment_start_dates) if employment_start_dates else None
+    )
     workdates = period_workdates(period, schedule)
     today = timezone.localdate()
     completed_workdates = [workdate for workdate in workdates if workdate < today]
     attended_dates = [
         workdate
         for workdate in completed_workdates
-        if resolve_employee_personnel_state(
+        if (first_employment_date is None or workdate >= first_employment_date)
+        and resolve_employee_personnel_state(
             employee,
             workdate,
-            actions=actions,
+            actions=personnel_actions,
         ).expects_attendance
     ]
     points = (
@@ -130,3 +141,52 @@ def calculate_period_personnel_points(
         else Decimal("0")
     ).quantize(QUANTUM)
     return points, len(attended_dates)
+
+
+def calculate_period_personnel_daily_points(
+    period: PayrollPeriod,
+    *,
+    employee,
+    actions,
+    period_target_points: Decimal,
+    schedule: dict | None = None,
+) -> dict[date, Decimal | None]:
+    """Return daily personnel projections for scheduled dates in a period.
+
+    Future and current dates deliberately stay unknown. Completed scheduled
+    dates receive their share of the period norm when attendance was expected,
+    otherwise zero.
+    """
+
+    if schedule is None:
+        schedule, _ = resolve_employee_schedule(employee)
+    personnel_actions = list(actions)
+    employment_start_dates = [
+        timezone.localtime(action.date).date()
+        for action in personnel_actions
+        if action.action in ACTIVATING_MARKER_ACTIONS and action.date
+    ]
+    first_employment_date = (
+        min(employment_start_dates) if employment_start_dates else None
+    )
+    workdates = period_workdates(period, schedule)
+    if not workdates:
+        return {}
+    daily_point_value = period_target_points / Decimal(len(workdates))
+    today = timezone.localdate()
+    result = {}
+    for workdate in workdates:
+        if workdate >= today:
+            result[workdate] = None
+            continue
+        expects_attendance = (
+            first_employment_date is None or workdate >= first_employment_date
+        ) and resolve_employee_personnel_state(
+            employee,
+            workdate,
+            actions=personnel_actions,
+        ).expects_attendance
+        result[workdate] = (
+            daily_point_value if expects_attendance else Decimal("0")
+        ).quantize(QUANTUM)
+    return result

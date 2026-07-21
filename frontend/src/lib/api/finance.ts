@@ -286,6 +286,81 @@ export type PayrollPeriodTable = {
     };
 };
 
+export type PayrollPointBreakdownDay = {
+    date: string;
+    is_workday: boolean;
+    attendance_points: string | null;
+    personnel_points: string | null;
+    work_points: string | null;
+    attendance_record: {
+        id: number;
+        arrival_time: string | null;
+        departure_time: string | null;
+        work_hours: number | null;
+        expected_hours: number | null;
+        status_label: string;
+        issues: string[];
+        is_manually_edited: boolean;
+    } | null;
+    personnel_detail: {
+        state: {
+            status: string;
+            label: string;
+            expects_attendance: boolean;
+        };
+        actions: Array<{
+            id: number;
+            action: string;
+            label: string;
+            date: string;
+            date_to: string | null;
+            comment: string;
+            source_request_id: number | null;
+        }>;
+        requests: Array<{
+            id: number;
+            type: string;
+            type_label: string;
+            title: string;
+            status: string;
+            status_label: string;
+            date_from: string | null;
+            date_to: string | null;
+            comment: string;
+        }>;
+    };
+    work_entry: {
+        id: number;
+        target_points: string | null;
+        actual_points: string | null;
+        note: string;
+        created_at: string;
+        updated_at: string;
+    } | null;
+};
+
+export type PayrollPointBreakdown = {
+    period: {
+        id: number;
+        name: string;
+        date_from: string;
+        date_to: string;
+    };
+    employee: PayrollAdminEmployee & { is_active: boolean };
+    target_points: string | null;
+    actual_points: string | null;
+    undated_work_points: string | null;
+    undated_work_record: {
+        id: number;
+        actual_points: string | null;
+        note: string;
+        created_at: string;
+        updated_at: string;
+    } | null;
+    work_points_mode: "daily_entries" | "unavailable";
+    dates: PayrollPointBreakdownDay[];
+};
+
 export type PayrollComponent = {
     id: number;
     code: string;
@@ -617,6 +692,11 @@ export function createFinanceApi(request: RequestFn) {
             request(`${adminPrefix}/periods/`),
         getPayrollAdminPeriodTable: (periodId: number): Promise<PayrollPeriodTable> =>
             request(`${adminPrefix}/periods/${periodId}/table/`),
+        getPayrollAdminPointBreakdown: (
+            periodId: number,
+            employeeId: number,
+        ): Promise<PayrollPointBreakdown> =>
+            request(`${adminPrefix}/periods/${periodId}/employees/${employeeId}/point-breakdown/`),
         createPayrollAdminPeriod: (payload: PayrollPeriodWrite): Promise<PayrollAdminPeriod> =>
             request(`${adminPrefix}/periods/`, jsonOptions("POST", payload)),
         updatePayrollAdminPeriod: (

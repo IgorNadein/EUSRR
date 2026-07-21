@@ -27,6 +27,7 @@ from .admin_views import (
     PayrollPeriodCalculateView,
     PayrollPeriodApproveDraftsView,
     PayrollPeriodCloseView,
+    PayrollPeriodPointBreakdownView,
     PayrollPeriodTableView,
     PayrollRunApproveView,
     PayrollRunDetailView,
@@ -81,6 +82,11 @@ urlpatterns = [
         "payroll/admin/periods/<int:pk>/table/",
         PayrollPeriodTableView.as_view(),
         name="admin-period-table",
+    ),
+    path(
+        "payroll/admin/periods/<int:pk>/employees/<int:employee_id>/point-breakdown/",
+        PayrollPeriodPointBreakdownView.as_view(),
+        name="admin-period-point-breakdown",
     ),
     path(
         "payroll/admin/periods/<int:pk>/attendance-work-records/",
