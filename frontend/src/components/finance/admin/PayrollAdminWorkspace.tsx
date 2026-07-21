@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Clock3,
   FileCheck2,
+  FileSpreadsheet,
   Loader2,
   Maximize2,
   Minimize2,
@@ -36,6 +37,7 @@ import {
   PayrollWorkRecordFormModal,
 } from "@/components/finance/admin/PayrollAdminModals";
 import { PayrollAttendanceWorkModal } from "@/components/finance/admin/PayrollAttendanceWorkModal";
+import { PayrollWorkbookImportModal } from "@/components/finance/admin/PayrollWorkbookImportModal";
 import {
   PayrollApprovalQueue,
   PayrollInputLinesTable,
@@ -63,6 +65,7 @@ import type {
   PayrollPeriodTableRow,
   PayrollPeriodWrite,
   PayrollWorkRecordWrite,
+  PayrollWorkbookImportResult,
 } from "@/lib/api/finance";
 import {
   getPayrollAdminError,
@@ -122,6 +125,7 @@ function TableToolbar({
   onStatus,
   onAdd,
   onFillFromAttendance,
+  onImportWorkbook,
   onBulkPayRate,
   onBulkPointRate,
   addLabel,
@@ -132,12 +136,19 @@ function TableToolbar({
   onStatus: (value: "" | PayrollApprovalStatus) => void;
   onAdd?: () => void;
   onFillFromAttendance?: () => void;
+  onImportWorkbook?: () => void;
   onBulkPayRate?: () => void;
   onBulkPointRate?: () => void;
   addLabel: string;
 }) {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
+  const hasAdditionalActions = Boolean(
+    onFillFromAttendance
+      || onImportWorkbook
+      || onBulkPayRate
+      || onBulkPointRate,
+  );
 
   useEffect(() => {
     if (!addMenuOpen) return;
@@ -166,22 +177,17 @@ function TableToolbar({
       <select className="app-select rounded-lg px-3 py-2.5 text-sm sm:w-44" value={status} onChange={(event) => onStatus(event.target.value as "" | PayrollApprovalStatus)}>
         <option value="">Все статусы</option><option value="draft">Черновики</option><option value="approved">Утверждённые</option><option value="voided">Аннулированные</option>
       </select>
-      {onFillFromAttendance ? (
-        <button type="button" className="app-action-secondary inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2.5 text-sm font-medium" onClick={onFillFromAttendance}>
-          <CalendarCheck2 size={16} /> Заполнить из посещаемости
-        </button>
-      ) : null}
       {onAdd ? (
         <div ref={addMenuRef} className="relative flex shrink-0 items-center gap-1">
           <button type="button" className="app-action-primary inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2.5 text-sm font-semibold" onClick={onAdd}>
             <Plus size={16} /> {addLabel}
           </button>
-          {onBulkPayRate || onBulkPointRate ? (
+          {hasAdditionalActions ? (
             <button
               type="button"
               className="app-action-ghost flex h-10 w-8 items-center justify-center rounded-md"
               onClick={() => setAddMenuOpen((current) => !current)}
-              aria-label="Дополнительные действия со ставками"
+              aria-label="Дополнительные действия"
               aria-expanded={addMenuOpen}
               aria-haspopup="menu"
               title="Дополнительные действия"
@@ -189,8 +195,34 @@ function TableToolbar({
               <ChevronRight size={15} className={`transition-transform duration-200 ${addMenuOpen ? "rotate-90" : ""}`} />
             </button>
           ) : null}
-          {addMenuOpen && (onBulkPayRate || onBulkPointRate) ? (
+          {addMenuOpen && hasAdditionalActions ? (
             <div className="app-menu absolute right-0 top-full z-30 mt-2 w-64 rounded-xl py-1.5" role="menu">
+              {onFillFromAttendance ? (
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                  onClick={() => {
+                    setAddMenuOpen(false);
+                    onFillFromAttendance();
+                  }}
+                >
+                  <CalendarCheck2 className="app-text-muted" size={15} />
+                  Заполнить из посещаемости
+                </button>
+              ) : null}
+              {onImportWorkbook ? (
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-secondary)]"
+                  onClick={() => {
+                    setAddMenuOpen(false);
+                    onImportWorkbook();
+                  }}
+                >
+                  <FileSpreadsheet className="app-text-muted" size={15} />
+                  Импорт из Excel
+                </button>
+              ) : null}
               {onBulkPayRate ? (
                 <button
                   type="button"
@@ -289,6 +321,7 @@ export function PayrollAdminWorkspace({
   const [workModalOpen, setWorkModalOpen] = useState(false);
   const [editingWork, setEditingWork] = useState<PayrollAdminWorkRecord | null>(null);
   const [attendanceWorkModalOpen, setAttendanceWorkModalOpen] = useState(false);
+  const [workbookImportModalOpen, setWorkbookImportModalOpen] = useState(false);
   const [inputModalOpen, setInputModalOpen] = useState(false);
   const [editingInput, setEditingInput] = useState<PayrollAdminInputLine | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
@@ -802,6 +835,7 @@ export function PayrollAdminWorkspace({
                 onSearch={setSearch}
                 onStatus={setStatus}
                 onFillFromAttendance={canManageSourceData && selectedPeriod.status !== "published" ? () => setAttendanceWorkModalOpen(true) : undefined}
+                onImportWorkbook={canManageSourceData && selectedPeriod.status !== "published" ? () => setWorkbookImportModalOpen(true) : undefined}
                 onAdd={canManageSourceData && selectedPeriod.status !== "published" ? () => { setEditingWork(null); setWorkModalOpen(true); } : undefined}
                 addLabel="Добавить выработку"
               />
@@ -879,6 +913,25 @@ export function PayrollAdminWorkspace({
             setSearch("");
             setStatus("draft");
             await refreshView(buildPayrollAttendanceApplyNotice(result));
+          }}
+          onStale={handleStale}
+        />
+      ) : null}
+      {selectedPeriod && workbookImportModalOpen ? (
+        <PayrollWorkbookImportModal
+          isOpen
+          period={selectedPeriod}
+          onClose={() => setWorkbookImportModalOpen(false)}
+          onApplied={async (result: PayrollWorkbookImportResult) => {
+            setWorkbookImportModalOpen(false);
+            setSearch("");
+            setStatus("draft");
+            const changed = result.summary.created + result.summary.replaced;
+            const details = [
+              result.summary.skipped ? `пропущено: ${result.summary.skipped}` : "",
+              result.summary.unchanged ? `без изменений: ${result.summary.unchanged}` : "",
+            ].filter(Boolean).join(", ");
+            await refreshView(`Из Excel импортировано ${changed} дневных записей${details ? ` (${details})` : ""}.`);
           }}
           onStale={handleStale}
         />

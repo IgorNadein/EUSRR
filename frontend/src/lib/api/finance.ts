@@ -505,6 +505,57 @@ export type PayrollAttendanceWorkApplyResult = {
     records: PayrollAdminWorkRecord[];
 };
 
+export type PayrollWorkbookImportMode = "skip_existing" | "replace_existing";
+
+export type PayrollWorkbookImportEmployee = PayrollAdminEmployee & {
+    is_active: boolean;
+};
+
+export type PayrollWorkbookImportRow = {
+    row_key: string;
+    sheet_name: string;
+    row_number: number;
+    source_name: string;
+    match_status: "matched" | "ambiguous" | "unmatched";
+    matched_employee_id: number | null;
+    candidate_employee_ids: number[];
+    entry_count: number;
+    points_total: string;
+    existing_count: number;
+    existing_period_record: boolean;
+    invalid_cells: Array<{ date: string; message: string }>;
+    entries: Array<{ date: string; points: string }>;
+};
+
+export type PayrollWorkbookImportPreview = {
+    file_name: string;
+    file_hash: string;
+    period_id: number;
+    period_lock_version: number;
+    blocks: Array<{ sheet_name: string; year: number; month: number }>;
+    employees: PayrollWorkbookImportEmployee[];
+    rows: PayrollWorkbookImportRow[];
+    summary: {
+        rows: number;
+        matched: number;
+        needs_mapping: number;
+        entries: number;
+        existing: number;
+        invalid: number;
+    };
+};
+
+export type PayrollWorkbookImportResult = {
+    mode: PayrollWorkbookImportMode;
+    summary: {
+        created: number;
+        replaced: number;
+        unchanged: number;
+        skipped: number;
+    };
+    record_ids: number[];
+};
+
 export type PayrollAdminInputLine = {
     id: number;
     period_id: number;
@@ -757,6 +808,38 @@ export function createFinanceApi(request: RequestFn) {
                 `${adminPrefix}/periods/${periodId}/attendance-work-records/`,
                 jsonOptions("POST", payload),
             ),
+        previewPayrollAdminWorkbookImport: (
+            periodId: number,
+            file: File,
+        ): Promise<PayrollWorkbookImportPreview> => {
+            const body = new FormData();
+            body.append("file", file);
+            return request(`${adminPrefix}/periods/${periodId}/workbook-import/preview/`, {
+                method: "POST",
+                body,
+            });
+        },
+        applyPayrollAdminWorkbookImport: (
+            periodId: number,
+            payload: {
+                file: File;
+                mode: PayrollWorkbookImportMode;
+                mappings: Record<string, number | null>;
+                expected_file_hash: string;
+                expected_period_lock_version: number;
+            },
+        ): Promise<PayrollWorkbookImportResult> => {
+            const body = new FormData();
+            body.append("file", payload.file);
+            body.append("mode", payload.mode);
+            body.append("mappings", JSON.stringify(payload.mappings));
+            body.append("expected_file_hash", payload.expected_file_hash);
+            body.append("expected_period_lock_version", String(payload.expected_period_lock_version));
+            return request(`${adminPrefix}/periods/${periodId}/workbook-import/apply/`, {
+                method: "POST",
+                body,
+            });
+        },
         getPayrollAdminInputLines: (params: PayrollAdminListParams = {}): Promise<PayrollAdminListPayload<PayrollAdminInputLine>> =>
             request(`${adminPrefix}/input-lines/${buildQuery({ ...params, page_size: 200 })}`),
         createPayrollAdminInputLine: (payload: PayrollInputLineWrite): Promise<PayrollAdminInputLine> =>

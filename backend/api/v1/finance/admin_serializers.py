@@ -318,7 +318,9 @@ class BulkPointRateCommandSerializer(serializers.Serializer):
             attrs["mode"] = mode
         if mode == self.MODE_FIXED and attrs.get("point_rate") is None:
             raise serializers.ValidationError(
-                {"point_rate": "Укажите фиксированную цену или выберите автоматический расчёт."}
+                {
+                    "point_rate": "Укажите фиксированную цену или выберите автоматический расчёт."
+                }
             )
         if mode == self.MODE_IN_NORM:
             attrs["point_rate"] = None
@@ -459,9 +461,9 @@ class PayrollWorkRecordWriteSerializer(
     def validate(self, attrs):
         attrs = super().validate(attrs)
         target_was_sent = "target_points" in attrs
-        should_calculate = (
-            self.instance is None and not target_was_sent
-        ) or attrs.get("target_points") is None
+        should_calculate = (self.instance is None and not target_was_sent) or attrs.get(
+            "target_points"
+        ) is None
         if should_calculate:
             period = attrs.get("period") or self.instance.period
             employee = attrs.get("employee") or self.instance.employee
@@ -634,6 +636,24 @@ class AttendanceWorkImportCommandSerializer(serializers.Serializer):
                 {"reason": "Для пересчёта существующих записей укажите причину."}
             )
         return attrs
+
+
+class WorkbookWorkPreviewSerializer(serializers.Serializer):
+    file = serializers.FileField()
+
+    def validate_file(self, value):
+        if not value.name.lower().endswith(".xlsx"):
+            raise serializers.ValidationError("Выберите файл Excel в формате .xlsx.")
+        if value.size > 10 * 1024 * 1024:
+            raise serializers.ValidationError("Excel-файл должен быть не больше 10 МБ.")
+        return value
+
+
+class WorkbookWorkImportSerializer(WorkbookWorkPreviewSerializer):
+    mode = serializers.ChoiceField(choices=("skip_existing", "replace_existing"))
+    mappings = serializers.CharField(required=False, default="{}")
+    expected_file_hash = serializers.RegexField(regex=r"^[0-9a-f]{64}$")
+    expected_period_lock_version = serializers.IntegerField(min_value=0)
 
 
 class ReturnPayrollCommandSerializer(serializers.Serializer):

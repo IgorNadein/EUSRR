@@ -62,6 +62,11 @@ from finance.payroll.attendance import (
     apply_attendance_work_preview,
     build_attendance_work_preview,
 )
+from finance.payroll.workbook_import import (
+    apply_workbook_import,
+    build_workbook_preview,
+    parse_mappings,
+)
 
 from .admin_serializers import (
     AttendanceWorkImportCommandSerializer,
@@ -85,6 +90,8 @@ from .admin_serializers import (
     PayrollWorkRecordSerializer,
     PayrollWorkRecordWriteSerializer,
     ReturnPayrollCommandSerializer,
+    WorkbookWorkImportSerializer,
+    WorkbookWorkPreviewSerializer,
     _validation_detail,
 )
 from .views import NoStorePayrollResponseMixin, PayrollConflict
@@ -740,9 +747,7 @@ class DraftDetailView(PayrollAdminAPIView):
         # Read serializers join nullable audit/revision relations.  PostgreSQL
         # cannot apply FOR UPDATE to the nullable side of those outer joins,
         # and only the draft itself needs to be locked here.
-        instance = get_object_or_404(
-            scoped_queryset.select_for_update(of=("self",))
-        )
+        instance = get_object_or_404(scoped_queryset.select_for_update(of=("self",)))
         if period is not None:
             instance._state.fields_cache["period"] = period
             self.validate_period_update(instance, period)
@@ -1249,6 +1254,49 @@ class PayrollAttendanceWorkRecordsView(PayrollAdminAPIView):
                 "records": PayrollWorkRecordSerializer(records, many=True).data,
             }
         )
+
+
+class PayrollWorkbookWorkPreviewView(PayrollAdminAPIView):
+    """Inspect a legacy schedule workbook without changing payroll data."""
+
+    allowed_permissions = (PAYROLL_PERMISSIONS["manage_inputs"],)
+
+    def post(self, request, pk):
+        command = WorkbookWorkPreviewSerializer(data=request.data)
+        command.is_valid(raise_exception=True)
+        period = get_object_or_404(PayrollPeriod, pk=pk)
+        uploaded = command.validated_data["file"]
+        return Response(
+            build_workbook_preview(
+                period,
+                payload=uploaded.read(),
+                filename=uploaded.name,
+            )
+        )
+
+
+class PayrollWorkbookWorkImportView(PayrollAdminAPIView):
+    """Apply a previously inspected schedule workbook atomically."""
+
+    allowed_permissions = (PAYROLL_PERMISSIONS["manage_inputs"],)
+
+    def post(self, request, pk):
+        command = WorkbookWorkImportSerializer(data=request.data)
+        command.is_valid(raise_exception=True)
+        uploaded = command.validated_data["file"]
+        result = apply_workbook_import(
+            pk,
+            actor=request.user,
+            payload=uploaded.read(),
+            filename=uploaded.name,
+            mappings=parse_mappings(command.validated_data["mappings"]),
+            mode=command.validated_data["mode"],
+            expected_file_hash=command.validated_data["expected_file_hash"],
+            expected_period_lock_version=command.validated_data[
+                "expected_period_lock_version"
+            ],
+        )
+        return Response(result)
 
 
 class PayrollPeriodCalculateView(PayrollAdminAPIView):

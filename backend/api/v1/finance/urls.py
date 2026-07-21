@@ -38,6 +38,8 @@ from .admin_views import (
     PayrollWorkRecordDetailView,
     PayrollWorkRecordListCreateView,
     PayrollWorkRecordReviseView,
+    PayrollWorkbookWorkImportView,
+    PayrollWorkbookWorkPreviewView,
 )
 
 app_name = "finance-payroll"
@@ -92,6 +94,16 @@ urlpatterns = [
         "payroll/admin/periods/<int:pk>/attendance-work-records/",
         PayrollAttendanceWorkRecordsView.as_view(),
         name="admin-period-attendance-work-records",
+    ),
+    path(
+        "payroll/admin/periods/<int:pk>/workbook-import/preview/",
+        PayrollWorkbookWorkPreviewView.as_view(),
+        name="admin-period-workbook-import-preview",
+    ),
+    path(
+        "payroll/admin/periods/<int:pk>/workbook-import/apply/",
+        PayrollWorkbookWorkImportView.as_view(),
+        name="admin-period-workbook-import-apply",
     ),
     path(
         "payroll/admin/periods/<int:pk>/bulk-pay-rate/",
