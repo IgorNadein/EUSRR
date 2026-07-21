@@ -87,6 +87,19 @@ def _records_visible_to(user):
     return queryset.filter(employee_id=user.id)
 
 
+def _day_event_records_visible_to(user):
+    """Allow payroll viewers to inspect evidence used by point projections."""
+
+    queryset = AttendanceRecord.objects.all()
+    if (
+        user.is_staff
+        or user.is_superuser
+        or user.has_perm("finance.view_all_payroll")
+    ):
+        return queryset
+    return queryset.filter(employee_id=user.id)
+
+
 def _check_staff_access(user) -> None:
     if not (user and user.is_authenticated and (user.is_staff or user.is_superuser)):
         raise PermissionDenied("You don't have permission to manage attendance")
@@ -662,7 +675,7 @@ class AttendanceRecordDayEventsAPIView(APIView):
 
     def get_record(self, request, record_id):
         return get_object_or_404(
-            _records_visible_to(request.user).select_related("employee"),
+            _day_event_records_visible_to(request.user).select_related("employee"),
             pk=record_id,
         )
 
@@ -708,7 +721,7 @@ class AttendanceRecordDayEventPhotoAPIView(APIView):
 
     def get_record(self, request, record_id):
         return get_object_or_404(
-            _records_visible_to(request.user).select_related("employee"),
+            _day_event_records_visible_to(request.user).select_related("employee"),
             pk=record_id,
         )
 

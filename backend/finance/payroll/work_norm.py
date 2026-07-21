@@ -115,7 +115,7 @@ def calculate_period_personnel_points(
         schedule, _ = resolve_employee_schedule(employee)
     personnel_actions = list(actions)
     employment_start_dates = [
-        action.date.date()
+        timezone.localtime(action.date).date()
         for action in personnel_actions
         if action.action in ACTIVATING_MARKER_ACTIONS and action.date
     ]
@@ -162,7 +162,7 @@ def calculate_period_personnel_daily_points(
         schedule, _ = resolve_employee_schedule(employee)
     personnel_actions = list(actions)
     employment_start_dates = [
-        action.date.date()
+        timezone.localtime(action.date).date()
         for action in personnel_actions
         if action.action in ACTIVATING_MARKER_ACTIONS and action.date
     ]

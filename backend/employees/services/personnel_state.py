@@ -55,7 +55,7 @@ def resolve_employee_personnel_state(
     relevant_actions = [
         action
         for action in employee_actions
-        if action.date and action.date.date() <= target_date
+        if _action_date(action) is not None and _action_date(action) <= target_date
     ]
     if not relevant_actions:
         return EmployeePersonnelState()
@@ -66,7 +66,7 @@ def resolve_employee_personnel_state(
             status=ACTION_DISMISSED,
             label=ACTION_LABELS[ACTION_DISMISSED],
             action_id=permanent_action.id,
-            date_from=permanent_action.date.date(),
+            date_from=_action_date(permanent_action),
             expects_attendance=False,
         )
 
@@ -77,7 +77,7 @@ def resolve_employee_personnel_state(
             status=action.action,
             label=action.get_action_display(),
             action_id=action.id,
-            date_from=action.date.date(),
+            date_from=_action_date(action),
             date_to=date_to,
             expects_attendance=False,
         )
@@ -88,7 +88,7 @@ def resolve_employee_personnel_state(
             status=marker_action.action,
             label=marker_action.get_action_display(),
             action_id=marker_action.id,
-            date_from=marker_action.date.date(),
+            date_from=_action_date(marker_action),
             expects_attendance=True,
         )
 
@@ -97,7 +97,7 @@ def resolve_employee_personnel_state(
             status=permanent_action.action,
             label=permanent_action.get_action_display(),
             action_id=permanent_action.id,
-            date_from=permanent_action.date.date(),
+            date_from=_action_date(permanent_action),
         )
 
     return EmployeePersonnelState(
@@ -209,7 +209,7 @@ def _active_marker_action(
         for action in actions
         if action.action in MARKER_ACTIONS
         and action.date
-        and action.date.date() == target_date
+        and _action_date(action) == target_date
     ]
     return marker_actions[-1] if marker_actions else None
 
@@ -223,7 +223,9 @@ def _active_temporary_actions(
         if action.action not in TEMPORARY_START_ACTIONS or not action.date:
             continue
 
-        date_from = action.date.date()
+        date_from = _action_date(action)
+        if date_from is None:
+            continue
         if date_from > target_date:
             continue
 
@@ -247,7 +249,7 @@ def _resolve_temporary_action_date_to(action: EmployeeAction) -> date | None:
     if action.date_to:
         return action.date_to
     if action.date:
-        return action.date.date()
+        return _action_date(action)
     return None
 
 

@@ -497,21 +497,53 @@ def test_period_point_breakdown_returns_daily_sources(
     june_first = next(item for item in body["dates"] if item["date"] == "2026-06-01")
     june_second = next(item for item in body["dates"] if item["date"] == "2026-06-02")
     weekend = next(item for item in body["dates"] if item["date"] == "2026-06-06")
-    assert june_first == {
+    assert {key: june_first[key] for key in (
+        "date",
+        "is_workday",
+        "attendance_points",
+        "personnel_points",
+        "work_points",
+    )} == {
         "date": "2026-06-01",
         "is_workday": True,
         "attendance_points": "10.0000",
         "personnel_points": "10.0000",
         "work_points": "15.0000",
     }
-    assert june_second == {
+    assert june_first["attendance_record"]["id"] == AttendanceRecord.objects.get(
+        employee=employee,
+        date="2026-06-01",
+    ).pk
+    assert june_first["work_entry"]["actual_points"] == "15.0000"
+    assert june_first["work_entry"]["note"] == ""
+    assert [item["action"] for item in june_first["personnel_detail"]["actions"]] == [
+        ACTION_HIRED
+    ]
+    assert {key: june_second[key] for key in (
+        "date",
+        "is_workday",
+        "attendance_points",
+        "personnel_points",
+        "work_points",
+    )} == {
         "date": "2026-06-02",
         "is_workday": True,
         "attendance_points": "5.0000",
         "personnel_points": "0.0000",
         "work_points": None,
     }
-    assert weekend == {
+    assert june_second["work_entry"] is None
+    assert [item["id"] for item in june_second["personnel_detail"]["requests"]] == [
+        vacation.pk
+    ]
+    assert june_second["personnel_detail"]["requests"][0]["status"] == "approved"
+    assert {key: weekend[key] for key in (
+        "date",
+        "is_workday",
+        "attendance_points",
+        "personnel_points",
+        "work_points",
+    )} == {
         "date": "2026-06-06",
         "is_workday": False,
         "attendance_points": None,
@@ -538,6 +570,7 @@ def test_period_point_breakdown_returns_daily_sources(
     assert undated_response.status_code == 200, undated_response.content
     undated_body = undated_response.json()
     assert undated_body["undated_work_points"] == "42.0000"
+    assert undated_body["undated_work_record"]["actual_points"] == "42.0000"
     assert undated_body["work_points_mode"] == "unavailable"
     assert all(item["work_points"] is None for item in undated_body["dates"])
 

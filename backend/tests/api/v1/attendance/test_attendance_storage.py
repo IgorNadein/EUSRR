@@ -3,6 +3,7 @@ from io import BytesIO
 from datetime import date, datetime, timedelta
 
 import pytest
+from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
 from django.test import override_settings
 from django.urls import reverse
@@ -992,6 +993,39 @@ def test_user_cannot_load_other_employee_attendance_day_events(
     response = client.get(_record_day_events_url(record.id))
 
     assert response.status_code == 404
+
+
+def test_payroll_viewer_can_load_source_attendance_day_events(
+    auth_client_factory,
+    user_factory,
+):
+    staff = user_factory(staff=True)
+    payroll_viewer = user_factory(staff=False)
+    employee = user_factory()
+    permission = Permission.objects.get(
+        content_type__app_label="finance",
+        codename="view_all_payroll",
+    )
+    payroll_viewer.user_permissions.add(permission)
+    staff_client = auth_client_factory(staff)
+
+    with patch(
+        "api.v1.attendance.views.analyze_employee_attendance",
+        return_value=_logstorm_result(),
+    ):
+        staff_client.post(_analyze_url(), _payload(employee.id), format="json")
+
+    record = AttendanceRecord.objects.get(employee=employee, date="2026-04-20")
+    with patch(
+        "api.v1.attendance.views.LogStormClient.get_attendance_day_events",
+        return_value=[],
+    ):
+        response = auth_client_factory(payroll_viewer).get(
+            _record_day_events_url(record.id)
+        )
+
+    assert response.status_code == 200
+    assert response.json() == []
 
 
 def test_attendance_day_events_logstorm_error_returns_502(

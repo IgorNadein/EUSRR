@@ -2,7 +2,16 @@
 
 import { CalendarDays, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 
+import {
+  AttendanceDayEventsModal,
+  type AttendanceDayEventsPreview,
+} from "@/components/attendance/AttendanceDayEventsModal";
+import {
+  PayrollPersonnelDayModal,
+  PayrollWorkEntryDayModal,
+} from "@/components/finance/admin/PayrollPointSourceDetailModals";
 import { Modal } from "@/components/ui";
 import { apiClient } from "@/lib/api";
 import type {
@@ -55,6 +64,10 @@ function dateParts(value: string): { date: string; weekday: string } {
   };
 }
 
+function formatDate(value: string): string {
+  return new Date(`${value}T00:00:00`).toLocaleDateString("ru-RU");
+}
+
 function differenceTitle(
   row: PointRow,
   day: PayrollPointBreakdownDay,
@@ -77,6 +90,10 @@ export function PayrollPointBreakdownModal({
   const [data, setData] = useState<PayrollPointBreakdown | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [attendanceDay, setAttendanceDay] = useState<PayrollPointBreakdownDay | null>(null);
+  const [personnelDay, setPersonnelDay] = useState<PayrollPointBreakdownDay | null>(null);
+  const [workDay, setWorkDay] = useState<PayrollPointBreakdownDay | null>(null);
+  const [undatedWorkOpen, setUndatedWorkOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -118,9 +135,39 @@ export function PayrollPointBreakdownModal({
     () => 190 + ((data?.dates.length || 0) + (data?.undated_work_points ? 1 : 0)) * 68,
     [data?.dates.length, data?.undated_work_points],
   );
+  const attendancePreview = useMemo<AttendanceDayEventsPreview | null>(() => {
+    const record = attendanceDay?.attendance_record;
+    if (!attendanceDay || !record) return null;
+    const time = (value: string | null) => value || "—";
+    return {
+      recordId: record.id,
+      employeeName,
+      date: formatDate(attendanceDay.date),
+      statusLabel: record.status_label,
+      displayText: `Приход ${time(record.arrival_time)} · уход ${time(record.departure_time)}`,
+      detailLines: [
+        `Отработано: ${record.work_hours ?? "—"} ч.`,
+        `План: ${record.expected_hours ?? "—"} ч.`,
+        `Баллы: ${formatPoints(attendanceDay.attendance_points)}`,
+      ],
+      issues: record.issues,
+      isManuallyEdited: record.is_manually_edited,
+    };
+  }, [attendanceDay, employeeName]);
+
+  const openDayDetail = (row: PointRow, day: PayrollPointBreakdownDay) => {
+    if (row.id === "attendance_points" && day.attendance_record) {
+      setAttendanceDay(day);
+    } else if (row.id === "personnel_points") {
+      setPersonnelDay(day);
+    } else if (row.id === "work_points" && day.work_entry) {
+      setWorkDay(day);
+    }
+  };
 
   return (
-    <Modal
+    <>
+      <Modal
       isOpen
       onClose={onClose}
       title={`Детализация баллов · ${employeeName}`}
@@ -177,6 +224,7 @@ export function PayrollPointBreakdownModal({
           </div>
 
           <div className="app-text-muted flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+            <span className="text-[var(--foreground)]">Нажмите на значение, чтобы открыть исходные данные дня.</span>
             <span>Подсвечивается любое дневное расхождение с выработкой:</span>
             <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-400" />выше — зелёный</span>
             <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-orange-400" />ниже до 25% — оранжевый</span>
@@ -233,22 +281,46 @@ export function PayrollPointBreakdownModal({
                       const difference = row.id === "work_points"
                         ? null
                         : compareDailyPayrollProjection(day[row.id], day.work_points);
+                      const canOpen = row.id === "attendance_points"
+                        ? Boolean(day.attendance_record)
+                        : row.id === "personnel_points"
+                          ? day.personnel_points != null || day.personnel_detail.actions.length > 0 || day.personnel_detail.requests.length > 0
+                          : Boolean(day.work_entry);
                       return (
                         <td
                           key={day.date}
-                          className={`border-b border-r border-[var(--border-subtle)] px-1 py-3 text-center text-[11px] tabular-nums ${difference ? differenceClasses[difference.color] : day.is_workday ? "text-[var(--foreground)]" : "bg-[var(--surface-secondary)] text-[var(--muted-foreground)]"}`}
+                          className={`border-b border-r border-[var(--border-subtle)] p-0 text-center text-[11px] tabular-nums ${difference ? differenceClasses[difference.color] : day.is_workday ? "text-[var(--foreground)]" : "bg-[var(--surface-secondary)] text-[var(--muted-foreground)]"}`}
                           title={differenceTitle(row, day, difference)}
                         >
-                          {formatPoints(day[row.id])}
+                          {canOpen ? (
+                            <button
+                              type="button"
+                              className="min-h-10 w-full cursor-pointer px-1 py-3 text-center transition-colors hover:bg-[var(--surface-tertiary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent-primary)]"
+                              onClick={() => openDayDetail(row, day)}
+                              aria-label={`${row.label}, ${formatDate(day.date)}. Открыть исходную запись`}
+                            >
+                              {formatPoints(day[row.id])}
+                            </button>
+                          ) : (
+                            <span className="inline-block px-1 py-3">{formatPoints(day[row.id])}</span>
+                          )}
                         </td>
                       );
                     })}
                     {data.undated_work_points ? (
                       <td
-                        className="app-surface-muted border-b border-r border-[var(--border-subtle)] px-1 py-3 text-center text-[11px] font-medium text-[var(--foreground)] tabular-nums"
+                        className="app-surface-muted border-b border-r border-[var(--border-subtle)] p-0 text-center text-[11px] font-medium text-[var(--foreground)] tabular-nums"
                         title={row.id === "work_points" ? "Выработка без привязки к дате внутри периода" : undefined}
                       >
-                        {row.id === "work_points" ? formatPoints(data.undated_work_points) : "—"}
+                        {row.id === "work_points" && data.undated_work_record ? (
+                          <button
+                            type="button"
+                            className="min-h-10 w-full cursor-pointer px-1 py-3 text-center transition-colors hover:bg-[var(--surface-tertiary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent-primary)]"
+                            onClick={() => setUndatedWorkOpen(true)}
+                          >
+                            {formatPoints(data.undated_work_points)}
+                          </button>
+                        ) : <span className="inline-block px-1 py-3">—</span>}
                       </td>
                     ) : null}
                   </tr>
@@ -256,8 +328,45 @@ export function PayrollPointBreakdownModal({
               </tbody>
             </table>
           </div>
+
         </div>
       )}
-    </Modal>
+      </Modal>
+      {typeof document !== "undefined" && data ? createPortal(
+        <>
+          <AttendanceDayEventsModal
+            isOpen={Boolean(attendancePreview)}
+            onClose={() => setAttendanceDay(null)}
+            record={attendancePreview}
+            stackLevel={1}
+          />
+          {personnelDay ? (
+            <PayrollPersonnelDayModal
+              day={personnelDay}
+              employeeName={employeeName}
+              onClose={() => setPersonnelDay(null)}
+            />
+          ) : null}
+          {workDay?.work_entry ? (
+            <PayrollWorkEntryDayModal
+              entry={workDay.work_entry}
+              date={workDay.date}
+              employeeName={employeeName}
+              onClose={() => setWorkDay(null)}
+            />
+          ) : null}
+          {undatedWorkOpen && data.undated_work_record ? (
+            <PayrollWorkEntryDayModal
+              entry={data.undated_work_record}
+              date={null}
+              employeeName={employeeName}
+              undated
+              onClose={() => setUndatedWorkOpen(false)}
+            />
+          ) : null}
+        </>,
+        document.body,
+      ) : null}
+    </>
   );
 }

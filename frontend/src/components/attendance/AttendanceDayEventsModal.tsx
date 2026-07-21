@@ -25,6 +25,7 @@ type AttendanceDayEventsModalProps = {
   onClose: () => void;
   onOpenComments?: (record: AttendanceDayEventsPreview) => void;
   record: AttendanceDayEventsPreview | null;
+  stackLevel?: number;
 };
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -81,6 +82,7 @@ export function AttendanceDayEventsModal({
   onClose,
   onOpenComments,
   record,
+  stackLevel = 0,
 }: AttendanceDayEventsModalProps) {
   const [events, setEvents] = useState<AttendanceDayEvent[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
@@ -171,6 +173,7 @@ export function AttendanceDayEventsModal({
       onClose={close}
       title="События посещения"
       size="xl"
+      stackLevel={stackLevel}
     >
       {record ? (
         <div className="space-y-4">
