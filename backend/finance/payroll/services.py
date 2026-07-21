@@ -932,10 +932,7 @@ def bulk_set_point_rate(
             except IntegrityError:
                 _operation_error(
                     "RATE_REVISION_CONFLICT",
-                    (
-                        "Для одной из ставок уже создана новая версия; "
-                        "обновите данные."
-                    ),
+                    ("Для одной из ставок уже создана новая версия; обновите данные."),
                     rate_id=current.pk,
                 )
             _audit(
@@ -1033,9 +1030,7 @@ def bulk_set_pay_rate(
 
         employee_rates = rates_by_employee.get(employee_id, [])
         exact_rates = [
-            rate
-            for rate in employee_rates
-            if rate.effective_from == effective_from
+            rate for rate in employee_rates if rate.effective_from == effective_from
         ]
         current_rates = [
             rate for rate in exact_rates if rate.status != ApprovalStatus.VOIDED
@@ -1051,10 +1046,7 @@ def bulk_set_pay_rate(
             continue
 
         if current is not None and current.status == ApprovalStatus.DRAFT:
-            if (
-                not has_simple_admin_access(actor)
-                and current.created_by_id != actor.pk
-            ):
+            if not has_simple_admin_access(actor) and current.created_by_id != actor.pk:
                 summary["skipped"] += 1
                 continue
             previous_amount = current.amount
@@ -1161,9 +1153,7 @@ def bulk_set_pay_rate(
                 "INPUT_VALIDATION_FAILED",
                 "Новая ставка не прошла проверку.",
                 errors=(
-                    exc.message_dict
-                    if hasattr(exc, "message_dict")
-                    else exc.messages
+                    exc.message_dict if hasattr(exc, "message_dict") else exc.messages
                 ),
             )
         except IntegrityError:
@@ -1277,10 +1267,7 @@ def bulk_set_target_points(
             continue
 
         if current is not None and current.status == ApprovalStatus.DRAFT:
-            if (
-                not has_simple_admin_access(actor)
-                and current.created_by_id != actor.pk
-            ):
+            if not has_simple_admin_access(actor) and current.created_by_id != actor.pk:
                 summary["skipped"] += 1
                 continue
             previous_target = current.target_points
@@ -1387,9 +1374,7 @@ def bulk_set_target_points(
                 "INPUT_VALIDATION_FAILED",
                 "Норма баллов не прошла проверку.",
                 errors=(
-                    exc.message_dict
-                    if hasattr(exc, "message_dict")
-                    else exc.messages
+                    exc.message_dict if hasattr(exc, "message_dict") else exc.messages
                 ),
             )
         except IntegrityError:
@@ -1416,14 +1401,16 @@ def bulk_set_target_points(
     }
 
 
-def _sync_daily_work_record(
+def sync_daily_work_record(
     *,
     period: PayrollPeriod,
+    employee,
     actor,
+    channel: str = "employee_api",
 ) -> PayrollWorkRecord:
     totals = PayrollDailyWorkEntry.objects.filter(
         period=period,
-        employee=actor,
+        employee=employee,
     ).aggregate(
         actual_points=Sum("actual_points"),
     )
@@ -1431,7 +1418,7 @@ def _sync_daily_work_record(
 
     records = list(
         PayrollWorkRecord.objects.select_for_update()
-        .filter(period=period, employee=actor)
+        .filter(period=period, employee=employee)
         .order_by("revision", "pk")
     )
     active_records = [
@@ -1442,12 +1429,10 @@ def _sync_daily_work_record(
         if active_records
         else None
     )
-    calculated_target, workdays_count, target_source = (
-        calculate_period_target_points(period, employee=actor)
+    calculated_target, workdays_count, target_source = calculate_period_target_points(
+        period, employee=employee
     )
-    uses_saved_target = (
-        current is not None and current.target_points_overridden
-    )
+    uses_saved_target = current is not None and current.target_points_overridden
     target_points = current.target_points if uses_saved_target else calculated_target
     if target_points <= 0:
         _operation_error(
@@ -1475,7 +1460,7 @@ def _sync_daily_work_record(
             current.reason = reason
             current.source = InputSource.API
             current.source_ref = (
-                f"daily-work:{period.pk}:{actor.pk}:r{current.revision}"
+                f"daily-work:{period.pk}:{employee.pk}:r{current.revision}"
             )
             current.target_points_overridden = False
         current._expected_lock_version = current.lock_version
@@ -1487,9 +1472,7 @@ def _sync_daily_work_record(
                 "INPUT_VALIDATION_FAILED",
                 "Итоговая выработка не прошла проверку.",
                 errors=(
-                    exc.message_dict
-                    if hasattr(exc, "message_dict")
-                    else exc.messages
+                    exc.message_dict if hasattr(exc, "message_dict") else exc.messages
                 ),
             )
         _audit(
@@ -1498,7 +1481,7 @@ def _sync_daily_work_record(
             instance=current,
             period=period,
             metadata={
-                "channel": "employee_api",
+                "channel": channel,
                 "previous_target_points": str(previous_target),
                 "previous_actual_points": str(previous_actual),
                 "target_points": str(target_points),
@@ -1521,7 +1504,7 @@ def _sync_daily_work_record(
         revision = current.revision + 1
         record = PayrollWorkRecord(
             period=period,
-            employee=actor,
+            employee=employee,
             target_points=target_points,
             target_points_overridden=uses_saved_target,
             actual_points=actual_points,
@@ -1530,25 +1513,23 @@ def _sync_daily_work_record(
             reason=reason,
             status=ApprovalStatus.DRAFT,
             source=(current.source if uses_saved_target else InputSource.API),
-            source_ref=f"daily-work:{period.pk}:{actor.pk}:r{revision}",
+            source_ref=f"daily-work:{period.pk}:{employee.pk}:r{revision}",
             created_by=actor,
         )
         action = "payroll.daily_work_aggregate_revision_created"
         metadata = {
-            "channel": "employee_api",
+            "channel": channel,
             "replaces_id": current.pk,
             "target_points": str(target_points),
             "actual_points": str(actual_points),
-            "target_source": (
-                "saved_record" if uses_saved_target else target_source
-            ),
+            "target_source": ("saved_record" if uses_saved_target else target_source),
             "workdays_count": workdays_count,
         }
     elif current is None:
         revision = max((record.revision for record in records), default=0) + 1
         record = PayrollWorkRecord(
             period=period,
-            employee=actor,
+            employee=employee,
             target_points=target_points,
             target_points_overridden=False,
             actual_points=actual_points,
@@ -1556,12 +1537,12 @@ def _sync_daily_work_record(
             reason=reason,
             status=ApprovalStatus.DRAFT,
             source=InputSource.API,
-            source_ref=f"daily-work:{period.pk}:{actor.pk}:r{revision}",
+            source_ref=f"daily-work:{period.pk}:{employee.pk}:r{revision}",
             created_by=actor,
         )
         action = "payroll.daily_work_aggregate_created"
         metadata = {
-            "channel": "employee_api",
+            "channel": channel,
             "target_points": str(target_points),
             "actual_points": str(actual_points),
             "target_source": target_source,
@@ -1581,11 +1562,7 @@ def _sync_daily_work_record(
         _operation_error(
             "INPUT_VALIDATION_FAILED",
             "Итоговая выработка не прошла проверку.",
-            errors=(
-                exc.message_dict
-                if hasattr(exc, "message_dict")
-                else exc.messages
-            ),
+            errors=(exc.message_dict if hasattr(exc, "message_dict") else exc.messages),
         )
     except IntegrityError:
         _operation_error(
@@ -1663,7 +1640,11 @@ def save_own_daily_work_entry(
                 actual_lock_version=entry.lock_version,
             )
         if entry.actual_points == actual_points and entry.note == note:
-            aggregate = _sync_daily_work_record(period=period, actor=actor)
+            aggregate = sync_daily_work_record(
+                period=period,
+                employee=actor,
+                actor=actor,
+            )
             return entry, aggregate, "unchanged"
 
         previous_actual = entry.actual_points
@@ -1705,11 +1686,7 @@ def save_own_daily_work_entry(
         _operation_error(
             "INPUT_VALIDATION_FAILED",
             "Ежедневная выработка не прошла проверку.",
-            errors=(
-                exc.message_dict
-                if hasattr(exc, "message_dict")
-                else exc.messages
-            ),
+            errors=(exc.message_dict if hasattr(exc, "message_dict") else exc.messages),
         )
     except IntegrityError:
         _operation_error(
@@ -1723,7 +1700,11 @@ def save_own_daily_work_entry(
         period=period,
         metadata=metadata,
     )
-    aggregate = _sync_daily_work_record(period=period, actor=actor)
+    aggregate = sync_daily_work_record(
+        period=period,
+        employee=actor,
+        actor=actor,
+    )
     return entry, aggregate, operation
 
 
@@ -1860,11 +1841,7 @@ def clear_component_input_lines(
     """Clear one spreadsheet-like component cell without losing its audit trail."""
 
     _require_permission(actor, "finance.manage_payroll_inputs")
-    period = (
-        PayrollPeriod.objects.select_for_update()
-        .filter(pk=period_id)
-        .first()
-    )
+    period = PayrollPeriod.objects.select_for_update().filter(pk=period_id).first()
     if period is None:
         _operation_error("PERIOD_NOT_FOUND", "Расчётный период не найден.")
     _ensure_period_accepts_approvals(period)
@@ -1927,9 +1904,7 @@ def approve_period_drafts(period_id: int, *, actor) -> dict[str, int]:
         item for item in periods if item.status != PayrollPeriodStatus.CLOSED
     ]
     current_run_ids = [
-        item.current_run_id
-        for item in open_periods
-        if item.current_run_id is not None
+        item.current_run_id for item in open_periods if item.current_run_id is not None
     ]
     current_runs = list(
         PayrollRun.objects.select_for_update()
