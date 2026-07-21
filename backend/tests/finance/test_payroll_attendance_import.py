@@ -229,6 +229,41 @@ def test_personnel_non_working_day_keeps_verified_attendance_points(
     }
 
 
+def test_weekend_with_verified_shift_adds_points_without_raising_period_target(
+    user_factory,
+    auth_client_factory,
+):
+    manager = user_factory(email="attendance.weekend.manager@example.test")
+    employee = user_factory(email="attendance.weekend.employee@example.test")
+    grant(manager, "manage_payroll_inputs")
+    period = make_period(manager, suffix="weekend-attendance")
+    records = make_attendance(employee)
+    weekend_record = records[2]
+    weekend_record.work_hours = 4
+    weekend_record.arrival_time = "10:00"
+    weekend_record.departure_time = "14:00"
+    weekend_record.is_overtime = True
+    weekend_record.overtime_hours = 4
+    weekend_record.statuses = ["work_outside_personnel_schedule"]
+    weekend_record.save()
+
+    assert calculate_attendance_day_points(
+        weekend_record,
+        daily_point_value=Decimal("5"),
+    ) == Decimal("2.5000")
+
+    preview_response = auth_client_factory(manager).get(endpoint(period))
+
+    assert preview_response.status_code == 200
+    item = preview_response.json()["items"][0]
+    assert item["target_points"] == "10.0000"
+    assert item["actual_points"] == "7.5000"
+    assert item["blockers"] == []
+    assert "ATTENDANCE_OUTSIDE_SCHEDULE_INCLUDED" in {
+        warning["code"] for warning in item["warnings"]
+    }
+
+
 def test_replace_mode_revises_approved_and_preserves_excel_controls(
     user_factory,
     auth_client_factory,

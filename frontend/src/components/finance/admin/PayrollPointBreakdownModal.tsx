@@ -68,6 +68,17 @@ function formatDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString("ru-RU");
 }
 
+function hasAttendanceActivity(day: PayrollPointBreakdownDay): boolean {
+  const record = day.attendance_record;
+  if (!record) return false;
+  const worked = Number(record.work_hours);
+  return Boolean(
+    record.arrival_time
+      || record.departure_time
+      || (Number.isFinite(worked) && worked > 0),
+  );
+}
+
 function differenceTitle(
   row: PointRow,
   day: PayrollPointBreakdownDay,
@@ -249,11 +260,12 @@ export function PayrollPointBreakdownModal({
                   </th>
                   {data.dates.map((day) => {
                     const parts = dateParts(day.date);
+                    const hasActivity = hasAttendanceActivity(day) || Boolean(day.work_entry);
                     return (
                       <th
                         key={day.date}
-                        className={`app-surface-muted border-b border-r border-[var(--border-subtle)] px-1 py-2 text-center text-[10px] font-semibold ${day.is_workday ? "text-[var(--muted-foreground)]" : "opacity-55 text-[var(--muted-foreground)]"}`}
-                        title={day.is_workday ? "Плановый рабочий день" : "Нерабочий день"}
+                        className={`app-surface-muted border-b border-r border-[var(--border-subtle)] px-1 py-2 text-center text-[10px] font-semibold ${day.is_workday || hasActivity ? "text-[var(--muted-foreground)]" : "opacity-55 text-[var(--muted-foreground)]"}`}
+                        title={day.is_workday ? "Плановый рабочий день" : hasActivity ? "Нерабочий день с фактической активностью" : "Нерабочий день"}
                       >
                         <span className="block tabular-nums">{parts.date}</span>
                         <span className="mt-0.5 block font-normal uppercase">{parts.weekday}</span>
@@ -286,10 +298,15 @@ export function PayrollPointBreakdownModal({
                         : row.id === "personnel_points"
                           ? day.personnel_points != null || day.personnel_detail.actions.length > 0 || day.personnel_detail.requests.length > 0
                           : Boolean(day.work_entry);
+                      const hasSourceActivity = row.id === "attendance_points"
+                        ? hasAttendanceActivity(day)
+                        : row.id === "work_points"
+                          ? Boolean(day.work_entry)
+                          : day.personnel_points != null || day.personnel_detail.actions.length > 0 || day.personnel_detail.requests.length > 0;
                       return (
                         <td
                           key={day.date}
-                          className={`border-b border-r border-[var(--border-subtle)] p-0 text-center text-[11px] tabular-nums ${difference ? differenceClasses[difference.color] : day.is_workday ? "text-[var(--foreground)]" : "bg-[var(--surface-secondary)] text-[var(--muted-foreground)]"}`}
+                          className={`border-b border-r border-[var(--border-subtle)] p-0 text-center text-[11px] tabular-nums ${difference ? differenceClasses[difference.color] : day.is_workday || day[row.id] != null || hasSourceActivity ? "text-[var(--foreground)]" : "bg-[var(--surface-secondary)] text-[var(--muted-foreground)]"}`}
                           title={differenceTitle(row, day, difference)}
                         >
                           {canOpen ? (
