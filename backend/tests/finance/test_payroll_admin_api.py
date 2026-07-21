@@ -274,6 +274,7 @@ def test_period_table_lists_all_employees_and_requires_view_all(
 def test_period_table_projects_attendance_and_official_personnel_points(
     user_factory,
     auth_client_factory,
+    monkeypatch,
 ):
     manager = user_factory(email="table.projections.manager@example.test")
     employee = user_factory(
@@ -335,6 +336,10 @@ def test_period_table_projects_attendance_and_official_personnel_points(
 
     action = EmployeeAction.objects.get(source_request=vacation)
     assert action.date.date() == date(2026, 6, 3)
+    monkeypatch.setattr(
+        "finance.payroll.work_norm.timezone.localdate",
+        lambda: date(2026, 6, 4),
+    )
 
     response = auth_client_factory(manager).get(
         api_url("admin-period-table", pk=period.pk),
@@ -348,7 +353,7 @@ def test_period_table_projects_attendance_and_official_personnel_points(
     )
     assert row["target_points"] == "220.0000"
     assert row["attendance_points"] == "15.0000"
-    assert row["personnel_points"] == "210.0000"
+    assert row["personnel_points"] == "20.0000"
 
 
 def test_component_cell_can_be_cleared_and_voids_all_active_lines(
