@@ -10,7 +10,11 @@ from django.urls import reverse
 from openpyxl import Workbook
 
 from finance.models import PayrollDailyWorkEntry, PayrollPeriod, PayrollWorkRecord
-from finance.payroll.workbook_import import _sanitize_styles, parse_workbook
+from finance.payroll.workbook_import import (
+    _period_import_lock_queryset,
+    _sanitize_styles,
+    parse_workbook,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -62,6 +66,13 @@ def make_period(creator):
         currency="RUB",
         created_by=creator,
     )
+
+
+def test_import_period_lock_targets_only_the_period_table():
+    query = _period_import_lock_queryset().query
+
+    assert query.select_for_update is True
+    assert query.select_for_update_of == ("self",)
 
 
 def test_invalid_legacy_colour_can_be_repaired_before_parsing():
