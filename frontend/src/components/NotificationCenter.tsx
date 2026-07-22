@@ -7,6 +7,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale/ru';
 import { getVerbName } from '@/lib/verbTranslations';
 import { resolveNotificationActionUrl } from '@/lib/notifications/actionUrl';
+import { getRegulationNotificationScopeLabel } from '@/lib/notifications/regulationScope';
 import Link from 'next/link';
 import type { NotificationItem } from '@/contexts/NotificationsContext';
 
@@ -167,6 +168,7 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                                     const timestamp = getNotificationTimestamp(notification);
                                     const title = getNotificationTitle(notification);
                                     const message = getNotificationMessage(notification);
+                                    const regulationScope = getRegulationNotificationScopeLabel(notification);
                                     
                                     return (
                                     <li
@@ -189,6 +191,11 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                                                 <p className="app-text-muted mb-1 line-clamp-2 text-xs">
                                                     {message}
                                                 </p>
+                                                {regulationScope ? (
+                                                    <p className="app-accent-text mb-1 truncate text-[10px] font-medium" title={regulationScope}>
+                                                        {regulationScope}
+                                                    </p>
+                                                ) : null}
                                                 <p className="app-text-muted text-[10px]">
                                                     {timestamp ? formatDistanceToNow(new Date(timestamp), {
                                                         addSuffix: true,
@@ -295,6 +302,7 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
                             const timestamp = getNotificationTimestamp(notification);
                             const title = getNotificationTitle(notification);
                             const message = getNotificationMessage(notification);
+                            const regulationScope = getRegulationNotificationScopeLabel(notification);
                             
                             return (
                             <li
@@ -311,6 +319,11 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
                                     <div className="flex-1 min-w-0">
                                         <h4 className="mb-0.5 truncate text-sm font-medium text-[var(--foreground)]">{title}</h4>
                                         <p className="app-text-muted mb-1 line-clamp-2 text-xs">{message}</p>
+                                        {regulationScope ? (
+                                            <p className="app-accent-text mb-1 truncate text-[10px] font-medium" title={regulationScope}>
+                                                {regulationScope}
+                                            </p>
+                                        ) : null}
                                         <p className="app-text-muted text-[10px]">
                                             {timestamp ? formatDistanceToNow(new Date(timestamp), { addSuffix: true, locale: ru }) : 'Только что'}
                                         </p>

@@ -12,6 +12,7 @@ const notificationSamples = [
   ["procurement", "procurement_new_request"],
   ["tasks", "task_assigned"],
   ["documents", "document_ready"],
+  ["regulations", "regulation_ready"],
 ];
 
 test("navigation badges use the same categories as notification verbs", () => {

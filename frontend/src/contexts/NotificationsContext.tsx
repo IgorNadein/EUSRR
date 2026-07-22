@@ -40,6 +40,9 @@ interface NotificationsContextType {
   unreadCount: number;
   unreadCategoryCounts: Record<string, number>;
   unreadProcurementRequestCounts: Record<number, number>;
+  unreadRegulationDepartmentCounts: Record<number, number>;
+  unreadCompanyRegulationCount: number;
+  unreadPersonalRegulationCount: number;
   loading: boolean;
   error: Error | null;
   refreshUnreadSummary: () => Promise<void>;
@@ -61,6 +64,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadCategoryCounts, setUnreadCategoryCounts] = useState<Record<string, number>>({});
   const [unreadProcurementRequestCounts, setUnreadProcurementRequestCounts] = useState<Record<number, number>>({});
+  const [unreadRegulationDepartmentCounts, setUnreadRegulationDepartmentCounts] = useState<Record<number, number>>({});
+  const [unreadCompanyRegulationCount, setUnreadCompanyRegulationCount] = useState(0);
+  const [unreadPersonalRegulationCount, setUnreadPersonalRegulationCount] = useState(0);
   const [isWsConnected, setIsWsConnected] = useState(
     typeof window !== 'undefined' && wsManager.getState() === WebSocket.OPEN
   );
@@ -72,12 +78,18 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     total?: number;
     verbs?: Array<{ verb?: string; unread?: number }>;
     procurement_requests?: Array<{ request_id?: number; unread?: number }>;
+    regulation_departments?: Array<{ department_id?: number; unread?: number }>;
+    regulation_company_unread?: number;
+    regulation_personal_unread?: number;
   }) => {
     const nextCategoryCounts: Record<string, number> = {};
     const nextProcurementRequestCounts: Record<number, number> = {};
     const verbs = Array.isArray(summary.verbs) ? summary.verbs : [];
     const procurementRequests = Array.isArray(summary.procurement_requests)
       ? summary.procurement_requests
+      : [];
+    const regulationDepartments = Array.isArray(summary.regulation_departments)
+      ? summary.regulation_departments
       : [];
 
     verbs.forEach((item) => {
@@ -96,8 +108,28 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       nextProcurementRequestCounts[requestId] = item.unread;
     });
 
+    const nextRegulationDepartmentCounts: Record<number, number> = {};
+    regulationDepartments.forEach((item) => {
+      const departmentId = Number(item.department_id);
+      if (!Number.isFinite(departmentId) || departmentId <= 0 || typeof item.unread !== 'number' || item.unread <= 0) {
+        return;
+      }
+      nextRegulationDepartmentCounts[departmentId] = item.unread;
+    });
+
     setUnreadCategoryCounts(nextCategoryCounts);
     setUnreadProcurementRequestCounts(nextProcurementRequestCounts);
+    setUnreadRegulationDepartmentCounts(nextRegulationDepartmentCounts);
+    setUnreadCompanyRegulationCount(
+      typeof summary.regulation_company_unread === 'number'
+        ? summary.regulation_company_unread
+        : 0,
+    );
+    setUnreadPersonalRegulationCount(
+      typeof summary.regulation_personal_unread === 'number'
+        ? summary.regulation_personal_unread
+        : 0,
+    );
     setUnreadCount(typeof summary.total === 'number' ? summary.total : verbs.reduce((sum, item) => sum + (item.unread || 0), 0));
   }, []);
 
@@ -171,6 +203,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       setUnreadCount(0);
       setUnreadCategoryCounts({});
       setUnreadProcurementRequestCounts({});
+      setUnreadRegulationDepartmentCounts({});
+      setUnreadCompanyRegulationCount(0);
+      setUnreadPersonalRegulationCount(0);
       knownNotificationIdsRef.current.clear();
       setError(null);
       setLoading(false);
@@ -346,6 +381,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     setUnreadCount(0);
     setUnreadCategoryCounts({});
     setUnreadProcurementRequestCounts({});
+    setUnreadRegulationDepartmentCounts({});
+    setUnreadCompanyRegulationCount(0);
+    setUnreadPersonalRegulationCount(0);
     void syncUnreadSummary();
   }, [syncUnreadSummary]);
 
@@ -369,6 +407,11 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     if (category === 'Закупки') {
       setUnreadProcurementRequestCounts({});
     }
+    if (category === 'Регламенты') {
+      setUnreadRegulationDepartmentCounts({});
+      setUnreadCompanyRegulationCount(0);
+      setUnreadPersonalRegulationCount(0);
+    }
     void syncUnreadSummary();
   }, [syncUnreadSummary]);
 
@@ -389,6 +432,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     unreadCount,
     unreadCategoryCounts,
     unreadProcurementRequestCounts,
+    unreadRegulationDepartmentCounts,
+    unreadCompanyRegulationCount,
+    unreadPersonalRegulationCount,
     loading,
     error,
     refreshUnreadSummary: syncUnreadSummary,

@@ -17,6 +17,22 @@ class NotificationVerbs:
     DOCUMENT_SIGNED_ALL = 'document_signed_all'
     DOCUMENT_COMMENT = 'document_comment'
     DOCUMENT_COMMENT_REPLY = 'document_comment_reply'
+    REGULATION_READY = 'regulation_ready'
+    REGULATION_SIGNED_ALL = 'regulation_signed_all'
+    REGULATION_COMMENT = 'regulation_comment'
+    REGULATION_COMMENT_REPLY = 'regulation_comment_reply'
+
+    @classmethod
+    def ready(cls, is_regulation: bool) -> str:
+        return cls.REGULATION_READY if is_regulation else cls.DOCUMENT_READY
+
+    @classmethod
+    def signed_all(cls, is_regulation: bool) -> str:
+        return (
+            cls.REGULATION_SIGNED_ALL
+            if is_regulation
+            else cls.DOCUMENT_SIGNED_ALL
+        )
 
 
 class MessageTemplates:
@@ -27,29 +43,41 @@ class MessageTemplates:
         uploader_name: str,
         document_title: str,
         acknowledgement_required: bool = True,
+        is_regulation: bool = False,
     ) -> str:
         """Шаблон для нового документа."""
-        message = f'{uploader_name} загрузил документ "{document_title}".'
+        resource = 'регламент' if is_regulation else 'документ'
+        action = 'опубликовал' if is_regulation else 'загрузил'
+        message = f'{uploader_name} {action} {resource} "{document_title}".'
         if acknowledgement_required:
             return f"{message} Требуется ознакомление."
         return message
 
     @staticmethod
-    def document_ready_title(acknowledgement_required: bool = True) -> str:
+    def document_ready_title(
+        acknowledgement_required: bool = True,
+        is_regulation: bool = False,
+    ) -> str:
         """Заголовок для нового документа."""
+        resource = 'регламент' if is_regulation else 'документ'
         if not acknowledgement_required:
-            return 'Новый документ'
-        return 'Новый документ на ознакомление'
+            return f'Новый {resource}'
+        return f'Новый {resource} на ознакомление'
 
     @staticmethod
-    def all_acknowledged(document_title: str) -> str:
+    def all_acknowledged(
+        document_title: str,
+        is_regulation: bool = False,
+    ) -> str:
         """Шаблон для завершения ознакомления всеми."""
-        return f'Все сотрудники ознакомились с документом "{document_title}"'
+        resource = 'регламентом' if is_regulation else 'документом'
+        return f'Все сотрудники ознакомились с {resource} "{document_title}"'
 
     @staticmethod
-    def all_acknowledged_title() -> str:
+    def all_acknowledged_title(is_regulation: bool = False) -> str:
         """Заголовок для завершения ознакомления."""
-        return 'Все ознакомились с документом'
+        resource = 'регламентом' if is_regulation else 'документом'
+        return f'Все ознакомились с {resource}'
 
     @staticmethod
     def comment(author_name: str, document_title: str) -> str:
@@ -84,13 +112,13 @@ class ActionURLs:
     DOCUMENTS = '/documents'
 
     @staticmethod
-    def document_detail(document_id: int) -> str:
-        """
-        Возвращает URL-адрес документа.
-
-        TODO: реализовать прямые ссылки на конкретные документы
-        """
-        return f'/documents?document={document_id}'
+    def document_detail(
+        document_id: int,
+        is_regulation: bool = False,
+    ) -> str:
+        """Возвращает прямую ссылку на документ или регламент."""
+        section = 'regulations' if is_regulation else 'folders'
+        return f'/documents?section={section}&document={document_id}'
 
 
 # ===== Константы =====

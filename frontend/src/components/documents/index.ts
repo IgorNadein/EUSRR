@@ -1,4 +1,5 @@
-export { DocumentUploadForm } from "./DocumentUploadForm";
+export { DocumentUploadForm, RegulationCreateForm } from "./DocumentUploadForm";
+export { DocumentFilePanel, DocumentFileRow } from "./DocumentFilePanel";
 export { DocumentPreview } from "./DocumentPreview";
 export { DocumentAcknowledgement } from "./DocumentAcknowledgement";
 export { DocumentAcknowledgementsReport } from "./DocumentAcknowledgementsReport";

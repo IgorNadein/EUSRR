@@ -9,14 +9,21 @@ import type { Document } from "@/types/api";
 interface DocumentAcknowledgementProps {
   document: Document;
   onAcknowledge?: () => void;
+  showAction?: boolean;
 }
 
-export function DocumentAcknowledgement({
+interface DocumentAcknowledgeButtonProps {
+  document: Document;
+  onAcknowledge?: () => void;
+  className?: string;
+}
+
+export function DocumentAcknowledgeButton({
   document,
   onAcknowledge,
-}: DocumentAcknowledgementProps) {
+  className = "",
+}: DocumentAcknowledgeButtonProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showAcknowledgements, setShowAcknowledgements] = useState(false);
 
   const handleAcknowledge = async () => {
     setIsSubmitting(true);
@@ -34,6 +41,32 @@ export function DocumentAcknowledgement({
     }
   };
 
+  const isAcknowledged = document.is_acknowledged || false;
+  const acknowledgementRequiredForUser =
+    document.acknowledgement_required_for_user ?? document.acknowledgement_required;
+
+  if (!acknowledgementRequiredForUser || isAcknowledged) {
+    return null;
+  }
+
+  return (
+    <button
+      onClick={handleAcknowledge}
+      disabled={isSubmitting}
+      className={`app-action-primary inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+    >
+      <CheckCircle size={17} className="shrink-0" />
+      {isSubmitting ? "Подтверждение..." : "Ознакомился(лась)"}
+    </button>
+  );
+}
+
+export function DocumentAcknowledgement({
+  document,
+  onAcknowledge,
+  showAction = true,
+}: DocumentAcknowledgementProps) {
+  const [showAcknowledgements, setShowAcknowledgements] = useState(false);
   const acknowledgements = document.acknowledgements || [];
   const isAcknowledged = document.is_acknowledged || false;
   const acknowledgementRequiredForUser =
@@ -61,13 +94,13 @@ export function DocumentAcknowledgement({
             </div>
           </div>
 
-          <button
-            onClick={handleAcknowledge}
-            disabled={isSubmitting}
-            className="app-action-primary w-full rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isSubmitting ? "Подтверждение..." : "Ознакомился(лась)"}
-          </button>
+          {showAction && (
+            <DocumentAcknowledgeButton
+              document={document}
+              onAcknowledge={onAcknowledge}
+              className="w-full"
+            />
+          )}
         </div>
       ) : (
         <div className="app-feedback-success flex items-center gap-2 rounded-lg px-3 py-2 text-sm">

@@ -51,10 +51,20 @@ class UnreadSummaryProcurementRequestSerializer(serializers.Serializer):
     unread = serializers.IntegerField()
 
 
+class UnreadSummaryRegulationDepartmentSerializer(serializers.Serializer):
+    department_id = serializers.IntegerField()
+    unread = serializers.IntegerField()
+
+
 class UnreadSummaryResponseSerializer(serializers.Serializer):
     total = serializers.IntegerField()
     verbs = UnreadSummaryVerbSerializer(many=True)
     procurement_requests = UnreadSummaryProcurementRequestSerializer(many=True)
+    regulation_departments = UnreadSummaryRegulationDepartmentSerializer(
+        many=True,
+    )
+    regulation_company_unread = serializers.IntegerField()
+    regulation_personal_unread = serializers.IntegerField()
 
 
 class StatusResponseSerializer(serializers.Serializer):

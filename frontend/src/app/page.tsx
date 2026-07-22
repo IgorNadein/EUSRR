@@ -18,6 +18,7 @@ import TaskLinkPill from "@/components/tasks/TaskLinkPill";
 import { useNotifications } from "@/contexts/NotificationsContext";
 import { apiClient } from "@/lib/api";
 import { getDocumentFileExtension } from "@/lib/document-preview";
+import { NAV_NOTIFICATION_CATEGORIES } from "@/lib/navigation-notifications";
 import {
   getRegulationAcknowledgementDepartments,
   isCompanyAcknowledgementRegulation,
@@ -41,8 +42,8 @@ const DocumentPreview = dynamic(
   { ssr: false },
 );
 
-const DocumentUploadForm = dynamic(
-  () => import("@/components/documents/DocumentUploadForm").then((mod) => ({ default: mod.DocumentUploadForm })),
+const RegulationCreateForm = dynamic(
+  () => import("@/components/documents/DocumentUploadForm").then((mod) => ({ default: mod.RegulationCreateForm })),
   { ssr: false },
 );
 
@@ -88,7 +89,12 @@ function HomePageFallback() {
 
 function HomePageContent() {
   const { user } = useUser();
-  const { notifications } = useNotifications();
+  const {
+    notifications,
+    unreadCategoryCounts,
+    unreadRegulationDepartmentCounts,
+    unreadCompanyRegulationCount,
+  } = useNotifications();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -410,9 +416,15 @@ function HomePageContent() {
   const postSourceUnreadCounts = useMemo(() => {
     const departmentUnread = new Map<number, number>();
     let companyUnread = 0;
-    let regulationsUnread = 0;
-    let companyRegulationsUnread = 0;
-    const departmentRegulationsUnread = new Map<number, number>();
+    let regulationsUnread = (
+      unreadCategoryCounts[NAV_NOTIFICATION_CATEGORIES.regulations] || 0
+    );
+    let companyRegulationsUnread = unreadCompanyRegulationCount;
+    const departmentRegulationsUnread = new Map<number, number>(
+      Object.entries(unreadRegulationDepartmentCounts).map(([id, unread]) => (
+        [Number(id), unread]
+      )),
+    );
     const regulationsById = new Map(regulations.map((document) => [document.id, document]));
 
     for (const notification of notifications) {
@@ -421,6 +433,8 @@ function HomePageContent() {
         ? rawData as Record<string, unknown>
         : null;
 
+      // Обратная совместимость до применения миграции, которая переводит
+      // старые уведомления регламентов из document_ready в regulation_ready.
       if ((notification.verb || "") === "document_ready") {
         const rawDocumentId = data?.document_id;
         const documentId = typeof rawDocumentId === "number"
@@ -441,6 +455,8 @@ function HomePageContent() {
         }
         continue;
       }
+
+      if ((notification.verb || "").startsWith("regulation_")) continue;
 
       if ((notification.verb || "") !== "feed_new_post") continue;
 
@@ -476,7 +492,13 @@ function HomePageContent() {
       companyRegulations: companyRegulationsUnread,
       departments: departmentEntries,
     };
-  }, [notifications, regulations]);
+  }, [
+    notifications,
+    regulations,
+    unreadCategoryCounts,
+    unreadCompanyRegulationCount,
+    unreadRegulationDepartmentCounts,
+  ]);
 
   const postSourceOptions = useMemo(() => {
     const unreadByDepartment = new Map(
@@ -1165,8 +1187,7 @@ function HomePageContent() {
         title="Создать регламент"
         size="xl"
       >
-        <DocumentUploadForm
-          defaultIsRegulation
+        <RegulationCreateForm
           onCancel={() => setCreateRegulationOpen(false)}
           onSuccess={() => {
             setCreateRegulationOpen(false);

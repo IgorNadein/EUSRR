@@ -6,4 +6,5 @@ export const NAV_NOTIFICATION_CATEGORIES = {
   procurement: "Закупки",
   tasks: "Доска",
   documents: "Документы",
+  regulations: "Регламенты",
 } as const;

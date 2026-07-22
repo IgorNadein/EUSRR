@@ -8,6 +8,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale/ru';
 import { getVerbCategory, getVerbName } from '@/lib/verbTranslations';
 import { resolveNotificationActionUrl } from '@/lib/notifications/actionUrl';
+import { getRegulationNotificationScopeLabel } from '@/lib/notifications/regulationScope';
 import type { NotificationItem } from '@/contexts/NotificationsContext';
 
 type NotificationReadFilter = 'all' | 'unread' | 'read';
@@ -375,7 +376,10 @@ export default function NotificationsPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {filteredNotifications.map((notification) => (
+            {filteredNotifications.map((notification) => {
+              const regulationScope = getRegulationNotificationScopeLabel(notification);
+
+              return (
               <article
                 key={notification.id}
                 className={`group overflow-hidden rounded-xl border transition ${
@@ -421,6 +425,12 @@ export default function NotificationsPage() {
                       {notification.short_message || notification.message}
                     </p>
 
+                    {regulationScope ? (
+                      <p className="app-accent-text mb-2 text-xs font-medium">
+                        {regulationScope}
+                      </p>
+                    ) : null}
+
                     <div className="app-text-muted flex items-center gap-3 text-xs">
                       {notification.category && (
                         <span className="app-badge px-2 py-0.5 font-medium">
@@ -458,7 +468,8 @@ export default function NotificationsPage() {
                   </button>
                 </div>
               </article>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

@@ -63,7 +63,7 @@ const navItems = [
   { href: "/procurement", label: "Закупки", icon: ShoppingCart, category: NAV_NOTIFICATION_CATEGORIES.procurement, autoReadOnNavigate: false },
   { href: "/tasks", label: "Доска", icon: Kanban, category: NAV_NOTIFICATION_CATEGORIES.tasks },
   { href: "/documents?section=folders", label: "Документы", icon: FileText, category: NAV_NOTIFICATION_CATEGORIES.documents, documentSection: "folders" as const },
-  { href: "/documents?section=regulations", label: "Регламенты", icon: ScrollText, documentSection: "regulations" as const },
+  { href: "/documents?section=regulations", label: "Регламенты", icon: ScrollText, category: NAV_NOTIFICATION_CATEGORIES.regulations, autoReadOnNavigate: false, documentSection: "regulations" as const },
   { href: "/finances", label: "Финансы", icon: Wallet },
 ];
 

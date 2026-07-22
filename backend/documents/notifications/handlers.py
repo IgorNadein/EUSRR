@@ -27,7 +27,47 @@ logger = logging.getLogger(__name__)
 Employee = get_user_model()
 
 
-def _document_ready_payload(document, uploader_name, recipient=None):
+def _regulation_notification_context(document):
+    """Возвращает отделы и область действия регламента для уведомления."""
+    if not document.is_regulation:
+        return {}
+
+    if (
+        document.acknowledgement_required
+        and not document.acknowledgement_for_all
+    ):
+        departments = document.acknowledgement_departments.all()
+    elif not document.sent_to_all:
+        departments = document.departments.all()
+    else:
+        departments = document.departments.none()
+
+    department_rows = list(
+        departments.order_by("name", "id").values("id", "name")
+    )
+    if department_rows:
+        scope = "department"
+    elif document.sent_to_all:
+        scope = "company"
+    else:
+        scope = "personal"
+
+    return {
+        "is_regulation": True,
+        "regulation_scope": scope,
+        "regulation_department_ids": [row["id"] for row in department_rows],
+        "regulation_department_names": [
+            row["name"] for row in department_rows
+        ],
+    }
+
+
+def _document_ready_payload(
+    document,
+    uploader_name,
+    recipient=None,
+    regulation_context=None,
+):
     """Собирает единый текст и данные уведомления о новом документе."""
     if recipient is None:
         acknowledgement_required = bool(
@@ -45,10 +85,12 @@ def _document_ready_payload(document, uploader_name, recipient=None):
             uploader_name,
             document.title,
             acknowledgement_required=acknowledgement_required,
+            is_regulation=document.is_regulation,
         ),
         "data": {
             "title": MessageTemplates.document_ready_title(
                 acknowledgement_required=acknowledgement_required,
+                is_regulation=document.is_regulation,
             ),
             "document_id": document.id,
             "uploaded_by_id": (
@@ -56,8 +98,40 @@ def _document_ready_payload(document, uploader_name, recipient=None):
             ),
             "sent_to_all": document.sent_to_all,
             "acknowledgement_required": acknowledgement_required,
+            "is_regulation": document.is_regulation,
+            **(
+                regulation_context
+                if regulation_context is not None
+                else _regulation_notification_context(document)
+            ),
         },
     }
+
+
+def _send_document_ready_notification(
+    document,
+    recipient,
+    uploader_name,
+    regulation_context=None,
+):
+    payload = _document_ready_payload(
+        document,
+        uploader_name,
+        recipient,
+        regulation_context,
+    )
+    notify.send(
+        sender=document.uploaded_by,
+        recipient=recipient,
+        verb=NotificationVerbs.ready(document.is_regulation),
+        action_object=document,
+        description=payload["description"],
+        action_url=ActionURLs.document_detail(
+            document.id,
+            is_regulation=document.is_regulation,
+        ),
+        data=payload["data"],
+    )
 
 
 def notify_document_ready(document, recipient):
@@ -74,17 +148,7 @@ def notify_document_ready(document, recipient):
     )
 
     uploader_name = get_uploader_name(document.uploaded_by)
-    payload = _document_ready_payload(document, uploader_name, recipient)
-
-    notify.send(
-        sender=document.uploaded_by,
-        recipient=recipient,
-        verb=NotificationVerbs.DOCUMENT_READY,
-        action_object=document,
-        description=payload["description"],
-        action_url=ActionURLs.DOCUMENTS,
-        data=payload["data"],
-    )
+    _send_document_ready_notification(document, recipient, uploader_name)
 
 
 def notify_all_employees(document):
@@ -111,19 +175,14 @@ def notify_all_employees(document):
     # Создаём уведомления
     created_count = 0
     uploader_name = get_uploader_name(document.uploaded_by)
+    regulation_context = _regulation_notification_context(document)
     for employee in active_employees:
         try:
-            payload = _document_ready_payload(
-                document, uploader_name, employee
-            )
-            notify.send(
-                sender=document.uploaded_by,
-                recipient=employee,
-                verb=NotificationVerbs.DOCUMENT_READY,
-                action_object=document,
-                description=payload["description"],
-                action_url=ActionURLs.DOCUMENTS,
-                data=payload["data"],
+            _send_document_ready_notification(
+                document,
+                employee,
+                uploader_name,
+                regulation_context,
             )
             created_count += 1
         except Exception as e:
@@ -180,19 +239,16 @@ def notify_specific_users(document, user_ids):
     # Уведомляем получателей
     created_count = 0
     uploader_name = get_uploader_name(document.uploaded_by)
+    regulation_context = _regulation_notification_context(document)
     for user_id in user_ids:
         try:
             user = Employee.objects.get(id=user_id)
-            payload = _document_ready_payload(document, uploader_name, user)
             logger.debug(f"[handlers] Creating notification for user={user_id}")
-            notify.send(
-                sender=document.uploaded_by,
-                recipient=user,
-                verb=NotificationVerbs.DOCUMENT_READY,
-                action_object=document,
-                description=payload["description"],
-                action_url=ActionURLs.DOCUMENTS,
-                data=payload["data"],
+            _send_document_ready_notification(
+                document,
+                user,
+                uploader_name,
+                regulation_context,
             )
             created_count += 1
         except Employee.DoesNotExist:
@@ -264,19 +320,14 @@ def notify_department_employees(document, department_ids):
     # Создаём уведомления
     created_count = 0
     uploader_name = get_uploader_name(document.uploaded_by)
+    regulation_context = _regulation_notification_context(document)
     for employee in all_employees:
         try:
-            payload = _document_ready_payload(
-                document, uploader_name, employee
-            )
-            notify.send(
-                sender=document.uploaded_by,
-                recipient=employee,
-                verb=NotificationVerbs.DOCUMENT_READY,
-                action_object=document,
-                description=payload["description"],
-                action_url=ActionURLs.DOCUMENTS,
-                data=payload["data"],
+            _send_document_ready_notification(
+                document,
+                employee,
+                uploader_name,
+                regulation_context,
             )
             created_count += 1
         except Exception as e:
@@ -329,14 +380,24 @@ def notify_all_acknowledged(document, total_recipients, acknowledged_count):
     notify.send(
         sender=None,
         recipient=document.uploaded_by,
-        verb=NotificationVerbs.DOCUMENT_SIGNED_ALL,
+        verb=NotificationVerbs.signed_all(document.is_regulation),
         action_object=document,
-        description=MessageTemplates.all_acknowledged(document.title),
-        action_url=ActionURLs.DOCUMENTS,
+        description=MessageTemplates.all_acknowledged(
+            document.title,
+            is_regulation=document.is_regulation,
+        ),
+        action_url=ActionURLs.document_detail(
+            document.id,
+            is_regulation=document.is_regulation,
+        ),
         data={
-            "title": MessageTemplates.all_acknowledged_title(),
+            "title": MessageTemplates.all_acknowledged_title(
+                is_regulation=document.is_regulation,
+            ),
             "document_id": document.id,
             "total_recipients": total_recipients,
             "acknowledged_count": acknowledged_count,
+            "is_regulation": document.is_regulation,
+            **_regulation_notification_context(document),
         },
     )

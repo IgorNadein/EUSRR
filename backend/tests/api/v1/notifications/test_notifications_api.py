@@ -37,6 +37,27 @@ class TestNotificationUnreadSummary:
         )
         Notification.objects.create(
             recipient=user,
+            verb="regulation_ready",
+            description="Регламент Бухгалтерии",
+            data={
+                "regulation_scope": "department",
+                "regulation_department_ids": [7, "7", 8],
+            },
+        )
+        Notification.objects.create(
+            recipient=user,
+            verb="regulation_ready",
+            description="Регламент компании",
+            data={"regulation_scope": "company"},
+        )
+        Notification.objects.create(
+            recipient=user,
+            verb="regulation_signed_all",
+            description="Личный регламент",
+            data={"regulation_scope": "personal"},
+        )
+        Notification.objects.create(
+            recipient=user,
             verb="document_uploaded",
             description="Прочитанный документ",
             unread=False,
@@ -53,18 +74,26 @@ class TestNotificationUnreadSummary:
         response = api_client.get("/api/v1/notifications/summary/")
 
         assert response.status_code == 200
-        assert response.data["total"] == 3
+        assert response.data["total"] == 6
         assert {
             item["verb"]: item["unread"]
             for item in response.data["verbs"]
         } == {
             "procurement_department_request": 2,
             "chat_new_message": 1,
+            "regulation_ready": 2,
+            "regulation_signed_all": 1,
         }
         assert response.data["procurement_requests"] == [
             {"request_id": 10, "unread": 1},
             {"request_id": 12, "unread": 1},
         ]
+        assert response.data["regulation_departments"] == [
+            {"department_id": 7, "unread": 1},
+            {"department_id": 8, "unread": 1},
+        ]
+        assert response.data["regulation_company_unread"] == 1
+        assert response.data["regulation_personal_unread"] == 1
 
     def test_unread_summary_cache_does_not_stay_stale_after_mark_as_read(
         self, api_client, user_factory
