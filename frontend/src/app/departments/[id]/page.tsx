@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
@@ -50,6 +51,13 @@ import { regulationMatchesAcknowledgementSource } from "@/lib/feed-regulation-fi
 import { displayUserName, formatDate, loadAllPages, userProfileLink } from "@/lib/shared";
 import type { DepartmentMemberLink, DepartmentPermissionChoice, DepartmentRole, Document, User } from "@/types/api";
 import { toast } from "sonner";
+
+const RegulationCreateForm = dynamic(
+  () => import("@/components/documents/DocumentUploadForm").then((mod) => ({
+    default: mod.RegulationCreateForm,
+  })),
+  { ssr: false },
+);
 
 type DepartmentMemberModalMode = "add" | "assignRole";
 type DepartmentRoleDraft = {
@@ -995,6 +1003,9 @@ export default function DepartmentDetailPage() {
   const [membersExpanded, setMembersExpanded] = useState(false);
   const [regulationsExpanded, setRegulationsExpanded] = useState(false);
   const [departmentRegulations, setDepartmentRegulations] = useState<Document[]>([]);
+  const [departmentRegulationsLoading, setDepartmentRegulationsLoading] = useState(true);
+  const [regulationsRefreshKey, setRegulationsRefreshKey] = useState(0);
+  const [createRegulationOpen, setCreateRegulationOpen] = useState(false);
   const [selectedRegulation, setSelectedRegulation] = useState<Document | null>(null);
   const [roleMenuOpenForId, setRoleMenuOpenForId] = useState<number | null>(null);
   const roleMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1023,9 +1034,9 @@ export default function DepartmentDetailPage() {
     if (!Number.isFinite(departmentId)) return;
 
     let cancelled = false;
-    setRegulationsExpanded(false);
 
     const loadDepartmentRegulations = async () => {
+      setDepartmentRegulationsLoading(true);
       try {
         const regulations = await loadAllPages<Document>((pageParams) => (
           apiClient.getDocuments({ ...pageParams, is_regulation: true })
@@ -1046,6 +1057,8 @@ export default function DepartmentDetailPage() {
       } catch (error) {
         console.error("Не удалось загрузить регламенты отдела:", error);
         if (!cancelled) setDepartmentRegulations([]);
+      } finally {
+        if (!cancelled) setDepartmentRegulationsLoading(false);
       }
     };
 
@@ -1053,6 +1066,10 @@ export default function DepartmentDetailPage() {
     return () => {
       cancelled = true;
     };
+  }, [departmentId, regulationsRefreshKey]);
+
+  useEffect(() => {
+    setRegulationsExpanded(false);
   }, [departmentId]);
 
   const refreshSelectedRegulation = async () => {
@@ -1425,62 +1442,93 @@ export default function DepartmentDetailPage() {
               </section>
             </section>
 
-            {departmentRegulations.length > 0 ? (
-              <section className="app-surface rounded-2xl p-4 sm:p-5">
-                <div className={regulationsExpanded ? "mb-4 flex items-center justify-between gap-3" : "flex items-center justify-between gap-3"}>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
-                        Регламенты отдела
-                      </p>
-                      <MetaChip tone="accent">{departmentRegulations.length}</MetaChip>
-                    </div>
-                    <p className="app-text-muted mt-1 text-sm">
-                      Документы, требующие ознакомления сотрудников отдела.
+            <section className="app-surface rounded-2xl p-4 sm:p-5">
+              <div className={regulationsExpanded || !departmentRegulations.length ? "mb-4 flex items-center justify-between gap-3" : "flex items-center justify-between gap-3"}>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
+                      Регламенты отдела
                     </p>
+                    <MetaChip tone="accent">
+                      {departmentRegulationsLoading ? "…" : departmentRegulations.length}
+                    </MetaChip>
                   </div>
+                  <p className="app-text-muted mt-1 text-sm">
+                    Документы, требующие ознакомления сотрудников отдела.
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setRegulationsExpanded((current) => !current)}
-                    className="app-action-secondary inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                    aria-label={regulationsExpanded ? "Свернуть список регламентов" : "Развернуть список регламентов"}
-                    aria-expanded={regulationsExpanded}
+                    onClick={() => setCreateRegulationOpen(true)}
+                    className="app-action-primary inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium"
                   >
-                    <ChevronDown
-                      size={15}
-                      className={`transition-transform duration-200 ${regulationsExpanded ? "rotate-180" : ""}`}
-                    />
+                    <Plus size={14} />
+                    <span className="hidden sm:inline">Создать регламент</span>
+                    <span className="sm:hidden">Создать</span>
                   </button>
+                  {departmentRegulations.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setRegulationsExpanded((current) => !current)}
+                      className="app-action-secondary inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                      aria-label={regulationsExpanded ? "Свернуть список регламентов" : "Развернуть список регламентов"}
+                      aria-expanded={regulationsExpanded}
+                    >
+                      <ChevronDown
+                        size={15}
+                        className={`transition-transform duration-200 ${regulationsExpanded ? "rotate-180" : ""}`}
+                      />
+                    </button>
+                  ) : null}
                 </div>
+              </div>
 
-                {regulationsExpanded ? (
-                  <div className="overflow-hidden rounded-xl border border-[var(--border-subtle)]">
-                    {departmentRegulations.map((document) => (
-                      <button
-                        key={document.id}
-                        type="button"
-                        onClick={() => setSelectedRegulation(document)}
-                        className="flex w-full min-w-0 items-center gap-3 border-b border-[var(--border-subtle)] px-3 py-3 text-left transition last:border-b-0 hover:bg-[var(--surface-secondary)]"
+              {departmentRegulationsLoading ? (
+                <div className="app-surface-muted rounded-xl px-4 py-8 text-center">
+                  <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-[var(--border-subtle)] border-t-[var(--accent-primary)]" />
+                  <p className="app-text-muted mt-3 text-sm">Загружаем регламенты...</p>
+                </div>
+              ) : departmentRegulations.length === 0 ? (
+                <div className="app-surface-muted rounded-xl px-4 py-8 text-center">
+                  <ScrollText size={24} className="app-text-muted mx-auto mb-3" />
+                  <p className="text-sm font-medium text-[var(--foreground)]">
+                    Регламентов пока нет
+                  </p>
+                  <p className="app-text-muted mt-2 text-sm">
+                    Создайте первый регламент для сотрудников этого отдела.
+                  </p>
+                </div>
+              ) : regulationsExpanded ? (
+                <div className="overflow-hidden rounded-xl border border-[var(--border-subtle)]">
+                  {departmentRegulations.map((document, index) => (
+                    <button
+                      key={document.id}
+                      type="button"
+                      onClick={() => setSelectedRegulation(document)}
+                      className="flex w-full min-w-0 items-center gap-3 border-b border-[var(--border-subtle)] px-3 py-3 text-left transition last:border-b-0 hover:bg-[var(--surface-secondary)]"
+                    >
+                      <span
+                        className="app-selected app-accent-text flex h-9 min-w-9 shrink-0 items-center justify-center rounded-lg px-1 text-sm font-semibold tabular-nums"
+                        aria-label={`Регламент ${index + 1} из ${departmentRegulations.length}`}
                       >
-                        <span className="app-selected app-accent-text flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
-                          <ScrollText size={17} />
+                        {index + 1}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-[var(--foreground)]">
+                          {document.title}
                         </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-semibold text-[var(--foreground)]">
-                            {document.title}
-                          </span>
-                          <span className="app-text-muted mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                            <RegulationAcknowledgementStatus document={document} />
-                            <span>{formatDate(document.uploaded_at || document.created_at)}</span>
-                          </span>
+                        <span className="app-text-muted mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                          <RegulationAcknowledgementStatus document={document} />
+                          <span>{formatDate(document.uploaded_at || document.created_at)}</span>
                         </span>
-                        <ChevronRight size={16} className="app-text-muted shrink-0" />
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </section>
-            ) : null}
+                      </span>
+                      <ChevronRight size={16} className="app-text-muted shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </section>
 
             <DepartmentFeedSection
               canCreatePosts={
@@ -1574,6 +1622,23 @@ export default function DepartmentDetailPage() {
             });
         }}
       />
+
+      <Modal
+        isOpen={createRegulationOpen}
+        onClose={() => setCreateRegulationOpen(false)}
+        title="Создать регламент отдела"
+        size="xl"
+      >
+        <RegulationCreateForm
+          initialDepartmentId={h.department?.id ?? departmentId}
+          onCancel={() => setCreateRegulationOpen(false)}
+          onSuccess={() => {
+            setCreateRegulationOpen(false);
+            setRegulationsExpanded(true);
+            setRegulationsRefreshKey((current) => current + 1);
+          }}
+        />
+      </Modal>
     </AppShell>
   );
 }

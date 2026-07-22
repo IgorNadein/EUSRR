@@ -1549,7 +1549,7 @@ function DocumentsPageContent() {
                         })}
 
                         {/* Document Cards */}
-                        {filteredDocuments.map((doc) => {
+                        {filteredDocuments.map((doc, documentIndex) => {
                           const authorName = doc.created_by
                             ? `${doc.created_by.last_name || ''} ${doc.created_by.first_name || ''}`.trim()
                             : null;
@@ -1602,16 +1602,25 @@ function DocumentsPageContent() {
                                     <div className="relative flex min-w-0 flex-col">
                                       <div className="contents">
                                         <div className="order-1 flex min-w-0 flex-wrap items-center gap-1.5 pr-14">
-                                          <span
-                                            className={`${doc.is_regulation ? "app-selected app-accent-text" : "app-badge"} inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium`}
-                                          >
-                                            {doc.is_regulation ? (
-                                              <ScrollText size={12} className="shrink-0" />
-                                            ) : (
-                                              <FileText size={12} className="shrink-0" />
-                                            )}
-                                            {doc.is_regulation ? "Регламент" : "Документ"}
-                                          </span>
+                                          {activeSection === "regulations" ? (
+                                            <span
+                                              className="app-selected app-accent-text inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-xs font-semibold tabular-nums"
+                                              aria-label={`Регламент ${documentIndex + 1} из ${filteredDocuments.length}`}
+                                            >
+                                              {documentIndex + 1}
+                                            </span>
+                                          ) : (
+                                            <span
+                                              className={`${doc.is_regulation ? "app-selected app-accent-text" : "app-badge"} inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium`}
+                                            >
+                                              {doc.is_regulation ? (
+                                                <ScrollText size={12} className="shrink-0" />
+                                              ) : (
+                                                <FileText size={12} className="shrink-0" />
+                                              )}
+                                              {doc.is_regulation ? "Регламент" : "Документ"}
+                                            </span>
+                                          )}
                                           {doc.tags?.slice(0, 3).map((tag) => (
                                             <span
                                               key={tag.id}

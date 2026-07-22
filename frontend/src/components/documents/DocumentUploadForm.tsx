@@ -43,6 +43,7 @@ interface DocumentUploadFormProps {
   onCancel?: () => void;
   onFolderCreated?: () => void;
   currentFolderId?: number | null;
+  initialDepartmentId?: number | null;
   mode?: "document" | "regulation";
 }
 
@@ -122,9 +123,11 @@ export function DocumentUploadForm({
   onCancel,
   onFolderCreated,
   currentFolderId,
+  initialDepartmentId,
   mode = "document",
 }: DocumentUploadFormProps) {
   const isDedicatedRegulation = mode === "regulation";
+  const initialDepartmentIds = initialDepartmentId ? [initialDepartmentId] : [];
   const [isRegulation, setIsRegulation] = useState(isDedicatedRegulation);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -137,10 +140,14 @@ export function DocumentUploadForm({
 
   // New fields for extended functionality
   const [sentToAll, setSentToAll] = useState(true);
-  const [acknowledgementMode, setAcknowledgementMode] = useState<DocumentAudienceMode>("all");
+  const [acknowledgementMode, setAcknowledgementMode] = useState<DocumentAudienceMode>(
+    initialDepartmentIds.length > 0 ? "restricted" : "all",
+  );
   const [selectedDepartments, setSelectedDepartments] = useState<number[]>([]);
   const [selectedRecipients, setSelectedRecipients] = useState<number[]>([]);
-  const [acknowledgementDepartments, setAcknowledgementDepartments] = useState<number[]>([]);
+  const [acknowledgementDepartments, setAcknowledgementDepartments] = useState<number[]>(
+    initialDepartmentIds,
+  );
   const [acknowledgementRecipients, setAcknowledgementRecipients] = useState<number[]>([]);
   
   // Metadata fields
@@ -527,10 +534,10 @@ export function DocumentUploadForm({
       setFolderCreateError(null);
       setSentToAll(true);
       setIsRegulation(isDedicatedRegulation);
-      setAcknowledgementMode("all");
+      setAcknowledgementMode(initialDepartmentIds.length > 0 ? "restricted" : "all");
       setSelectedDepartments([]);
       setSelectedRecipients([]);
-      setAcknowledgementDepartments([]);
+      setAcknowledgementDepartments(initialDepartmentIds);
       setAcknowledgementRecipients([]);
       setSelectedTags([]);
       
