@@ -2032,6 +2032,7 @@ function DocumentsPageContent() {
         size="xl"
       >
         <RegulationCreateForm
+          initialDepartmentId={selectedRegulationDepartment?.id ?? null}
           onSuccess={() => {
             setShowUploadForm(false);
             loadDocuments();
