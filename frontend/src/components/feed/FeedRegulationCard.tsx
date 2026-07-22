@@ -320,11 +320,12 @@ export function FeedRegulationCard({
               type="button"
               onClick={() => onAcknowledge(document)}
               disabled={isAcknowledging}
-              className="app-action-ghost inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-60"
+              className="app-action-ghost inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
               title="Ознакомился(лась)"
               aria-label="Ознакомился(лась)"
             >
               {isAcknowledging ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+              <span>{isAcknowledging ? "Подтверждение..." : "Ознакомился(лась)"}</span>
             </button>
           ) : null}
           {document.file_url ? (

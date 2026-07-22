@@ -12,6 +12,7 @@ import {
   FileText,
   Plus,
   Eye,
+  EyeOff,
   X,
   FolderOpen,
   Tags,
@@ -204,6 +205,7 @@ function DocumentsPageContent() {
   const [editingFolder, setEditingFolder] = useState<FolderNode | null>(null);
   const [downloadingFolderId, setDownloadingFolderId] = useState<number | null>(null);
   const [acknowledgingDocumentId, setAcknowledgingDocumentId] = useState<number | null>(null);
+  const [maximallyHidingDocumentId, setMaximallyHidingDocumentId] = useState<number | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   
   // Bulk selection
@@ -763,6 +765,34 @@ function DocumentsPageContent() {
       toast.error("Не удалось подтвердить ознакомление");
     } finally {
       setAcknowledgingDocumentId(null);
+    }
+  };
+
+  const handleToggleDocumentMaximallyHidden = async (
+    documentItem: Document,
+    isMaximallyHidden: boolean,
+  ) => {
+    setMaximallyHidingDocumentId(documentItem.id);
+    setDocumentMenuOpenId(null);
+
+    try {
+      const updatedDocument = await apiClient.setDocumentMaximallyHidden(
+        documentItem.id,
+        isMaximallyHidden,
+      ) as Document;
+      setDocuments((currentDocuments) => currentDocuments.map((document) => (
+        document.id === documentItem.id
+          ? {
+              ...document,
+              is_maximally_hidden: updatedDocument.is_maximally_hidden,
+            }
+          : document
+      )));
+    } catch (error) {
+      console.error("Не удалось изменить режим отображения регламента:", error);
+      toast.error("Не удалось изменить режим отображения регламента");
+    } finally {
+      setMaximallyHidingDocumentId(null);
     }
   };
 
@@ -1549,7 +1579,7 @@ function DocumentsPageContent() {
                         })}
 
                         {/* Document Cards */}
-                        {filteredDocuments.map((doc) => {
+                        {filteredDocuments.map((doc, documentIndex) => {
                           const authorName = doc.created_by
                             ? `${doc.created_by.last_name || ''} ${doc.created_by.first_name || ''}`.trim()
                             : null;
@@ -1562,8 +1592,71 @@ function DocumentsPageContent() {
                           const departmentsCount = doc.departments?.length || 0;
                           const hasPreview = Boolean(doc.file_url && canPreviewDocument(doc.file_name || doc.title));
                           const isAcknowledging = acknowledgingDocumentId === doc.id;
+                          const isChangingMaximumHiding = maximallyHidingDocumentId === doc.id;
                           const acknowledgementRequiredForUser =
                             doc.acknowledgement_required_for_user ?? doc.acknowledgement_required;
+                          const isMaximallyHidden = (
+                            activeSection === "regulations"
+                            && Boolean(doc.is_maximally_hidden)
+                          );
+
+                          if (isMaximallyHidden) {
+                            return (
+                              <article
+                                key={doc.id}
+                                className="app-surface-muted overflow-hidden rounded-xl transition hover:border-[var(--border-strong)]"
+                              >
+                                <div className="flex min-w-0 items-center gap-3 px-4 py-2.5">
+                                  {selectionMode ? (
+                                    <input
+                                      type="checkbox"
+                                      checked={isDocumentSelected}
+                                      onChange={() => toggleDocumentSelectionFromCheckbox(doc.id)}
+                                      className="h-4 w-4 shrink-0 rounded accent-[var(--accent-primary)]"
+                                      aria-label={`Выбрать регламент ${doc.title}`}
+                                    />
+                                  ) : null}
+                                  <span
+                                    className="app-selected app-accent-text inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-full px-2 text-xs font-semibold tabular-nums"
+                                    aria-label={`Регламент ${documentIndex + 1} из ${filteredDocuments.length}`}
+                                  >
+                                    {documentIndex + 1}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedDocument(doc)}
+                                    className="min-w-0 flex-1 text-left"
+                                  >
+                                    <span className="block truncate text-sm font-semibold text-[var(--foreground)]">
+                                      {doc.title}
+                                    </span>
+                                    <span className="app-text-muted mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                                      {createdDate ? <span>{createdDate}</span> : null}
+                                      {acknowledgementRequiredForUser ? (
+                                        <span className={`${doc.is_acknowledged ? "app-feedback-success" : "app-feedback-warning"} inline-flex rounded-full px-2 py-0.5`}>
+                                          {doc.is_acknowledged ? "Ознакомлен" : "Требует ознакомления"}
+                                        </span>
+                                      ) : null}
+                                    </span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleToggleDocumentMaximallyHidden(doc, false)}
+                                    disabled={isChangingMaximumHiding}
+                                    className="app-selected app-accent-text inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-60"
+                                    title="Показать регламент полностью"
+                                    aria-label={`Показать регламент ${doc.title} полностью`}
+                                  >
+                                    {isChangingMaximumHiding ? (
+                                      <Loader2 size={15} className="animate-spin" />
+                                    ) : (
+                                      <Eye size={15} />
+                                    )}
+                                  </button>
+                                </div>
+                              </article>
+                            );
+                          }
 
                           // DEBUG: Проверка данных документа
                           if (!authorName || !createdDate) {
@@ -1602,16 +1695,25 @@ function DocumentsPageContent() {
                                     <div className="relative flex min-w-0 flex-col">
                                       <div className="contents">
                                         <div className="order-1 flex min-w-0 flex-wrap items-center gap-1.5 pr-14">
-                                          <span
-                                            className={`${doc.is_regulation ? "app-selected app-accent-text" : "app-badge"} inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium`}
-                                          >
-                                            {doc.is_regulation ? (
-                                              <ScrollText size={12} className="shrink-0" />
-                                            ) : (
-                                              <FileText size={12} className="shrink-0" />
-                                            )}
-                                            {doc.is_regulation ? "Регламент" : "Документ"}
-                                          </span>
+                                          {activeSection === "regulations" ? (
+                                            <span
+                                              className="app-selected app-accent-text inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-xs font-semibold tabular-nums"
+                                              aria-label={`Регламент ${documentIndex + 1} из ${filteredDocuments.length}`}
+                                            >
+                                              {documentIndex + 1}
+                                            </span>
+                                          ) : (
+                                            <span
+                                              className={`${doc.is_regulation ? "app-selected app-accent-text" : "app-badge"} inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium`}
+                                            >
+                                              {doc.is_regulation ? (
+                                                <ScrollText size={12} className="shrink-0" />
+                                              ) : (
+                                                <FileText size={12} className="shrink-0" />
+                                              )}
+                                              {doc.is_regulation ? "Регламент" : "Документ"}
+                                            </span>
+                                          )}
                                           {doc.tags?.slice(0, 3).map((tag) => (
                                             <span
                                               key={tag.id}
@@ -1920,7 +2022,23 @@ function DocumentsPageContent() {
                                         </button>
                                       ) : null}
 
-                                      <div className="flex min-w-0 flex-nowrap items-center justify-end gap-1.5">
+                                      <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+                                        {activeSection === "regulations" ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => void handleToggleDocumentMaximallyHidden(doc, true)}
+                                            disabled={isChangingMaximumHiding}
+                                            title="Максимально скрыть"
+                                            aria-label={`Максимально скрыть регламент ${doc.title}`}
+                                            className="app-action-secondary inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-60"
+                                          >
+                                            {isChangingMaximumHiding ? (
+                                              <Loader2 size={16} className="animate-spin" />
+                                            ) : (
+                                              <EyeOff size={16} />
+                                            )}
+                                          </button>
+                                        ) : null}
                                         {hasPreview ? (
                                           <button
                                             type="button"
@@ -2023,6 +2141,7 @@ function DocumentsPageContent() {
         size="xl"
       >
         <RegulationCreateForm
+          initialDepartmentId={selectedRegulationDepartment?.id ?? null}
           onSuccess={() => {
             setShowUploadForm(false);
             loadDocuments();

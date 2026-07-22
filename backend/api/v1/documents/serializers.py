@@ -10,7 +10,11 @@ from django.http import QueryDict
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.utils.text import slugify
-from documents.models import Document, DocumentAcknowledgement
+from documents.models import (
+    Document,
+    DocumentAcknowledgement,
+    DocumentDisplayState,
+)
 from rest_framework import serializers
 
 from ..employees.serializers import EmployeeBriefSerializer
@@ -300,6 +304,7 @@ class DocumentReadSerializer(serializers.ModelSerializer):
         source="file.size", read_only=True, allow_null=True
     )
     is_acknowledged = serializers.SerializerMethodField()
+    is_maximally_hidden = serializers.SerializerMethodField()
     acknowledgement_required_for_user = serializers.SerializerMethodField()
     acknowledged_count = serializers.SerializerMethodField()
     acknowledgement_total = serializers.SerializerMethodField()
@@ -338,6 +343,7 @@ class DocumentReadSerializer(serializers.ModelSerializer):
             "file_name",
             "file_size",
             "is_acknowledged",
+            "is_maximally_hidden",
             "linked_tasks",
         )
 
@@ -359,6 +365,21 @@ class DocumentReadSerializer(serializers.ModelSerializer):
             return False
         return DocumentAcknowledgement.objects.filter(
             document=obj, user=request.user
+        ).exists()
+
+    def get_is_maximally_hidden(self, obj: Document) -> bool:
+        """Максимально ли скрыта карточка для текущего пользователя."""
+        annotated = getattr(obj, "_is_maximally_hidden", None)
+        if annotated is not None:
+            return bool(annotated)
+
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return False
+        return DocumentDisplayState.objects.filter(
+            document=obj,
+            user=request.user,
+            is_maximally_hidden=True,
         ).exists()
 
     def get_acknowledgement_required_for_user(self, obj: Document) -> bool:

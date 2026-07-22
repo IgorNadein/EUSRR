@@ -28,7 +28,12 @@ from django.contrib.auth.models import Permission
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from django.utils import timezone
-from documents.models import Document, DocumentAcknowledgement, DocumentTag
+from documents.models import (
+    Document,
+    DocumentAcknowledgement,
+    DocumentDisplayState,
+    DocumentTag,
+)
 from employees.models import Department, EmployeeDepartment
 from filer.models import File as FilerFile, Folder
 from rest_framework import status
@@ -176,6 +181,9 @@ def api_urls():
     def _ack(pk: int) -> str:
         return reverse("api:v1:documents-acknowledge", args=[pk])
 
+    def _set_maximally_hidden(pk: int) -> str:
+        return reverse("api:v1:documents-set-maximally-hidden", args=[pk])
+
     def _acknowledgements(pk: int) -> str:
         return reverse("api:v1:documents-acknowledgements", args=[pk])
 
@@ -199,6 +207,7 @@ def api_urls():
         "archive": reverse("api:v1:documents-archive"),
         "detail": _detail,
         "ack": _ack,
+        "set_maximally_hidden": _set_maximally_hidden,
         "acknowledgements": _acknowledgements,
         "comments": _comments,
         "comment_detail": _comment_detail,
@@ -1464,6 +1473,57 @@ class TestAcknowledge:
         assert client.get(api_urls["detail"](document.pk)).json()[
             "comments_count"
         ] == 0
+
+
+class TestDocumentDisplayState:
+    """Персональный режим максимального скрытия карточки."""
+
+    def test_set_maximally_hidden_is_persisted_for_current_user(
+        self, auth_client, make_user, api_urls
+    ):
+        author = make_user("display-state-author@example.com")
+        viewer = make_user("display-state-viewer@example.com")
+        other_viewer = make_user("display-state-other-viewer@example.com")
+        document = make_document(
+            uploaded_by=author,
+            sent_to_all=True,
+            is_regulation=True,
+        )
+        client = auth_client(viewer)
+
+        initial = client.get(api_urls["detail"](document.id))
+        assert initial.status_code == status.HTTP_200_OK
+        assert initial.json()["is_maximally_hidden"] is False
+
+        hidden = client.post(
+            api_urls["set_maximally_hidden"](document.id),
+            {"is_maximally_hidden": True},
+            format="json",
+        )
+        assert hidden.status_code == status.HTTP_200_OK
+        assert hidden.json()["is_maximally_hidden"] is True
+        assert DocumentDisplayState.objects.filter(
+            document=document,
+            user=viewer,
+            is_maximally_hidden=True,
+        ).exists()
+        other_viewer_detail = auth_client(other_viewer).get(
+            api_urls["detail"](document.id)
+        )
+        assert other_viewer_detail.status_code == status.HTTP_200_OK
+        assert other_viewer_detail.json()["is_maximally_hidden"] is False
+        assert not DocumentDisplayState.objects.filter(
+            document=document,
+            user=other_viewer,
+        ).exists()
+
+        shown = client.post(
+            api_urls["set_maximally_hidden"](document.id),
+            {"is_maximally_hidden": False},
+            format="json",
+        )
+        assert shown.status_code == status.HTTP_200_OK
+        assert shown.json()["is_maximally_hidden"] is False
 
 
 class TestAcknowledgementsReport:

@@ -300,6 +300,44 @@ class DocumentAcknowledgement(models.Model):
         )
 
 
+class DocumentDisplayState(models.Model):
+    """Персональные настройки отображения документа в списках."""
+
+    document = models.ForeignKey(
+        Document,
+        verbose_name=_("Документ"),
+        on_delete=models.CASCADE,
+        related_name="display_states",
+    )
+    user = models.ForeignKey(
+        User,
+        verbose_name=_("Сотрудник"),
+        on_delete=models.CASCADE,
+        related_name="document_display_states",
+    )
+    is_maximally_hidden = models.BooleanField(
+        _("Максимально скрыт"),
+        default=True,
+    )
+    updated_at = models.DateTimeField(_("Обновлено"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Настройка отображения документа")
+        verbose_name_plural = _("Настройки отображения документов")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("document", "user"),
+                name="unique_document_display_state_user",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.document_id}: {self.user_id} "
+            f"hidden={self.is_maximally_hidden}"
+        )
+
+
 # ============================================================================
 # ТИПЫ ДОКУМЕНТОВ И МЕТАДАННЫЕ
 # ============================================================================

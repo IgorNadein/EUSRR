@@ -704,6 +704,7 @@ export interface Document {
   acknowledgement_recipients?: User[];
   acknowledgement_departments?: { id: number; name: string }[];
   is_acknowledged?: boolean;
+  is_maximally_hidden?: boolean;
   acknowledged_count?: number;
   acknowledgement_total?: number;
   comments_count?: number;

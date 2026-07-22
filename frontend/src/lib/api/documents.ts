@@ -112,6 +112,12 @@ export function createDocumentsApi(request: RequestFn, getToken?: GetTokenFn, re
             );
         },
         acknowledgeDocument: (id: number) => request(`/api/v1/documents/${id}/acknowledge/`, { method: 'POST', body: JSON.stringify({}) }),
+        setDocumentMaximallyHidden: (id: number, isMaximallyHidden: boolean) =>
+            request(`/api/v1/documents/${id}/set-maximally-hidden/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_maximally_hidden: isMaximallyHidden }),
+            }),
         getDocumentAcknowledgements: (id: number, search?: string) => {
             const qp = new URLSearchParams();
             if (search) qp.append('search', search);
