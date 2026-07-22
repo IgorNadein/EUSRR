@@ -10,6 +10,7 @@ export type DocumentAudienceMode = "all" | "none" | "restricted";
 
 type DocumentAudienceSelectorProps = {
   kind: "access" | "acknowledgement";
+  resource?: "document" | "regulation";
   mode: DocumentAudienceMode;
   onModeChange: (mode: DocumentAudienceMode) => void;
   employees: User[];
@@ -39,6 +40,7 @@ function normalizeSearch(value: string) {
 
 export function DocumentAudienceSelector({
   kind,
+  resource = "document",
   mode,
   onModeChange,
   employees,
@@ -53,6 +55,8 @@ export function DocumentAudienceSelector({
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [departmentSearch, setDepartmentSearch] = useState("");
   const isAcknowledgement = kind === "acknowledgement";
+  const resourceDative = resource === "regulation" ? "регламенту" : "документу";
+  const resourceAccusative = resource === "regulation" ? "регламент" : "документ";
 
   const options: Array<{ value: DocumentAudienceMode; label: string }> = isAcknowledgement
     ? [
@@ -99,12 +103,12 @@ export function DocumentAudienceSelector({
     <section className="space-y-3">
       <div>
         <h3 className="text-sm font-semibold text-[var(--foreground)]">
-          {isAcknowledgement ? "Требование ознакомления" : "Доступ к документу"}
+          {isAcknowledgement ? "Требование ознакомления" : `Доступ к ${resourceDative}`}
         </h3>
         <p className="app-text-muted mt-1 text-xs">
           {isAcknowledgement
             ? "Выберите сотрудников, которые должны подтвердить ознакомление."
-            : "Выберите сотрудников, которые смогут открыть документ."}
+            : `Выберите сотрудников, которые смогут открыть ${resourceAccusative}.`}
         </p>
       </div>
 

@@ -18,7 +18,10 @@ function parseNumericId(value: unknown): number | null {
   return null;
 }
 
-function buildUrl(pathname: string, params: Record<string, number | null>): string {
+function buildUrl(
+  pathname: string,
+  params: Record<string, string | number | null>,
+): string {
   const searchParams = new URLSearchParams();
 
   Object.entries(params).forEach(([key, value]) => {
@@ -63,6 +66,8 @@ export function resolveNotificationActionUrl(
     notification.category || "",
     objectType,
   ].join(" ").toLowerCase();
+  const isRegulation = data?.is_regulation === true
+    || (notification.verb || "").startsWith("regulation_");
 
   if (
     visitId !== null && (
@@ -92,7 +97,10 @@ export function resolveNotificationActionUrl(
       || objectType === "document"
     )
   ) {
-    return buildUrl("/documents", { document: documentId });
+    return buildUrl("/documents", {
+      section: isRegulation ? "regulations" : "folders",
+      document: documentId,
+    });
   }
 
   if (eventId !== null && categoryHint.includes("event")) {
@@ -125,7 +133,10 @@ export function resolveNotificationActionUrl(
       return buildUrl("/", { post: objectId });
     }
     if (objectType === "document") {
-      return buildUrl("/documents", { document: objectId });
+      return buildUrl("/documents", {
+        section: isRegulation ? "regulations" : "folders",
+        document: objectId,
+      });
     }
     if (objectType === "request") {
       return buildUrl("/requests", { request: objectId });
@@ -162,7 +173,13 @@ export function resolveNotificationActionUrl(
       const rawLinkedDocumentId = parseNumericId(
         url.searchParams.get("document") ?? url.searchParams.get("id"),
       );
-      return buildUrl("/documents", { document: rawLinkedDocumentId });
+      const rawSection = url.searchParams.get("section");
+      return buildUrl("/documents", {
+        section: rawSection === "regulations" || isRegulation
+          ? "regulations"
+          : "folders",
+        document: rawLinkedDocumentId,
+      });
     }
 
     if (url.pathname === "/calendar") {
@@ -199,7 +216,10 @@ export function resolveNotificationActionUrl(
 
   const documentMatch = rawActionUrl.match(/^\/documents\/(\d+)\/?(?:[#?].*)?$/);
   if (documentMatch) {
-    return buildUrl("/documents", { document: Number(documentMatch[1]) });
+    return buildUrl("/documents", {
+      section: isRegulation ? "regulations" : "folders",
+      document: Number(documentMatch[1]),
+    });
   }
 
   const calendarMatch = rawActionUrl.match(/^\/calendar\/events\/(\d+)\/?(?:[#?].*)?$/);

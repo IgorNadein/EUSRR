@@ -72,6 +72,51 @@ def _build_procurement_request_counts(user_id):
     ]
 
 
+def _build_regulation_counts(user_id):
+    """Группирует непрочитанные уведомления о регламентах по отделам."""
+    from .models import Notification
+
+    department_counts = {}
+    company_unread = 0
+    personal_unread = 0
+    notifications = Notification.objects.filter(
+        recipient_id=user_id,
+        unread=True,
+        deleted=False,
+        verb__startswith="regulation_",
+    ).only("data")
+
+    for notification in notifications:
+        data = notification.data if isinstance(notification.data, dict) else {}
+        raw_department_ids = data.get("regulation_department_ids")
+        department_ids = set()
+        if isinstance(raw_department_ids, list):
+            for value in raw_department_ids:
+                department_id = _coerce_positive_int(value)
+                if department_id is not None:
+                    department_ids.add(department_id)
+
+        for department_id in department_ids:
+            department_counts[department_id] = (
+                department_counts.get(department_id, 0) + 1
+            )
+
+        if not department_ids:
+            if data.get("regulation_scope") == "company":
+                company_unread += 1
+            else:
+                personal_unread += 1
+
+    return {
+        "departments": [
+            {"department_id": department_id, "unread": unread}
+            for department_id, unread in sorted(department_counts.items())
+        ],
+        "company_unread": company_unread,
+        "personal_unread": personal_unread,
+    }
+
+
 def build_unread_summary(user_id):
     from .models import Notification
 
@@ -89,10 +134,14 @@ def build_unread_summary(user_id):
         {"verb": row["verb"], "unread": row["unread"]}
         for row in rows
     ]
+    regulation_counts = _build_regulation_counts(user_id)
     return {
         "total": sum(item["unread"] for item in verbs),
         "verbs": verbs,
         "procurement_requests": _build_procurement_request_counts(user_id),
+        "regulation_departments": regulation_counts["departments"],
+        "regulation_company_unread": regulation_counts["company_unread"],
+        "regulation_personal_unread": regulation_counts["personal_unread"],
     }
 
 

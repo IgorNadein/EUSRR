@@ -528,6 +528,32 @@ html[data-bs-theme="dark"] .app-input::-webkit-calendar-picker-indicator {
   border-color: color-mix(in srgb, #10b981 24%, var(--border-strong));
 }
 
+.document-card {
+  container-type: inline-size;
+}
+
+.document-card-detail-action {
+  display: none;
+}
+
+@container (min-width: 20rem) {
+  .document-card-detail-action {
+    display: inline-flex;
+  }
+}
+
+@container (min-width: 32rem) {
+  .document-card-actions {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .document-card-acknowledge {
+    width: auto;
+  }
+}
+
 .app-action-reject {
   border: 1px solid var(--border-strong);
   background: var(--surface-elevated);

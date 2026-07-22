@@ -11,8 +11,6 @@ import {
   Loader2,
   ScrollText,
   Tag as TagIcon,
-  Upload,
-  X,
 } from 'lucide-react';
 import type { Department, Document, User } from '@/types/api';
 import { DocumentTagQuickCreate, type QuickDocumentTag } from './DocumentTagQuickCreate';
@@ -20,6 +18,7 @@ import {
   DocumentAudienceSelector,
   type DocumentAudienceMode,
 } from './DocumentAudienceSelector';
+import { DocumentFilePanel, DocumentFileRow } from './DocumentFilePanel';
 
 type DocumentTagOption = NonNullable<Document["tags"]>[number];
 
@@ -115,6 +114,7 @@ export function DocumentMetadataEditor({
   const [description, setDescription] = useState(document.description || '');
   const [extractedText, setExtractedText] = useState(document.extracted_text || '');
   const [replacementFile, setReplacementFile] = useState<File | null>(null);
+  const [filesOpen, setFilesOpen] = useState(false);
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<number | null>(document.folder?.id || null);
   const [isRegulation, setIsRegulation] = useState(Boolean(document.is_regulation));
@@ -141,6 +141,7 @@ export function DocumentMetadataEditor({
   const [error, setError] = useState<string | null>(null);
 
   const folderOptionRows = useMemo(() => buildFolderOptionRows(folders), [folders]);
+  const currentFileName = document.file_name || document.file?.split('/').pop() || '';
 
   useEffect(() => {
     if (!isOpen) return;
@@ -149,6 +150,7 @@ export function DocumentMetadataEditor({
     setDescription(document.description || '');
     setExtractedText(document.extracted_text || '');
     setReplacementFile(null);
+    setFilesOpen(false);
     setSelectedTags((document.tags || []).map((tag) => tag.id));
     setSelectedFolder(document.folder?.id || null);
     setIsRegulation(Boolean(document.is_regulation));
@@ -423,56 +425,43 @@ export function DocumentMetadataEditor({
             <div className="app-surface-muted rounded-lg p-3 text-sm">
               <p className="font-medium text-[var(--foreground)]">ID: {document.id}</p>
               <div className="app-text-muted mt-2 space-y-1 text-xs">
-                <p>Текущий файл: {document.file_name || 'не прикреплён'}</p>
-                {document.file_size ? <p>Размер: {formatFileSize(document.file_size)}</p> : null}
                 {document.folder_path ? <p>Папка: {document.folder_path}</p> : null}
+                <p>{document.is_regulation ? 'Регламент' : 'Документ'}</p>
               </div>
             </div>
           </div>
         </section>
 
         <section className="space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
-            <Upload className="h-4 w-4" />
-            Файл документа
-          </div>
-
-          <div className="app-surface-muted rounded-lg p-3">
-            <label
-              htmlFor="documentEditFile"
-              className="app-action-secondary inline-flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
-            >
-              <Upload className="h-4 w-4" />
-              Выбрать новый файл
-            </label>
-            <input
-              id="documentEditFile"
-              type="file"
-              onChange={(event) => setReplacementFile(event.target.files?.[0] || null)}
-              disabled={isSaving}
-              className="sr-only"
-            />
-            <p className="app-text-muted mt-2 text-xs">
-              Если файл не выбрать, текущий файл останется без изменений.
-            </p>
-
-            {replacementFile && (
-              <div className="app-selected app-accent-text mt-3 flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm">
-                <span className="min-w-0 truncate">
-                  Новый файл: {replacementFile.name} ({formatFileSize(replacementFile.size)})
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setReplacementFile(null)}
+          <DocumentFilePanel
+            title={isRegulation ? 'Файл регламента' : 'Файл документа'}
+            count={replacementFile || currentFileName ? 1 : 0}
+            open={filesOpen}
+            onOpenChange={setFilesOpen}
+            onFilesSelected={(files) => setReplacementFile(files[0] || null)}
+            disabled={isSaving}
+            addLabel={currentFileName ? 'Заменить файл' : 'Добавить файл'}
+            emptyText={isRegulation ? 'Файл регламента пока не прикреплён' : 'Файл пока не прикреплён'}
+          >
+            {replacementFile ? (
+              <div className="overflow-hidden rounded-lg border border-[var(--border-subtle)]">
+                <DocumentFileRow
+                  name={replacementFile.name}
+                  meta={formatFileSize(replacementFile.size)}
+                  pending
+                  onRemove={() => setReplacementFile(null)}
                   disabled={isSaving}
-                  className="app-action-secondary inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
-                  title="Убрать выбранный файл"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                />
               </div>
-            )}
-          </div>
+            ) : currentFileName ? (
+              <div className="overflow-hidden rounded-lg border border-[var(--border-subtle)]">
+                <DocumentFileRow
+                  name={currentFileName}
+                  meta={`${formatFileSize(document.file_size) || 'Размер не указан'} · текущий файл`}
+                />
+              </div>
+            ) : undefined}
+          </DocumentFilePanel>
 
           <div>
             <label htmlFor="documentEditExtractedText" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
@@ -498,16 +487,17 @@ export function DocumentMetadataEditor({
           </div>
 
           <div>
-            <label htmlFor="documentEditFolder" className="mb-1.5 flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
-              <Folder className="h-4 w-4" />
-              Папка
-            </label>
+            <div id="document-edit-folder-label" className="mb-2 flex items-center gap-2">
+              <Folder className="app-text-muted h-[15px] w-[15px]" />
+              <span className="app-text-muted text-xs font-medium">Папка</span>
+            </div>
             <select
               id="documentEditFolder"
               value={selectedFolder || ''}
               onChange={(event) => setSelectedFolder(event.target.value ? Number(event.target.value) : null)}
               disabled={loadingReferences || isSaving}
-              className="app-select w-full rounded-lg px-3 py-2 text-sm"
+              className="app-select w-full rounded-xl px-3 py-2 text-sm"
+              aria-labelledby="document-edit-folder-label"
             >
               <option value="">Без папки (корень)</option>
               {folderOptionRows.map(({ folder, level }) => (

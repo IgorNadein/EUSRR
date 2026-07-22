@@ -27,7 +27,7 @@ import {
   Link2,
   ScrollText,
 } from "lucide-react";
-import { DocumentAcknowledgement } from "./DocumentAcknowledgement";
+import { DocumentAcknowledgeButton, DocumentAcknowledgement } from "./DocumentAcknowledgement";
 import { DocumentComments } from "./DocumentComments";
 import { DocumentRelated } from "./DocumentRelated";
 import { DocumentTaskLinks } from "./DocumentTaskLinks";
@@ -78,6 +78,10 @@ export function DocumentDetailModal({
   const documentId = document?.id ?? null;
   const documentHasFile = Boolean(document?.file_url);
   const documentRequiresAcknowledgement = Boolean(document?.acknowledgement_required);
+  const acknowledgementRequiredForUser = Boolean(
+    document?.acknowledgement_required_for_user ?? document?.acknowledgement_required,
+  );
+  const showPersistentAcknowledgeAction = acknowledgementRequiredForUser && !document?.is_acknowledged;
 
   if (!document) return null;
 
@@ -114,6 +118,8 @@ export function DocumentDetailModal({
     ? activeTabState.value
     : defaultTab;
   const currentActiveTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : defaultTab;
+  const desktopActiveTab: Exclude<TabType, "preview"> =
+    currentActiveTab === "preview" ? "info" : currentActiveTab;
   const isFullscreen = fullscreenState.documentId === documentId ? fullscreenState.value : false;
   const detailTabs = tabs.filter((tab) => tab.id !== "preview");
   const setDocumentActiveTab = (value: TabType) => {
@@ -149,9 +155,10 @@ export function DocumentDetailModal({
       onClose={onClose}
       size="full"
       showCloseButton
-      className="flex flex-col"
+      noPadding
+      className="relative flex h-[95vh] flex-col sm:h-[90vh]"
     >
-      <div className="flex h-full min-h-0 flex-col">
+      <div className="mx-4 flex h-full min-h-0 flex-col sm:mx-6">
         {/* Header with Title and Actions */}
         <div className="app-divider app-header shrink-0 border-b px-4 py-4 sm:px-6">
           <div className="flex flex-col gap-3">
@@ -257,20 +264,20 @@ export function DocumentDetailModal({
           <div className="hidden h-full lg:flex">
             {/* Preview Panel (Left) */}
             {documentHasFile && (
-              <div className={`${isFullscreen ? "w-full" : "w-3/5"} shrink-0 border-r border-[var(--border-subtle)] transition-all`}>
+              <div className={`${isFullscreen ? "w-full" : "w-3/5"} min-h-0 shrink-0 overflow-hidden border-r border-[var(--border-subtle)] transition-all`}>
                 {renderPreview()}
               </div>
             )}
 
             {/* Info Panel (Right) */}
             {!(documentHasFile && isFullscreen) && (
-              <div className="flex min-w-0 flex-1 flex-col">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                 {/* Desktop Tabs */}
                 <div className="app-divider app-surface-muted shrink-0 border-b px-6">
                   <nav className="app-tabs-scroll flex gap-1 overflow-x-auto overflow-y-hidden pb-1">
                     {detailTabs.map((tab) => {
                       const Icon = tab.icon;
-                      const isActive = currentActiveTab === tab.id;
+                      const isActive = desktopActiveTab === tab.id;
                       return (
                         <button
                           key={tab.id}
@@ -291,7 +298,7 @@ export function DocumentDetailModal({
 
                 {/* Desktop Tab Content */}
                 <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--surface-secondary)]">
-                  {currentActiveTab === "info" && (
+                  {desktopActiveTab === "info" && (
                     <div className="p-6">
                       <div className="space-y-4">
                         {/* Description */}
@@ -461,7 +468,7 @@ export function DocumentDetailModal({
                     </div>
                   )}
 
-                  {currentActiveTab === "activity" && (
+                  {desktopActiveTab === "activity" && (
                     <div className="p-6">
                       <div className="app-surface rounded-xl p-6">
                         <h3 className="mb-4 text-lg font-semibold text-[var(--foreground)]">История активности</h3>
@@ -495,7 +502,7 @@ export function DocumentDetailModal({
                     </div>
                   )}
 
-                  {currentActiveTab === "acknowledgements" && (
+                  {desktopActiveTab === "acknowledgements" && (
                     <div className="p-6">
                       <div className="app-surface rounded-xl p-6">
                         {document.acknowledgement_required ? (
@@ -511,7 +518,11 @@ export function DocumentDetailModal({
                                 </button>
                               </div>
                             )}
-                            <DocumentAcknowledgement document={document} onAcknowledge={() => onUpdate?.()} />
+                            <DocumentAcknowledgement
+                              document={document}
+                              onAcknowledge={() => onUpdate?.()}
+                              showAction={false}
+                            />
                           </>
                         ) : (
                           <div className="py-12 text-center">
@@ -525,7 +536,7 @@ export function DocumentDetailModal({
                     </div>
                   )}
 
-                  {currentActiveTab === "comments" && (
+                  {desktopActiveTab === "comments" && (
                     <div className="p-6">
                       <div className="app-surface rounded-xl p-6">
                         <DocumentComments
@@ -536,7 +547,7 @@ export function DocumentDetailModal({
                     </div>
                   )}
 
-                  {currentActiveTab === "related" && (
+                  {desktopActiveTab === "related" && (
                     <div className="p-6">
                       <div className="space-y-4">
                         <div className="app-surface rounded-xl p-6">
@@ -782,7 +793,11 @@ export function DocumentDetailModal({
                           </button>
                         </div>
                       )}
-                      <DocumentAcknowledgement document={document} onAcknowledge={() => onUpdate?.()} />
+                      <DocumentAcknowledgement
+                        document={document}
+                        onAcknowledge={() => onUpdate?.()}
+                        showAction={false}
+                      />
                     </>
                   ) : (
                     <div className="py-12 text-center">
@@ -824,6 +839,16 @@ export function DocumentDetailModal({
             )}
           </div>
         </div>
+
+        {showPersistentAcknowledgeAction && (
+          <div className="pointer-events-none absolute inset-x-4 bottom-4 z-30 flex justify-end sm:inset-x-6 sm:bottom-6">
+            <DocumentAcknowledgeButton
+              document={document}
+              onAcknowledge={() => onUpdate?.()}
+              className="pointer-events-auto w-full shadow-[0_12px_32px_rgba(0,0,0,0.35)] sm:w-auto sm:min-w-[220px]"
+            />
+          </div>
+        )}
       </div>
     </Modal>
   );

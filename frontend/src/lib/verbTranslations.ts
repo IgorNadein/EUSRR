@@ -52,6 +52,13 @@ export const VERB_CATEGORIES: Record<string, string> = {
   document_comment: 'Документы',
   document_comment_reply: 'Документы',
   document_related: 'Документы',
+
+  // Регламенты
+  regulation_ready: 'Регламенты',
+  regulation_signed_all: 'Регламенты',
+  regulation_reminder: 'Регламенты',
+  regulation_comment: 'Регламенты',
+  regulation_comment_reply: 'Регламенты',
   
   // Календарь
   calendar_invitation: 'Календарь',
@@ -170,6 +177,13 @@ export const VERB_NAMES: Record<string, string> = {
   document_comment: 'Комментарий к документу',
   document_comment_reply: 'Ответ на комментарий к документу',
   document_related: 'Связанный документ',
+
+  // Регламенты
+  regulation_ready: 'Регламент на ознакомление',
+  regulation_signed_all: 'Все ознакомились с регламентом',
+  regulation_reminder: 'Напоминание об ознакомлении с регламентом',
+  regulation_comment: 'Комментарий к регламенту',
+  regulation_comment_reply: 'Ответ на комментарий к регламенту',
   
   // Календарь
   calendar_invitation: 'Приглашение на событие',

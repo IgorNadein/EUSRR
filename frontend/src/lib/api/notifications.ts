@@ -11,6 +11,12 @@ export type UnreadNotificationsSummary = {
         request_id: number;
         unread: number;
     }>;
+    regulation_departments?: Array<{
+        department_id: number;
+        unread: number;
+    }>;
+    regulation_company_unread?: number;
+    regulation_personal_unread?: number;
 };
 
 export function createNotificationsApi(request: RequestFn) {

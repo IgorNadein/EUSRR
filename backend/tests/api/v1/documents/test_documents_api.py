@@ -111,6 +111,8 @@ def make_document(
     description: str = "desc",
     sent_to_all: bool = True,
     acknowledgement_required: bool = False,
+    acknowledgement_for_all: bool = True,
+    is_regulation: bool = False,
     recipients: Iterable[User] | None = None,
 ) -> Document:
     """Создаёт Document напрямую (минует API).
@@ -121,6 +123,8 @@ def make_document(
         description (str): Описание.
         sent_to_all (bool): Признак рассылки всем.
         acknowledgement_required (bool): Требуется ли ознакомление.
+        acknowledgement_for_all (bool): Ознакомление требуется всей аудитории.
+        is_regulation (bool): Документ относится к регламентам.
         recipients (Iterable[User] | None): Конкретные получатели при sent_to_all=false.
 
     Returns:
@@ -136,6 +140,8 @@ def make_document(
         uploaded_at=timezone.now(),
         sent_to_all=sent_to_all,
         acknowledgement_required=acknowledgement_required,
+        acknowledgement_for_all=acknowledgement_for_all,
+        is_regulation=is_regulation,
         file=filer_file,
     )
     if not sent_to_all and recipients:
@@ -1107,6 +1113,54 @@ class TestDocumentNotifications:
         assert payload["description"].endswith('загрузил документ "Справка".')
         assert payload["data"]["title"] == "Новый документ"
         assert payload["data"]["acknowledgement_required"] is False
+
+    def test_regulation_notification_has_own_category_and_department_scope(
+        self, monkeypatch, make_user, department_factory, link_factory
+    ):
+        """Регламент не смешивается с документами и содержит отдел ознакомления."""
+        from documents.notifications.handlers import notify_document_ready
+
+        calls = []
+
+        def fake_notify_send(**kwargs):
+            calls.append(kwargs)
+
+        monkeypatch.setattr(
+            "documents.notifications.handlers.notify.send",
+            fake_notify_send,
+        )
+        author = make_user("regulation-author@example.com")
+        viewer = make_user("regulation-viewer@example.com")
+        department = department_factory(name="Бухгалтерия")
+        link_factory(viewer, department)
+        doc = make_document(
+            title="Порядок закрытия месяца",
+            uploaded_by=author,
+            sent_to_all=False,
+            acknowledgement_required=True,
+            acknowledgement_for_all=False,
+            is_regulation=True,
+            recipients=[viewer],
+        )
+        doc.acknowledgement_departments.add(department)
+        calls.clear()
+
+        notify_document_ready(doc, viewer)
+
+        assert len(calls) == 1
+        payload = calls[0]
+        assert payload["verb"] == "regulation_ready"
+        assert payload["action_url"] == (
+            f"/documents?section=regulations&document={doc.id}"
+        )
+        assert payload["data"]["title"] == "Новый регламент на ознакомление"
+        assert payload["data"]["is_regulation"] is True
+        assert payload["data"]["regulation_scope"] == "department"
+        assert payload["data"]["regulation_department_ids"] == [department.id]
+        assert payload["data"]["regulation_department_names"] == [
+            "Бухгалтерия"
+        ]
+        assert "опубликовал регламент" in payload["description"]
 
     def test_optional_document_acknowledgement_does_not_notify_uploader(
         self, monkeypatch, make_user

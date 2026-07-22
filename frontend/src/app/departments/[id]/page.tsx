@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
+  AlertCircle,
   ArrowLeft,
   BadgePlus,
   CalendarDays,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Crown,
@@ -16,6 +18,7 @@ import {
   Minus,
   PencilLine,
   Plus,
+  ScrollText,
   Search,
   Trash2,
   UserRoundCog,
@@ -25,6 +28,7 @@ import {
 
 import { AppShell } from "@/components/AppShell";
 import { DepartmentFeedSection } from "@/components/departments/DepartmentFeedSection";
+import { DocumentDetailModal } from "@/components/documents/DocumentDetailModal";
 import {
   DEPARTMENT_MEMBERS_EMPTY_STATE_CLASSNAME,
   getDepartmentMembersListClassName,
@@ -42,8 +46,9 @@ import { SearchableSelectSingle } from "@/components/shared/SearchableSelect";
 import { Modal } from "@/components/ui/Modal";
 import { useDepartmentPage } from "@/hooks/useDepartmentPage";
 import { apiClient } from "@/lib/api";
-import { displayUserName, userProfileLink } from "@/lib/shared";
-import type { DepartmentMemberLink, DepartmentPermissionChoice, DepartmentRole, User } from "@/types/api";
+import { regulationMatchesAcknowledgementSource } from "@/lib/feed-regulation-filters";
+import { displayUserName, formatDate, loadAllPages, userProfileLink } from "@/lib/shared";
+import type { DepartmentMemberLink, DepartmentPermissionChoice, DepartmentRole, Document, User } from "@/types/api";
 import { toast } from "sonner";
 
 type DepartmentMemberModalMode = "add" | "assignRole";
@@ -76,6 +81,35 @@ function MetaChip({
       className={`${className} inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium`}
     >
       {children}
+    </span>
+  );
+}
+
+function RegulationAcknowledgementStatus({ document }: { document: Document }) {
+  const acknowledgementRequiredForUser =
+    document.acknowledgement_required_for_user ?? document.acknowledgement_required;
+
+  if (!acknowledgementRequiredForUser) {
+    return (
+      <span className="app-badge inline-flex items-center rounded-full px-2 py-1 font-medium">
+        Ознакомление не требуется
+      </span>
+    );
+  }
+
+  if (document.is_acknowledged) {
+    return (
+      <span className="app-feedback-success inline-flex items-center gap-1 rounded-full px-2 py-1 font-medium">
+        <CheckCircle2 size={11} />
+        Ознакомлен
+      </span>
+    );
+  }
+
+  return (
+    <span className="app-feedback-warning inline-flex items-center gap-1 rounded-full px-2 py-1 font-medium">
+      <AlertCircle size={11} />
+      Требует ознакомления
     </span>
   );
 }
@@ -959,6 +993,9 @@ export default function DepartmentDetailPage() {
   const h = useDepartmentPage(departmentId);
   const [managementMode, setManagementMode] = useState(false);
   const [membersExpanded, setMembersExpanded] = useState(false);
+  const [regulationsExpanded, setRegulationsExpanded] = useState(false);
+  const [departmentRegulations, setDepartmentRegulations] = useState<Document[]>([]);
+  const [selectedRegulation, setSelectedRegulation] = useState<Document | null>(null);
   const [roleMenuOpenForId, setRoleMenuOpenForId] = useState<number | null>(null);
   const roleMenuRef = useRef<HTMLDivElement | null>(null);
   const [departmentMenuOpen, setDepartmentMenuOpen] = useState(false);
@@ -981,6 +1018,58 @@ export default function DepartmentDetailPage() {
       setMembersExpanded(true);
     }
   }, [isManagementMode]);
+
+  useEffect(() => {
+    if (!Number.isFinite(departmentId)) return;
+
+    let cancelled = false;
+    setRegulationsExpanded(false);
+
+    const loadDepartmentRegulations = async () => {
+      try {
+        const regulations = await loadAllPages<Document>((pageParams) => (
+          apiClient.getDocuments({ ...pageParams, is_regulation: true })
+        ));
+        if (cancelled) return;
+
+        const departmentSource = `department:${departmentId}` as const;
+        setDepartmentRegulations(
+          regulations
+            .filter((document) => (
+              regulationMatchesAcknowledgementSource(document, departmentSource)
+            ))
+            .sort((left, right) => (
+              new Date(right.uploaded_at || right.created_at).getTime()
+              - new Date(left.uploaded_at || left.created_at).getTime()
+            )),
+        );
+      } catch (error) {
+        console.error("Не удалось загрузить регламенты отдела:", error);
+        if (!cancelled) setDepartmentRegulations([]);
+      }
+    };
+
+    void loadDepartmentRegulations();
+    return () => {
+      cancelled = true;
+    };
+  }, [departmentId]);
+
+  const refreshSelectedRegulation = async () => {
+    if (!selectedRegulation) return;
+
+    const selectedId = selectedRegulation.id;
+    try {
+      const updatedDocument = await apiClient.getDocument(selectedId);
+      setSelectedRegulation((current) => current?.id === selectedId ? updatedDocument : current);
+      setDepartmentRegulations((current) => current.map((document) => (
+        document.id === selectedId ? updatedDocument : document
+      )));
+    } catch (error) {
+      console.error("Не удалось обновить регламент:", error);
+      toast.error("Не удалось обновить регламент");
+    }
+  };
 
   useEffect(() => {
     if (roleMenuOpenForId === null) return;
@@ -1336,6 +1425,63 @@ export default function DepartmentDetailPage() {
               </section>
             </section>
 
+            {departmentRegulations.length > 0 ? (
+              <section className="app-surface rounded-2xl p-4 sm:p-5">
+                <div className={regulationsExpanded ? "mb-4 flex items-center justify-between gap-3" : "flex items-center justify-between gap-3"}>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
+                        Регламенты отдела
+                      </p>
+                      <MetaChip tone="accent">{departmentRegulations.length}</MetaChip>
+                    </div>
+                    <p className="app-text-muted mt-1 text-sm">
+                      Документы, требующие ознакомления сотрудников отдела.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRegulationsExpanded((current) => !current)}
+                    className="app-action-secondary inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                    aria-label={regulationsExpanded ? "Свернуть список регламентов" : "Развернуть список регламентов"}
+                    aria-expanded={regulationsExpanded}
+                  >
+                    <ChevronDown
+                      size={15}
+                      className={`transition-transform duration-200 ${regulationsExpanded ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                </div>
+
+                {regulationsExpanded ? (
+                  <div className="overflow-hidden rounded-xl border border-[var(--border-subtle)]">
+                    {departmentRegulations.map((document) => (
+                      <button
+                        key={document.id}
+                        type="button"
+                        onClick={() => setSelectedRegulation(document)}
+                        className="flex w-full min-w-0 items-center gap-3 border-b border-[var(--border-subtle)] px-3 py-3 text-left transition last:border-b-0 hover:bg-[var(--surface-secondary)]"
+                      >
+                        <span className="app-selected app-accent-text flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+                          <ScrollText size={17} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-[var(--foreground)]">
+                            {document.title}
+                          </span>
+                          <span className="app-text-muted mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                            <RegulationAcknowledgementStatus document={document} />
+                            <span>{formatDate(document.uploaded_at || document.created_at)}</span>
+                          </span>
+                        </span>
+                        <ChevronRight size={16} className="app-text-muted shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
             <DepartmentFeedSection
               canCreatePosts={
                 h.userPerms.can_publish_posts || h.userPerms.can_manage_feed
@@ -1412,6 +1558,21 @@ export default function DepartmentDetailPage() {
         onDraftChange={h.setRoleDraft}
         onSave={h.saveRole}
         roleDraft={h.roleDraft}
+      />
+
+      <DocumentDetailModal
+        document={selectedRegulation}
+        isOpen={selectedRegulation !== null}
+        onClose={() => setSelectedRegulation(null)}
+        onUpdate={() => void refreshSelectedRegulation()}
+        onNavigateToRelated={(documentId) => {
+          void apiClient.getDocument(documentId)
+            .then(setSelectedRegulation)
+            .catch((error) => {
+              console.error("Не удалось открыть связанный документ:", error);
+              toast.error("Не удалось открыть связанный документ");
+            });
+        }}
       />
     </AppShell>
   );

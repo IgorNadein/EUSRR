@@ -1,14 +1,11 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { useDropzone } from "react-dropzone";
 import { 
-  Upload, 
-  X, 
-  FileText, 
   AlertCircle, 
   Loader2, 
   FolderOpen,
+  Plus,
   ScrollText,
   Tag as TagIcon,
 } from "lucide-react";
@@ -21,6 +18,7 @@ import {
   DocumentAudienceSelector,
   type DocumentAudienceMode,
 } from "./DocumentAudienceSelector";
+import { DocumentFilePanel, DocumentFileRow } from "./DocumentFilePanel";
 
 interface DocumentTagOption {
   id: number;
@@ -43,8 +41,9 @@ interface FolderOptionRow {
 interface DocumentUploadFormProps {
   onSuccess?: () => void;
   onCancel?: () => void;
+  onFolderCreated?: () => void;
   currentFolderId?: number | null;
-  defaultIsRegulation?: boolean;
+  mode?: "document" | "regulation";
 }
 
 interface UploadFileItem {
@@ -121,12 +120,16 @@ const STAGE_MESSAGES: Record<string, string> = {
 export function DocumentUploadForm({
   onSuccess,
   onCancel,
+  onFolderCreated,
   currentFolderId,
-  defaultIsRegulation = false,
+  mode = "document",
 }: DocumentUploadFormProps) {
+  const isDedicatedRegulation = mode === "regulation";
+  const [isRegulation, setIsRegulation] = useState(isDedicatedRegulation);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [uploadItems, setUploadItems] = useState<UploadFileItem[]>([]);
+  const [filesOpen, setFilesOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState<ProcessingProgress | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -141,9 +144,13 @@ export function DocumentUploadForm({
   const [acknowledgementRecipients, setAcknowledgementRecipients] = useState<number[]>([]);
   
   // Metadata fields
-  const [selectedFolderId, setSelectedFolderId] = useState<number | null>(currentFolderId ?? null);
+  const [selectedFolderId, setSelectedFolderId] = useState<number | null>(
+    isDedicatedRegulation ? null : currentFolderId ?? null,
+  );
+  const [newFolderName, setNewFolderName] = useState("");
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [folderCreateError, setFolderCreateError] = useState<string | null>(null);
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
-  const [isRegulation, setIsRegulation] = useState(defaultIsRegulation);
   
   // Data for selects
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -156,10 +163,14 @@ export function DocumentUploadForm({
   const [loadingFolders, setLoadingFolders] = useState(false);
   const [loadingDocumentTags, setLoadingDocumentTags] = useState(false);
   const folderOptionRows = useMemo(() => buildFolderOptionRows(folders), [folders]);
+  const selectedFolder = useMemo(
+    () => folders.find((folder) => folder.id === selectedFolderId) || null,
+    [folders, selectedFolderId],
+  );
 
   useEffect(() => {
-    setSelectedFolderId(currentFolderId ?? null);
-  }, [currentFolderId]);
+    setSelectedFolderId(isDedicatedRegulation ? null : currentFolderId ?? null);
+  }, [currentFolderId, isDedicatedRegulation]);
 
   // Load departments and employees
   useEffect(() => {
@@ -188,15 +199,17 @@ export function DocumentUploadForm({
         setLoadingEmployees(false);
       }
 
-      try {
-        setLoadingFolders(true);
-        const foldersResponse = await apiClient.getFolders({});
-        const foldersData = foldersResponse.results || foldersResponse;
-        setFolders(Array.isArray(foldersData) ? foldersData : []);
-      } catch (err) {
-        console.error("Ошибка загрузки папок:", err);
-      } finally {
-        setLoadingFolders(false);
+      if (!isDedicatedRegulation) {
+        try {
+          setLoadingFolders(true);
+          const foldersResponse = await apiClient.getFolders({ limit: 1000 });
+          const foldersData = foldersResponse.results || foldersResponse;
+          setFolders(Array.isArray(foldersData) ? foldersData : []);
+        } catch (err) {
+          console.error("Ошибка загрузки папок:", err);
+        } finally {
+          setLoadingFolders(false);
+        }
       }
       
       try {
@@ -211,7 +224,7 @@ export function DocumentUploadForm({
     };
     
     loadData();
-  }, []);
+  }, [isDedicatedRegulation]);
 
   const acknowledgementEmployees = useMemo(() => {
     if (sentToAll) return employees;
@@ -240,10 +253,11 @@ export function DocumentUploadForm({
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return;
 
-    const newItems = acceptedFiles.map(createUploadItem);
-    const totalAfterDrop = uploadItems.length + newItems.length;
+    const newItems = (isDedicatedRegulation ? acceptedFiles.slice(0, 1) : acceptedFiles).map(createUploadItem);
+    const totalAfterDrop = isDedicatedRegulation ? newItems.length : uploadItems.length + newItems.length;
 
-    setUploadItems((prev) => [...prev, ...newItems]);
+    setUploadItems((prev) => isDedicatedRegulation ? newItems : [...prev, ...newItems]);
+    setFilesOpen(true);
     setError(null);
 
     if (totalAfterDrop === 1 && !title.trim()) {
@@ -317,19 +331,19 @@ export function DocumentUploadForm({
         setError("Некоторые файлы не удалось обработать. Они будут загружены в исходном виде.");
         toast("Некоторые файлы не удалось обработать");
       } else {
-        toast.success(newItems.length > 1 ? "Файлы обработаны успешно" : "Документ обработан успешно");
+        toast.success(
+          newItems.length > 1
+            ? "Файлы обработаны успешно"
+            : isRegulation
+              ? "Регламент обработан успешно"
+              : "Документ обработан успешно",
+        );
       }
     } finally {
       setIsProcessing(false);
       setProcessingProgress(null);
     }
-  }, [title, uploadItems.length]);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    multiple: true,
-    disabled: isProcessing || isSubmitting,
-  });
+  }, [isDedicatedRegulation, isRegulation, title, uploadItems.length]);
 
   const removeUploadItem = (id: string) => {
     const next = uploadItems.filter((item) => item.id !== id);
@@ -359,13 +373,76 @@ export function DocumentUploadForm({
     setSelectedTags((prev) => (prev.includes(tag.id) ? prev : [...prev, tag.id]));
   };
 
+  const handleCreateFolder = async () => {
+    const normalizedName = newFolderName.trim();
+    setFolderCreateError(null);
+
+    if (!normalizedName) {
+      setFolderCreateError("Введите название папки");
+      return;
+    }
+
+    const duplicateExists = folders.some((folder) => (
+      folder.parent_id === selectedFolderId
+      && folder.name.trim().toLocaleLowerCase("ru") === normalizedName.toLocaleLowerCase("ru")
+    ));
+    if (duplicateExists) {
+      setFolderCreateError("В этой папке уже есть папка с таким названием");
+      return;
+    }
+
+    setIsCreatingFolder(true);
+    try {
+      const created = await apiClient.createFolder({
+        name: normalizedName,
+        parent: selectedFolderId,
+      });
+      const parentId = created.parent_id
+        ?? (typeof created.parent === "number" ? created.parent : created.parent?.id)
+        ?? selectedFolderId
+        ?? null;
+      const createdFolder: FolderOption = {
+        id: created.id,
+        name: created.name || normalizedName,
+        parent_id: parentId,
+        path: created.path || [selectedFolder?.path || selectedFolder?.name, normalizedName]
+          .filter(Boolean)
+          .join(" / "),
+      };
+
+      setFolders((current) => (
+        current.some((folder) => folder.id === createdFolder.id)
+          ? current
+          : [...current, createdFolder]
+      ));
+      setSelectedFolderId(createdFolder.id);
+      setNewFolderName("");
+      onFolderCreated?.();
+      toast.success("Папка создана");
+    } catch (error) {
+      console.error("Ошибка создания папки:", error);
+      setFolderCreateError(error instanceof Error ? error.message : "Не удалось создать папку");
+    } finally {
+      setIsCreatingFolder(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
+    if (isDedicatedRegulation && !title.trim()) {
+      setError("Укажите название регламента");
+      return;
+    }
+
     // Validate recipients if sent_to_all is false
     if (!sentToAll && selectedDepartments.length === 0 && selectedRecipients.length === 0) {
-      setError("Выберите хотя бы один отдел или сотрудника с доступом к документу");
+      setError(
+        `Выберите хотя бы один отдел или сотрудника с доступом к ${
+          isRegulation ? "регламенту" : "документу"
+        }`,
+      );
       return;
     }
 
@@ -385,7 +462,7 @@ export function DocumentUploadForm({
         await apiClient.createDocument({
           title: title.trim() || undefined,
           description,
-          folder_id: selectedFolderId ?? undefined,
+          folder_id: isDedicatedRegulation ? undefined : selectedFolderId ?? undefined,
           sent_to_all: sentToAll,
           is_regulation: isRegulation,
           department_ids: sentToAll ? undefined : selectedDepartments,
@@ -410,7 +487,7 @@ export function DocumentUploadForm({
             description,
             file: getFileForUpload(item),
             extracted_text: item.extractedText || undefined,
-            folder_id: selectedFolderId ?? undefined,
+            folder_id: isDedicatedRegulation ? undefined : selectedFolderId ?? undefined,
             sent_to_all: sentToAll,
             is_regulation: isRegulation,
             department_ids: sentToAll ? undefined : selectedDepartments,
@@ -427,20 +504,29 @@ export function DocumentUploadForm({
       }
 
       toast.success(
-        uploadItems.length === 0
-          ? "Документ успешно создан"
-          : uploadItems.length > 1
-          ? `${uploadItems.length} документов успешно загружено`
-          : "Документ успешно загружен"
+        isRegulation
+          ? isDedicatedRegulation || uploadItems.length === 0
+            ? "Регламент успешно создан"
+            : uploadItems.length > 1
+              ? `${uploadItems.length} регламентов успешно загружено`
+              : "Регламент успешно загружен"
+          : uploadItems.length === 0
+            ? "Документ успешно создан"
+            : uploadItems.length > 1
+              ? `${uploadItems.length} документов успешно загружено`
+              : "Документ успешно загружен",
       );
       
       // Сброс формы
       setTitle("");
       setDescription("");
       setUploadItems([]);
-      setSelectedFolderId(currentFolderId ?? null);
+      setFilesOpen(false);
+      setSelectedFolderId(isDedicatedRegulation ? null : currentFolderId ?? null);
+      setNewFolderName("");
+      setFolderCreateError(null);
       setSentToAll(true);
-      setIsRegulation(defaultIsRegulation);
+      setIsRegulation(isDedicatedRegulation);
       setAcknowledgementMode("all");
       setSelectedDepartments([]);
       setSelectedRecipients([]);
@@ -452,9 +538,13 @@ export function DocumentUploadForm({
         onSuccess();
       }
     } catch (err) {
-      console.error("Ошибка загрузки документа:", err);
-      setError(err instanceof Error ? err.message : "Не удалось загрузить документ");
-      toast.error("Ошибка загрузки документа");
+      console.error(`Ошибка создания ${isRegulation ? "регламента" : "документа"}:`, err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : `Не удалось создать ${isRegulation ? "регламент" : "документ"}`,
+      );
+      toast.error(`Ошибка создания ${isRegulation ? "регламента" : "документа"}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -469,90 +559,60 @@ export function DocumentUploadForm({
         </div>
       )}
 
-      {/* File Upload */}
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
-          Файлы
-        </label>
-        
-        <div
-          {...getRootProps()}
-          className={`cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition ${
-            isDragActive
-              ? "border-[var(--accent-primary)] bg-[color:color-mix(in_srgb,var(--accent-primary)_10%,var(--surface-secondary))]"
-              : "border-[var(--border-strong)] bg-[var(--surface-secondary)] hover:border-[var(--accent-primary)] hover:bg-[color:color-mix(in_srgb,var(--accent-primary)_8%,var(--surface-secondary))]"
-          } ${isProcessing || isSubmitting ? "cursor-not-allowed opacity-60" : ""}`}
-        >
-          <input {...getInputProps()} />
-          <Upload size={32} className="app-text-muted mx-auto mb-3" />
-          <p className="text-sm font-medium text-[var(--foreground)]">
-            {isDragActive
-              ? "Отпустите файлы здесь"
-              : uploadItems.length > 0
-                ? "Добавьте ещё файлы или нажмите для выбора"
-                : "Перетащите файлы или нажмите для выбора"}
-          </p>
-          <p className="app-text-muted mt-1 text-xs">
-            Можно выбрать несколько файлов любых форматов или создать документ без файла
-          </p>
+      {isDedicatedRegulation && (
+        <div className="app-selected flex items-start gap-3 rounded-xl p-4">
+          <span className="app-badge-accent flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+            <ScrollText size={18} />
+          </span>
+          <div>
+            <p className="text-sm font-semibold text-[var(--foreground)]">Основные сведения</p>
+            <p className="app-text-muted mt-1 text-xs leading-relaxed">
+              Добавьте регламент, настройте доступ и укажите, кто должен подтвердить ознакомление.
+            </p>
+          </div>
         </div>
+      )}
 
-        {uploadItems.length > 0 && (
-          <div className="mt-3 space-y-3">
-            <div className="app-text-muted text-xs">
-              Выбрано файлов: {uploadItems.length}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {uploadItems.map((item) => (
-                <span
-                  key={item.id}
-                  className={`inline-flex max-w-full items-center gap-2 rounded-full px-2.5 py-1.5 ${
-                    item.processingError ? "app-feedback-danger" : "app-badge"
-                  }`}
-                  title={item.processingError || item.file.name}
-                >
-                  <FileText size={16} className="app-accent-text shrink-0" />
-                  <span className="min-w-0">
-                    <span className="block max-w-[14rem] truncate text-sm font-medium text-[var(--foreground)]">
-                      {item.file.name}
-                    </span>
-                    <span className="app-text-muted block truncate text-xs">
-                      {formatFileSize(item.file.size)}
-                      {item.extractedText ? " · текст извлечён" : ""}
-                      {item.processedFile
-                        ? ` · сжато до ${formatFileSize(item.processedFile.size)}`
-                        : ""}
-                      {item.processingError ? " · ошибка обработки" : ""}
-                    </span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeUploadItem(item.id)}
+      {/* File Upload */}
+      <DocumentFilePanel
+        title={isDedicatedRegulation ? "Файл регламента" : "Файлы"}
+        count={uploadItems.length}
+        open={filesOpen}
+        onOpenChange={setFilesOpen}
+        onFilesSelected={(files) => void onDrop(files)}
+        multiple={!isDedicatedRegulation}
+        disabled={isSubmitting}
+        busy={isProcessing}
+        addLabel={
+          isDedicatedRegulation && uploadItems.length > 0 ? "Заменить файл регламента" : undefined
+        }
+        emptyText={isDedicatedRegulation ? "Файл регламента пока не выбран" : "Файлов пока нет"}
+      >
+        {uploadItems.length > 0 || (isProcessing && processingProgress) ? (
+          <div className="space-y-3">
+            {uploadItems.length > 0 ? (
+              <div className="overflow-hidden rounded-lg border border-[var(--border-subtle)]">
+                {uploadItems.map((item) => (
+                  <DocumentFileRow
+                    key={item.id}
+                    name={item.file.name}
+                    meta={[
+                      formatFileSize(item.file.size),
+                      item.extractedText ? "текст извлечён" : null,
+                      item.processedFile
+                        ? `сжато до ${formatFileSize(item.processedFile.size)}`
+                        : null,
+                    ].filter(Boolean).join(" · ")}
+                    error={item.processingError}
+                    pending
+                    onRemove={() => removeUploadItem(item.id)}
                     disabled={isProcessing}
-                    className="app-action-ghost app-text-muted -mr-1 shrink-0 rounded-full p-1 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-label={`Убрать файл ${item.file.name}`}
-                  >
-                    <X size={14} />
-                  </button>
-                </span>
-              ))}
-            </div>
-
-            {uploadItems.some((item) => item.processingError) && (
-              <div className="space-y-1">
-                {uploadItems.map((item) =>
-                  item.processingError ? (
-                    <p key={item.id} className="text-xs text-red-500">
-                      {item.file.name}: {item.processingError}
-                    </p>
-                  ) : null
-                )}
+                  />
+                ))}
               </div>
-            )}
+            ) : null}
 
-            {/* Индикатор обработки */}
-            {isProcessing && processingProgress && (
+            {isProcessing && processingProgress ? (
               <div className="app-selected rounded-lg p-3">
                 <div className="mb-2 flex items-center gap-2">
                   <Loader2 size={16} className="app-accent-text animate-spin" />
@@ -561,7 +621,7 @@ export function DocumentUploadForm({
                   </span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-[color:color-mix(in_srgb,var(--accent-primary)_18%,var(--surface-primary))]">
-                  <div 
+                  <div
                     className="h-full bg-[var(--accent-primary)] transition-all duration-300"
                     style={{ width: `${processingProgress.progress}%` }}
                   />
@@ -570,29 +630,39 @@ export function DocumentUploadForm({
                   {processingProgress.message} · {processingProgress.progress}%
                 </p>
               </div>
-            )}
+            ) : null}
           </div>
-        )}
-      </div>
+        ) : undefined}
+      </DocumentFilePanel>
 
       {/* Title */}
       {uploadItems.length <= 1 ? (
         <div>
           <label htmlFor="title" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
             Название
+            {isDedicatedRegulation && <span className="ml-1 text-red-500">*</span>}
           </label>
           <input
             id="title"
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder={uploadItems.length === 0 ? "Название документа" : "По умолчанию — название файла"}
+            placeholder={
+              isDedicatedRegulation
+                ? "Например, Регламент работы с обращениями"
+                : uploadItems.length === 0
+                  ? "Название документа"
+                  : "По умолчанию — название файла"
+            }
+            required={isDedicatedRegulation}
             className="app-input w-full rounded-lg px-3 py-2 text-sm"
           />
           <p className="app-text-muted mt-1 text-xs">
-            {uploadItems.length === 0
-              ? 'Поле необязательное. Если оставить пустым, будет использовано название "Документ".'
-              : "Поле необязательное. Если оставить пустым, будет использовано имя файла без расширения."}
+            {isDedicatedRegulation
+              ? "Название будет отображаться в списке регламентов и результатах поиска."
+              : uploadItems.length === 0
+                ? 'Поле необязательное. Если оставить пустым, будет использовано название "Документ".'
+                : "Поле необязательное. Если оставить пустым, будет использовано имя файла без расширения."}
           </p>
         </div>
       ) : (
@@ -610,7 +680,11 @@ export function DocumentUploadForm({
           id="description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Краткое описание документа"
+          placeholder={
+            isDedicatedRegulation
+              ? "Кратко опишите назначение и область применения регламента"
+              : "Краткое описание документа"
+          }
           rows={3}
           className="app-input w-full rounded-lg px-3 py-2 text-sm"
         />
@@ -620,61 +694,104 @@ export function DocumentUploadForm({
       <div className="app-divider border-t pt-4">
         <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
           <TagIcon size={16} />
-          Категоризация
+          {isDedicatedRegulation ? "Оформление" : "Категоризация"}
         </h3>
       </div>
 
       {/* Folder */}
-      <div>
-        <label htmlFor="folder" className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">
-          <FolderOpen size={14} className="mr-1 inline" />
-          Папка
-        </label>
-        <select
-          id="folder"
-          value={selectedFolderId ?? ""}
-          onChange={(e) => setSelectedFolderId(e.target.value ? Number(e.target.value) : null)}
-          disabled={loadingFolders}
-          className="app-select w-full rounded-lg px-3 py-2 text-sm"
-        >
-          <option value="">Без папки</option>
-          {loadingFolders ? (
-            <option disabled>Загрузка...</option>
-          ) : folderOptionRows.length === 0 ? (
-            <option disabled>Нет доступных папок</option>
+      {!isDedicatedRegulation && (
+        <div>
+          <div id="document-upload-folder-label" className="mb-2 flex items-center gap-2">
+            <FolderOpen size={15} className="app-text-muted" />
+            <span className="app-text-muted text-xs font-medium">Папка</span>
+          </div>
+          <select
+            id="folder"
+            value={selectedFolderId ?? ""}
+            onChange={(event) => {
+              setSelectedFolderId(event.target.value ? Number(event.target.value) : null);
+              setFolderCreateError(null);
+            }}
+            disabled={loadingFolders || isSubmitting || isCreatingFolder}
+            className="app-select w-full rounded-xl px-3 py-2 text-sm"
+            aria-labelledby="document-upload-folder-label"
+          >
+            <option value="">Без папки</option>
+            {loadingFolders ? (
+              <option disabled>Загрузка...</option>
+            ) : folderOptionRows.length === 0 ? (
+              <option disabled>Нет доступных папок</option>
+            ) : (
+              folderOptionRows.map(({ folder, level }) => (
+                <option key={folder.id} value={folder.id}>
+                  {`${"— ".repeat(level)}${folder.name}`}
+                </option>
+              ))
+            )}
+          </select>
+
+          <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+            <input
+              value={newFolderName}
+              onChange={(event) => {
+                setNewFolderName(event.target.value);
+                setFolderCreateError(null);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                if (!isCreatingFolder && newFolderName.trim()) {
+                  void handleCreateFolder();
+                }
+              }}
+              disabled={loadingFolders || isSubmitting || isCreatingFolder}
+              maxLength={255}
+              className="app-input min-w-0 rounded-xl px-3 py-2 text-sm"
+              placeholder="Новая папка"
+              aria-label="Название новой папки"
+            />
+            <button
+              type="button"
+              onClick={() => void handleCreateFolder()}
+              disabled={loadingFolders || isSubmitting || isCreatingFolder || !newFolderName.trim()}
+              className="app-action-secondary inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isCreatingFolder ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <Plus size={15} />
+              )}
+              Добавить
+            </button>
+          </div>
+
+          {folderCreateError ? (
+            <p className="mt-1 text-xs text-red-500">{folderCreateError}</p>
           ) : (
-            folderOptionRows.map(({ folder, level }) => (
-              <option key={folder.id} value={folder.id}>
-                {`${"— ".repeat(level)}${folder.name}`}
-              </option>
-            ))
+            <p className="app-text-muted mt-1 text-xs">
+              {selectedFolder
+                ? `Новая папка будет создана внутри «${selectedFolder.name}».`
+                : "Новая папка будет создана в корне."}
+            </p>
           )}
-        </select>
-        <p className="app-text-muted mt-1 text-xs">
-          Выбранная папка будет применена ко всем загружаемым документам.
-        </p>
-      </div>
+        </div>
+      )}
 
       {/* Tags */}
       <div>
-        <div id="document-upload-tags-label" className="mb-1.5 text-sm font-medium text-[var(--foreground)]">
-          Теги
+        <div id="document-upload-tags-label" className="mb-2 flex items-center gap-2">
+          <TagIcon size={15} className="app-text-muted" />
+          <span className="app-text-muted text-xs font-medium">Теги</span>
         </div>
-        <DocumentTagQuickCreate
-          existingTags={documentTags}
-          disabled={loadingDocumentTags || isSubmitting}
-          onCreated={handleCreatedTag}
-          className="mb-2"
-        />
         <div
           role="group"
           aria-labelledby="document-upload-tags-label"
-          className="app-surface-muted flex min-h-12 flex-wrap items-center gap-2 rounded-lg p-2"
+          className="flex min-h-7 flex-wrap items-center gap-2"
         >
           {loadingDocumentTags ? (
-            <span className="app-text-muted px-1 text-sm">Загрузка тегов...</span>
+            <span className="app-text-muted text-xs">Загрузка тегов...</span>
           ) : documentTags.length === 0 ? (
-            <span className="app-text-muted px-1 text-sm">Нет доступных тегов</span>
+            <span className="app-text-muted text-xs">Тегов пока нет</span>
           ) : (
             documentTags.map((tag) => (
               <button
@@ -687,52 +804,56 @@ export function DocumentUploadForm({
                       : [...prev, tag.id]
                   )
                 }
-                className={`inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                className={`inline-flex max-w-full items-center rounded-full border px-3 py-1 text-xs font-medium transition ${
                   selectedTags.includes(tag.id)
-                    ? "app-badge app-badge-accent"
-                    : "app-badge hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
+                    ? "border-transparent text-white"
+                    : "border-[var(--border-subtle)] text-[var(--muted-foreground)] hover:border-[var(--border-strong)]"
                 }`}
+                style={
+                  selectedTags.includes(tag.id)
+                    ? { backgroundColor: tag.color || "#38bdf8" }
+                    : undefined
+                }
                 aria-pressed={selectedTags.includes(tag.id)}
               >
-                {tag.color && (
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: tag.color }}
-                  />
-                )}
                 <span className="truncate">{tag.name}</span>
               </button>
             ))
           )}
         </div>
-        <p className="app-text-muted mt-1 text-xs">
-          {selectedTags.length > 0 ? (
-            <>Выбрано: {selectedTags.length}</>
-          ) : (
-            <>Нажмите на тег, чтобы добавить его к документу</>
-          )}
-        </p>
+        <DocumentTagQuickCreate
+          existingTags={documentTags}
+          disabled={loadingDocumentTags || isSubmitting}
+          onCreated={handleCreatedTag}
+          layout="inline"
+          className="mt-3"
+        />
       </div>
 
-      {/* Regulation flag */}
-      <div className="app-surface-muted flex items-start gap-3 rounded-lg p-3">
-        <input
-          type="checkbox"
-          id="isRegulation"
-          checked={isRegulation}
-          onChange={(e) => setIsRegulation(e.target.checked)}
-          className="mt-0.5 h-4 w-4 rounded border-[var(--border-strong)] text-[var(--accent-primary)]"
-        />
-        <div className="flex-1">
-          <label htmlFor="isRegulation" className="block cursor-pointer text-sm font-medium text-[var(--foreground)]">
-            <ScrollText size={14} className="mr-1 inline" />
-            Регламент
-          </label>
-          <p className="app-text-muted mt-0.5 text-xs">
-            Документ будет отображаться в отдельном разделе регламентов.
-          </p>
-        </div>
-      </div>
+      {!isDedicatedRegulation ? (
+        <label
+          htmlFor="documentIsRegulation"
+          className="app-surface-muted flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--border-subtle)] p-3"
+        >
+          <input
+            id="documentIsRegulation"
+            type="checkbox"
+            checked={isRegulation}
+            onChange={(event) => setIsRegulation(event.target.checked)}
+            disabled={isSubmitting}
+            className="mt-0.5 h-4 w-4 shrink-0 rounded border-[var(--border-strong)] accent-[var(--accent-primary)] disabled:opacity-50"
+          />
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-1.5 text-sm font-medium text-[var(--foreground)]">
+              <ScrollText size={14} />
+              Регламент
+            </span>
+            <span className="app-text-muted mt-1 block text-xs">
+              Документ будет отображаться в отдельном разделе регламентов.
+            </span>
+          </span>
+        </label>
+      ) : null}
 
       {/* Извлеченный текст */}
       {uploadItems.length === 1 && uploadItems[0].extractedText && (
@@ -747,7 +868,7 @@ export function DocumentUploadForm({
             id="extractedText"
             value={uploadItems[0].extractedText}
             onChange={(e) => updateSingleExtractedText(e.target.value)}
-            placeholder="Текст, извлеченный из документа"
+            placeholder={`Текст, извлеченный из ${isRegulation ? "регламента" : "документа"}`}
             rows={5}
             className="app-input w-full rounded-lg px-3 py-2 text-sm font-mono"
           />
@@ -767,6 +888,7 @@ export function DocumentUploadForm({
         <div className="space-y-6">
           <DocumentAudienceSelector
             kind="access"
+            resource={isRegulation ? "regulation" : "document"}
             mode={sentToAll ? "all" : "restricted"}
             onModeChange={(mode) => setSentToAll(mode === "all")}
             employees={employees}
@@ -782,6 +904,7 @@ export function DocumentUploadForm({
           <div className="app-divider border-t pt-5">
             <DocumentAudienceSelector
               kind="acknowledgement"
+              resource={isRegulation ? "regulation" : "document"}
               mode={acknowledgementMode}
               onModeChange={setAcknowledgementMode}
               employees={acknowledgementEmployees}
@@ -805,16 +928,24 @@ export function DocumentUploadForm({
           className="app-action-primary flex-1 rounded-lg px-4 py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isSubmitting
-            ? uploadItems.length === 0
+            ? isDedicatedRegulation || uploadItems.length === 0
               ? "Создание..."
               : "Загрузка..."
             : isProcessing
               ? "Обработка..."
-              : uploadItems.length > 1
-                ? `Загрузить ${uploadItems.length} документов`
-                : uploadItems.length === 1
-                  ? isRegulation ? "Загрузить регламент" : "Загрузить документ"
-                  : isRegulation ? "Создать регламент" : "Создать документ"}
+              : isDedicatedRegulation
+                ? "Создать регламент"
+                : isRegulation
+                  ? uploadItems.length > 1
+                    ? `Загрузить ${uploadItems.length} регламентов`
+                    : uploadItems.length === 1
+                      ? "Загрузить регламент"
+                      : "Создать регламент"
+                  : uploadItems.length > 1
+                    ? `Загрузить ${uploadItems.length} документов`
+                    : uploadItems.length === 1
+                      ? "Загрузить документ"
+                      : "Создать документ"}
         </button>
         
         {onCancel && (
@@ -830,4 +961,10 @@ export function DocumentUploadForm({
       </div>
     </form>
   );
+}
+
+export function RegulationCreateForm(
+  props: Omit<DocumentUploadFormProps, "currentFolderId" | "mode">,
+) {
+  return <DocumentUploadForm {...props} mode="regulation" />;
 }

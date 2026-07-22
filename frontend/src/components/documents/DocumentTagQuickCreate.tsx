@@ -17,6 +17,7 @@ interface DocumentTagQuickCreateProps {
   disabled?: boolean;
   onCreated: (tag: QuickDocumentTag) => void;
   className?: string;
+  layout?: 'disclosure' | 'inline';
 }
 
 const TAG_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#64748B'];
@@ -26,6 +27,7 @@ export function DocumentTagQuickCreate({
   disabled = false,
   onCreated,
   className = '',
+  layout = 'disclosure',
 }: DocumentTagQuickCreateProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [name, setName] = useState('');
@@ -62,7 +64,11 @@ export function DocumentTagQuickCreate({
         color,
       });
       onCreated(created);
-      resetForm();
+      setName('');
+      if (layout === 'disclosure') {
+        setColor(TAG_COLORS[0]);
+        setIsOpen(false);
+      }
       toast.success('Тег создан');
     } catch (error) {
       console.error('Error creating document tag:', error);
@@ -71,6 +77,41 @@ export function DocumentTagQuickCreate({
       setIsCreating(false);
     }
   };
+
+  if (layout === 'inline') {
+    return (
+      <form
+        onSubmit={handleSubmit}
+        className={`grid gap-2 md:grid-cols-[auto_1fr_auto] ${className}`}
+      >
+        <input
+          type="color"
+          value={color}
+          onChange={(event) => setColor(event.target.value)}
+          disabled={disabled || isCreating}
+          className="h-10 w-14 cursor-pointer rounded-lg border border-[var(--border-subtle)] bg-transparent p-1 disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label="Цвет тега"
+        />
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          disabled={disabled || isCreating}
+          maxLength={100}
+          className="app-input min-w-0 rounded-xl px-3 py-2 text-sm"
+          placeholder="Новый тег"
+          aria-label="Название нового тега"
+        />
+        <button
+          type="submit"
+          disabled={disabled || isCreating || !name.trim()}
+          className="app-action-secondary inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          Добавить
+        </button>
+      </form>
+    );
+  }
 
   if (!isOpen) {
     return (
