@@ -64,6 +64,7 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
             "archive",
             "comments",
             "document_comment",
+            "set_maximally_hidden",
         ):
             return bool(request.user and request.user.is_authenticated)
 
@@ -129,6 +130,7 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
             "archive",
             "comments",
             "document_comment",
+            "set_maximally_hidden",
         ):
             return _user_has_document_access(user, obj)
 

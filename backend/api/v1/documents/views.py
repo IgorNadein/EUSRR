@@ -10,9 +10,11 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, QuerySet, Q
 from django.http import FileResponse
+from django.utils import timezone
 from documents.models import (
     Document,
     DocumentAcknowledgement,
+    DocumentDisplayState,
     DocumentTag,
 )
 from documents.audience import (
@@ -155,7 +157,15 @@ class DocumentViewSet(ModelViewSet):
             subq = DocumentAcknowledgement.objects.filter(
                 document=OuterRef("pk"), user=user
             )
-            qs = qs.annotate(_is_acknowledged=Exists(subq))
+            hidden_subq = DocumentDisplayState.objects.filter(
+                document=OuterRef("pk"),
+                user=user,
+                is_maximally_hidden=True,
+            )
+            qs = qs.annotate(
+                _is_acknowledged=Exists(subq),
+                _is_maximally_hidden=Exists(hidden_subq),
+            )
 
         return qs.order_by("-uploaded_at")
 
@@ -523,6 +533,54 @@ class DocumentViewSet(ModelViewSet):
             document=doc, user=request.user
         )
         return Response({"ok": True, "already": not created})
+
+    @action(methods=["post"], detail=True, url_path="set-maximally-hidden")
+    def set_maximally_hidden(self, request, pk=None):
+        """Переключить персональное максимальное скрытие карточки регламента."""
+        document = self.get_object()
+        if not document.is_regulation:
+            return Response(
+                {"detail": "Максимальное скрытие доступно только для регламентов."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        raw_value = request.data.get("is_maximally_hidden", True)
+
+        if isinstance(raw_value, bool):
+            is_maximally_hidden = raw_value
+        elif isinstance(raw_value, str):
+            normalized = raw_value.strip().lower()
+            if normalized in {"true", "1", "yes", "on"}:
+                is_maximally_hidden = True
+            elif normalized in {"false", "0", "no", "off"}:
+                is_maximally_hidden = False
+            else:
+                return Response(
+                    {"is_maximally_hidden": "Ожидается булево значение."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            return Response(
+                {"is_maximally_hidden": "Ожидается булево значение."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        display_state, _ = DocumentDisplayState.objects.get_or_create(
+            document=document,
+            user=request.user,
+            defaults={"is_maximally_hidden": is_maximally_hidden},
+        )
+        if display_state.is_maximally_hidden != is_maximally_hidden:
+            display_state.is_maximally_hidden = is_maximally_hidden
+            display_state.updated_at = timezone.now()
+            display_state.save(
+                update_fields=["is_maximally_hidden", "updated_at"],
+            )
+
+        document._is_maximally_hidden = is_maximally_hidden
+        self._attach_linked_task_payloads([document])
+        self._attach_document_metrics([document])
+        return Response(self.get_serializer(document).data)
 
     def _document_comment_payload(self, document, message):
         """Формат комментария документа для frontend."""
